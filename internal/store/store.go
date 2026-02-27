@@ -1,3 +1,4 @@
+// Package store manages SQLite storage for code chunks and their embedding vectors.
 package store
 
 import (
@@ -6,7 +7,7 @@ import (
 	"strings"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 
 	"github.com/foobar/agent-index-go/internal/chunker"
 )
@@ -26,7 +27,7 @@ type SearchResult struct {
 }
 
 // StoreStats holds aggregate statistics about the store contents.
-type StoreStats struct {
+type StoreStats struct { //nolint:revive // StoreStats is intentionally named to avoid ambiguity at call sites
 	TotalFiles  int
 	TotalChunks int
 }
@@ -277,10 +278,13 @@ func (s *Store) Search(queryVec []float32, limit int, kindFilter string) ([]Sear
 
 	if kindFilter != "" {
 		// Wrap the vec query and filter by kind.
+		// Explicit ORDER BY is required here: SQL does not guarantee that the
+		// outer query preserves the ordering of the inner query.
 		query = fmt.Sprintf(`
 			SELECT file_path, symbol, kind, start_line, end_line, distance
 			FROM (%s) sub
 			WHERE kind = ?
+			ORDER BY distance ASC
 			LIMIT ?
 		`, query)
 		args = append(args, kindFilter, limit)

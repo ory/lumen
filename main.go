@@ -169,7 +169,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, _ *mcp.CallToo
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     float32(r.Distance),
+			Score:     float32(1.0 - r.Distance),
 		}
 	}
 
