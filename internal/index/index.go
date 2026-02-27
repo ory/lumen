@@ -126,8 +126,31 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool) (I
 		}
 	}
 
-	// Chunk all files that need indexing.
-	var allChunks []chunker.Chunk
+	// Process files, flushing embed+insert in batches to bound memory usage.
+	const chunkBatchSize = 256
+	var batch []chunker.Chunk
+	var totalChunks int
+
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		texts := make([]string, len(batch))
+		for i, c := range batch {
+			texts[i] = c.Content
+		}
+		vectors, err := idx.emb.Embed(ctx, texts)
+		if err != nil {
+			return fmt.Errorf("embed batch: %w", err)
+		}
+		if err := idx.store.InsertChunks(batch, vectors); err != nil {
+			return fmt.Errorf("insert batch: %w", err)
+		}
+		totalChunks += len(batch)
+		batch = batch[:0]
+		return nil
+	}
+
 	for _, relPath := range filesToIndex {
 		absPath := filepath.Join(projectDir, relPath)
 		content, err := os.ReadFile(absPath)
@@ -135,9 +158,14 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool) (I
 			return stats, fmt.Errorf("read file %s: %w", relPath, err)
 		}
 
-		// Delete old chunks for this file (handles modified files and force re-index).
 		if err := idx.store.DeleteFileChunks(relPath); err != nil {
 			return stats, fmt.Errorf("delete old chunks for %s: %w", relPath, err)
+		}
+
+		// Upsert the file record before appending chunks so the FK constraint
+		// is satisfied when the batch is flushed mid-loop.
+		if err := idx.store.UpsertFile(relPath, curTree.Files[relPath]); err != nil {
+			return stats, fmt.Errorf("upsert file %s: %w", relPath, err)
 		}
 
 		chunks, err := idx.chunker.Chunk(relPath, content)
@@ -145,33 +173,21 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool) (I
 			return stats, fmt.Errorf("chunk %s: %w", relPath, err)
 		}
 
-		allChunks = append(allChunks, chunks...)
+		batch = append(batch, chunks...)
 
-		// Update file hash in the store.
-		if err := idx.store.UpsertFile(relPath, curTree.Files[relPath]); err != nil {
-			return stats, fmt.Errorf("upsert file %s: %w", relPath, err)
+		if len(batch) >= chunkBatchSize {
+			if err := flushBatch(); err != nil {
+				return stats, err
+			}
 		}
+	}
+
+	if err := flushBatch(); err != nil {
+		return stats, err
 	}
 
 	stats.IndexedFiles = len(filesToIndex)
-	stats.ChunksCreated = len(allChunks)
-
-	// Embed all chunks in a batch.
-	if len(allChunks) > 0 {
-		texts := make([]string, len(allChunks))
-		for i, c := range allChunks {
-			texts[i] = c.Content
-		}
-
-		vectors, err := idx.emb.Embed(ctx, texts)
-		if err != nil {
-			return stats, fmt.Errorf("embed chunks: %w", err)
-		}
-
-		if err := idx.store.InsertChunks(allChunks, vectors); err != nil {
-			return stats, fmt.Errorf("insert chunks: %w", err)
-		}
-	}
+	stats.ChunksCreated = totalChunks
 
 	// Update metadata.
 	if err := idx.store.SetMeta("root_hash", curTree.RootHash); err != nil {
