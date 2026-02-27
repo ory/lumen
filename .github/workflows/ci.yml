@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Test
+        run: CGO_ENABLED=1 go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Wait for Ollama
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11434/ && break
+            sleep 1
+          done
+
+      - name: Pull embedding model
+        run: 'curl -sf http://localhost:11434/api/pull -d ''{"name":"all-minilm"}'''
+
+      - name: E2E tests
+        run: CGO_ENABLED=1 go test -tags=e2e -timeout=5m -v -count=1 ./...
+        env:
+          OLLAMA_HOST: http://localhost:11434
+          AGENT_INDEX_EMBED_MODEL: all-minilm
+          AGENT_INDEX_EMBED_DIMS: "384"

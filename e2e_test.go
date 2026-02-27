@@ -92,7 +92,12 @@ func callSearch(t *testing.T, session *mcp.ClientSession, args map[string]any) S
 		t.Fatalf("CallTool semantic_search failed: %v", err)
 	}
 	if result.IsError {
-		t.Fatalf("semantic_search returned error: %+v", result.Content)
+		for _, c := range result.Content {
+			if tc, ok := c.(*mcp.TextContent); ok {
+				t.Fatalf("semantic_search returned error: %s", tc.Text)
+			}
+		}
+		t.Fatalf("semantic_search returned error (no text content)")
 	}
 
 	raw, err := json.Marshal(result.StructuredContent)
@@ -356,27 +361,34 @@ func TestE2E_ErrorHandling(t *testing.T) {
 	session := startServer(t)
 	ctx := context.Background()
 
-	// Missing path (only query).
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+	// Missing path — the SDK validates required fields client-side, so this
+	// returns an error from CallTool rather than result.IsError.
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "semantic_search",
 		Arguments: mustJSON(t, map[string]any{"query": "test"}),
 	})
-	if err != nil {
-		t.Fatalf("CallTool failed: %v", err)
-	}
-	if !result.IsError {
-		t.Error("expected IsError=true when path is missing")
+	if err == nil {
+		t.Error("expected error when path is missing")
 	}
 
-	// Missing query (only path).
-	result, err = session.CallTool(ctx, &mcp.CallToolParams{
+	// Missing query — similarly rejected client-side.
+	_, err = session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "semantic_search",
 		Arguments: mustJSON(t, map[string]any{"path": "/some/path"}),
+	})
+	if err == nil {
+		t.Error("expected error when query is missing")
+	}
+
+	// Non-existent project path — this passes SDK validation but fails server-side.
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "semantic_search",
+		Arguments: mustJSON(t, map[string]any{"query": "test", "path": "/nonexistent/path/that/does/not/exist"}),
 	})
 	if err != nil {
 		t.Fatalf("CallTool failed: %v", err)
 	}
 	if !result.IsError {
-		t.Error("expected IsError=true when query is missing")
+		t.Error("expected IsError=true for non-existent project path")
 	}
 }
