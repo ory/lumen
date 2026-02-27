@@ -208,3 +208,54 @@ func symbolNames(chunks []chunker.Chunk) []string {
 	}
 	return names
 }
+
+func TestMultiChunker_Dispatch(t *testing.T) {
+	pyChunker := mustPyChunker(t)
+
+	mc := chunker.NewMultiChunker(map[string]chunker.Chunker{
+		".py": pyChunker,
+	})
+
+	// Known extension — returns chunks
+	chunks, err := mc.Chunk("foo.py", samplePython)
+	if err != nil {
+		t.Fatalf("Chunk(.py): %v", err)
+	}
+	if len(chunks) == 0 {
+		t.Error("expected chunks for .py, got none")
+	}
+
+	// Unknown extension — returns nil, nil
+	chunks, err = mc.Chunk("foo.xyz", []byte("hello"))
+	if err != nil {
+		t.Fatalf("Chunk(.xyz): unexpected error: %v", err)
+	}
+	if len(chunks) != 0 {
+		t.Errorf("expected no chunks for .xyz, got %d", len(chunks))
+	}
+}
+
+func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
+	langs := chunker.DefaultLanguages()
+	for _, ext := range chunker.SupportedExtensions() {
+		if _, ok := langs[ext]; !ok {
+			t.Errorf("DefaultLanguages() missing extension %q", ext)
+		}
+	}
+}
+
+// mustPyChunker creates a Python TreeSitterChunker for use in tests.
+func mustPyChunker(t *testing.T) *chunker.TreeSitterChunker {
+	t.Helper()
+	def := chunker.LanguageDef{
+		Language: sitter_py.GetLanguage(),
+		Queries: []chunker.QueryDef{
+			{Pattern: `(function_definition name: (identifier) @name) @decl`, Kind: "function"},
+		},
+	}
+	c, err := chunker.NewTreeSitterChunker(def)
+	if err != nil {
+		t.Fatalf("NewTreeSitterChunker: %v", err)
+	}
+	return c
+}
