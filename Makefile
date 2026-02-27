@@ -9,6 +9,9 @@ build:
 test:
 	CGO_ENABLED=1 $(GO) test ./...
 
+install:
+	CGO_ENABLED=1 $(GO) install ./...
+
 e2e:
 	CGO_ENABLED=1 $(GO) test -tags=e2e -timeout=5m -v -count=1 ./...
 

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/index"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/index"
 )
 
 func TestIntegration_FullPipeline(t *testing.T) {
@@ -20,10 +20,10 @@ func TestIntegration_FullPipeline(t *testing.T) {
 
 	model := os.Getenv("AGENT_INDEX_EMBED_MODEL")
 	if model == "" {
-		model = "nomic-embed-text"
+		model = "qwen3-embedding:8b"
 	}
 
-	emb, err := embedder.NewOllama(model, 1024, ollamaHost)
+	emb, err := embedder.NewOllama(model, 4096, ollamaHost)
 	if err != nil {
 		t.Fatal(err)
 	}

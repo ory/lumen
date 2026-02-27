@@ -1,4 +1,4 @@
-module github.com/foobar/agent-index-go
+module github.com/aeneasr/agent-index
 
 go 1.26
 

@@ -26,7 +26,7 @@
 **Step 1: Initialize Go module and install dependencies**
 
 ```bash
-go mod init github.com/foobar/agent-index-go
+go mod init github.com/aeneasr/agent-index
 ```
 
 **Step 2: Create shared types file**
@@ -66,7 +66,7 @@ Create `internal/chunker/chunker.go`:
 ```go
 package chunker
 
-import "github.com/foobar/agent-index-go/internal"
+import "github.com/aeneasr/agent-index/internal"
 
 // Chunker splits source files into semantically meaningful chunks.
 type Chunker interface {
@@ -887,7 +887,7 @@ package store
 import (
 	"testing"
 
-	"github.com/foobar/agent-index-go/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/chunker"
 )
 
 func TestNewStore_CreatesSchema(t *testing.T) {
@@ -1102,7 +1102,7 @@ import (
 	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
-	"github.com/foobar/agent-index-go/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/chunker"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -1924,10 +1924,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/foobar/agent-index-go/internal/chunker"
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/merkle"
-	"github.com/foobar/agent-index-go/internal/store"
+	"github.com/aeneasr/agent-index/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/merkle"
+	"github.com/aeneasr/agent-index/internal/store"
 )
 
 // IndexStats is returned after an indexing operation.
@@ -2169,8 +2169,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/index"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/index"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -2460,8 +2460,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/index"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/index"
 )
 
 func TestIntegration_FullPipeline(t *testing.T) {

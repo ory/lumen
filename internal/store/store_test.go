@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/foobar/agent-index-go/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/chunker"
 )
 
 func TestNewStore_CreatesSchema(t *testing.T) {

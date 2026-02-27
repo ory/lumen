@@ -9,7 +9,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 
-	"github.com/foobar/agent-index-go/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/chunker"
 )
 
 func init() {

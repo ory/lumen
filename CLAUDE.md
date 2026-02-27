@@ -64,7 +64,7 @@ Returns: `total_files`, `total_chunks`, `last_indexed_at` (RFC3339).
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_INDEX_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model |
+| `AGENT_INDEX_EMBED_MODEL` | `qwen3-embedding:8b` | Ollama embedding model |
 | `AGENT_INDEX_EMBED_DIMS` | model-dependent | Override embedding dimensions |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 

@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/index"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/index"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -23,7 +23,7 @@ type SemanticSearchInput struct {
 	Query        string `json:"query" jsonschema:"Natural language search query"`
 	Path         string `json:"path" jsonschema:"Absolute path to the project root"`
 	Limit        int    `json:"limit,omitempty" jsonschema:"Max results to return, default 10"`
-	ForceReindex bool `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
+	ForceReindex bool   `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
 }
 
 // SearchResultItem represents a single search result returned to the caller.
@@ -250,8 +250,8 @@ func envOrDefaultInt(key string, fallback int) int {
 // --- main ---
 
 func main() {
-	model := envOrDefault("AGENT_INDEX_EMBED_MODEL", "nomic-embed-text")
-	dims := envOrDefaultInt("AGENT_INDEX_EMBED_DIMS", 1024)
+	model := envOrDefault("AGENT_INDEX_EMBED_MODEL", "qwen3-embedding:8b")
+	dims := envOrDefaultInt("AGENT_INDEX_EMBED_DIMS", 4096)
 	ollamaHost := envOrDefault("OLLAMA_HOST", "http://localhost:11434")
 
 	emb, err := embedder.NewOllama(model, dims, ollamaHost)

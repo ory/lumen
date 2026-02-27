@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/foobar/agent-index-go/internal/chunker"
-	"github.com/foobar/agent-index-go/internal/embedder"
-	"github.com/foobar/agent-index-go/internal/merkle"
-	"github.com/foobar/agent-index-go/internal/store"
+	"github.com/aeneasr/agent-index/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/embedder"
+	"github.com/aeneasr/agent-index/internal/merkle"
+	"github.com/aeneasr/agent-index/internal/store"
 )
 
 // IndexStats holds statistics from an indexing run.

@@ -8,7 +8,7 @@ import (
 	sitter_rs "github.com/smacker/go-tree-sitter/rust"
 	sitter_ts "github.com/smacker/go-tree-sitter/typescript/typescript"
 
-	"github.com/foobar/agent-index-go/internal/chunker"
+	"github.com/aeneasr/agent-index/internal/chunker"
 )
 
 var samplePython = []byte(`def greet(name):
@@ -570,4 +570,3 @@ func mustPyChunker(t *testing.T) *chunker.TreeSitterChunker {
 	}
 	return c
 }
-

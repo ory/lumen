@@ -29,7 +29,7 @@ Cloud-hosted vector databases solve this, but they require sending your code to 
 ollama pull mxbai-embed-large
 
 # Install the binary
-CGO_ENABLED=1 go install github.com/foobar/agent-index-go@latest
+CGO_ENABLED=1 go install github.com/aeneasr/agent-index@latest
 ```
 
 > `CGO_ENABLED=1` is required — sqlite-vec compiles from C source.
@@ -38,13 +38,25 @@ CGO_ENABLED=1 go install github.com/foobar/agent-index-go@latest
 
 ```bash
 # Pull the embedding model
-ollama pull mxbai-embed-large
+ollama pull qwen3-embedding:8b
 
-# Add as an MCP server
+# Add as an MCP server (defaults work out of the box)
 claude mcp add --scope user \
-  -e AGENT_INDEX_EMBED_MODEL=mxbai-embed-large \
-  -e OLLAMA_HOST=http://localhost:11434 \
-  agent-index "$HOME/go/bin/agent-index-go"
+  agent-index "$(go env GOPATH)/bin/agent-index-go"
+```
+
+To change the embedding model, just pull a different one and update `AGENT_INDEX_EMBED_MODEL` in the MCP config
+or remove and re-add the server with the new model.
+
+```bash
+claude mcp remove agent-index
+
+# Custom model and ollama host configuration example
+claude mcp add --scope user \
+  -eAGENT_INDEX_EMBED_MODEL=qwen3-embedding:8b \
+  -eAGENT_INDEX_EMBED_DIMS=4096 \
+  -eOLLAMA_HOST=http://localhost:11434 \
+  agent-index "$(go env GOPATH)/bin/agent-index-go"
 ```
 
 That's it. Claude Code will now have access to `semantic_search` and `index_status` tools. On the first search against a project, it auto-indexes the codebase.
@@ -79,7 +91,8 @@ All configuration is via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_INDEX_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name |
+| `AGENT_INDEX_EMBED_MODEL` | `qwen3-embedding:8b` | Ollama embedding model name |
+| `AGENT_INDEX_EMBED_DIMS` | `4096` | Embedding dimensions (must match model) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 
 ### Choosing an embedding model
@@ -88,6 +101,7 @@ Any Ollama embedding model works. Some options:
 
 | Model | Dimensions | Notes |
 |---|---|---|
+| `qwen3-embedding:8b` | 4096 | Default. Best quality for code, #1 MTEB multilingual |
 | `mxbai-embed-large` | 1024 | Good balance of quality and speed |
 | `nomic-embed-text` | 768 | Lightweight, fast |
 | `snowflake-arctic-embed2` | 1024 | High quality |
