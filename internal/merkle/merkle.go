@@ -6,8 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
+	"sync"
 )
 
 // Tree holds the Merkle tree state for a project directory.
@@ -33,18 +34,18 @@ func DefaultSkip(relPath string, isDir bool) bool {
 	return !strings.HasSuffix(base, ".go")
 }
 
+const merkleWorkers = 8
+
 // BuildTree walks rootDir and computes a Merkle tree.
+// File reads are parallelized across up to merkleWorkers goroutines.
 // If skip is nil, DefaultSkip is used.
 func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 	if skip == nil {
 		skip = DefaultSkip
 	}
 
-	tree := &Tree{
-		Files: make(map[string]string),
-		Dirs:  make(map[string]string),
-	}
-
+	// Phase 1: collect file paths (sequential walk, cheap).
+	var relPaths []string
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -53,28 +54,74 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		if rel == "." {
 			return nil
 		}
-
 		if d.IsDir() {
 			if skip(rel, true) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		if skip(rel, false) {
-			return nil
+		if !skip(rel, false) {
+			relPaths = append(relPaths, rel)
 		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		hash := fmt.Sprintf("%x", sha256.Sum256(data))
-		tree.Files[rel] = hash
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Phase 2: hash files concurrently with a bounded worker pool.
+	type result struct {
+		rel  string
+		hash string
+		err  error
+	}
+
+	work := make(chan string, len(relPaths))
+	for _, p := range relPaths {
+		work <- p
+	}
+	close(work)
+
+	results := make(chan result, len(relPaths))
+	workers := merkleWorkers
+	if workers > len(relPaths) {
+		workers = len(relPaths)
+	}
+	if workers == 0 {
+		workers = 1
+	}
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for rel := range work {
+				data, err := os.ReadFile(filepath.Join(rootDir, rel))
+				if err != nil {
+					results <- result{err: err}
+					return
+				}
+				hash := fmt.Sprintf("%x", sha256.Sum256(data))
+				results <- result{rel: rel, hash: hash}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	tree := &Tree{
+		Files: make(map[string]string, len(relPaths)),
+		Dirs:  make(map[string]string),
+	}
+	for r := range results {
+		if r.err != nil {
+			return nil, r.err
+		}
+		tree.Files[r.rel] = r.hash
 	}
 
 	tree.RootHash = buildDirHash(tree.Files)
@@ -86,7 +133,7 @@ func buildDirHash(files map[string]string) string {
 	for p := range files {
 		paths = append(paths, p)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 
 	h := sha256.New()
 	for _, p := range paths {
@@ -110,8 +157,8 @@ func Diff(old, cur *Tree) (added, removed, modified []string) {
 			removed = append(removed, path)
 		}
 	}
-	sort.Strings(added)
-	sort.Strings(removed)
-	sort.Strings(modified)
+	slices.Sort(added)
+	slices.Sort(removed)
+	slices.Sort(modified)
 	return
 }

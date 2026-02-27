@@ -1,6 +1,7 @@
 package merkle
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -112,6 +113,33 @@ func TestBuildTree_OnlyGoFiles(t *testing.T) {
 	}
 	if len(tree.Files) != 1 {
 		t.Fatalf("expected 1 .go file, got %d: %v", len(tree.Files), tree.Files)
+	}
+}
+
+func TestBuildTree_ParallelMatchesSerial(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 20; i++ {
+		content := fmt.Sprintf("package main\n\nfunc F%d() {}\n", i)
+		path := filepath.Join(dir, fmt.Sprintf("f%d.go", i))
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tree1, err := BuildTree(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree2, err := BuildTree(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tree1.RootHash != tree2.RootHash {
+		t.Fatalf("two runs produced different root hashes: %s vs %s", tree1.RootHash, tree2.RootHash)
+	}
+	if len(tree1.Files) != 20 {
+		t.Fatalf("expected 20 files, got %d", len(tree1.Files))
 	}
 }
 
