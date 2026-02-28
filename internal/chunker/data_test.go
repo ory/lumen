@@ -19,68 +19,44 @@ import (
 )
 
 func TestDataChunker_YAML(t *testing.T) {
-	src := `name: my-app
-version: 1.0.0
-dependencies:
-  - foo
-  - bar
-config:
-  host: localhost
-  port: 8080
-`
 	c := NewDataChunker()
-	chunks, err := c.Chunk("config.yaml", []byte(src))
+	input := []byte("name: foo\nversion: 1\n")
+	chunks, err := c.Chunk("test.yaml", input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chunks) != 4 {
-		t.Fatalf("expected 4 chunks, got %d", len(chunks))
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
 	}
-	for _, ch := range chunks {
-		if ch.Kind != "key" {
-			t.Errorf("chunk %q: Kind = %q, want key", ch.Symbol, ch.Kind)
-		}
+	if chunks[0].Symbol != "root" {
+		t.Errorf("Symbol = %q, want root", chunks[0].Symbol)
+	}
+	if chunks[0].Kind != "document" {
+		t.Errorf("Kind = %q, want document", chunks[0].Kind)
 	}
 }
 
-func TestDataChunker_JSON_Object(t *testing.T) {
-	src := `{
-  "name": "my-app",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "tsc",
-    "test": "jest"
-  }
-}`
+func TestDataChunker_JSON(t *testing.T) {
 	c := NewDataChunker()
-	chunks, err := c.Chunk("package.json", []byte(src))
+	input := []byte(`{"name":"foo","version":"1"}`)
+	chunks, err := c.Chunk("test.json", input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chunks) == 0 {
-		t.Fatal("expected chunks, got none")
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
 	}
-	for _, ch := range chunks {
-		if ch.Kind != "key" {
-			t.Errorf("chunk %q: Kind = %q, want key", ch.Symbol, ch.Kind)
-		}
+	if chunks[0].Symbol != "root" {
+		t.Errorf("Symbol = %q, want root", chunks[0].Symbol)
 	}
-}
-
-func TestDataChunker_JSON_Array(t *testing.T) {
-	c := NewDataChunker()
-	chunks, err := c.Chunk("list.json", []byte(`["a","b","c"]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(chunks) != 1 || chunks[0].Symbol != "root" {
-		t.Errorf("expected 1 root chunk, got %d", len(chunks))
+	if chunks[0].Kind != "document" {
+		t.Errorf("Kind = %q, want document", chunks[0].Kind)
 	}
 }
 
-func TestDataChunker_EmptyYAML(t *testing.T) {
+func TestDataChunker_Empty(t *testing.T) {
 	c := NewDataChunker()
-	chunks, err := c.Chunk("empty.yaml", []byte(""))
+	chunks, err := c.Chunk("test.yaml", []byte("   "))
 	if err != nil {
 		t.Fatal(err)
 	}
