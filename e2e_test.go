@@ -158,16 +158,16 @@ func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 
 	var out semanticSearchOutput
 
-	// Parse "Found N results (indexed M files):" or "No results found."
-	if strings.HasPrefix(text, "No results found") {
-		return out
-	}
+	// Parse "(indexed M files)" first — present in both "Found N results" and "No results found." output.
 	if strings.Contains(text, "(indexed") {
 		re := regexp.MustCompile(`\(indexed (\d+) files\)`)
 		if m := re.FindStringSubmatch(text); m != nil {
 			out.IndexedFiles, _ = strconv.Atoi(m[1])
 			out.Reindexed = true
 		}
+	}
+	if strings.HasPrefix(text, "No results found") {
+		return out
 	}
 
 	// Find all header line positions, then extract content between them.
@@ -567,20 +567,22 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	projectPath := sampleProjectPath(t)
 
 	// HandleHealth should rank higher than ValidateToken for an HTTP handler query.
-	// Use a high limit to ensure both symbols appear.
+	// Use min_score=-1 to ensure all results appear regardless of score threshold.
 	out := callSearch(t, session, map[string]any{
-		"query": "HTTP request handler for health check endpoint",
-		"path":  projectPath,
-		"limit": 50,
+		"query":     "HTTP request handler for health check endpoint",
+		"path":      projectPath,
+		"limit":     50,
+		"min_score": -1,
 	})
 	healthRank := rankOf(out.Results, "HandleHealth")
 	tokenRank := rankOf(out.Results, "ValidateToken")
 	if healthRank == -1 {
 		// Show raw text for debugging.
 		raw := callSearchRaw(t, session, map[string]any{
-			"query": "HTTP request handler for health check endpoint",
-			"path":  projectPath,
-			"limit": 50,
+			"query":     "HTTP request handler for health check endpoint",
+			"path":      projectPath,
+			"limit":     50,
+			"min_score": -1,
 		})
 		t.Logf("raw text:\n%s", getTextContent(t, raw))
 		t.Fatalf("HandleHealth not found in results: %v", resultSymbols(out.Results))
@@ -595,9 +597,10 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 
 	// QueryUsers should rank higher than HandleHealth for a database query.
 	out2 := callSearch(t, session, map[string]any{
-		"query": "database query pagination",
-		"path":  projectPath,
-		"limit": 50,
+		"query":     "database query pagination",
+		"path":      projectPath,
+		"limit":     50,
+		"min_score": -1,
 	})
 	queryRank := rankOf(out2.Results, "QueryUsers")
 	handleRank := rankOf(out2.Results, "HandleHealth")
@@ -617,11 +620,12 @@ func TestE2E_LimitParameter(t *testing.T) {
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
-	// limit=1 should return exactly 1.
+	// limit=1 should return exactly 1. Use min_score=-1 to bypass score filtering.
 	out1 := callSearch(t, session, map[string]any{
-		"query": "user",
-		"path":  projectPath,
-		"limit": 1,
+		"query":     "user",
+		"path":      projectPath,
+		"limit":     1,
+		"min_score": -1,
 	})
 	if len(out1.Results) != 1 {
 		t.Errorf("limit=1: expected exactly 1 result, got %d", len(out1.Results))
@@ -629,9 +633,10 @@ func TestE2E_LimitParameter(t *testing.T) {
 
 	// limit=3 should return at most 3.
 	out3 := callSearch(t, session, map[string]any{
-		"query": "user",
-		"path":  projectPath,
-		"limit": 3,
+		"query":     "user",
+		"path":      projectPath,
+		"limit":     3,
+		"min_score": -1,
 	})
 	if len(out3.Results) > 3 {
 		t.Errorf("limit=3: expected at most 3 results, got %d", len(out3.Results))
