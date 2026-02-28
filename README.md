@@ -1,21 +1,22 @@
 # agent-index
 
-A fully local semantic code search engine, exposed as an [MCP](https://modelcontextprotocol.io/) server. Think of it as a self-hosted alternative to cloud-based code vector databases — but everything runs on your machine, embeddings included.
+A fully local semantic code search engine superior to standard grep and find in large codebases. Exposed as an [MCP](https://modelcontextprotocol.io/) server which can be installed in any code agent (Claude Code, Opencode, Codex, ...). A self-hosted alternative to cloud-based code vector databases: but everything runs on your machine, embeddings included.
 
-It parses your Go codebase into semantic chunks (functions, methods, types, interfaces, constants) using the Go AST, embeds them via a local Ollama model, stores vectors in SQLite with [sqlite-vec](https://github.com/asg017/sqlite-vec), and exposes semantic search over MCP. Your code never leaves your machine.
+It parses your codebase into semantic chunks (functions, methods, types, interfaces, constants) using the AST, chunks and embeds them via a local Ollama model, stores vectors in SQLite with [sqlite-vec](https://github.com/asg017/sqlite-vec), and exposes semantic search over MCP. Your code never leaves your machine. Efficient re-indexing using merkle trees.
 
-Currently supports **Go** — more languages may follow if there's interest.
+Supports all major languages (Go, Java, TypeScript, JavaScript, ...). Golang support is fine-tuned and benchmarked other languages are in preview.
 
 ## Why
 
 AI coding agents are good at writing code but bad at navigating large codebases. They waste context window tokens reading entire files when they only need one function. Semantic search fixes this — the agent describes what it's looking for in natural language and gets back precise file paths and line ranges.
 
-Cloud-hosted vector databases solve this, but they require sending your code to a third party. agent-index-go gives you the same capability with everything running locally:
+Cloud-hosted vector databases solve this, but they require sending your code to a third party and become expensive quickly. **agent-index** gives you the same capability with everything running locally:
 
 - **Local embeddings** via Ollama (no API keys, no network calls to external services)
 - **Local storage** via SQLite + sqlite-vec (no external database)
 - **Incremental indexing** via Merkle tree change detection (only re-embeds changed files)
 - **Auto-indexing** on search (no manual reindex step)
+- **Lower latency** with locally deployed database.
 
 ## Install
 
