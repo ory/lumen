@@ -65,7 +65,7 @@ func TestStructuredChunker_LargeYAML_SplitsAtTopLevelKeys(t *testing.T) {
 	}
 	for _, ch := range chunks {
 		if !strings.HasPrefix(ch.Content, "# path:") {
-			t.Errorf("chunk %q: Content missing path prefix: %q", ch.Symbol, ch.Content[:minInt(40, len(ch.Content))])
+			t.Errorf("chunk %q: Content missing path prefix: %q", ch.Symbol, ch.Content[:min(40, len(ch.Content))])
 		}
 	}
 	symbols := make(map[string]bool)
@@ -172,13 +172,6 @@ func TestStructuredChunker_PathPrefix_ContentEmbedded(t *testing.T) {
 			t.Errorf("Content for chunk %q does not contain its own symbol", ch.Symbol)
 		}
 	}
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func containsPrefixStr(m map[string]bool, prefix string) bool {
