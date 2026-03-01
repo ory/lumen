@@ -237,7 +237,7 @@ class Animal {
 `)
 
 func TestTreeSitterChunker_JavaScript(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".js"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .js")
@@ -282,7 +282,7 @@ export class App {
 `)
 
 func TestTreeSitterChunker_TSX(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".tsx"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .tsx")
@@ -326,7 +326,7 @@ end
 `)
 
 func TestTreeSitterChunker_Ruby(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".rb"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .rb")
@@ -367,7 +367,7 @@ var sampleJava = []byte(`public class Calculator {
 `)
 
 func TestTreeSitterChunker_Java(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".java"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .java")
@@ -414,7 +414,7 @@ struct Point {
 `)
 
 func TestTreeSitterChunker_C(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".c"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .c")
@@ -458,7 +458,7 @@ int add(int a, int b) {
 `)
 
 func TestTreeSitterChunker_CPP(t *testing.T) {
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 	c, ok := langs[".cpp"]
 	if !ok {
 		t.Fatal("DefaultLanguages() missing .cpp")
@@ -551,7 +551,7 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".json": []byte(`{"foo": "bar"}`),
 	}
 
-	langs := chunker.DefaultLanguages()
+	langs := chunker.DefaultLanguages(512)
 
 	for _, ext := range chunker.SupportedExtensions() {
 		c, ok := langs[ext]

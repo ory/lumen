@@ -21,13 +21,20 @@ type ModelSpec struct {
 	SizeHint  string
 }
 
-// DefaultModel is the model used when AGENT_INDEX_EMBED_MODEL is not set.
-const DefaultModel = "qwen3-embedding:4b"
+// DefaultOllamaModel is the default model when using the Ollama backend.
+const DefaultOllamaModel = "ordis/jina-embeddings-v2-base-code"
 
-// KnownModels maps Ollama model names to their specifications.
+// DefaultLMStudioModel is the default model when using the LM Studio backend.
+const DefaultLMStudioModel = "nomic-ai/nomic-embed-code-GGUF"
+
+// DefaultModel is an alias for DefaultOllamaModel for backward compatibility.
+const DefaultModel = DefaultOllamaModel
+
+// KnownModels maps model names to their specifications.
 var KnownModels = map[string]ModelSpec{
 	"ordis/jina-embeddings-v2-base-code": {768, 8192, "~323MB"},
 	"nomic-embed-text":                   {768, 8192, "~274MB"},
+	"nomic-ai/nomic-embed-code-GGUF":     {3584, 8192, "~274MB"},
 	"qwen3-embedding:8b":                 {4096, 40960, "~4.7GB"},
 	"qwen3-embedding:4b":                 {2560, 40960, "~2.6GB"},
 	"qwen3-embedding:0.6b":               {1024, 32768, "~522MB"},

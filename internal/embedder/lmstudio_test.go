@@ -23,28 +23,28 @@ import (
 	"time"
 )
 
-type mockOllamaResponse struct {
-	Embeddings [][]float32 `json:"embeddings"`
-	Model      string      `json:"model"`
+func makeLMStudioResponse(embeddings [][]float32) lmstudioEmbedResponse {
+	data := make([]lmstudioEmbedItem, len(embeddings))
+	for i, e := range embeddings {
+		data[i] = lmstudioEmbedItem{Embedding: e, Index: i}
+	}
+	return lmstudioEmbedResponse{Data: data}
 }
 
-func TestOllamaEmbedder_Embed(t *testing.T) {
+func TestLMStudioEmbedder_Embed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/embed" {
+		if r.URL.Path != "/v1/embeddings" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		resp := mockOllamaResponse{
-			Model: "nomic-embed-text",
-			Embeddings: [][]float32{
-				{0.1, 0.2, 0.3, 0.4},
-				{0.5, 0.6, 0.7, 0.8},
-			},
-		}
+		resp := makeLMStudioResponse([][]float32{
+			{0.1, 0.2, 0.3, 0.4},
+			{0.5, 0.6, 0.7, 0.8},
+		})
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	e, err := NewOllama("nomic-embed-text", 4, 0, server.URL)
+	e, err := NewLMStudio("nomic-embed-code", 4, server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,56 +61,38 @@ func TestOllamaEmbedder_Embed(t *testing.T) {
 	}
 }
 
-func TestOllamaEmbedder_NumCtx(t *testing.T) {
-	var receivedOptions map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		if opts, ok := req["options"]; ok {
-			receivedOptions = opts.(map[string]any)
-		}
-		resp := mockOllamaResponse{
-			Model:      "test",
-			Embeddings: [][]float32{{0.1, 0.2, 0.3, 0.4}},
+func TestLMStudioEmbedder_OrderingByIndex(t *testing.T) {
+	// Mock returns items in reversed index order to verify sorting.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := lmstudioEmbedResponse{
+			Data: []lmstudioEmbedItem{
+				{Embedding: []float32{0.9, 0.9, 0.9, 0.9}, Index: 1},
+				{Embedding: []float32{0.1, 0.2, 0.3, 0.4}, Index: 0},
+			},
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	// With contextLength=0, no options should be sent.
-	e, _ := NewOllama("test", 4, 0, server.URL)
-	_, _ = e.Embed(context.Background(), []string{"hello"})
-	if receivedOptions != nil {
-		t.Fatalf("expected no options with contextLength=0, got %v", receivedOptions)
+	e, _ := NewLMStudio("nomic-embed-code", 4, server.URL)
+	vecs, err := e.Embed(context.Background(), []string{"first", "second"})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// With contextLength=8192, num_ctx should be set.
-	receivedOptions = nil
-	e, _ = NewOllama("test", 4, 8192, server.URL)
-	_, _ = e.Embed(context.Background(), []string{"hello"})
-	if receivedOptions == nil {
-		t.Fatal("expected options with contextLength=8192")
+	if len(vecs) != 2 {
+		t.Fatalf("expected 2 vectors, got %d", len(vecs))
 	}
-	if numCtx, ok := receivedOptions["num_ctx"]; !ok || numCtx != float64(8192) {
-		t.Fatalf("expected num_ctx=8192, got %v", receivedOptions["num_ctx"])
+	// vecs[0] should correspond to index:0, which has embedding {0.1, 0.2, 0.3, 0.4}
+	if vecs[0][0] != 0.1 {
+		t.Fatalf("expected vecs[0][0]=0.1 (index:0 item), got %v", vecs[0][0])
 	}
-}
-
-func TestOllamaEmbedder_Dimensions(t *testing.T) {
-	e, _ := NewOllama("nomic-embed-text", 1024, 0, "http://localhost:11434")
-	if e.Dimensions() != 1024 {
-		t.Fatalf("expected 1024, got %d", e.Dimensions())
+	// vecs[1] should correspond to index:1, which has embedding {0.9, 0.9, 0.9, 0.9}
+	if vecs[1][0] != 0.9 {
+		t.Fatalf("expected vecs[1][0]=0.9 (index:1 item), got %v", vecs[1][0])
 	}
 }
 
-func TestOllamaEmbedder_ModelName(t *testing.T) {
-	e, _ := NewOllama("nomic-embed-text", 1024, 0, "http://localhost:11434")
-	if e.ModelName() != "nomic-embed-text" {
-		t.Fatalf("expected nomic-embed-text, got %s", e.ModelName())
-	}
-}
-
-func TestOllamaEmbedder_Batching(t *testing.T) {
+func TestLMStudioEmbedder_Batching(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
@@ -122,12 +104,11 @@ func TestOllamaEmbedder_Batching(t *testing.T) {
 		for i := range input {
 			embeddings[i] = []float32{0.1, 0.2, 0.3, 0.4}
 		}
-		resp := mockOllamaResponse{Model: "test", Embeddings: embeddings}
-		_ = json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(makeLMStudioResponse(embeddings))
 	}))
 	defer server.Close()
 
-	e, _ := NewOllama("test", 4, 0, server.URL)
+	e, _ := NewLMStudio("nomic-embed-code", 4, server.URL)
 	texts := make([]string, 50)
 	for i := range texts {
 		texts[i] = "text"
@@ -145,27 +126,41 @@ func TestOllamaEmbedder_Batching(t *testing.T) {
 	}
 }
 
-func TestOllamaEmbedder_ErrorHandling(t *testing.T) {
+func TestLMStudioEmbedder_Dimensions(t *testing.T) {
+	e, _ := NewLMStudio("nomic-embed-code", 768, "http://localhost:1234")
+	if e.Dimensions() != 768 {
+		t.Fatalf("expected 768, got %d", e.Dimensions())
+	}
+}
+
+func TestLMStudioEmbedder_ModelName(t *testing.T) {
+	e, _ := NewLMStudio("nomic-embed-code", 768, "http://localhost:1234")
+	if e.ModelName() != "nomic-embed-code" {
+		t.Fatalf("expected nomic-embed-code, got %s", e.ModelName())
+	}
+}
+
+func TestLMStudioEmbedder_ErrorHandling(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
-	e, _ := NewOllama("test", 4, 0, server.URL)
+	e, _ := NewLMStudio("nomic-embed-code", 4, server.URL)
 	_, err := e.Embed(context.Background(), []string{"hello"})
 	if err == nil {
 		t.Fatal("expected error for 500 response")
 	}
 }
 
-func TestOllama_Embed_ContextCancelledStopsRetry(t *testing.T) {
+func TestLMStudio_Embed_ContextCancelledStopsRetry(t *testing.T) {
 	// Server always returns 500 to force retry attempts.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	emb, _ := NewOllama("test", 4, 0, srv.URL)
+	emb, _ := NewLMStudio("nomic-embed-code", 4, srv.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before any request
@@ -177,8 +172,6 @@ func TestOllama_Embed_ContextCancelledStopsRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from cancelled context")
 	}
-	// With context-aware backoff, should return almost immediately.
-	// The old time.Sleep ignores context — this test catches the regression.
 	if elapsed > 500*time.Millisecond {
 		t.Fatalf("expected fast failure on pre-cancelled context, took %v", elapsed)
 	}

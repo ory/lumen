@@ -28,7 +28,7 @@ import (
 
 func init() {
 	searchCmd.Flags().StringP("model", "m", "", "embedding model (default: $AGENT_INDEX_EMBED_MODEL or "+embedder.DefaultModel+")")
-	searchCmd.Flags().IntP("limit", "l", 50, "max results to return")
+	searchCmd.Flags().IntP("limit", "l", 20, "max results to return")
 	searchCmd.Flags().Float64P("min-score", "s", 0.5, "minimum score threshold (-1 to 1); use -1 to return all results")
 	rootCmd.AddCommand(searchCmd)
 }
@@ -68,7 +68,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no index found for %s (model: %s)\nRun: agent-index index %s", projectPath, cfg.Model, args[1])
 	}
 
-	emb, err := embedder.NewOllama(cfg.Model, cfg.Dims, cfg.CtxLength, cfg.OllamaHost)
+	emb, err := newEmbedder(cfg)
 	if err != nil {
 		return fmt.Errorf("create embedder: %w", err)
 	}
@@ -116,7 +116,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	out := SemanticSearchOutput{Results: items}
-	fmt.Fprint(os.Stdout, formatSearchResults(projectPath, out))
+	_, _ = fmt.Fprint(os.Stdout, formatSearchResults(projectPath, out))
 
 	return nil
 }

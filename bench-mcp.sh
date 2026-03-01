@@ -14,20 +14,28 @@ QUESTIONS=(
   "How does histogram bucket counting work? Show me the relevant function signatures."
   # HARD: large codebase, multiple files, complex interactions
   "How does TSDB compaction work end-to-end? Explain the Compactor interface, LeveledCompactor, and how the DB triggers compaction. Show relevant types, interfaces, and key method signatures."
+  # VERY-HARD: spans engine.go, functions.go, ast.go, alerting.go, recording.go
+  "How does PromQL query evaluation work? Explain the evaluation engine, how functions are registered and called, how the AST nodes are evaluated, and how alert and recording rules trigger evaluations. Show key interfaces, types, and function signatures."
+  # VERY-HARD: spans scrape.go, manager.go, prom_registry.go, prom_counter.go, prom_gauge.go, textparse_interface.go, model_value.go
+  "How does Prometheus metrics scraping and collection work? Explain how the scrape manager coordinates scrapers, how metrics are parsed from the text format, how counters and gauges are tracked internally, and how the registry manages metric families. Show the key types and the data flow from scrape to in-memory storage."
 )
 Q_SLUGS=(
   "label-matcher"
   "histogram"
   "tsdb-compaction"
+  "promql-engine"
+  "scrape-pipeline"
 )
 Q_DIFFICULTY=(
   "easy"
   "medium"
   "hard"
+  "very-hard"
+  "very-hard"
 )
 
 # ── Models ────────────────────────────────────────────────────────────────────
-MODELS=("haiku" "opus")
+MODELS=("sonnet" "opus")
 FILTER_MODELS=()
 FILTER_QUESTIONS=()
 
@@ -81,7 +89,7 @@ mkdir -p "$RESULTS_DIR"
 
 # ── Run one scenario ──────────────────────────────────────────────────────────
 run() {
-  local mcp_cfg="$1" model="$2" q_idx="$3" scenario="$4" allowed_tools="$5"
+  local mcp_cfg="$1" model="$2" q_idx="$3" scenario="$4" disable_builtin_tools="$5"
   local slug="${Q_SLUGS[$q_idx]}-${model}-${scenario}"
   local prompt="The Go project is at $FIXTURES. Answer this question about the code: ${QUESTIONS[$q_idx]}"
   local raw="$RESULTS_DIR/$slug-raw.jsonl"
@@ -89,16 +97,16 @@ run() {
 
   printf "  %-28s %-12s %-10s ... " "${Q_SLUGS[$q_idx]}" "$model" "$scenario"
 
-  local allowed_tools_arg=()
-  [[ -n "$allowed_tools" ]] && allowed_tools_arg=(--allowedTools "$allowed_tools")
+  local tools_arg=()
+  [[ -n "$disable_builtin_tools" ]] && tools_arg=(--tools "")
 
-  claude \
+  DISABLE_PROMPT_CACHING=1 claude \
     --output-format stream-json \
     --verbose \
     --model "$model" \
     --strict-mcp-config \
     --mcp-config "$mcp_cfg" \
-    ${allowed_tools_arg[@]:+"${allowed_tools_arg[@]}"} \
+    ${tools_arg[@]:+"${tools_arg[@]}"} \
     -p "$prompt" \
   > "$raw" 2>&1 || true
 
@@ -125,6 +133,12 @@ run() {
   else
     echo "FAILED (no result event)"
   fi
+}
+
+# ── Extract winner from judge brief file ──────────────────────────────────────
+extract_winner() {
+  local brief_file="$1"
+  grep -oP '\*\*Winner: \K[^*]+' "$brief_file" 2>/dev/null | tr -d ' ' || echo "unknown"
 }
 
 # ── Run LLM judge for one question ────────────────────────────────────────────
@@ -183,13 +197,18 @@ $all_answers
 Metrics:
 $metrics_table
 
-Evaluate in two sections:
+Evaluate in three sections:
 
 ## Content Quality
 Rank the answers [model/scenario] from best to worst. One sentence per answer covering correctness, completeness, and use of specific file/line references.
 
 ## Efficiency
-One or two sentences comparing runtime, token usage, and cost across scenarios. Note which scenario offers the best quality-to-cost tradeoff." \
+One or two sentences comparing runtime, token usage, and cost across scenarios. Note which scenario offers the best quality-to-cost tradeoff.
+
+## Verdict
+On the very last line write exactly: **Winner: model/scenario**
+Choose the single run that offers the best combination of answer quality, token usage, cost, and runtime. All three efficiency dimensions (tokens, cost, time) matter equally alongside quality.
+Example: **Winner: sonnet/mcp-only**" \
     > "$judge_brief_file" 2>&1 || echo "_Judge unavailable_" > "$judge_brief_file"
 
   # Detailed analysis for detail report
@@ -253,6 +272,82 @@ emit_overall_stats() {
   echo ""
 }
 
+# ── Emit overall algorithm comparison table ───────────────────────────────────
+emit_overall_comparison() {
+  echo "## Overall: Algorithm Comparison"
+  echo ""
+  echo "| Question | Difficulty | 🏆 Winner | Runner-up |"
+  echo "|----------|------------|-----------|-----------|"
+
+  declare -A scenario_wins
+  scenario_wins["baseline"]=0
+  scenario_wins["mcp-only"]=0
+  scenario_wins["mcp-full"]=0
+
+  local runner_ups=()
+
+  for q_idx in "${Q_INDICES[@]}"; do
+    local slug="${Q_SLUGS[$q_idx]}"
+    local difficulty="${Q_DIFFICULTY[$q_idx]}"
+    local brief_file="$RESULTS_DIR/$slug-judge-brief.md"
+    local winner="unknown"
+    [[ -f "$brief_file" ]] && winner=$(extract_winner "$brief_file")
+
+    # Tally wins per scenario
+    local winner_scenario="${winner#*/}"
+    if [[ -n "$winner_scenario" && "$winner" != "unknown" ]]; then
+      scenario_wins["$winner_scenario"]=$(( ${scenario_wins["$winner_scenario"]:-0} + 1 )) || true
+    fi
+
+    # Find runner-up: second-lowest cost among runs that have metrics, excluding winner
+    local runner_up="—"
+    local best_cost_scaled=999999999
+    for model in "${MODELS[@]}"; do
+      for scenario in baseline mcp-only mcp-full; do
+        local run_key="${model}/${scenario}"
+        [[ "$run_key" == "$winner" ]] && continue
+        local mf="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
+        if [[ -f "$mf" ]]; then
+          local cost_scaled
+          cost_scaled=$(jq -r '(.cost_usd * 100000) | round' "$mf")
+          if (( cost_scaled < best_cost_scaled )); then
+            best_cost_scaled=$cost_scaled
+            runner_up="$run_key"
+          fi
+        fi
+      done
+    done
+
+    echo "| $slug | $difficulty | $winner | $runner_up |"
+  done
+
+  echo ""
+  echo "**Scenario Win Counts** (across all ${#Q_INDICES[@]} questions):"
+  echo ""
+  echo "| Scenario | Wins |"
+  echo "|----------|------|"
+
+  local overall_winner_scenario=""
+  local overall_winner_count=0
+
+  for scenario in baseline mcp-only mcp-full; do
+    local wins=${scenario_wins["$scenario"]:-0}
+    echo "| $scenario | $wins |"
+    if (( wins > overall_winner_count )); then
+      overall_winner_count=$wins
+      overall_winner_scenario=$scenario
+    fi
+  done
+
+  echo ""
+  if [[ -n "$overall_winner_scenario" && $overall_winner_count -gt 0 ]]; then
+    echo "**Overall winner: $overall_winner_scenario** — won $overall_winner_count of ${#Q_INDICES[@]} questions."
+  else
+    echo "**Overall winner: undetermined** (no judge results available)."
+  fi
+  echo ""
+}
+
 # ── Generate reports ───────────────────────────────────────────────────────────
 generate_reports() {
   local summary_file="$RESULTS_DIR/summary-report.md"
@@ -285,14 +380,18 @@ generate_reports() {
       echo ""
       echo "### Time & Tokens"
       echo ""
-      echo "| Model | Scenario | Duration | Input Tok | Cache Read | Output Tok | Cost (USD) |"
-      echo "|-------|----------|----------|-----------|------------|------------|------------|"
+      echo "| Model | Scenario | Duration | Input Tok | Cache Read | Output Tok | Cost (USD) | Winner |"
+      echo "|-------|----------|----------|-----------|------------|------------|------------|--------|"
+
+      local judge_brief_file="$RESULTS_DIR/$slug-judge-brief.md"
+      local winner=""
+      [[ -f "$judge_brief_file" ]] && winner=$(extract_winner "$judge_brief_file")
 
       for model in "${MODELS[@]}"; do
         for scenario in baseline mcp-only mcp-full; do
           local metrics_file="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
           if [[ -f "$metrics_file" ]]; then
-            local in_tok cr_tok out_tok cost_usd dur_ms cost_fmt dur_s
+            local in_tok cr_tok out_tok cost_usd dur_ms cost_fmt dur_s badge
             in_tok=$(jq -r '.input_tokens'   "$metrics_file")
             cr_tok=$(jq -r '.cache_read'     "$metrics_file")
             out_tok=$(jq -r '.output_tokens' "$metrics_file")
@@ -300,16 +399,18 @@ generate_reports() {
             dur_ms=$(jq -r '.duration_ms'    "$metrics_file")
             cost_fmt=$(printf "%.4f" "$cost_usd")
             dur_s=$(echo "scale=1; $dur_ms/1000" | bc)
-            echo "| **$model** | $scenario | ${dur_s}s | $in_tok | $cr_tok | $out_tok | \$$cost_fmt |"
+            local run_key="${model}/${scenario}"
+            badge=""
+            [[ -n "$winner" && "$winner" == "$run_key" ]] && badge="🏆 Winner"
+            echo "| **$model** | $scenario | ${dur_s}s | $in_tok | $cr_tok | $out_tok | \$$cost_fmt | $badge |"
           else
-            echo "| **$model** | $scenario | — | — | — | — | — |"
+            echo "| **$model** | $scenario | — | — | — | — | — | |"
           fi
         done
       done
 
       echo ""
 
-      local judge_brief_file="$RESULTS_DIR/$slug-judge-brief.md"
       if [[ -f "$judge_brief_file" ]]; then
         echo "### Quality Ranking (Opus 4.6)"
         echo ""
@@ -321,6 +422,7 @@ generate_reports() {
       echo ""
     done
 
+    emit_overall_comparison
     echo "_Full answers and detailed analysis: \`detail-report.md\`_"
   } > "$summary_file"
 
@@ -407,7 +509,7 @@ for model in "${MODELS[@]}"; do
   echo "── Model: $model ──────────────────────────────────────────"
   for q_idx in "${Q_INDICES[@]}"; do
     run "$MCP_EMPTY"   "$model" "$q_idx" "baseline" ""
-    run "$MCP_ENABLED" "$model" "$q_idx" "mcp-only"  "mcp__agent-index__semantic_search"
+    run "$MCP_ENABLED" "$model" "$q_idx" "mcp-only"  "1"
     run "$MCP_ENABLED" "$model" "$q_idx" "mcp-full"  ""
   done
   echo ""

@@ -15,6 +15,7 @@
 package chunker
 
 import (
+	"context"
 	"fmt"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -72,10 +73,10 @@ func mustTreeSitterChunker(def LanguageDef) *TreeSitterChunker {
 
 // Chunk parses content and returns semantic code chunks.
 func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, error) {
-	parser := sitter.NewParser()
-	parser.SetLanguage(c.language)
-	tree := parser.Parse(nil, content)
-	root := tree.RootNode()
+	root, err := sitter.ParseCtx(context.Background(), content, c.language)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", filePath, err)
+	}
 
 	var chunks []Chunk
 

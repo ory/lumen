@@ -35,8 +35,8 @@ import (
 // of items (0 if unknown), and message describes the current step.
 type ProgressFunc func(current, total int, message string)
 
-// IndexStats holds statistics from an indexing run.
-type IndexStats struct {
+// Stats holds statistics from an indexing run.
+type Stats struct {
 	TotalFiles    int
 	IndexedFiles  int
 	ChunksCreated int
@@ -72,7 +72,7 @@ func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer
 	return &Indexer{
 		store:          s,
 		emb:            emb,
-		chunker:        chunker.NewMultiChunker(chunker.DefaultLanguages()),
+		chunker:        chunker.NewMultiChunker(chunker.DefaultLanguages(maxChunkTokens)),
 		maxChunkTokens: maxChunkTokens,
 	}, nil
 }
@@ -84,19 +84,19 @@ func (idx *Indexer) Close() error {
 
 // Index indexes the project at projectDir. If force is true, all files are
 // re-indexed regardless of whether they have changed.
-func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, progress ProgressFunc) (IndexStats, error) {
+func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, progress ProgressFunc) (Stats, error) {
 	curTree, err := merkle.BuildTree(projectDir, merkle.MakeSkip(projectDir, chunker.SupportedExtensions()))
 	if err != nil {
-		return IndexStats{}, fmt.Errorf("build merkle tree: %w", err)
+		return Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
 	// If not forcing, check root hash before doing any work.
 	if !force {
 		storedHash, err := idx.store.GetMeta("root_hash")
 		if err != nil && err != sql.ErrNoRows {
-			return IndexStats{}, fmt.Errorf("get root_hash: %w", err)
+			return Stats{}, fmt.Errorf("get root_hash: %w", err)
 		}
 		if storedHash == curTree.RootHash {
-			return IndexStats{}, nil
+			return Stats{}, nil
 		}
 	}
 	return idx.indexWithTree(ctx, projectDir, force, curTree, progress)
@@ -104,18 +104,18 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 
 // EnsureFresh checks if the index is stale and re-indexes if needed.
 // Returns whether a re-index occurred, the stats, and any error.
-func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress ProgressFunc) (bool, IndexStats, error) {
+func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress ProgressFunc) (bool, Stats, error) {
 	curTree, err := merkle.BuildTree(projectDir, merkle.MakeSkip(projectDir, chunker.SupportedExtensions()))
 	if err != nil {
-		return false, IndexStats{}, fmt.Errorf("build merkle tree: %w", err)
+		return false, Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
 
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
-		return false, IndexStats{}, fmt.Errorf("get root_hash: %w", err)
+		return false, Stats{}, fmt.Errorf("get root_hash: %w", err)
 	}
 	if storedHash == curTree.RootHash {
-		return false, IndexStats{}, nil
+		return false, Stats{}, nil
 	}
 
 	stats, err := idx.indexWithTree(ctx, projectDir, false, curTree, progress)
@@ -128,8 +128,8 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 // indexWithTree is the internal implementation of Index that accepts a pre-built
 // merkle tree, so callers that already have one (e.g. EnsureFresh) do not need
 // to build it again.
-func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force bool, curTree *merkle.Tree, progress ProgressFunc) (IndexStats, error) {
-	var stats IndexStats
+func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
+	var stats Stats
 
 	stats.TotalFiles = len(curTree.Files)
 
@@ -276,7 +276,7 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 
 // Search performs a vector similarity search against the index.
 // If maxDistance > 0, results with distance >= maxDistance are excluded.
-func (idx *Indexer) Search(ctx context.Context, projectDir string, queryVec []float32, limit int, maxDistance float64) ([]store.SearchResult, error) {
+func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limit int, maxDistance float64) ([]store.SearchResult, error) {
 	return idx.store.Search(queryVec, limit, maxDistance)
 }
 

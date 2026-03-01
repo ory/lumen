@@ -15,8 +15,6 @@
 package chunker
 
 import (
-	"github.com/aeneasr/agent-index/internal/config"
-
 	sitter_c   "github.com/smacker/go-tree-sitter/c"
 	sitter_cpp "github.com/smacker/go-tree-sitter/cpp"
 	sitter_java "github.com/smacker/go-tree-sitter/java"
@@ -49,8 +47,9 @@ var supportedExtensions = []string{
 func SupportedExtensions() []string { return supportedExtensions }
 
 // DefaultLanguages returns a map of file extension → Chunker for all supported languages.
+// maxChunkTokens is the token budget per chunk used by the StructuredChunker.
 // Panics if any hardcoded query pattern is invalid (programming error).
-func DefaultLanguages() map[string]Chunker {
+func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 	py := mustTreeSitterChunker(LanguageDef{
 		Language: sitter_py.GetLanguage(),
 		Queries: []QueryDef{
@@ -158,7 +157,6 @@ func DefaultLanguages() map[string]Chunker {
 
 	md := NewMarkdownChunker()
 
-	maxChunkTokens := config.EnvOrDefaultInt("AGENT_INDEX_MAX_CHUNK_TOKENS", 2048)
 	structured := NewStructuredChunker(maxChunkTokens)
 
 	return map[string]Chunker{

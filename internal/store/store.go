@@ -255,10 +255,28 @@ func (s *Store) UpsertFile(path, hash string) error {
 
 // InsertChunks inserts a batch of chunks and their corresponding embedding
 // vectors into the chunks and vec_chunks tables within a single transaction.
+// Precondition: caller must have called DeleteFileChunks for every file path
+// present in chunks before calling this function. vec_chunks does not support
+// INSERT OR REPLACE (sqlite-vec virtual table limitation), so duplicate IDs
+// would cause an error. The deduplication loop below handles within-batch
+// duplicates only.
 func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error {
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
+
+	// Deduplicate by ID within the batch (identical content → identical ID).
+	seen := make(map[string]bool, len(chunks))
+	deduped := make([]chunker.Chunk, 0, len(chunks))
+	dedupedVecs := make([][]float32, 0, len(vectors))
+	for i := range len(chunks) {
+		if !seen[chunks[i].ID] {
+			seen[chunks[i].ID] = true
+			deduped = append(deduped, chunks[i])
+			dedupedVecs = append(dedupedVecs, vectors[i])
+		}
+	}
+	chunks, vectors = deduped, dedupedVecs
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -276,7 +294,7 @@ func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error 
 	defer func() { _ = chunkStmt.Close() }()
 
 	vecStmt, err := tx.Prepare(
-		`INSERT OR REPLACE INTO vec_chunks (id, embedding) VALUES (?, ?)`,
+		`INSERT INTO vec_chunks (id, embedding) VALUES (?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("prepare vec insert: %w", err)
@@ -417,23 +435,6 @@ func (s *Store) Stats() (StoreStats, error) {
 		return stats, fmt.Errorf("stats query: %w", err)
 	}
 	return stats, nil
-}
-
-// DeleteAll removes all data from all tables. Useful when the embedding model
-// changes and all vectors must be recomputed.
-func (s *Store) DeleteAll() error {
-	stmts := []string{
-		"DELETE FROM vec_chunks",
-		"DELETE FROM chunks",
-		"DELETE FROM files",
-		"DELETE FROM project_meta",
-	}
-	for _, stmt := range stmts {
-		if _, err := s.db.Exec(stmt); err != nil {
-			return fmt.Errorf("exec %q: %w", stmt, err)
-		}
-	}
-	return nil
 }
 
 // Close closes the underlying database connection.

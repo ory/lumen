@@ -12,20 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package embedder defines the interface for generating embedding vectors from text.
-package embedder
+package cmd
 
-import "context"
+import (
+	"fmt"
 
-// Embedder converts text chunks into vector embeddings.
-type Embedder interface {
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
-	Dimensions() int
-	ModelName() string
-}
-
-// Shared embedding request parameters.
-const (
-	embedBatchSize  = 32
-	embedMaxRetries = 3
+	"github.com/aeneasr/agent-index/internal/config"
+	"github.com/aeneasr/agent-index/internal/embedder"
 )
+
+// newEmbedder creates an Embedder based on the configured backend.
+func newEmbedder(cfg config.Config) (embedder.Embedder, error) {
+	switch cfg.Backend {
+	case config.BackendOllama:
+		return embedder.NewOllama(cfg.Model, cfg.Dims, cfg.CtxLength, cfg.OllamaHost)
+	case config.BackendLMStudio:
+		return embedder.NewLMStudio(cfg.Model, cfg.Dims, cfg.LMStudioHost)
+	default:
+		return nil, fmt.Errorf("unknown backend %q", cfg.Backend)
+	}
+}

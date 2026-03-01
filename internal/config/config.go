@@ -25,6 +25,13 @@ import (
 	"github.com/aeneasr/agent-index/internal/embedder"
 )
 
+const (
+	// BackendOllama is the backend identifier for Ollama.
+	BackendOllama = "ollama"
+	// BackendLMStudio is the backend identifier for LM Studio.
+	BackendLMStudio = "lmstudio"
+)
+
 // Config holds the resolved configuration for the agent-index process.
 type Config struct {
 	Model          string
@@ -32,11 +39,23 @@ type Config struct {
 	CtxLength      int
 	MaxChunkTokens int
 	OllamaHost     string
+	Backend        string
+	LMStudioHost   string
 }
 
 // Load reads configuration from environment variables and the model registry.
 func Load() (Config, error) {
-	model := EnvOrDefault("AGENT_INDEX_EMBED_MODEL", embedder.DefaultModel)
+	backend := EnvOrDefault("AGENT_INDEX_BACKEND", BackendOllama)
+	if backend != BackendOllama && backend != BackendLMStudio {
+		return Config{}, fmt.Errorf("unknown backend %q: must be %q or %q", backend, BackendOllama, BackendLMStudio)
+	}
+
+	defaultModel := embedder.DefaultOllamaModel
+	if backend == BackendLMStudio {
+		defaultModel = embedder.DefaultLMStudioModel
+	}
+
+	model := EnvOrDefault("AGENT_INDEX_EMBED_MODEL", defaultModel)
 	spec, ok := embedder.KnownModels[model]
 	if !ok {
 		return Config{}, fmt.Errorf("unknown embedding model %q", model)
@@ -45,8 +64,10 @@ func Load() (Config, error) {
 		Model:          model,
 		Dims:           spec.Dims,
 		CtxLength:      spec.CtxLength,
-		MaxChunkTokens: EnvOrDefaultInt("AGENT_INDEX_MAX_CHUNK_TOKENS", 2048),
+		MaxChunkTokens: EnvOrDefaultInt("AGENT_INDEX_MAX_CHUNK_TOKENS", 512),
 		OllamaHost:     EnvOrDefault("OLLAMA_HOST", "http://localhost:11434"),
+		Backend:        backend,
+		LMStudioHost:   EnvOrDefault("LM_STUDIO_HOST", "http://localhost:1234"),
 	}, nil
 }
 

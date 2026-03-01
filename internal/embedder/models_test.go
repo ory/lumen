@@ -20,6 +20,7 @@ func TestKnownModels(t *testing.T) {
 	expected := map[string]ModelSpec{
 		"ordis/jina-embeddings-v2-base-code": {768, 8192, "~323MB"},
 		"nomic-embed-text":                   {768, 8192, "~274MB"},
+		"nomic-ai/nomic-embed-code-GGUF":     {3584, 8192, "~274MB"},
 		"qwen3-embedding:8b":                 {4096, 40960, "~4.7GB"},
 		"qwen3-embedding:4b":                 {2560, 40960, "~2.6GB"},
 		"qwen3-embedding:0.6b":               {1024, 32768, "~522MB"},
@@ -45,5 +46,17 @@ func TestKnownModels(t *testing.T) {
 func TestDefaultModelInRegistry(t *testing.T) {
 	if _, ok := KnownModels[DefaultModel]; !ok {
 		t.Errorf("DefaultModel %q is not in KnownModels", DefaultModel)
+	}
+}
+
+func TestDefaultOllamaModelInRegistry(t *testing.T) {
+	if _, ok := KnownModels[DefaultOllamaModel]; !ok {
+		t.Errorf("DefaultOllamaModel %q is not in KnownModels", DefaultOllamaModel)
+	}
+}
+
+func TestDefaultLMStudioModelInRegistry(t *testing.T) {
+	if _, ok := KnownModels[DefaultLMStudioModel]; !ok {
+		t.Errorf("DefaultLMStudioModel %q is not in KnownModels", DefaultLMStudioModel)
 	}
 }

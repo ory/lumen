@@ -642,7 +642,7 @@ func TestE2E_LimitParameter(t *testing.T) {
 		t.Errorf("limit=3: expected at most 3 results, got %d", len(out3.Results))
 	}
 
-	// No limit (omitted) should return results (default 50 kicks in).
+	// No limit (omitted) should return results (default 20 kicks in).
 	outDefault := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,

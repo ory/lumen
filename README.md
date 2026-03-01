@@ -56,6 +56,8 @@ CGO_ENABLED=1 go install github.com/aeneasr/agent-index@latest
 
 ## Setup with Claude Code
 
+### Default: Ollama + ordis/jina-embeddings-v2-base-code
+
 ```bash
 # Pull the default embedding model
 ollama pull ordis/jina-embeddings-v2-base-code
@@ -65,7 +67,27 @@ claude mcp add --scope user \
   agent-index "$(go env GOPATH)/bin/agent-index" -- stdio
 ```
 
-To use a different model, set `AGENT_INDEX_EMBED_MODEL` — dims and context are looked up automatically:
+That's it. Claude Code will now have access to `semantic_search` and `index_status` tools. On the first search against a project, it auto-indexes the codebase.
+
+### Alternative: LM Studio + nomic-embed-code (higher quality, code-optimized)
+
+[LM Studio](https://lmstudio.ai/) exposes an OpenAI-compatible `/v1/embeddings` endpoint at `http://localhost:1234` by default. `nomic-embed-code` is a code-optimized model with 3584 dimensions.
+
+```bash
+# Download and load the model via lms CLI
+lms get nomic-ai/nomic-embed-code-GGUF
+lms load nomic-ai/nomic-embed-code-GGUF
+
+# Add as MCP server using the lmstudio backend
+claude mcp add --scope user \
+  -eAGENT_INDEX_BACKEND=lmstudio \
+  -eAGENT_INDEX_EMBED_MODEL=nomic-ai/nomic-embed-code-GGUF \
+  agent-index "$(go env GOPATH)/bin/agent-index" -- stdio
+```
+
+### Switching models (Ollama)
+
+To use a different Ollama model, set `AGENT_INDEX_EMBED_MODEL` — dims and context are looked up automatically:
 
 ```bash
 claude mcp remove --scope user agent-index
@@ -73,8 +95,6 @@ claude mcp add --scope user \
   -eAGENT_INDEX_EMBED_MODEL=nomic-embed-text \
   agent-index "$(go env GOPATH)/bin/agent-index" -- stdio
 ```
-
-That's it. Claude Code will now have access to `semantic_search` and `index_status` tools. On the first search against a project, it auto-indexes the codebase.
 
 ## MCP Tools
 
@@ -106,19 +126,25 @@ All configuration is via environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_INDEX_EMBED_MODEL` | `ordis/jina-embeddings-v2-base-code` | Ollama embedding model (must be in registry) |
+| `AGENT_INDEX_EMBED_MODEL` | `ordis/jina-embeddings-v2-base-code` (Ollama) / `nomic-ai/nomic-embed-code-GGUF` (LM Studio) | Embedding model (must be in registry) |
+| `AGENT_INDEX_BACKEND` | `ollama` | Embedding backend (`ollama` or `lmstudio`) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `LM_STUDIO_HOST` | `http://localhost:1234` | LM Studio server URL |
+| `AGENT_INDEX_MAX_CHUNK_TOKENS` | `512` | Max tokens per chunk before splitting |
 
 ### Supported embedding models
 
 Dimensions and context length are configured automatically per model:
 
-| Model | Dims | Context | Size | Notes |
-|---|---|---|---|---|
-| `ordis/jina-embeddings-v2-base-code` | 768 | 8192 | ~323MB | Default. Code-optimized |
-| `nomic-embed-text` | 768 | 8192 | ~274MB | Fast, good general quality |
-| `qwen3-embedding:8b` | 4096 | 32768 | ~4.7GB | High quality, large |
-| `all-minilm` | 384 | 512 | ~33MB | Tiny, used in CI |
+| Model | Backend | Dims | Context | Size | Notes |
+|---|---|---|---|---|---|
+| `ordis/jina-embeddings-v2-base-code` | Ollama | 768 | 8192 | ~323MB | Default. Code-optimized |
+| `nomic-embed-text` | Ollama | 768 | 8192 | ~274MB | Fast, good general quality |
+| `nomic-ai/nomic-embed-code-GGUF` | LM Studio | 3584 | 8192 | ~274MB | Code-optimized, high-dim |
+| `qwen3-embedding:8b` | Ollama | 4096 | 40960 | ~4.7GB | Highest quality |
+| `qwen3-embedding:4b` | Ollama | 2560 | 40960 | ~2.6GB | High quality |
+| `qwen3-embedding:0.6b` | Ollama | 1024 | 32768 | ~522MB | Lightweight |
+| `all-minilm` | Ollama | 384 | 512 | ~33MB | Tiny, CI use |
 
 Switching models creates a separate index automatically — the model name is part of the database path hash, so different models never collide.
 
@@ -215,4 +241,12 @@ Results land in `bench-results/<timestamp>/`. The script runs an LLM judge at th
 
 ```bash
 CGO_ENABLED=1 go build -o agent-index .
+```
+
+## Formatting
+
+JSON and Markdown files are formatted with [Prettier](https://prettier.io/):
+
+```bash
+npx prettier --write "**/*.{json,md}"
 ```

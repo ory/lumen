@@ -76,11 +76,14 @@ func splitOversizedChunks(chunks []chunker.Chunk, maxTokens int) []chunker.Chunk
 			endLine := startLine + len(part) - 1
 			symbol := fmt.Sprintf("%s[%d/%d]", c.Symbol, i+1, totalParts)
 
-			raw := fmt.Sprintf("%s:%s:%d", c.FilePath, symbol, startLine)
-			hash := fmt.Sprintf("%x", sha256.Sum256([]byte(raw)))
+			h := sha256.New()
+			h.Write([]byte(c.FilePath))
+			h.Write([]byte{':'})
+			h.Write([]byte(content))
+			id := fmt.Sprintf("%x", h.Sum(nil))[:16]
 
 			result = append(result, chunker.Chunk{
-				ID:        hash[:16],
+				ID:        id,
 				FilePath:  c.FilePath,
 				Symbol:    symbol,
 				Kind:      c.Kind,

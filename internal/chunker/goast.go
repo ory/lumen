@@ -156,10 +156,15 @@ func sliceContent(content []byte, startOffset, endOffset int) string {
 }
 
 func makeChunk(filePath, symbol, kind string, startLine, endLine int, content string) Chunk {
-	raw := fmt.Sprintf("%s:%s:%d", filePath, symbol, startLine)
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(raw)))
+	// Hash filePath+content so chunks are unique even in minified files where
+	// multiple symbols share the same line number.
+	h := sha256.New()
+	h.Write([]byte(filePath))
+	h.Write([]byte{':'})
+	h.Write([]byte(content))
+	id := fmt.Sprintf("%x", h.Sum(nil))[:16]
 	return Chunk{
-		ID:        hash[:16],
+		ID:        id,
 		FilePath:  filePath,
 		Symbol:    symbol,
 		Kind:      kind,

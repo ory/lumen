@@ -21,29 +21,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/sethvargo/go-retry"
 )
 
 
-// Ollama implements the Embedder interface using a local Ollama server.
-type Ollama struct {
-	model         string
-	dimensions    int
-	contextLength int
-	baseURL       string
-	client        *http.Client
+// LMStudio implements the Embedder interface using an LM Studio server
+// that exposes an OpenAI-compatible /v1/embeddings endpoint.
+type LMStudio struct {
+	model      string
+	dimensions int
+	baseURL    string
+	client     *http.Client
 }
 
-// NewOllama creates a new Ollama embedder that calls the /api/embed endpoint.
-// contextLength sets num_ctx in Ollama requests; 0 means use Ollama's default.
-func NewOllama(model string, dimensions int, contextLength int, baseURL string) (*Ollama, error) {
-	return &Ollama{
-		model:         model,
-		dimensions:    dimensions,
-		contextLength: contextLength,
-		baseURL:       baseURL,
+// NewLMStudio creates a new LMStudio embedder.
+// baseURL is the LM Studio server URL (e.g. "http://localhost:1234").
+func NewLMStudio(model string, dimensions int, baseURL string) (*LMStudio, error) {
+	return &LMStudio{
+		model:      model,
+		dimensions: dimensions,
+		baseURL:    baseURL,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -51,30 +51,34 @@ func NewOllama(model string, dimensions int, contextLength int, baseURL string) 
 }
 
 // Dimensions returns the embedding vector dimensionality.
-func (o *Ollama) Dimensions() int {
-	return o.dimensions
+func (l *LMStudio) Dimensions() int {
+	return l.dimensions
 }
 
-// ModelName returns the Ollama model name used for embeddings.
-func (o *Ollama) ModelName() string {
-	return o.model
+// ModelName returns the model name used for embeddings.
+func (l *LMStudio) ModelName() string {
+	return l.model
 }
 
-// ollamaEmbedRequest is the JSON body sent to /api/embed.
-type ollamaEmbedRequest struct {
-	Model   string         `json:"model"`
-	Input   []string       `json:"input"`
-	Options map[string]any `json:"options,omitempty"`
+// lmstudioEmbedRequest is the JSON body sent to /v1/embeddings.
+type lmstudioEmbedRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
 }
 
-// ollamaEmbedResponse is the JSON body returned from /api/embed.
-type ollamaEmbedResponse struct {
-	Model      string      `json:"model"`
-	Embeddings [][]float32 `json:"embeddings"`
+// lmstudioEmbedItem is a single embedding item in the response.
+type lmstudioEmbedItem struct {
+	Embedding []float32 `json:"embedding"`
+	Index     int       `json:"index"`
+}
+
+// lmstudioEmbedResponse is the JSON body returned from /v1/embeddings.
+type lmstudioEmbedResponse struct {
+	Data []lmstudioEmbedItem `json:"data"`
 }
 
 // Embed converts texts into embedding vectors, splitting into batches of 32.
-func (o *Ollama) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+func (l *LMStudio) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -83,7 +87,7 @@ func (o *Ollama) Embed(ctx context.Context, texts []string) ([][]float32, error)
 	for i := 0; i < len(texts); i += embedBatchSize {
 		batch := texts[i:min(i+embedBatchSize, len(texts))]
 
-		vecs, err := o.embedBatch(ctx, batch)
+		vecs, err := l.embedBatch(ctx, batch)
 		if err != nil {
 			return nil, fmt.Errorf("embedding batch starting at %d: %w", i, err)
 		}
@@ -93,33 +97,29 @@ func (o *Ollama) Embed(ctx context.Context, texts []string) ([][]float32, error)
 	return allVecs, nil
 }
 
-// embedBatch sends a single batch of texts to the Ollama /api/embed endpoint.
+// embedBatch sends a single batch of texts to the LM Studio /v1/embeddings endpoint.
 // Retries up to embedMaxRetries times on transient errors (5xx, network failures),
 // respecting context cancellation between attempts.
-func (o *Ollama) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	reqBody := ollamaEmbedRequest{
-		Model: o.model,
+func (l *LMStudio) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	bodyBytes, err := json.Marshal(lmstudioEmbedRequest{
+		Model: l.model,
 		Input: texts,
-	}
-	if o.contextLength > 0 {
-		reqBody.Options = map[string]any{"num_ctx": o.contextLength}
-	}
-	bodyBytes, err := json.Marshal(reqBody)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("marshalling request: %w", err)
 	}
 
 	b := retry.NewExponential(100 * time.Millisecond)
 
-	var embedResp ollamaEmbedResponse
+	var embedResp lmstudioEmbedResponse
 	err = retry.Do(ctx, retry.WithMaxRetries(embedMaxRetries-1, b), func(ctx context.Context) error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/api/embed", bytes.NewReader(bodyBytes))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, l.baseURL+"/v1/embeddings", bytes.NewReader(bodyBytes))
 		if err != nil {
 			return fmt.Errorf("creating request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		resp, err := o.client.Do(req)
+		resp, err := l.client.Do(req)
 		if err != nil {
 			return retry.RetryableError(fmt.Errorf("request failed: %w", err))
 		}
@@ -140,8 +140,17 @@ func (o *Ollama) embedBatch(ctx context.Context, texts []string) ([][]float32, e
 		return json.Unmarshal(body, &embedResp)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ollama embed: %w", err)
+		return nil, fmt.Errorf("lmstudio embed: %w", err)
 	}
 
-	return embedResp.Embeddings, nil
+	// Sort by index — OpenAI spec allows out-of-order responses.
+	slices.SortFunc(embedResp.Data, func(a, b lmstudioEmbedItem) int {
+		return a.Index - b.Index
+	})
+
+	vecs := make([][]float32, len(embedResp.Data))
+	for i, item := range embedResp.Data {
+		vecs[i] = item.Embedding
+	}
+	return vecs, nil
 }

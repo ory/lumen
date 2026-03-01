@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +47,7 @@ var stdioCmd = &cobra.Command{
 type SemanticSearchInput struct {
 	Query        string   `json:"query" jsonschema:"Natural language search query"`
 	Path         string   `json:"path" jsonschema:"Absolute path to the project root"`
-	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 50"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 20"`
 	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default 0.5. Use -1 to return all results."`
 	ForceReindex bool     `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
 }
@@ -149,7 +148,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return nil, nil, fmt.Errorf("query is required")
 	}
 	if input.Limit <= 0 {
-		input.Limit = 50
+		input.Limit = 20
 	}
 
 	idx, err := ic.getOrCreate(input.Path)
@@ -161,7 +160,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	var progress index.ProgressFunc
 	if token := req.Params.GetProgressToken(); token != nil {
 		progress = func(current, total int, message string) {
-			req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+			_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
 				ProgressToken: token,
 				Progress:      float64(current),
 				Total:         float64(total),
@@ -317,7 +316,7 @@ func extractSnippets(projectPath string, results []store.SearchResult) []string 
 				break
 			}
 		}
-		f.Close()
+		_ = f.Close()
 
 		// Extract snippets for each ref.
 		for _, ref := range refs {
@@ -396,9 +395,9 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	emb, err := embedder.NewOllama(cfg.Model, cfg.Dims, cfg.CtxLength, cfg.OllamaHost)
+	emb, err := newEmbedder(cfg)
 	if err != nil {
-		log.Fatalf("create embedder: %v", err)
+		return fmt.Errorf("create embedder: %w", err)
 	}
 
 	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg}

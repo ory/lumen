@@ -61,7 +61,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve path: %w", err)
 	}
 
-	emb, err := embedder.NewOllama(cfg.Model, cfg.Dims, cfg.CtxLength, cfg.OllamaHost)
+	emb, err := newEmbedder(cfg)
 	if err != nil {
 		return fmt.Errorf("create embedder: %w", err)
 	}
@@ -85,14 +85,14 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	start := time.Now()
 
 	force, _ := cmd.Flags().GetBool("force")
-	var stats index.IndexStats
+	var stats index.Stats
 	if force {
 		stats, err = idx.Index(context.Background(), projectPath, true, progress)
 	} else {
 		var reindexed bool
 		reindexed, stats, err = idx.EnsureFresh(context.Background(), projectPath, progress)
 		if err == nil && !reindexed {
-			fmt.Fprintln(os.Stdout, "Index is already up to date.")
+			_, _ = fmt.Fprintln(os.Stdout, "Index is already up to date.")
 			return nil
 		}
 	}
@@ -100,7 +100,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("indexing: %w", err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Done. Indexed %d files, %d chunks in %s.\n",
+	_, _ = fmt.Fprintf(os.Stdout, "Done. Indexed %d files, %d chunks in %s.\n",
 		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond))
 	return nil
 }

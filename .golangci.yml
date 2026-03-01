@@ -40,3 +40,9 @@ issues:
     # Tests can ignore errors freely
     - path: _test\.go
       linters: [errcheck]
+    # fmt.Print* to stdout/stderr: errors are unactionable in a CLI
+    - source: "fmt\\.Fprint"
+      linters: [errcheck]
+    # Progress notifications are fire-and-forget; client may not support them
+    - source: "NotifyProgress"
+      linters: [errcheck]
