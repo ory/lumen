@@ -119,7 +119,7 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "agent-index-go: not yet implemented")
+	fmt.Fprintln(os.Stderr, "agent-index: not yet implemented")
 	os.Exit(1)
 }
 ```
@@ -2636,7 +2636,7 @@ git commit -m "test: add integration test for full index + search pipeline"
 ```
 # Binary
 agent-index
-agent-index-go
+agent-index
 
 # IDE
 .idea/

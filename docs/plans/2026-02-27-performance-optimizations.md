@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Apply six targeted performance optimizations to the agent-index-go MCP server covering SQLite tuning, parallel file hashing, streaming chunk batches, concurrent embedding, fewer DB round trips in Status(), and a read-optimized indexer cache.
+**Goal:** Apply six targeted performance optimizations to the agent-index MCP server covering SQLite tuning, parallel file hashing, streaming chunk batches, concurrent embedding, fewer DB round trips in Status(), and a read-optimized indexer cache.
 
 **Architecture:** All changes are internal to each package's existing files. No new files are needed. Each task is independently testable and committable. The changes are additive/drop-in replacements — no public API surface changes.
 
@@ -63,7 +63,7 @@ func TestStore_ChunkIndexesExist(t *testing.T) {
 **Step 2: Run tests to verify they fail**
 
 ```
-cd /Users/aeneasr/workspace/agentic/agent-index-go
+cd /Users/aeneasr/workspace/agentic/agent-index
 go test ./internal/store/... -run "TestStore_Pragmas|TestStore_ChunkIndexesExist" -v
 ```
 

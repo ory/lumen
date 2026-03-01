@@ -5,7 +5,7 @@
 
 ## Goal
 
-Extend agent-index-go to index and search code in any language, not just Go. Keep `go/ast` for Go files; use `smacker/go-tree-sitter` for all other languages.
+Extend agent-index to index and search code in any language, not just Go. Keep `go/ast` for Go files; use `smacker/go-tree-sitter` for all other languages.
 
 ## Architecture
 

@@ -53,14 +53,14 @@ Three subcommands:
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--model` | `-m` | env or `ordis/jina-embeddings-v2-base-code` | Embedding model |
+| `--model` | `-m` | env or `qwen3-embedding:4b` | Embedding model |
 | `--force` | `-f` | false | Force full re-index |
 
 ### `agent-index search` flags
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--model` | `-m` | env or `ordis/jina-embeddings-v2-base-code` | Embedding model (must match indexed model) |
+| `--model` | `-m` | env or `qwen3-embedding:4b` | Embedding model (must match indexed model) |
 | `--limit` | `-l` | 50 | Max results to return |
 | `--min-score` | `-s` | 0.5 | Minimum score threshold (-1 to 1). Results below this are excluded; use -1 to return all results. |
 
@@ -92,7 +92,7 @@ Returns: `total_files`, `total_chunks`, `last_indexed_at` (RFC3339).
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENT_INDEX_EMBED_MODEL` | `ordis/jina-embeddings-v2-base-code` | Ollama embedding model (must be in known models registry) |
+| `AGENT_INDEX_EMBED_MODEL` | `qwen3-embedding:4b` | Ollama embedding model (must be in known models registry) |
 | `AGENT_INDEX_MAX_CHUNK_TOKENS` | `2048` | Max estimated tokens per chunk before splitting |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 
@@ -106,7 +106,9 @@ Dimensions and context length are looked up automatically from `internal/embedde
 |---|---|---|---|
 | `ordis/jina-embeddings-v2-base-code` | 768 | 8192 | ~323MB |
 | `nomic-embed-text` | 768 | 8192 | ~274MB |
-| `qwen3-embedding:8b` | 4096 | 32768 | ~4.7GB |
+| `qwen3-embedding:8b` | 4096 | 40960 | ~4.7GB |
+| `qwen3-embedding:4b` | 2560 | 40960 | ~2.6GB (**default**) |
+| `qwen3-embedding:0.6b` | 1024 | 32768 | ~522MB |
 | `all-minilm` | 384 | 512 | ~33MB |
 
 ## Key Implementation Details

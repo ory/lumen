@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Extend agent-index-go to index and semantically search any supported language, not just Go, using `smacker/go-tree-sitter` for all non-Go files while keeping go/ast for `.go`.
+**Goal:** Extend agent-index to index and semantically search any supported language, not just Go, using `smacker/go-tree-sitter` for all non-Go files while keeping go/ast for `.go`.
 
 **Architecture:** Add a `TreeSitterChunker` (smacker-based, per-language) and a `MultiChunker` dispatcher (extension → Chunker). `DefaultLanguages()` pre-wires all supported languages. Update `merkle.DefaultSkip` to cover all extensions. Wire `MultiChunker` into `NewIndexer`. The `Chunker` interface, `Chunk` struct, `Store`, and MCP tools are all unchanged.
 

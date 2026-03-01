@@ -12,7 +12,7 @@ A Go MCP server that provides semantic code search for code agents like Claude C
 Monolithic Go binary with internal packages. Runs over stdio as an MCP server.
 
 ```
-agent-index-go/
+agent-index/
 ├── main.go                  # MCP server entry, stdio transport
 ├── internal/
 │   ├── chunker/             # Chunker interface + go/ast implementation

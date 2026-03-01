@@ -3,9 +3,11 @@
 [![CI](https://github.com/aeneasr/agent-index-go/actions/workflows/ci.yml/badge.svg)](https://github.com/aeneasr/agent-index-go/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A fully local semantic code search engine, exposed as an [MCP](https://modelcontextprotocol.io/) server. Think of it as a self-hosted alternative to cloud-based code vector databases — but everything runs on your machine, embeddings included.
+A fully local semantic code search engine, exposed as an [MCP](https://modelcontextprotocol.io/) server. It parses your codebase into semantic chunks (functions, methods, types, interfaces, constants), embeds them via a local Ollama model, and exposes search over MCP. Your code never leaves your machine.
 
-It parses your codebase into semantic chunks (functions, methods, types, interfaces, constants), embeds them via a local Ollama model, stores vectors in SQLite with [sqlite-vec](https://github.com/asg017/sqlite-vec), and exposes semantic search over MCP. Your code never leaves your machine.
+**For AI agents:** Semantic search is the fastest way to navigate a large codebase. Instead of reading whole files, the agent describes what it's looking for and gets back exact file paths and line ranges — with [2–3× faster task completion](#benchmarks) and more precise answers.
+
+**For privacy:** Everything runs locally — no API keys, no code sent to external services, no cloud dependency.
 
 Supports **12 language families** with semantic chunking:
 
@@ -172,30 +174,42 @@ Where `<hash>` is derived from the absolute project path and embedding model nam
 
 ## Benchmarks
 
-We benchmarked Claude Code on a real coding task with and without agent-index. The task was identical across all runs — only the availability of semantic search changed. Results show that agent-index consistently reduces wall-clock time by 60–70%, even though it uses slightly more tokens (the extra tokens come from search results replacing much slower full-file reads).
+We tested three scenarios across two models (Haiku and Opus) and three questions of increasing difficulty, using [Prometheus/TSDB Go fixtures](testdata/fixtures/go) as the codebase. Answers were ranked blind by an LLM judge.
 
-### With agent-index
+### Speed
 
-| Model | Run 1 | Run 2 | Run 3 | Run 4 | Avg Time | Avg Tokens |
-|---|---|---|---|---|---|---|
-| Sonnet 4.6 | 57s / 56,154t | 42s / 56,691t | 35s / 59,639t | 37s / 57,226t | **43s** | 57,428 |
-| Opus 4.6 | 1m8s / 74,415t | 52s / 71,372t | — | — | **60s** | 72,894 |
+| Model | Without agent-index | With agent-index | Speedup |
+|---|---|---|---|
+| Sonnet 4.6 | 2m13s | 43s | **3.1×** |
+| Opus 4.6 | 2m0s | 60s | **2.0×** |
 
-### Without agent-index
+### Answer quality
 
-| Model | Run 1 | Run 2 | Run 3 | Run 4 | Avg Time | Avg Tokens |
-|---|---|---|---|---|---|---|
-| Sonnet 4.6 | 2m31s / 50,282t | 1m51s / 52,497t | 2m18s / 53,211t | 2m13s / 52,432t | **2m13s** | 52,106 |
-| Opus 4.6 | 2m5s / 52,834t | 2m10s / 52,061t | 1m48s / 50,964t | 1m55s / 51,265t | **2m0s** | 51,781 |
+Three scenarios compared:
+- **baseline** — no MCP, default tools only (grep, file reads)
+- **mcp-only** — semantic search only, no file reads
+- **mcp-full** — all tools + semantic search
 
-### Summary
+| Question | Difficulty | Winner | Loser |
+|----------|------------|--------|-------|
+| label-matcher | easy | opus / mcp-full | haiku / baseline |
+| histogram | medium | opus / baseline | haiku / mcp-full |
+| tsdb-compaction | hard | opus / mcp-full | haiku / mcp-only |
 
-| Model | Without | With | Speedup | Token Delta |
-|---|---|---|---|---|
-| Sonnet 4.6 | 2m13s | 43s | **3.1×** | +10% |
-| Opus 4.6 | 2m0s | 60s | **2.0×** | +41% |
+`mcp-full` wins 2 of 3. Having semantic search available alongside file reads lets the agent use it strategically — it's additive, not a replacement. The one exception (medium difficulty, complex multi-file algorithm) still had opus/mcp-full ranked 2nd.
 
-The token increase is a good trade — agent-index returns precise code snippets instead of forcing the agent to read entire files, so it spends more tokens on useful context and less time on file navigation.
+### Reproduce
+
+Requires Ollama, the `claude` CLI, `jq`, and `bc`.
+
+```bash
+./bench-mcp.sh                                        # all questions, all models
+./bench-mcp.sh --model haiku                          # filter by model
+./bench-mcp.sh --question tsdb-compaction             # filter by question
+./bench-mcp.sh --model opus --question label-matcher  # combine
+```
+
+Results land in `bench-results/<timestamp>/`. The script runs an LLM judge at the end to rank answers.
 
 ## Building from source
 
