@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package config provides shared configuration for the lumen CLI.
+// Package config loads and validates runtime configuration from environment variables.
 package config
 
 import (
