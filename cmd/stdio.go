@@ -454,7 +454,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg}
 
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "agent-index",
+		Name:    "lumen",
 		Version: "0.1.0",
 	}, nil)
 
@@ -464,23 +464,18 @@ func runStdio(_ *cobra.Command, _ []string) error {
 			ReadOnlyHint: true,
 			Title:        "Semantic Code Search",
 		},
-		Description: `Search indexed codebase using natural language. ALWAYS use this tool for finding and searching in files. Do NOT use Grep, Glob, or shell commands (grep, rg, find) to explore or navigate the codebase.
+		Description: `Search indexed codebase using natural language. Understands code meaning and semantic relationships — finds implementations by concept ("authentication middleware", "database connection pool", "retry logic", "rate limiter") even without exact keyword matches.
 
-Semantic search understands MEANING, not just text. It finds code by concept — "authentication middleware", "database connection pooling", "error retry logic" — even when no keyword matches exist. Grep cannot do this.
-
-# ALWAYS use semantic search as the first tool for code discovery
-
-This includes:
-
-- Understanding how a system or feature works
+Use for:
 - Finding where functionality is implemented
+- Understanding how a system or feature works
 - Discovering what calls what or how components connect
 - Locating code related to a concept or domain term
 - Finding relevant code before making changes
 
-Only use Grep/Glob when you already know the EXACT literal string (a specific function name, import path, or error message). For everything else, use this tool.
+Only use Grep/Glob when you already know the exact literal string (a specific function name, import path, or error message). For concept-based discovery, use this tool.
 
-Auto-indexes if the index is stale or empty. You never need to index manually.
+Auto-indexes if the index is stale or empty.
 
 Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query.`,
 	}, indexers.handleSemanticSearch)

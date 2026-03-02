@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package cmd implements the agent-index CLI commands.
+// Package cmd implements the lumen CLI commands.
 package cmd
 
 import (
@@ -22,7 +22,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "agent-index",
+	Use:   "lumen",
 	Short: "Local semantic code search for AI agents",
 }
 
