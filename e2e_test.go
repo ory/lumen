@@ -147,12 +147,11 @@ func getTextContent(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// headerRe matches result header lines like:
-// ── auth.go:10-19  ValidateToken (function) [0.66] ──
-// ── auth.go:1-1  package project (package) [-0.08] ──
-var headerRe = regexp.MustCompile(`^── (.+):(\d+)-(\d+)\s+(.+?)\s+\((\w+)\)\s+\[(-?\d+\.\d+)\] ──$`)
+// headerRe matches XML result opening tags like:
+// <search:result filename="auth.go" line-start="10" line-end="19" symbol="ValidateToken" kind="function" score="0.66">
+var headerRe = regexp.MustCompile(`^<search:result filename="([^"]+)" line-start="(\d+)" line-end="(\d+)" symbol="([^"]+)" kind="([^"]+)" score="(-?\d+\.\d+)">$`)
 
-// parseSearchText parses the plaintext output of semantic_search into a semanticSearchOutput.
+// parseSearchText parses the XML-tagged output of semantic_search into a semanticSearchOutput.
 func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 	t.Helper()
 
@@ -194,13 +193,16 @@ func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 	}
 
 	for hi, h := range headers {
-		// Content runs from header line+1 to the line before the next header (or end).
+		// Content runs from header line+1 to the line before the next header or closing tag (or end).
 		contentEnd := len(lines)
 		if hi+1 < len(headers) {
 			contentEnd = headers[hi+1].lineIdx
 		}
 		var contentLines []string
 		for j := h.lineIdx + 1; j < contentEnd; j++ {
+			if lines[j] == "</search:result>" {
+				break
+			}
 			contentLines = append(contentLines, lines[j])
 		}
 		content := strings.TrimSpace(strings.Join(contentLines, "\n"))
