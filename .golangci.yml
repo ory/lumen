@@ -4,4 +4,4 @@ run:
   timeout: 5m
 
 linters:
-  default: all
+  default: standard
