@@ -147,9 +147,13 @@ func getTextContent(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// headerRe matches XML result opening tags like:
-// <search:result filename="auth.go" line-start="10" line-end="19" symbol="ValidateToken" kind="function" score="0.66">
-var headerRe = regexp.MustCompile(`^<search:result filename="([^"]+)" line-start="(\d+)" line-end="(\d+)" symbol="([^"]+)" kind="([^"]+)" score="(-?\d+\.\d+)">$`)
+// fileRe matches <result:file filename="..."> opening tags.
+var fileRe = regexp.MustCompile(`^<result:file filename="([^"]+)">$`)
+
+// chunkRe matches <result:chunk ...> opening tags like:
+//
+//	<result:chunk line-start="10" line-end="19" symbol="ValidateToken" kind="function" score="0.66">
+var chunkRe = regexp.MustCompile(`^\s*<result:chunk line-start="(\d+)" line-end="(\d+)" symbol="([^"]+)" kind="([^"]+)" score="(-?\d+\.\d+)">$`)
 
 // parseSearchText parses the XML-tagged output of semantic_search into a semanticSearchOutput.
 func parseSearchText(t *testing.T, text string) semanticSearchOutput {
@@ -169,54 +173,54 @@ func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 		return out
 	}
 
-	// Find all header line positions, then extract content between them.
 	lines := strings.Split(text, "\n")
-	type headerMatch struct {
-		lineIdx   int
-		filePath  string
-		symbol    string
-		kind      string
-		startLine int
-		endLine   int
-		score     float32
+	currentFile := ""
+	inChunk := false
+	var chunkItem searchResultItem
+	var contentLines []string
+
+	flushChunk := func() {
+		if !inChunk {
+			return
+		}
+		chunkItem.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
+		out.Results = append(out.Results, chunkItem)
+		inChunk = false
+		contentLines = nil
 	}
-	var headers []headerMatch
-	for i, line := range lines {
-		m := headerRe.FindStringSubmatch(line)
-		if m == nil {
+
+	for _, line := range lines {
+		if m := fileRe.FindStringSubmatch(line); m != nil {
+			flushChunk()
+			currentFile = m[1]
 			continue
 		}
-		startLine, _ := strconv.Atoi(m[2])
-		endLine, _ := strconv.Atoi(m[3])
-		score, _ := strconv.ParseFloat(m[6], 32)
-		headers = append(headers, headerMatch{i, m[1], m[4], m[5], startLine, endLine, float32(score)})
-	}
-
-	for hi, h := range headers {
-		// Content runs from header line+1 to the line before the next header or closing tag (or end).
-		contentEnd := len(lines)
-		if hi+1 < len(headers) {
-			contentEnd = headers[hi+1].lineIdx
-		}
-		var contentLines []string
-		for j := h.lineIdx + 1; j < contentEnd; j++ {
-			if lines[j] == "</search:result>" {
-				break
+		if m := chunkRe.FindStringSubmatch(line); m != nil {
+			flushChunk()
+			startLine, _ := strconv.Atoi(m[1])
+			endLine, _ := strconv.Atoi(m[2])
+			score, _ := strconv.ParseFloat(m[5], 32)
+			chunkItem = searchResultItem{
+				FilePath:  currentFile,
+				Symbol:    m[3],
+				Kind:      m[4],
+				StartLine: startLine,
+				EndLine:   endLine,
+				Score:     float32(score),
 			}
-			contentLines = append(contentLines, lines[j])
+			inChunk = true
+			continue
 		}
-		content := strings.TrimSpace(strings.Join(contentLines, "\n"))
-
-		out.Results = append(out.Results, searchResultItem{
-			FilePath:  h.filePath,
-			Symbol:    h.symbol,
-			Kind:      h.kind,
-			StartLine: h.startLine,
-			EndLine:   h.endLine,
-			Score:     h.score,
-			Content:   content,
-		})
+		if inChunk {
+			trimmed := strings.TrimPrefix(line, "  ")
+			if trimmed == "</result:chunk>" {
+				flushChunk()
+				continue
+			}
+			contentLines = append(contentLines, trimmed)
+		}
 	}
+	flushChunk()
 
 	return out
 }

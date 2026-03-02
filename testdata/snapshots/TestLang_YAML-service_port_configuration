@@ -1,7 +1,6 @@
 results: 30
 kube-prometheus-stack-values.yaml:2770-2773  prometheusOperator.admissionWebhooks.deployment.service.additionalPorts (section)
 kube-prometheus-stack-values.yaml:3082-3085  prometheusOperator.service.additionalPorts (section)
-k8s-service.yaml:1-27  root (document)
 kube-prometheus-stack-values.yaml:3465-3494  prometheus.thanosService (section)
 kube-prometheus-stack-values.yaml:742-748  alertmanager.service.nodePort (section)
 kube-prometheus-stack-values.yaml:5039-5045  thanosRuler.service.nodePort (section)
@@ -18,7 +17,6 @@ kube-prometheus-stack-values.yaml:749-757  alertmanager.service.additionalPorts 
 kube-prometheus-stack-values.yaml:610-619  alertmanager.ingress.hosts (section)
 kube-prometheus-stack-values.yaml:1882-1896  kubeControllerManager.service (section)
 kube-prometheus-stack-values.yaml:2179-2190  kubeEtcd.service (section)
-k8s-configmap.yaml:1-21  root (document)
 kube-prometheus-stack-values.yaml:2790-2793  prometheusOperator.admissionWebhooks.deployment.service.externalIPs (section)
 kube-prometheus-stack-values.yaml:3577-3578  prometheus.service.targetPort (section)
 kube-prometheus-stack-values.yaml:5045-5046  thanosRuler.service.additionalPorts (section)
@@ -27,6 +25,8 @@ kube-prometheus-stack-values.yaml:3102-3105  prometheusOperator.service.external
 kube-prometheus-stack-values.yaml:3586-3589  prometheus.service.externalIPs (section)
 kube-prometheus-stack-values.yaml:3581-3583  prometheus.service.reloaderWebPort (section)
 kube-prometheus-stack-values.yaml:2297-2311  kubeScheduler.service (section)
-compose-compose.yaml:1-28  services[1/2] (section)
 kube-prometheus-stack-values.yaml:4561-4579  prometheus.prometheusSpec.containers (section)
+k8s-service.yaml:1-27  root (document)
+k8s-configmap.yaml:1-21  root (document)
+compose-compose.yaml:1-28  services[1/2] (section)
 

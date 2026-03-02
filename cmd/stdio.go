@@ -16,10 +16,12 @@ package cmd
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -366,6 +368,8 @@ var xmlEscaper = strings.NewReplacer(
 
 // formatSearchResults builds an XML-tagged representation of search results
 // for LLM consumption. File paths are shown relative to the project root.
+// Chunks from the same file are grouped under a <result:file> element to
+// reduce repetition.
 func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if len(out.Results) == 0 {
 		var b strings.Builder
@@ -383,18 +387,52 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	}
 	b.WriteString(":\n")
 
+	// Group results by relative file path.
+	type fileGroup struct {
+		rel      string
+		results  []SearchResultItem
+		maxScore float32
+	}
+	var order []string
+	groups := make(map[string]*fileGroup)
 	for _, r := range out.Results {
 		rel, err := filepath.Rel(projectPath, r.FilePath)
 		if err != nil {
 			rel = r.FilePath
 		}
-		fmt.Fprintf(&b, "\n<search:result filename=\"%s\" line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
-			xmlEscaper.Replace(rel), r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
-		if r.Content != "" {
-			b.WriteString(r.Content)
-			b.WriteByte('\n')
+		if _, ok := groups[rel]; !ok {
+			order = append(order, rel)
+			groups[rel] = &fileGroup{rel: rel}
 		}
-		b.WriteString("</search:result>")
+		g := groups[rel]
+		g.results = append(g.results, r)
+		if r.Score > g.maxScore {
+			g.maxScore = r.Score
+		}
+	}
+
+	// Sort files by best chunk score descending.
+	slices.SortFunc(order, func(a, b string) int {
+		return cmp.Compare(groups[b].maxScore, groups[a].maxScore)
+	})
+
+	for _, rel := range order {
+		g := groups[rel]
+		// Sort chunks within each file by score descending.
+		slices.SortFunc(g.results, func(a, b SearchResultItem) int {
+			return cmp.Compare(b.Score, a.Score)
+		})
+		fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(g.rel))
+		for _, r := range g.results {
+			fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+				r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
+			if r.Content != "" {
+				b.WriteString(r.Content)
+				b.WriteByte('\n')
+			}
+			b.WriteString("  </result:chunk>\n")
+		}
+		b.WriteString("</result:file>")
 	}
 
 	return b.String()

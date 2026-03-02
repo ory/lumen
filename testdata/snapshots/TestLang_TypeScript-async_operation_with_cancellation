@@ -26,7 +26,7 @@ async.ts:1095-1098  dispose (method)
 async.ts:407-449  Delayer[2/2] (type)
 async.ts:1029-1032  dispose (method)
 async.ts:1482-1488  dispose (method)
-cancellation.ts:146-146  dispose (method)
 async.ts:2262-2264  resolve (method)
 async.ts:194-196  ICancellableTask (interface)
+cancellation.ts:146-146  dispose (method)
 
