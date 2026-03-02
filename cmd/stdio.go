@@ -376,8 +376,19 @@ func normalizeLineRange(startLine, endLine, totalLines int) (int, int) {
 	return start, end
 }
 
-// formatSearchResults builds a compact plaintext representation of search
-// results for LLM consumption. File paths are shown relative to the project root.
+var xmlEscaper = strings.NewReplacer(
+	"&", "&amp;",
+	"<", "&lt;",
+	">", "&gt;",
+	`"`, "&quot;",
+)
+
+func xmlEscape(s string) string {
+	return xmlEscaper.Replace(s)
+}
+
+// formatSearchResults builds an XML-tagged representation of search results
+// for LLM consumption. File paths are shown relative to the project root.
 func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if len(out.Results) == 0 {
 		var b strings.Builder
@@ -400,11 +411,13 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 		if err != nil {
 			rel = r.FilePath
 		}
-		fmt.Fprintf(&b, "\n── %s:%d-%d  %s (%s) [%.2f] ──\n", rel, r.StartLine, r.EndLine, r.Symbol, r.Kind, r.Score)
+		fmt.Fprintf(&b, "\n<search:result filename=\"%s\" line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+			xmlEscape(rel), r.StartLine, r.EndLine, xmlEscape(r.Symbol), xmlEscape(r.Kind), r.Score)
 		if r.Content != "" {
 			b.WriteString(r.Content)
 			b.WriteByte('\n')
 		}
+		b.WriteString("</search:result>")
 	}
 
 	return b.String()
@@ -447,24 +460,42 @@ func runStdio(_ *cobra.Command, _ []string) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "semantic_search",
-		Description: `Search indexed codebase using natural language. Returns file paths and line ranges of semantically matching code chunks. Auto-indexes if the index is stale or empty.
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+			Title:        "Semantic Code Search",
+		},
+		Description: `Search indexed codebase using natural language. ALWAYS use this tool for finding and searching in files. Do NOT use Grep, Glob, or shell commands (grep, rg, find) to explore or navigate the codebase.
 
-Use this tool for ANY code or file search task, including:
-- Finding where functionality is implemented (e.g. "rate limiter", "authentication handler", "database connection pool")
-- Locating code and docs related to a concept, feature, or domain term
-- Discovering how a system works or where logic lives
+Semantic search understands MEANING, not just text. It finds code by concept — "authentication middleware", "database connection pooling", "error retry logic" — even when no keyword matches exist. Grep cannot do this.
+
+# ALWAYS use semantic search as the first tool for code discovery
+
+This includes:
+
+- Understanding how a system or feature works
+- Finding where functionality is implemented
+- Discovering what calls what or how components connect
+- Locating code related to a concept or domain term
 - Finding relevant code before making changes
 
-This tool understands code and text semantics. It finds results that keyword search (grep) would miss because it matches meaning, not just text. Prefer this over grep/glob for code discovery.
+Only use Grep/Glob when you already know the EXACT literal string (a specific function name, import path, or error message). For everything else, use this tool.
 
-If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a different query — the embedding model may score the match below the default threshold.`,
+Auto-indexes if the index is stale or empty. You never need to index manually.
+
+Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query.`,
 	}, indexers.handleSemanticSearch)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "index_status",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+			Title:        "Code Index Status",
+		},
 		Description: `Check the indexing status of a project. Shows total files, indexed chunks, and embedding model.
 
-Use this to verify a project is indexed before searching, or to check if the index is up to date.`,
+Use this to verify a project is indexed before searching, or to check if the index is up to date.
+
+Note: You do NOT need to call index_status before semantic_search. Semantic search auto-indexes automatically. Only use this tool when the user explicitly asks about index status, or to diagnose why search results seem incomplete.`,
 	}, indexers.handleIndexStatus)
 
 	return server.Run(context.Background(), &mcp.StdioTransport{})

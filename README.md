@@ -95,6 +95,21 @@ That's it. Claude Code will now have access to `semantic_search` and
 `index_status` tools. On the first search against a project, it auto-indexes the
 codebase.
 
+### Recommended CLAUDE.md
+
+Add this to your project's `CLAUDE.md` (or `~/.claude/CLAUDE.md` for all projects):
+
+```markdown
+# Code Search
+
+ALWAYS use `mcp__agent-index__semantic_search` as the FIRST tool for code discovery and exploration.
+Do NOT default to Grep, Glob, or Read for search tasks — only use them for exact literal string lookups.
+
+Before using Grep, Glob, Find, or Read for any search, stop and ask: "Do I already know the exact
+literal string I'm searching for?" If not, use `mcp__agent-index__semantic_search`. If semantic
+search is unavailable, Grep/Glob are acceptable fallbacks.
+```
+
 ### Alternative: LM Studio + nomic-embed-code
 
 An experimental configuration with higher-quality 3584-dim embeddings via LM

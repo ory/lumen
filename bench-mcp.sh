@@ -8,46 +8,34 @@ FIXTURES_PY="$REPO/testdata/fixtures/python"
 FIXTURES_TS="$REPO/testdata/fixtures/ts"
 BINARY="$REPO/agent-index"
 
-# ── Questions (3 languages × 3 difficulty levels) ────────────────────────────
+# ── Questions (3 languages × 1 hard question each) ───────────────────────────
 QUESTIONS=(
   # Go (Prometheus fixtures)
-  "What label matcher types are available and how is a Matcher created? Show the type definitions and constructor."
-  "How does histogram bucket counting work? Show me the relevant function signatures."
   "How does TSDB compaction work end-to-end? Explain the Compactor interface, LeveledCompactor, and how the DB triggers compaction. Show relevant types, interfaces, and key method signatures."
   # Python (Django + Flask fixtures)
-  "How does the Django Permission model work? Show the Permission class, its fields, the PermissionManager, and the get_by_natural_key method."
-  "How does Flask configuration loading work? Explain the Config class, how it loads from files, environment variables, and Python objects. Show the key methods and class hierarchy."
   "How does the Django QuerySet evaluation and filtering pipeline work? Explain QuerySet chaining, lazy evaluation, the Query class, how lookups and filters are compiled into SQL, and how the Manager ties it all together. Show key classes and method signatures."
   # TypeScript (VSCode base library fixtures)
-  "What is the IDisposable interface and how does the Disposable base class work? Show the interface, the base class, and how DisposableStore manages multiple disposables."
-  "How does the event emitter system work? Explain the Event interface, the Emitter class, event composition (map, filter, debounce), and how events integrate with disposables. Show key types and patterns."
   "How do async operations, cancellation, and resource lifecycle management work together? Explain CancelablePromise, CancellationToken, the async utilities (throttle, debounce, retry), how they integrate with the disposable lifecycle system, and how event-driven patterns compose with async flows. Show key interfaces and class relationships."
 )
 Q_SLUGS=(
-  "go-label-matcher"
-  "go-histogram"
   "go-tsdb-compaction"
-  "py-permissions"
-  "py-flask-config"
   "py-django-queryset"
-  "ts-disposable"
-  "ts-event-emitter"
   "ts-async-lifecycle"
 )
 Q_LANG=(
-  "go" "go" "go"
-  "python" "python" "python"
-  "typescript" "typescript" "typescript"
+  "go"
+  "python"
+  "typescript"
 )
 Q_FIXTURES=(
-  "$FIXTURES_GO" "$FIXTURES_GO" "$FIXTURES_GO"
-  "$FIXTURES_PY" "$FIXTURES_PY" "$FIXTURES_PY"
-  "$FIXTURES_TS" "$FIXTURES_TS" "$FIXTURES_TS"
+  "$FIXTURES_GO"
+  "$FIXTURES_PY"
+  "$FIXTURES_TS"
 )
 Q_DIFFICULTY=(
-  "easy" "medium" "hard"
-  "easy" "medium" "hard"
-  "easy" "medium" "hard"
+  "hard"
+  "hard"
+  "hard"
 )
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -142,6 +130,7 @@ run() {
     --output-format stream-json \
     --verbose \
     --model "$model" \
+    --effort medium \
     --strict-mcp-config \
     --mcp-config "$mcp_cfg" \
     ${tools_arg[@]:+"${tools_arg[@]}"} \
@@ -229,7 +218,7 @@ $(cat "$af")
   printf "  Judging %-28s ... " "$slug"
 
   # Brief verdict for summary (content quality + efficiency)
-  claude -p --model claude-opus-4-6 \
+  claude -p --model claude-opus-4-6 --effort medium \
     "You are a judge evaluating AI answers to a codebase question. Be concise.
 
 Question: $question
@@ -254,7 +243,7 @@ Example: **Winner: sonnet/mcp-only**" \
     > "$judge_brief_file" 2>&1 || echo "_Judge unavailable_" > "$judge_brief_file"
 
   # Detailed analysis for detail report
-  claude -p --model claude-opus-4-6 \
+  claude -p --model claude-opus-4-6 --effort medium \
     "You are a judge evaluating AI answers to a question about a codebase.
 
 Question: $question
