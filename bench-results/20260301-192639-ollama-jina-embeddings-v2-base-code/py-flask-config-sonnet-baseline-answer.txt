@@ -1,0 +1,117 @@
+## Flask Configuration Loading in `flask-config.py`
+
+### Class Hierarchy
+
+```
+dict (Python built-in)
+ └── Config           — the main config store
+ConfigAttribute       — separate descriptor class (no inheritance relationship)
+```
+
+`Config` extends `dict` directly, so it _is_ a dictionary with extra loading methods. `ConfigAttribute` is a generic descriptor (`Generic[T]`) that forwards attribute access on the `App` object to `app.config[key]`.
+
+---
+
+### `ConfigAttribute` — descriptor for forwarding (lines 20–47)
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj: App | None, owner: ...) -> T | te.Self:
+        if obj is None:
+            return self
+        rv = obj.config[self.__name__]
+        if self.get_converter is not None:
+            rv = self.get_converter(rv)
+        return rv
+
+    def __set__(self, obj: App, value: t.Any) -> None:
+        obj.config[self.__name__] = value
+```
+
+Used to expose config values as typed app-level attributes (e.g. `app.debug`) while storing them in the config dict.
+
+---
+
+### `Config.__init__` (lines 94–100)
+
+```python
+def __init__(self, root_path: str | os.PathLike[str], defaults: dict | None = None):
+    super().__init__(defaults or {})
+    self.root_path = root_path
+```
+
+`root_path` anchors relative filenames. `defaults` pre-populates the dict.
+
+---
+
+### The 6 loading methods
+
+| Method | Source | Key rule |
+|---|---|---|
+| `from_object(obj)` | module, class, or import string | only **UPPERCASE** attributes |
+| `from_pyfile(filename)` | `.py` or `.cfg` file | `exec`s the file, then calls `from_object` |
+| `from_envvar(var)` | env var pointing to a file | delegates to `from_pyfile` |
+| `from_prefixed_env(prefix)` | env vars with prefix (e.g. `FLASK_`) | strips prefix, uppercases key |
+| `from_file(filename, load)` | any file + custom loader (`json.load`, `tomllib.load`) | loader returns a dict |
+| `from_mapping(mapping)` | any dict/iterable of pairs | only UPPERCASE keys |
+
+#### `from_object` — uppercase-only filter
+
+```python
+def from_object(self, obj: object | str) -> None:
+    if isinstance(obj, str):
+        obj = import_string(obj)
+    for key in dir(obj):
+        if key.isupper():           # ← only uppercase
+            self[key] = getattr(obj, key)
+```
+
+#### `from_pyfile` — exec into a synthetic module
+
+```python
+def from_pyfile(self, filename, silent=False) -> bool:
+    filename = os.path.join(self.root_path, filename)
+    d = types.ModuleType("config")
+    d.__file__ = filename
+    with open(filename, mode="rb") as f:
+        exec(compile(f.read(), filename, "exec"), d.__dict__)
+    self.from_object(d)   # ← reuses from_object's uppercase filter
+    return True
+```
+
+The file is compiled and executed inside a throw-away module object, then treated identically to a real module by `from_object`.
+
+#### `from_envvar` — file path from environment
+
+```python
+def from_envvar(self, variable_name: str, silent=False) -> bool:
+    rv = os.environ.get(variable_name)
+    if not rv:
+        raise RuntimeError(f"The environment variable {variable_name!r} is not set ...")
+    return self.from_pyfile(rv, silent=silent)
+```
+
+A thin wrapper — the env var's value is treated as a file path passed to `from_pyfile`.
+
+---
+
+### Utility: `get_namespace` (lines 323–364)
+
+```python
+config.get_namespace("MAIL_")
+# → {"server": "...", "port": 25, ...}  (lowercased, prefix stripped)
+```
+
+Returns a subset of config keys matching a prefix, optionally lowercased and with the prefix removed. Useful for passing a group of settings to a library.
+
+---
+
+### Loading precedence pattern
+
+The typical Flask app stacks these in order — later calls overwrite earlier ones:
+
+```python
+app.config.from_object("myapp.default_settings")   # module defaults
+app.config.from_pyfile("instance/config.cfg", silent=True)  # instance overrides
+app.config.from_envvar("MYAPP_SETTINGS", silent=True)       # production override
+```

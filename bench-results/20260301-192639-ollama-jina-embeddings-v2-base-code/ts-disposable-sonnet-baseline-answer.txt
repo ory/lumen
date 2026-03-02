@@ -1,0 +1,73 @@
+All three are defined in `lifecycle.ts`:
+
+---
+
+### `IDisposable` interface — line 312
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+A minimal contract: anything that can be cleaned up implements a single `dispose()` method.
+
+---
+
+### `Disposable` base class — line 526
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+`Disposable` is an abstract base that:
+- Owns a `_store: DisposableStore` — all child resources go here
+- `dispose()` delegates entirely to the store, so subclasses just call `this._register(x)` and cleanup is automatic
+- `Disposable.None` is a no-op sentinel for optional disposables
+
+---
+
+### `DisposableStore` — line 416
+
+```typescript
+export class DisposableStore implements IDisposable {
+    static DISABLE_DISPOSED_WARNING = false;
+
+    private readonly _toDispose = new Set<IDisposable>();
+    private _isDisposed = false;
+
+    dispose(): void      // marks disposed, calls clear()
+    clear(): void        // disposes all items, empties the set (but stays usable)
+    add<T>(o: T): T      // registers a child; auto-disposes if already disposed
+    delete<T>(o: T)      // removes + disposes a specific item
+    deleteAndLeak<T>(o)  // removes without disposing ("leak" is intentional)
+}
+```
+
+Key behaviors:
+- **`dispose()` vs `clear()`**: `dispose()` permanently marks the store as disposed; `clear()` just empties it but leaves the store reusable.
+- **Add-after-dispose guard**: if you `add()` to an already-disposed store, the item is leaked and a console warning is emitted (unless `DISABLE_DISPOSED_WARNING` is set).
+- **Self-registration guard**: both `add()` and `delete()` throw if you try to register a store on itself.
+
+The pattern used throughout: subclasses extend `Disposable` and call `this._register(child)` for every resource they own. When the parent is disposed, `_store.dispose()` cascades through the entire `Set<IDisposable>` automatically.

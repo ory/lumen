@@ -1,0 +1,129 @@
+Here's how Flask's configuration loading system works, based on `flask-config.py`:
+
+---
+
+## Class Hierarchy
+
+```
+dict
+ └── Config               # the live config store (flask-config.py:50)
+
+ConfigAttribute[T]        # descriptor that bridges app.attr ↔ app.config[key]
+```
+
+---
+
+## `Config` — `flask-config.py:50`
+
+`Config` subclasses `dict`. The entire config is just a dict, but with a set of loading methods layered on top. It is initialized with a `root_path` (the app's filesystem root) used to resolve relative filenames, and optional default values.
+
+```python
+class Config(dict):
+    def __init__(self, root_path, defaults=None):
+        super().__init__(defaults or {})
+        self.root_path = root_path
+```
+
+**Key rule across all loaders:** only **uppercase keys** are accepted into the config. Lowercase attributes are silently ignored.
+
+---
+
+## Loading Methods
+
+### 1. `from_object(obj)` — `flask-config.py:218`
+The primitive. Accepts either an import path string or any Python object (module, class, instance). Iterates `dir(obj)` and copies all `UPPER_CASE` attributes:
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+All other loaders ultimately funnel through this or `from_mapping`.
+
+---
+
+### 2. `from_pyfile(filename)` — `flask-config.py:187`
+Loads a `.cfg` or `.py` file by compiling and `exec`-ing it into a fresh module object, then passing that module to `from_object`. This lets you use plain Python assignment syntax in config files:
+
+```python
+d = types.ModuleType("config")
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+---
+
+### 3. `from_file(filename, load)` — `flask-config.py:256`
+Generic file loader. Takes any callable that reads a file handle and returns a mapping (e.g. `json.load`, `tomllib.load`). Delegates to `from_mapping`:
+
+```python
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+
+---
+
+### 4. `from_mapping(mapping, **kwargs)` — `flask-config.py:312`
+Updates config from a plain dict, ignoring non-uppercase keys. The lowest-level "dict merge" primitive used by `from_file` and directly.
+
+---
+
+### 5. `from_envvar(variable_name)` — `flask-config.py:102`
+Reads an env var whose **value is a path** to a config file, then calls `from_pyfile` on it. Raises `RuntimeError` if the variable is unset (unless `silent=True`):
+
+```python
+rv = os.environ.get(variable_name)
+return self.from_pyfile(rv, silent=silent)
+```
+
+Usage: `export YOURAPPLICATION_SETTINGS='/path/to/config'`
+
+---
+
+### 6. `from_prefixed_env(prefix="FLASK")` — `flask-config.py:126`
+Directly reads env vars whose names start with `FLASK_` (or a custom prefix). Strips the prefix, parses values through `json.loads` to support typed values (int, bool, list, dict), and supports nested dicts via `__` separator:
+
+```python
+# FLASK_DEBUG=true        → config["DEBUG"] = True
+# FLASK_DB__HOST=localhost → config["DB"]["HOST"] = "localhost"
+for key in sorted(os.environ):
+    if not key.startswith(prefix):
+        continue
+    value = loads(os.environ[key])   # json.loads, silently falls back to str
+    ...
+```
+
+---
+
+## `ConfigAttribute` — `flask-config.py:20`
+
+A descriptor that makes certain `app.attribute` accesses transparently proxy to `app.config[key]`. For example, `app.debug` reads/writes `app.config["DEBUG"]` without the caller knowing it's dict-backed:
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj, owner):
+        rv = obj.config[self.__name__]
+        if self.get_converter:
+            rv = self.get_converter(rv)
+        return rv
+
+    def __set__(self, obj, value):
+        obj.config[self.__name__] = value
+```
+
+---
+
+## Loading Method Relationships
+
+```
+from_envvar(VAR)         # reads path from env → from_pyfile
+from_pyfile(file)        # exec's .py/.cfg → from_object
+from_object(obj/str)     # iterates UPPER attrs → self[key] = value
+from_file(file, load)    # generic file (JSON/TOML) → from_mapping
+from_mapping(dict)       # filters uppercase keys → self[key] = value
+from_prefixed_env(pfx)   # reads FLASK_* vars directly → self[key] = value
+```
+
+All methods return `bool` (except `from_object` which returns `None`) and accept a `silent=True` flag to suppress missing-file errors.

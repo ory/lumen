@@ -1,0 +1,83 @@
+There are two files with identical definitions (`labels_matcher.go` and `matcher.go`). Here's what's available:
+
+---
+
+## `MatchType` — enum for label matching
+
+**File:** `labels_matcher.go:21-29`
+
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four types, matching Prometheus label selector syntax.
+
+---
+
+## `Matcher` — the matcher struct
+
+**File:** `labels_matcher.go:46-53`
+
+```go
+// Matcher models the matching of a label.
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // only set for regexp types
+}
+```
+
+---
+
+## Constructor: `NewMatcher`
+
+**File:** `labels_matcher.go:55-70`
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+For `MatchRegexp` / `MatchNotRegexp`, the value string is compiled into a `FastRegexMatcher` at construction time. Returns an error if the regex is invalid.
+
+There's also a panic-on-error variant for tests:
+
+**File:** `labels_matcher.go:72-79`
+
+```go
+// MustNewMatcher panics on error - only for use in tests!
+func MustNewMatcher(mt MatchType, name, val string) *Matcher {
+    m, err := NewMatcher(mt, name, val)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+```
+
+---
+
+**Note:** The definitions appear in two files — `labels_matcher.go` and `matcher.go` — with identical content, suggesting one may be a copy or the fixture contains duplicate files.

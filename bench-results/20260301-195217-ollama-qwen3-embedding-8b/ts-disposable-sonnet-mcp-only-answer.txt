@@ -1,0 +1,124 @@
+Here's how the disposable pattern works in `lifecycle.ts`:
+
+---
+
+## 1. `IDisposable` — The Interface (`lifecycle.ts:312-314`)
+
+```ts
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The entire pattern rests on this single-method contract. Anything that holds resources (event listeners, timers, subscriptions) implements it.
+
+---
+
+## 2. `Disposable` — The Base Class (`lifecycle.ts:533-556`)
+
+```ts
+export class Disposable implements IDisposable {
+
+    // Sentinel: a frozen no-op disposable for "nothing to dispose"
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    // Internally holds a DisposableStore for all registered children
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();   // disposes all registered children
+    }
+
+    // Subclasses call this to track child disposables
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+Subclasses extend `Disposable` and call `this._register(child)` in their constructor. When `dispose()` is called, everything registered is cleaned up automatically. `Disposable.None` acts as a safe null-object.
+
+---
+
+## 3. `DisposableStore` — The Collection (`lifecycle.ts:416-504`)
+
+`DisposableStore` is the engine behind `Disposable`. It can also be used standalone for managing a group of disposables.
+
+```ts
+export class DisposableStore implements IDisposable {
+
+    static DISABLE_DISPOSED_WARNING = false;
+
+    private readonly _toDispose = new Set<IDisposable>();  // the backing collection
+    private _isDisposed = false;
+
+    // Dispose ALL children and mark this store as permanently closed
+    public dispose(): void {
+        if (this._isDisposed) return;
+        markAsDisposed(this);
+        this._isDisposed = true;
+        this.clear();
+    }
+
+    // Dispose all children but keep the store open for new additions
+    public clear(): void {
+        if (this._toDispose.size === 0) return;
+        try {
+            dispose(this._toDispose);  // calls .dispose() on each, collects errors
+        } finally {
+            this._toDispose.clear();
+        }
+    }
+
+    // Add a child — if already disposed, leaks it with a warning
+    public add<T extends IDisposable>(o: T): T {
+        if (!o || o === Disposable.None) return o;
+        if ((o as unknown as DisposableStore) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        setParentOfDisposable(o, this);  // for leak detection/tracking
+        if (this._isDisposed) {
+            console.warn('Leaked disposable added to disposed store');
+        } else {
+            this._toDispose.add(o);
+        }
+        return o;
+    }
+
+    // Remove + dispose a specific child
+    public delete<T extends IDisposable>(o: T): void {
+        this._toDispose.delete(o);
+        o.dispose();
+    }
+}
+```
+
+---
+
+## How They Fit Together
+
+```
+IDisposable (interface)
+    └── Disposable (base class)
+            │  holds a private _store: DisposableStore
+            │  subclasses call this._register(child) → _store.add(child)
+            └── DisposableStore (collection)
+                    │  _toDispose: Set<IDisposable>
+                    │  add() / clear() / delete() / dispose()
+                    └── individual IDisposable children
+```
+
+**Key behaviors:**
+- `dispose()` on `Disposable` → delegates to `_store.dispose()` → calls `dispose()` on every registered child.
+- `clear()` on `DisposableStore` resets it without permanently closing it; `dispose()` permanently closes it — new additions after that are leaked with a warning.
+- `add()` returns the disposable it received, enabling inline patterns: `const listener = this._register(event.on(...))`.
+- The `dispose()` helper function (`lifecycle.ts:332`) used by `clear()` collects all errors from children before re-throwing, so one failing child doesn't block the rest from being cleaned up.

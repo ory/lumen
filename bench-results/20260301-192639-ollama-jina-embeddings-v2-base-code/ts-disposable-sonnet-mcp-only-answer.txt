@@ -1,0 +1,124 @@
+Here's a breakdown of the disposable system in `lifecycle.ts`:
+
+---
+
+## `IDisposable` — The Interface
+
+```typescript
+// lifecycle.ts:312-314
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The entire system is built on this single-method contract. Any object that holds resources and needs cleanup implements `IDisposable`.
+
+---
+
+## `Disposable` — The Base Class
+
+```typescript
+// lifecycle.ts:533-556 (reconstructed)
+export class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } }); // sentinel no-op
+
+    private readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this); // links store to parent for leak tracking
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose(); // disposes everything registered via _register()
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o); // delegates to internal DisposableStore
+    }
+}
+```
+
+Subclasses call `this._register(someDisposable)` in their constructor or methods, and everything is automatically cleaned up when `dispose()` is called on the parent. The `Disposable.None` sentinel is a frozen no-op used as a safe null object.
+
+---
+
+## `DisposableStore` — Managing Multiple Disposables
+
+```typescript
+// lifecycle.ts:416-519
+export class DisposableStore implements IDisposable {
+    static DISABLE_DISPOSED_WARNING = false;
+
+    private readonly _toDispose = new Set<IDisposable>(); // owns the children
+    private _isDisposed = false;
+
+    constructor() { trackDisposable(this); }
+
+    dispose(): void {                   // disposes all children and marks self as disposed
+        if (this._isDisposed) return;
+        markAsDisposed(this);
+        this._isDisposed = true;
+        this.clear();
+    }
+
+    clear(): void {                     // disposes all children WITHOUT marking self disposed
+        if (this._toDispose.size === 0) return;
+        try { dispose(this._toDispose); }
+        finally { this._toDispose.clear(); }
+    }
+
+    add<T extends IDisposable>(o: T): T {
+        if (!o || o === Disposable.None) return o;
+        if ((o as unknown) === this) throw new Error('Cannot register a disposable on itself!');
+        setParentOfDisposable(o, this);
+        if (this._isDisposed) {
+            // Warn on leak — adding to an already-disposed store
+            if (!DisposableStore.DISABLE_DISPOSED_WARNING) console.warn(...);
+        } else {
+            this._toDispose.add(o);
+        }
+        return o;
+    }
+
+    delete<T extends IDisposable>(o: T): void { // remove AND dispose
+        this._toDispose.delete(o);
+        o.dispose();
+    }
+
+    deleteAndLeak<T extends IDisposable>(o: T): void { // remove WITHOUT disposing
+        if (this._toDispose.delete(o)) {
+            setParentOfDisposable(o, null); // detach from parent tracking
+        }
+    }
+}
+```
+
+**Key behaviors:**
+
+| Method | Effect |
+|---|---|
+| `add(o)` | Registers child; warns if store already disposed (leak) |
+| `clear()` | Disposes all children, resets set, but store is still usable |
+| `dispose()` | Calls `clear()` + marks store itself as permanently disposed |
+| `delete(o)` | Removes from set AND calls `dispose()` on it |
+| `deleteAndLeak(o)` | Removes from set but leaves the caller responsible for disposal |
+
+---
+
+## How They Fit Together
+
+```
+Disposable (base class)
+  └── _store: DisposableStore        ← owns child disposables
+        └── _toDispose: Set<IDisposable>  ← the actual children
+
+subclass._register(x)  →  _store.add(x)
+subclass.dispose()     →  _store.dispose()  →  dispose(all children)
+```
+
+The system also has a **leak detection layer**: every `trackDisposable()` call registers the object with an optional `IDisposableTracker`. `GCBasedDisposableTracker` uses a `FinalizationRegistry` to log a warning if a disposable is garbage-collected without ever being disposed — catching resource leaks in development.

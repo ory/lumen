@@ -1,0 +1,125 @@
+## TSDB Compaction End-to-End
+
+### 1. The `Compactor` Interface
+
+Defined at `compact.go:52-77`, this is the abstraction for all compaction:
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+- **`Plan`** — scans the data directory and returns block directories eligible for compaction
+- **`Write`** — persists a `BlockReader` (e.g. the in-memory Head) into a new on-disk block
+- **`Compact`** — merges multiple existing block directories into one new block
+
+### 2. `LeveledCompactor` — the Implementation
+
+Defined at `compact.go:79-93`:
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64          // time ranges for each compaction level
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    blockExcludeFunc            BlockExcludeFilterFunc
+    enableOverlappingCompaction bool
+    // ...
+}
+```
+
+The `ranges` field is key — it defines the leveled compaction strategy. Blocks at level N span `ranges[N]` milliseconds. When enough smaller blocks accumulate to fill the next level's range, they get compacted together.
+
+**Planning** (`compact.go:248-277` and `compact.go:279-328`):
+1. `Plan()` reads all block `meta.json` files from the directory
+2. Delegates to `plan()` which first checks for **overlapping blocks** (compacted via `selectOverlappingDirs`)
+3. If no overlaps, `selectDirs()` (`compact.go:330-367`) walks the configured ranges and finds groups of blocks that fill a higher-level range
+4. As a fallback, picks blocks with >5% tombstones for cleanup compaction
+
+**Compacting** (`compact.go:483-487`):
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error) {
+    return c.CompactWithBlockPopulator(dest, dirs, open, DefaultBlockPopulator{})
+}
+```
+
+`CompactWithBlockPopulator` (`compact.go:489-577`) opens each block, calls `CompactBlockMetas` to merge metadata (incrementing the compaction level), then calls `c.write()`.
+
+**Writing** (`compact.go:657-716`): The internal `write()` method:
+1. Creates a temp directory
+2. Opens chunk and index writers
+3. Calls `BlockPopulator.PopulateBlock()` — this is where series are merged, chunks re-encoded, and the new index built
+4. Writes `meta.json`, syncs, and atomically renames the temp dir to the final block dir
+
+**`BlockPopulator`** interface (`compact.go:771-773`) handles the actual data merge. `DefaultBlockPopulator.PopulateBlock` (`compact.go:790-850`) opens index/chunk/tombstone readers from all source blocks, detects overlapping blocks (vertical compaction), and streams merged series into the new block.
+
+### 3. How the DB Triggers Compaction
+
+The `DB` struct holds the compactor and auto-compaction machinery (`db.go:281-342`):
+
+```go
+type DB struct {
+    compactor      Compactor
+    compactc       chan struct{}     // signal channel
+    autoCompact    bool
+    cmtx           sync.Mutex       // serializes compactions + deletions
+    // ...
+}
+```
+
+**Trigger path — the `run()` loop** (`db.go:1175-1243`):
+
+The background goroutine `DB.run()` has two trigger sources:
+
+1. **Periodic timer** (`BlockReloadInterval`): reloads blocks, then sends on `compactc`, and also mmaps head chunks. Additionally checks for stale series ratio and triggers `CompactStaleHead()` if needed.
+
+2. **`compactc` channel receive**: checks `autoCompact` flag, then calls `db.Compact(ctx)`. Uses exponential backoff on failure.
+
+**Trigger path — on commit** (`db.go:1344-1402`):
+
+Both `dbAppender.Commit()` and `dbAppenderV2.Commit()` check `db.head.compactable()` after every commit. If the head is compactable, they send a non-blocking signal on `db.compactc`:
+
+```go
+if a.db.head.compactable() {
+    select {
+    case a.db.compactc <- struct{}{}:
+    default:
+    }
+}
+```
+
+**`DB.Compact()`** (`db.go:1410-1465`) — the main compaction method:
+
+1. Acquires `cmtx` (mutex serializing compactions)
+2. **Phase 1 — Head compaction** (highest priority): loops while `head.compactable()`, respecting an optional `CompactionDelay`. Computes the time range, wraps the head into a `RangeHead`, and calls `compactHead()` which uses `compactor.Write()` to persist the head to a block, then truncates memory and WAL.
+3. **Phase 2 — OOO head compaction**: if out-of-order data exists, `compactOOO()` (`db.go:1587-1632`) writes one block per time range from the OOO head.
+4. **Phase 3 — Block compaction**: `compactBlocks()` (`db.go:1719-1763`) loops calling `compactor.Plan()` then `compactor.Compact()`, reloading blocks after each round. It aborts early if the head becomes compactable again (head always takes priority).
+
+**Compaction delay** (`db.go:1404-1408`): An optional jitter (`CompactionDelay`, up to `CompactionDelayMaxPercent` of chunk range) delays head compaction start to stagger compactions across multiple TSDB instances.
+
+### Summary Flow
+
+```
+Appender.Commit() or periodic timer
+        │
+        ▼
+    compactc channel
+        │
+        ▼
+    DB.Compact()
+        │
+        ├─► Head compactable? → compactHead() → compactor.Write() → reloadBlocks()
+        ├─► OOO data?         → compactOOO()  → compactor.Write() → reloadBlocks()
+        └─► compactBlocks()   → compactor.Plan() → compactor.Compact() → reloadBlocks()
+                                     │                    │
+                                     ▼                    ▼
+                              LeveledCompactor      LeveledCompactor
+                              .plan() selects       .write() merges
+                              block groups           via BlockPopulator
+```

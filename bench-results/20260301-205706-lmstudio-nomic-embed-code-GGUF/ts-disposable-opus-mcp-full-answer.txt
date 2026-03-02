@@ -1,0 +1,95 @@
+Here's how the disposable pattern works in this codebase (from `testdata/fixtures/ts/lifecycle.ts`):
+
+---
+
+### `IDisposable` interface (line 312)
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The simplest possible contract: any object with a `dispose()` method. Used for event listeners, file watchers, provider registrations, etc.
+
+---
+
+### `Disposable` base class (line 526)
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+Key points:
+- Contains an internal `DisposableStore` (`_store`) that owns all child disposables
+- `Disposable.None` is a frozen no-op disposable (useful as a default/sentinel)
+- Subclasses call `this._register(something)` to register child disposables
+- When `dispose()` is called, it disposes the entire store (all children)
+- Self-registration is prevented with an explicit check
+
+---
+
+### `DisposableStore` (line 416)
+
+```typescript
+export class DisposableStore implements IDisposable {
+    private readonly _toDispose = new Set<IDisposable>();
+    private _isDisposed = false;
+    // ...
+}
+```
+
+This is the workhorse for managing multiple disposables. Key methods:
+
+| Method | Behavior |
+|---|---|
+| `add(o)` | Registers a disposable. If the store is already disposed, logs a warning (leak!) |
+| `dispose()` | Disposes all registered items, marks store as disposed. Idempotent. |
+| `clear()` | Disposes all items but does **not** mark the store as disposed (can reuse) |
+| `delete(o)` | Removes from store **and** disposes the item |
+| `deleteAndLeak(o)` | Removes from store **without** disposing (caller takes ownership) |
+
+Safety features:
+- **Idempotent dispose**: second call to `dispose()` is a no-op
+- **Self-registration guard**: throws if you try `store.add(store)`
+- **Post-dispose warning**: adding to an already-disposed store logs a warning instead of silently leaking
+- **Error aggregation**: the `dispose()` helper (line 332) catches errors from individual disposals and throws an `AggregateError` if multiple fail, ensuring all items get their `dispose()` called even if some throw
+
+---
+
+### How they compose
+
+A typical subclass looks like:
+
+```typescript
+class MyWidget extends Disposable {
+    constructor() {
+        super();
+        this._register(someEventEmitter.on('click', handler));
+        this._register(new FileWatcher(path));
+    }
+}
+```
+
+When `myWidget.dispose()` is called: `Disposable.dispose()` → `DisposableStore.dispose()` → iterates the `Set<IDisposable>` and calls `dispose()` on each registered child. The leak tracker (`disposableTracker`) optionally monitors the parent-child tree to detect disposables that were never disposed.

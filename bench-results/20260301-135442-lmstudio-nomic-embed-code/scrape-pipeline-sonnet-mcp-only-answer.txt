@@ -1,0 +1,283 @@
+Here's a complete walkthrough of how Prometheus metrics scraping and collection works across this codebase.
+
+---
+
+## Overview: Two Separate Systems
+
+The fixture contains two distinct subsystems:
+
+1. **The scrape engine** (`scrape.go`, `manager.go`) — polls remote targets over HTTP and stores time-series data.
+2. **The client library** (`prom_gauge.go`, `prom_registry.go`) — lets Go code instrument itself and expose metrics.
+
+They are connected at the `/metrics` HTTP endpoint: the client library serves it; the scrape engine fetches it.
+
+---
+
+## 1. The Scrape Manager (`manager.go`)
+
+`Manager` is the top-level orchestrator. It holds one `scrapePool` per configured job.
+
+```
+Manager
+ ├── scrapePools map[jobName]*scrapePool
+ └── scrapeConfigs map[jobName]*ScrapeConfig
+```
+
+**`ApplyConfig`** (`manager.go:278`) is called on every config reload:
+- Reads all `ScrapeConfig` objects from the new config
+- For each job, either creates a new `scrapePool`, reloads an existing one, or tears down a removed one
+- Pools are reloaded concurrently, bounded by `runtime.GOMAXPROCS(0)` via a buffered channel semaphore
+
+**`scrapePool.Sync`** (`scrape.go:388`) is called when service discovery delivers updated target groups:
+- Iterates `[]*targetgroup.Group` → calls `TargetsFromGroup` to build `*Target` list
+- Drops targets with no labels
+- Calls `sp.sync(all)` to reconcile running loops against the new target set
+
+**`scrapePool.sync`** (`scrape.go:494`) is the inner reconciliation loop:
+- For targets not yet running: creates a new `scrapeLoop` and starts it with `go l.run(nil)`
+- For targets no longer present: calls `l.stop()` to drain the old loop
+- Uses `map[uint64]loop` keyed by the target's label-set hash
+
+---
+
+## 2. The Scrape Loop: One Per Target (`scrape.go`)
+
+```go
+// scrape.go:83
+type scrapePool struct {
+    loops         map[uint64]loop       // hash → scrapeLoop
+    activeTargets map[uint64]*Target
+    appendable    storage.Appendable
+    ...
+}
+
+// scrape.go:822
+type scrapeLoop struct {
+    interval  time.Duration
+    timeout   time.Duration
+    scraper   scraper              // ← fetches HTTP
+    appendable storage.Appendable  // ← writes time-series
+    cache     *scrapeCache         // ← series ref cache
+    ...
+}
+```
+
+**`scrapeLoop.run`** (`scrape.go:1234`) is the per-target event loop:
+
+```
+run()
+  │
+  ├── wait for initial jitter offset (scraper.offset())
+  │
+  └── for { select {
+        case <-ticker.C:
+          scrapeAndReport(last, scrapeTime, errc)
+        case <-ctx.Done():
+          break → endOfRunStaleness()
+      }}
+```
+
+The ticker fires at `sl.interval`. `AlignScrapeTimestamps` optionally snaps timestamps to wall-clock interval boundaries (with 1% tolerance) to avoid jitter accumulating over time.
+
+---
+
+## 3. Scrape Execution: HTTP Fetch + Parse + Append
+
+**`scrapeAndReport`** (`scrape.go:1308`) orchestrates one full scrape cycle:
+
+```
+scrapeAndReport()
+  │
+  ├── app := sl.appender()              // get storage.Appender
+  │
+  ├── sl.scraper.scrape(ctx)            // HTTP GET /metrics
+  │   └── targetScraper.scrape()
+  │       └── http.Client.Do(req)       // returns *http.Response
+  │
+  ├── body → []byte buf
+  │
+  ├── app.append(buf, contentType, ts)  // parse + write
+  │
+  ├── app.Commit()  (or Rollback on error)
+  │
+  └── sl.report(...)  // write scrape meta-metrics (_up, _duration_seconds, etc.)
+```
+
+**`targetScraper`** (`scrape.go:685`):
+```go
+type targetScraper struct {
+    *Target
+    client  *http.Client
+    req     *http.Request   // reused across scrapes
+    gzipr   *gzip.Reader    // for Accept-Encoding: gzip
+    ...
+}
+```
+Sets `Accept`, `Accept-Encoding`, `User-Agent`, and `X-Prometheus-Scrape-Timeout-Seconds` headers. The `req` is lazily created on first scrape and reused.
+
+---
+
+## 4. Parsing the Text Exposition Format
+
+**`scrapeLoopAppender.append`** (`scrape.go:1562`) drives parsing:
+
+```go
+p, err := textparse.New(b, contentType, sl.symbolTable, textparse.ParserOptions{...})
+
+for {
+    et, err := p.Next()          // advance to next entry
+    switch et {
+    case textparse.EntryType:    // # TYPE foo counter
+    case textparse.EntryHelp:    // # HELP foo ...
+    case textparse.EntryComment:
+    case textparse.EntrySeries:  // foo{label="val"} 1.23 timestamp
+        p.Labels(&lset)
+        _, ts, val = p.Series()
+        ref, err = app.Append(ref, lset, t, val)
+    case textparse.EntryHistogram:
+        ref, err = app.AppendHistogram(ref, lset, t, h, nil)
+    }
+}
+```
+
+The `Parser` interface (`textparse_interface.go:63`) is the abstraction over both Prometheus text format and OpenMetrics:
+```go
+type Parser interface {
+    Next() (Entry, error)       // advance, returns entry type
+    Series() ([]byte, *int64, float64)  // metric name bytes, optional timestamp, value
+    Labels(l *labels.Labels)    // write labels into caller's struct
+    Exemplar(l *exemplar.Exemplar) bool
+    StartTimestamp() int64      // for created-timestamp / CT zero ingestion
+}
+```
+
+Entry types: `EntrySeries=1`, `EntryType=2`, `EntryHelp=3`, `EntryComment=4`, `EntryHistogram=5`.
+
+---
+
+## 5. Series Cache (`scrapeCache`)
+
+`scrapeCache` avoids repeated label lookups across scrapes:
+
+```go
+// scrape.go:815
+type cacheEntry struct {
+    ref      storage.SeriesRef  // TSDB series ID
+    lastIter uint64             // iteration counter for staleness
+    hash     uint64             // label set hash
+    lset     labels.Labels
+}
+```
+
+- **Cache hit**: re-use `storage.SeriesRef` directly in `app.Append(ref, ...)`, avoiding a label-set lookup in TSDB
+- **Cache miss**: TSDB returns a new ref → stored via `cache.addRef(met, ref, lset, hash)`
+- **Staleness tracking**: `trackStaleness(ref, ce)` records which series were seen this iteration; `forEachStale` finds series not seen in the current scrape and appends `StaleNaN` markers so TSDB knows the series ended
+
+---
+
+## 6. Counter and Gauge Internal Storage (Client Library)
+
+**`gauge`** (`prom_gauge.go:90`):
+```go
+type gauge struct {
+    valBits uint64       // float64 bits stored as uint64 for atomic ops
+    selfCollector         // implements Collector by collecting itself
+    desc       *Desc
+    labelPairs []*dto.LabelPair
+}
+```
+
+`Set` is a direct atomic store:
+```go
+func (g *gauge) Set(val float64) {
+    atomic.StoreUint64(&g.valBits, math.Float64bits(val))
+}
+```
+
+`Add` uses a CAS loop because there's no native atomic float64 add:
+```go
+func (g *gauge) Add(val float64) {
+    for {
+        oldBits := atomic.LoadUint64(&g.valBits)
+        newBits := math.Float64bits(math.Float64frombits(oldBits) + val)
+        if atomic.CompareAndSwapUint64(&g.valBits, oldBits, newBits) {
+            return
+        }
+    }
+}
+```
+
+`Inc()` just calls `Add(1)`. No mutex, no allocation on the hot path.
+
+---
+
+## 7. Registry: Descriptor Validation + Gather
+
+**`Registry.Register`** (`prom_registry.go:269`):
+- Collector calls `Describe(descChan)` → Registry reads all `*Desc` objects
+- Validates: no duplicate desc ID (fqName + const labels), consistent dimension hash per name
+- Computes `collectorID = XOR of all desc.id values` — uniquely identifies the collector
+- Stores in `r.collectorsByID[collectorID]`
+
+**`Registry.Gather`** (`prom_registry.go:411`) — called when `/metrics` is scraped:
+
+```
+Gather()
+  │
+  ├── enqueue all collectors into checkedCollectors/uncheckedCollectors channels
+  │
+  ├── spawn goroutine workers (bounded by goroutineBudget = num collectors)
+  │   └── collectWorker():
+  │       └── collector.Collect(metricChan)  // each metric → channel
+  │
+  ├── drain metricChan:
+  │   └── processMetric(metric, metricFamiliesByName, ...)
+  │       ├── metric.Write(dtoMetric)  // serialize to dto.Metric proto
+  │       ├── look up or create MetricFamily by desc.fqName
+  │       ├── set MetricFamily.Type (GAUGE/COUNTER/SUMMARY/HISTOGRAM/UNTYPED)
+  │       └── append dtoMetric to MetricFamily.Metric
+  │
+  └── return sorted []*dto.MetricFamily
+```
+
+`processMetric` (`prom_registry.go:688`) determines the metric type by inspecting which field is set on the `dto.Metric`:
+```go
+switch {
+case dtoMetric.Gauge != nil:     metricFamily.Type = dto.MetricType_GAUGE
+case dtoMetric.Counter != nil:   metricFamily.Type = dto.MetricType_COUNTER
+case dtoMetric.Histogram != nil: metricFamily.Type = dto.MetricType_HISTOGRAM
+...
+}
+```
+
+---
+
+## Data Flow: End to End
+
+```
+Go process (client library)
+  gauge.Add(1)
+    └── atomic CAS on valBits
+          │
+HTTP GET /metrics ◄─────────── scrapeLoop (every interval)
+  Registry.Gather()
+    └── Collector.Collect(ch)
+          └── gauge.Write(dto) → encodes float64 to proto
+  text/plain response body
+          │
+targetScraper.scrape() ────────► []byte buffer
+          │
+textparse.Parser.Next()
+  EntrySeries → p.Labels(), p.Series()
+          │
+scrapeCache lookup (ref hit or miss)
+          │
+storage.Appender.Append(ref, lset, timestamp, value)
+  app.Commit() ──────────────► TSDB / WAL
+```
+
+**Key design choices visible in the code:**
+- Atomic float64 via `uint64` + CAS avoids mutex on every metric update
+- `scrapeCache` keeps TSDB series refs alive across scrapes to avoid label-set resolution overhead on every tick
+- `Registry.Gather` uses a goroutine-per-collector pattern with channel buffering so slow collectors don't block others
+- `collectorID = XOR(desc IDs)` lets duplicate-registration detection be O(1) per descriptor

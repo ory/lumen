@@ -1,0 +1,187 @@
+Here's how TSDB compaction works end-to-end:
+
+---
+
+## The `Compactor` Interface
+
+Defined in `compact.go`, it has three methods:
+
+```go
+type Compactor interface {
+    // Plan returns directories that can be compacted concurrently.
+    Plan(dir string) ([]string, error)
+
+    // Write persists one or more Blocks from a BlockReader into dest.
+    // Returns empty slice if resulting block has 0 samples.
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+
+    // Compact merges the given dirs into a new block in dest.
+    // open blocks can be passed to avoid re-opening them.
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+---
+
+## `LeveledCompactor`
+
+The concrete implementation. Key types:
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64        // compaction level time ranges
+    chunkPool                   chunkenc.Pool
+    enableOverlappingCompaction bool
+}
+
+type LeveledCompactorOptions struct {
+    PE                          index.PostingsEncoder
+    MaxBlockChunkSegmentSize    int64
+    MergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    BlockExcludeFilter          BlockExcludeFilterFunc
+    EnableOverlappingCompaction bool
+    Metrics                     *CompactorMetrics
+    UseUncachedIO               bool
+}
+```
+
+**Constructor:**
+```go
+func NewLeveledCompactor(ctx context.Context, r prometheus.Registerer, l *slog.Logger,
+    ranges []int64, pool chunkenc.Pool,
+    mergeFunc storage.VerticalChunkSeriesMergeFunc) (*LeveledCompactor, error)
+```
+
+**Planning:**
+- `Plan(dir)` → delegates to internal `plan(dms []dirMeta)`
+- `selectDirs(ds []dirMeta)` — picks non-overlapping blocks that fit a level range
+- `selectOverlappingDirs(ds []dirMeta)` — picks overlapping blocks (only if `enableOverlappingCompaction=true`)
+
+**Execution:**
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+    → CompactWithBlockPopulator(dest, dirs, open, DefaultBlockPopulator{})
+    → write(dest, meta, blockPopulator, blocks...)
+```
+
+`write` creates the on-disk block structure. The actual merge is handled by `BlockPopulator`:
+
+```go
+type BlockPopulator interface {
+    PopulateBlock(ctx context.Context, metrics *CompactorMetrics, logger *slog.Logger,
+        chunkPool chunkenc.Pool, mergeFunc storage.VerticalChunkSeriesMergeFunc,
+        blocks []BlockReader, meta *BlockMeta, indexw IndexWriter, chunkw ChunkWriter,
+        postingsFunc IndexReaderPostingsFunc) error
+}
+```
+
+`DefaultBlockPopulator.PopulateBlock` iterates all series across input blocks, merges them (using `MergeFunc` for overlapping series), and writes chunks + index.
+
+**Meta merging:**
+```go
+func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta
+// Merges source block lists, bumps compaction level, sets combined mint/maxt.
+```
+
+---
+
+## How `DB` Triggers Compaction
+
+**Initialization** (`db.go`, `open()`):
+```go
+// Build level ranges from MinBlockDuration doubling up to MaxBlockDuration.
+// Create compactor:
+db.compactor, err = NewLeveledCompactorWithOptions(ctx, r, l, rngs, db.chunkPool, ...)
+// Optional random startup delay to avoid thundering herd:
+if opts.EnableDelayedCompaction {
+    opts.CompactionDelay = db.generateCompactionDelay()
+}
+go db.run(ctx)  // background goroutine
+```
+
+**Trigger sources** — two paths signal `db.compactc chan struct{}`:
+
+1. **`dbAppender.Commit()`** — after every write flush, checks `head.compactable()` and sends on `compactc` (non-blocking).
+2. **`run()` ticker** — periodically checks `head.compactable()` and stale-series ratio, sends on `compactc` or calls `CompactStaleHead()` directly.
+
+**`run()` loop** (receives on `compactc`):
+```go
+case <-db.compactc:
+    db.metrics.compactionsTriggered.Inc()
+    db.autoCompactMtx.Lock()
+    if db.autoCompact {
+        db.Compact(ctx)    // main orchestrator
+    } else {
+        db.metrics.compactionsSkipped.Inc()
+    }
+```
+
+---
+
+## `DB.Compact` — End-to-End Orchestration
+
+```go
+func (db *DB) Compact(ctx context.Context) error {
+    db.cmtx.Lock()
+    defer db.cmtx.Unlock()
+
+    // 1. Flush in-order head to disk (loop until !head.compactable()):
+    db.compactHead(rh)          // calls compactor.Write(db.dir, head, ...)
+
+    // 2. Truncate WAL to free memory.
+
+    // 3. Flush out-of-order head:
+    db.compactOOOHead(ctx)      // calls compactOOO → compactor.Write per block-size window
+
+    // 4. Compact existing on-disk blocks:
+    return db.compactBlocks()
+}
+```
+
+**`compactBlocks()`** is the leveled merge loop:
+```go
+func (db *DB) compactBlocks() error {
+    for {
+        if db.head.compactable() && !db.waitingForCompactionDelay() {
+            return nil  // abort to let head flush take priority
+        }
+        plan, _ := db.compactor.Plan(db.dir)
+        if len(plan) == 0 {
+            break       // nothing to do
+        }
+        uids, _ := db.compactor.Compact(db.dir, plan, db.blocks)
+        db.reloadBlocks()
+    }
+}
+```
+
+**Stale series path:**
+```go
+func (db *DB) CompactStaleHead() error {
+    // Writes a block marked meta.Compaction.SetStaleSeries()
+    // via db.compactor.Write(...)
+}
+```
+
+---
+
+## Data Flow Summary
+
+```
+Commit()  ──┐
+            ├──▶ compactc ──▶ run() ──▶ DB.Compact()
+ticker   ──┘                               │
+                                    ┌──────┴────────┐
+                                    ▼               ▼
+                              compactHead      compactBlocks
+                                    │               │
+                              compactor.Write  compactor.Plan
+                                    │          compactor.Compact
+                                    ▼               │
+                             new .db block ◀────────┘
+                             (ULID named)
+```
+
+Levels are determined by the `ranges []int64` slice (e.g. `[2h, 6h, 24h, ...]`). `selectDirs` picks blocks that fit the smallest range where `N` blocks of level `L` can be merged into one level `L+1` block. Overlapping blocks across any level are handled by `selectOverlappingDirs` when `enableOverlappingCompaction=true`.

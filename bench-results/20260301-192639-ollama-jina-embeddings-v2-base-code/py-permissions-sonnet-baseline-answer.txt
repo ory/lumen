@@ -1,0 +1,44 @@
+Here's how the Django `Permission` model works:
+
+---
+
+## `PermissionManager` (`django-models.py:27-36`)
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+- Extends `models.Manager` with `use_in_migrations = True` so it's available during data migrations.
+- `get_by_natural_key` looks up a `Permission` by `(codename, app_label, model)`. It resolves the `ContentType` via its own `get_by_natural_key`, using `self.db` to ensure the same database alias is used throughout.
+
+---
+
+## `Permission` model (`django-models.py:39-85`)
+
+**Fields:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | `CharField(max_length=255)` | Human-readable name |
+| `content_type` | `ForeignKey(ContentType, CASCADE)` | Links to a model type |
+| `codename` | `CharField(max_length=100)` | Machine-readable code (e.g. `add_user`) |
+| `objects` | `PermissionManager()` | Custom manager |
+
+**Meta:**
+- `unique_together = [["content_type", "codename"]]` — a codename must be unique per model type
+- `ordering = ["content_type__app_label", "content_type__model", "codename"]`
+
+**`natural_key()`** returns `(codename, *content_type.natural_key())` — i.e. `(codename, app_label, model)`, which is exactly what `get_by_natural_key` accepts. The `dependencies` attribute declares that `contenttypes.contenttype` must be loaded first during fixture serialization.
+
+---
+
+**In summary:** Permissions are global per model type (not per object instance). Each permission is uniquely identified by its `content_type` + `codename` pair. The `PermissionManager` enables natural key lookups used during fixture loading and migrations.

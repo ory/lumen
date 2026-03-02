@@ -1,0 +1,216 @@
+Here's how the Django QuerySet evaluation and filtering pipeline works, based on the fixture code:
+
+## 1. The Manager — Entry Point
+
+`django-manager.py` — The `Manager` is the gateway from a Model to QuerySets.
+
+```python
+class BaseManager:
+    def get_queryset(self):
+        return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+    def all(self):
+        return self.get_queryset()
+
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+`from_queryset()` (line ~112) dynamically creates a Manager subclass by copying public QuerySet methods onto it via `_get_queryset_methods`. Each copied method delegates to `self.get_queryset()`:
+
+```python
+def create_method(name, method):
+    @wraps(method)
+    def manager_method(self, *args, **kwargs):
+        return getattr(self.get_queryset(), name)(*args, **kwargs)
+    return manager_method
+```
+
+So `MyModel.objects.filter(...)` calls `Manager.get_queryset().filter(...)`.
+
+A `ManagerDescriptor` (`__get__`) ensures managers are only accessible on the class, not instances.
+
+## 2. QuerySet Construction — Lazy by Design
+
+`django-query.py:303-321` — A QuerySet wraps a `sql.Query` object and a result cache:
+
+```python
+class QuerySet(AltersData):
+    """Represent a lazy database lookup for a set of objects."""
+
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._query = query or sql.Query(self.model)   # the SQL builder
+        self._result_cache = None                       # None = not yet evaluated
+        self._iterable_class = ModelIterable             # how to turn rows into objects
+        self._sticky_filter = False
+        self._defer_next_filter = False
+        self._deferred_filter = None
+```
+
+The `query` property (line 324) lazily resolves any deferred filter before returning `_query`:
+
+```python
+@property
+def query(self):
+    if self._deferred_filter:
+        negate, args, kwargs = self._deferred_filter
+        self._filter_or_exclude_inplace(negate, args, kwargs)
+        self._deferred_filter = None
+    return self._query
+```
+
+## 3. QuerySet Chaining — Clone, Don't Mutate
+
+Every filtering method returns a **new** QuerySet via `_chain()` (line 2137):
+
+```python
+def _chain(self):
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+        obj._sticky_filter = False
+    return obj
+```
+
+This is why you can write `qs.filter(a=1).exclude(b=2).order_by('c')` — each call produces a fresh clone. The original is untouched.
+
+Examples of chaining methods that all follow this pattern:
+
+| Method | Line | Pattern |
+|--------|------|---------|
+| `all()` | 1617 | `return self._chain()` |
+| `filter()` | 1624 | `return self._filter_or_exclude(False, args, kwargs)` |
+| `exclude()` | 1632 | `return self._filter_or_exclude(True, args, kwargs)` |
+| `order_by()` | ~1895 | `clone = self._chain(); clone.query.standard_ordering = ...` |
+| `defer()` | ~1902 | `clone = self._chain(); clone.query.add_deferred_loading(fields)` |
+| `only()` | 1919 | `clone = self._chain(); clone.query.add_immediate_loading(fields)` |
+
+## 4. Filter Compilation — From kwargs to Q to SQL
+
+The pipeline from `filter(name="foo")` to SQL is:
+
+**Step 1: `filter()` → `_filter_or_exclude()`** (line 1640)
+
+```python
+def _filter_or_exclude(self, negate, args, kwargs):
+    if (args or kwargs) and self.query.is_sliced:
+        raise TypeError("Cannot filter a query once a slice has been taken.")
+    clone = self._chain()
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+```
+
+**Step 2: `_filter_or_exclude_inplace()` → `Q` objects → `query.add_q()`** (line 1651)
+
+```python
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+Keyword args like `name__startswith="foo"` are wrapped into a `Q` object. The `Q` class (from `django.db.models.query_utils`) supports `&`, `|`, and `~` operators for combining/negating conditions. `add_q()` on the underlying `sql.Query` compiles lookups (splitting on `LOOKUP_SEP` = `"__"`) into WHERE clause nodes.
+
+**Step 3: `complex_filter()`** (line 1660) — supports passing raw `Q` objects or dicts directly:
+
+```python
+def complex_filter(self, filter_obj):
+    if isinstance(filter_obj, Q):
+        clone = self._chain()
+        clone.query.add_q(filter_obj)
+        return clone
+    else:
+        return self._filter_or_exclude(False, args=(), kwargs=filter_obj)
+```
+
+**Step 4: Set operations** — `__and__`, `__or__`, `__xor__` (lines 468-533) combine QuerySets:
+
+```python
+def __and__(self, other):          # qs1 & qs2
+    combined = self._chain()
+    combined.query.combine(other.query, sql.AND)
+    return combined
+
+def __or__(self, other):           # qs1 | qs2
+    combined.query.combine(other.query, sql.OR)
+```
+
+## 5. Lazy Evaluation — Nothing Runs Until You Iterate
+
+The QuerySet does **no database work** until the result cache is populated. The key method is `_fetch_all()` (line ~2169):
+
+```python
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+This is triggered by any of the **evaluation entry points**:
+
+| Trigger | Method | How |
+|---------|--------|-----|
+| `for obj in qs` | `__iter__` (line 2374) | `self._fetch_all(); return iter(self._result_cache)` |
+| `bool(qs)` | `__bool__` (line 424) | `self._fetch_all(); return bool(self._result_cache)` |
+| `qs[0]` | `__getitem__` (line 427) | Sets limits on clone, calls `_fetch_all()` |
+| `len(qs)` | `__len__` | `self._fetch_all(); return len(self._result_cache)` |
+| `list(qs)` | via `__iter__` | Same path |
+
+## 6. Row-to-Object Materialization — The Iterable Classes
+
+When `_fetch_all()` runs `list(self._iterable_class(self))`, it instantiates a `ModelIterable` (line 88):
+
+```python
+class ModelIterable(BaseIterable):
+    def __iter__(self):
+        queryset = self.queryset
+        db = queryset.db
+        compiler = queryset.query.get_compiler(using=db)    # Query → SQL compiler
+        results = compiler.execute_sql(...)                  # actual DB hit
+        # ... for each row:
+        obj = model_cls.from_db(db, init_list, row[start:end])
+        yield obj
+```
+
+The path is: **QuerySet → sql.Query → Compiler → execute_sql() → result rows → Model.from_db()**.
+
+## 7. The `get()` Method — Single Object Retrieval
+
+`get()` (line 636) combines filtering + evaluation + validation:
+
+```python
+def get(self, *args, **kwargs):
+    clone = self.filter(*args, **kwargs)      # chain a filter
+    clone = clone.order_by()                  # strip ordering
+    clone.query.set_limits(high=MAX_GET_RESULTS)  # LIMIT 21
+    num = len(clone)                          # triggers evaluation
+    if num == 1:
+        return clone._result_cache[0]
+    if not num:
+        raise self.model.DoesNotExist(...)
+    raise self.model.MultipleObjectsReturned(...)
+```
+
+## Summary Flow
+
+```
+MyModel.objects.filter(name="x").exclude(active=False).order_by("id")[:10]
+
+1. Manager.filter()  → Manager.get_queryset().filter()
+2. filter()          → _chain() clone + _filter_or_exclude(negate=False)
+3.                   → Q(name="x") → query.add_q() → WHERE node added
+4. exclude()         → _chain() clone + _filter_or_exclude(negate=True)
+5.                   → ~Q(active=False) → query.add_q() → WHERE NOT node
+6. order_by("id")    → _chain() clone + query.add_ordering()
+7. [:10]             → __getitem__(slice) → _chain() + query.set_limits(0, 10)
+8. iteration         → _fetch_all() → ModelIterable.__iter__()
+9.                   → query.get_compiler() → compiler.execute_sql()
+10.                  → SQL: SELECT ... WHERE name='x' AND NOT active=False
+                            ORDER BY id LIMIT 10
+11.                  → rows → Model.from_db() → cached in _result_cache
+```
+
+The key design: every method mutates a **clone's** `sql.Query` object, nothing touches the database until evaluation is forced, and the `Manager` simply bootstraps fresh QuerySets that expose the full fluent API.

@@ -1,0 +1,27 @@
+Histogram bucket counting works through the `histogramCounts.observe` method in `prom_histogram.go:652-706`. Here's how it works:
+
+1. **Classic buckets**: The value is placed into a pre-defined bucket via `atomic.AddUint64(&hc.buckets[bucket], 1)` — a simple atomic increment on the matching bucket index.
+
+2. **Native (sparse) buckets**: When `doSparse` is true, the method computes a bucket key using logarithmic scaling:
+   - It calls `math.Frexp(math.Abs(v))` to decompose the value into a fraction and exponent.
+   - For **positive schemas** (`schema > 0`): it does a binary search (`sort.SearchFloat64s`) into precomputed `nativeHistogramBounds` and combines with the exponent to get the key.
+   - For **non-positive schemas** (`schema <= 0`): the key is derived directly from the exponent, with an offset-and-shift calculation `(key + offset) >> -schema`.
+   - Values within the zero threshold go into `nativeHistogramZeroBucket`.
+   - Positive/negative values go into their respective sparse bucket maps via `addToBucket()`.
+
+3. **Validation**: `Histogram.Validate` (`histogram.go:470-479`) checks that the sum of all bucket counts matches `h.Count`, returning `ErrHistogramCountMismatch` or `ErrHistogramCountNotBigEnough` on discrepancy.
+
+Key function/type signatures involved:
+
+```go
+// prom_histogram.go:652
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+
+// histogram.go:481
+type regularBucketIterator struct {
+    baseBucketIterator[uint64, int64]
+}
+
+// histogram.go:470 (part of)
+func (h *Histogram) Validate() error
+```

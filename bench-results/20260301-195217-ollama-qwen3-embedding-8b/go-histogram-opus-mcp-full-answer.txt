@@ -1,0 +1,54 @@
+Here's how histogram bucket counting works in this codebase:
+
+There are **two histogram systems** — a Prometheus client histogram (`prom_histogram.go`) and a data-model histogram (`histogram.go`).
+
+## Prometheus Client: `histogramCounts.observe`
+
+The core counting logic is in `prom_histogram.go:652-706`:
+
+```go
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+It does three things:
+1. **Regular buckets** — increments `hc.buckets[bucket]` atomically (the bucket index is pre-computed by `findBucket` via binary search on upper bounds)
+2. **Native/sparse buckets** — computes an exponential bucket key from `math.Frexp(math.Abs(v))` using the schema, then routes into one of three places:
+   - `v > zeroThreshold` → `addToBucket(&hc.nativeHistogramBucketsPositive, key, 1)`
+   - `v < -zeroThreshold` → `addToBucket(&hc.nativeHistogramBucketsNegative, key, 1)`
+   - otherwise → `hc.nativeHistogramZeroBucket++`
+3. **Count & sum** — atomically increments `hc.count` (last, as a completion signal) and adds `v` to `hc.sumBits`
+
+The caller is:
+
+```go
+func (h *histogram) observe(v float64, bucket int)  // prom_histogram.go:899
+```
+
+which also calls `h.limitBuckets(hotCounts, v, bucket)` to enforce `NativeHistogramMaxBucketNumber`.
+
+## Data-Model Histogram: Bucket Iteration
+
+`histogram.go` uses a **span-based encoding** — buckets are stored as delta-encoded counts (`[]int64`) with `Span` structs describing which index ranges are populated. Iteration happens via:
+
+```go
+type regularBucketIterator struct { ... }                    // histogram.go:481
+func newRegularBucketIterator(spans []Span, buckets []int64,
+    schema int32, positive bool, customValues []float64) regularBucketIterator  // histogram.go:485
+
+type cumulativeBucketIterator struct { ... }                 // histogram.go:530
+func (c *cumulativeBucketIterator) At() Bucket[uint64]      // histogram.go:609
+```
+
+The `cumulativeBucketIterator` walks spans and tracks `currCumulativeCount` — accumulating counts across buckets including empty gaps between spans (`emptyBucketCount`).
+
+There's also a zero bucket accessor:
+
+```go
+func (h *Histogram) ZeroBucket() Bucket[uint64]             // histogram.go:200
+```
+
+And a PromQL function that extracts the total count:
+
+```go
+func funcHistogramCount(vectorVals []Vector, ...) (Vector, annotations.Annotations)  // functions.go:1598
+```

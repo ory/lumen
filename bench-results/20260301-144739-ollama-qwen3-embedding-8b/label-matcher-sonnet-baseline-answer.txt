@@ -1,0 +1,45 @@
+Here's a summary of what's available in `matcher.go`:
+
+---
+
+### Match Types
+
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+---
+
+### Matcher Struct
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // populated for regexp types
+}
+```
+
+---
+
+### Constructors
+
+**`NewMatcher`** — primary constructor, returns an error if the value is an invalid regex:
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error)
+```
+For `MatchRegexp` or `MatchNotRegexp`, it compiles the value into a `FastRegexMatcher` and stores it in the unexported `re` field.
+
+**`MustNewMatcher`** — panics on error, intended for tests only:
+```go
+func MustNewMatcher(mt MatchType, name, val string) *Matcher
+```

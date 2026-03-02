@@ -1,0 +1,219 @@
+Here's a comprehensive breakdown of how Django's QuerySet evaluation and filtering pipeline works in this codebase:
+
+---
+
+## QuerySet Pipeline: Lazy Evaluation & Chaining
+
+**File:** `testdata/fixtures/python/django-query.py`
+
+---
+
+### 1. Core Architecture
+
+```
+Manager.objects.filter() → QuerySet._chain() → Query.add_q() → [no DB hit]
+                                                                      │
+                                                           [evaluation trigger]
+                                                                      │
+                                                              _fetch_all()
+                                                                      │
+                                                         Iterable(queryset)
+                                                                      │
+                                                       Query.get_compiler(db)
+                                                                      │
+                                                       SQLCompiler.execute_sql()
+```
+
+---
+
+### 2. QuerySet Initialization (lines 306–321)
+
+```python
+class QuerySet(AltersData):
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._db = using
+        self._query = query or sql.Query(self.model)  # The SQL builder
+        self._result_cache = None                      # None = not yet evaluated
+        self._iterable_class = ModelIterable           # What gets yielded
+        ...
+```
+
+The `_result_cache = None` sentinel is the key to lazy evaluation — nothing touches the DB until this is populated.
+
+---
+
+### 3. Lazy Evaluation
+
+**`_fetch_all()` (line 2168)** is the single point where SQL actually executes:
+
+```python
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))  # ← DB hit here
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+Triggers that force evaluation:
+
+| Code | Method | Line |
+|------|--------|------|
+| `for x in qs` | `__iter__()` | 396 |
+| `len(qs)` | `__len__()` | 392 |
+| `bool(qs)` | `__bool__()` | 424 |
+| `qs[0]` | `__getitem__()` | 428 |
+| `qs.count()` | `count()` | 620 |
+| `qs.exists()` | `exists()` | 1407 |
+| `qs.get(...)` | `get()` | 636 |
+
+---
+
+### 4. QuerySet Chaining — The Clone Pattern
+
+Every mutating method returns a **new** QuerySet clone, leaving the original untouched:
+
+```python
+# _clone() — line 2148
+def _clone(self):
+    c = self.__class__(
+        model=self.model,
+        query=self.query.chain(),  # deep-copies the Query object
+        using=self._db,
+        hints=self._hints,
+    )
+    c._iterable_class = self._iterable_class
+    # _result_cache is NOT copied — always None in the new clone
+    return c
+
+# _chain() — line 2137: clone + propagate sticky filter
+def _chain(self):
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+        obj._sticky_filter = False
+    return obj
+```
+
+---
+
+### 5. filter() / exclude() → SQL WHERE
+
+```python
+# line 1624
+def filter(self, *args, **kwargs):
+    return self._filter_or_exclude(False, args, kwargs)
+
+# line 1632
+def exclude(self, *args, **kwargs):
+    return self._filter_or_exclude(True, args, kwargs)
+
+# line 1640
+def _filter_or_exclude(self, negate, args, kwargs):
+    clone = self._chain()
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+
+# line 1651
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))  # NOT(...)
+    else:
+        self._query.add_q(Q(*args, **kwargs))   # AND(...)
+```
+
+`Q` objects carry lookup expressions (`age__gte=18`) and are combined with `&`/`|`/`~`. The `Query.add_q()` method compiles them into the SQL WHERE tree.
+
+---
+
+### 6. The Query Object — SQL Builder
+
+`sql.Query` (referenced at line 310 as `sql.Query(self.model)`) accumulates all query state:
+
+| Method | Effect |
+|--------|--------|
+| `query.add_q(Q(...))` | Adds WHERE condition |
+| `query.chain()` | Deep-copies the Query |
+| `query.set_values(fields)` | Sets SELECT columns |
+| `query.add_ordering(*fields)` | Adds ORDER BY |
+| `query.add_distinct_fields()` | Adds DISTINCT |
+| `query.add_annotation(expr, alias)` | Adds GROUP BY / annotation |
+| `query.get_compiler(using=db)` | Returns `SQLCompiler` for execution |
+| `query.get_count(using)` | Executes `SELECT COUNT(*)` |
+| `query.has_results(using)` | Executes `SELECT 1 LIMIT 1` |
+
+Lookups like `age__gte` are resolved by `Query` into the appropriate SQL operator (`>=`) via Django's lookup registry. The `Query.get_compiler()` call hands off to a database-specific `SQLCompiler` that renders the final SQL string + parameters and executes it.
+
+---
+
+### 7. Iterable Classes — How Rows Become Python Objects
+
+After `_fetch_all()` instantiates the iterable, `__iter__` drives execution:
+
+```python
+# ModelIterable (line 88) — yields model instances
+def __iter__(self):
+    compiler = queryset.query.get_compiler(using=db)
+    results = compiler.execute_sql(chunked_fetch=..., chunk_size=...)
+    for row in compiler.results_iter(results):
+        obj = model_cls.from_db(db, init_list, row[model_fields_start:])
+        yield obj
+
+# ValuesIterable (line 222) — yields dicts
+def __iter__(self):
+    compiler = query.get_compiler(queryset.db)
+    for row in compiler.results_iter(...):
+        yield {names[i]: row[i] for i in indexes}
+
+# FlatValuesListIterable (line 288) — yields scalar values
+def __iter__(self):
+    compiler = queryset.query.get_compiler(queryset.db)
+    for row in compiler.results_iter(...):
+        yield row[0]
+```
+
+`values()` and `values_list()` swap `_iterable_class` before evaluation, so the same SQL machinery yields different Python types.
+
+---
+
+### 8. Manager — The Entry Point
+
+**File:** `testdata/fixtures/python/django-manager.py`
+
+```python
+# BaseManager (line 10)
+class BaseManager:
+    def get_queryset(self):  # line 150
+        return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+    @classmethod
+    def from_queryset(cls, queryset_class, class_name=None):  # line 108
+        # Dynamically copies all public QuerySet methods onto the Manager class
+        return type(class_name, (cls,), {
+            "_queryset_class": queryset_class,
+            **cls._get_queryset_methods(queryset_class),
+        })
+
+# Manager (line 176)
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+`_get_queryset_methods()` (line 83) wraps every public QuerySet method on the Manager so that `MyModel.objects.filter(...)` transparently becomes `get_queryset().filter(...)`. The Manager is a thin proxy — all logic lives in QuerySet.
+
+---
+
+### End-to-End Example
+
+```python
+User.objects.filter(age__gte=18).order_by('-created_at').values('id', 'name')
+# No SQL yet ↑
+
+for row in queryset:        # ← __iter__ → _fetch_all() → DB hit
+    print(row['id'])
+```
+
+1. `objects.filter(age__gte=18)` — clone + `Query.add_q(Q(age__gte=18))`
+2. `.order_by('-created_at')` — clone + `Query.add_ordering('-created_at')`
+3. `.values('id', 'name')` — clone + `Query.set_values(...)` + `_iterable_class = ValuesIterable`
+4. `for row in ...` — `__iter__` → `_fetch_all()` → `ValuesIterable.__iter__` → `SQLCompiler.execute_sql()` → dicts yielded

@@ -1,0 +1,237 @@
+Here is a comprehensive explanation of the full pipeline, from scrape coordination down to in-memory storage.
+
+---
+
+## Prometheus Metrics: Data Flow from Scrape to Storage
+
+### 1. The Scrape Manager — Top-Level Coordinator
+
+**`manager.go`** — The `Manager` is the top of the hierarchy. It receives target-group updates from service discovery and drives everything else.
+
+```
+tsets channel  →  Manager.Run()  →  Manager.reloader()  →  Manager.reload()
+```
+
+- **`Manager.Run`** (`manager.go:158`) — Listens on a `tsets <-chan` for target groups from service discovery. On each update it fires `triggerReload`.
+- **`Manager.reloader`** — Throttles reloads using `DiscoveryReloadInterval`, then calls `reload()`.
+- **`Manager.reload`** (`manager.go:211`) — For each named target set, creates a `scrapePool` if one doesn't already exist, then calls `sp.Sync(groups)` in parallel goroutines.
+
+```go
+// manager.go:211 — one scrapePool per job, Sync'd in parallel
+go func(sp *scrapePool, groups []*targetgroup.Group) {
+    sp.Sync(groups)
+    wg.Done()
+}(m.scrapePools[setName], groups)
+```
+
+---
+
+### 2. The Scrape Pool — Per-Job Loop Manager
+
+**`scrapePool`** (`scrape.go:83`) manages one scrape job (e.g., all targets for `job="node-exporter"`):
+
+```go
+type scrapePool struct {
+    appendable   storage.Appendable    // TSDB writer
+    config       *config.ScrapeConfig
+    client       *http.Client
+    loops        map[uint64]loop        // one loop per target hash
+    activeTargets map[uint64]*Target
+    ...
+}
+```
+
+**`scrapePool.sync`** (`scrape.go:436`) deduplicates targets and reconciles the live set:
+- For **new** targets: creates a `targetScraper` + `scrapeLoop` and calls `go l.run(nil)`.
+- For **gone** targets: calls `l.stop()` to drain them gracefully.
+- For **unchanged** targets: no-ops (loop keeps running at its own tick).
+
+---
+
+### 3. The Scrape Loop — Per-Target Ticker
+
+**`scrapeLoop`** (`scrape.go:822`) runs the actual interval ticker for one target.
+
+**`scrapeLoop.run`** (`scrape.go:1234`):
+```go
+ticker := time.NewTicker(sl.interval)
+for {
+    // ...
+    last = sl.scrapeAndReport(last, scrapeTime, errc)
+    <-ticker.C
+}
+```
+
+**`scrapeLoop.scrapeAndReport`** (`scrape.go:1308`):
+1. Creates an `Appender` from the TSDB.
+2. Calls `sl.scraper.scrape(ctx)` — an HTTP GET to the target's `/metrics` endpoint.
+3. Reads the response body into a `bytes.Buffer`.
+4. Passes the raw bytes to `app.append(b, contentType, ts)`.
+5. Defers `app.Commit()` (or `Rollback()` on error) and metric reporting.
+
+---
+
+### 4. The Text Parser — Raw Bytes → Typed Entries
+
+**`textparse_interface.go`** defines the `Parser` interface and the `New` factory.
+
+**`textparse.New`** (`textparse_interface.go:166`) dispatches on `Content-Type`:
+| Content-Type | Parser |
+|---|---|
+| `text/plain` | `NewPromParser` — Prometheus text format |
+| `application/openmetrics-text` | `NewOpenMetricsParser` |
+| `application/vnd.google.protobuf` | `NewProtobufParser` |
+
+The `Parser` interface is a pull-based iterator:
+
+```go
+type Parser interface {
+    Next() (Entry, error)      // advance: EntryType, EntryHelp, EntrySeries, EntryHistogram...
+    Series() ([]byte, *int64, float64)   // name bytes, optional ts, float value
+    Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram)
+    Labels(l *labels.Labels)   // writes label set for current entry
+    Help() ([]byte, []byte)
+    Type() ([]byte, model.MetricType)
+    Exemplar(l *exemplar.Exemplar) bool
+}
+```
+
+**`scrapeLoopAppender.append`** (`scrape.go:1562`) drives this loop:
+```go
+p, _ := textparse.New(b, contentType, sl.symbolTable, opts)
+for {
+    et, err := p.Next()
+    switch et {
+    case textparse.EntrySeries:
+        met, parsedTs, val := p.Series()
+        p.Labels(&lset)
+        ref, err = app.Append(ref, lset, t, val)
+    case textparse.EntryHistogram:
+        met, parsedTs, h, fh := p.Histogram()
+        ref, err = app.AppendHistogram(ref, lset, t, h, nil)
+    case textparse.EntryType, textparse.EntryHelp:
+        // metadata only, no sample appended
+    }
+}
+```
+
+Each `EntrySeries` or `EntryHistogram` becomes a call to the storage `Appender`.
+
+---
+
+### 5. Counter & Gauge — Atomic In-Memory Values
+
+The client library stores live values in two types.
+
+**`counter`** (`prom_counter.go:103`):
+```go
+type counter struct {
+    valBits uint64   // float64 bits for non-integer adds (CAS loop)
+    valInt  uint64   // fast path: exact integers via atomic.AddUint64
+
+    selfCollector
+    desc       *Desc
+    labelPairs []*dto.LabelPair
+    exemplar   atomic.Value
+    createdTs  *timestamppb.Timestamp
+}
+```
+
+- `Inc()` — `atomic.AddUint64(&c.valInt, 1)` (hot path, no CAS).
+- `Add(v float64)` — if `v` is a whole number, uses `valInt`; otherwise CAS-loops on `valBits`.
+- `get()` — returns `float64(valInt) + float64frombits(valBits)` (reads both atomically, adds).
+- `Write(out *dto.Metric)` — calls `get()` and populates a protobuf `dto.Metric`.
+
+**`gauge`** (`prom_gauge.go:90`):
+```go
+type gauge struct {
+    valBits uint64   // single CAS float64 field
+    selfCollector
+    desc       *Desc
+    labelPairs []*dto.LabelPair
+}
+```
+
+- `Inc()` / `Dec()` — call `Add(±1)`.
+- `Add(v)` — CAS loop on `valBits` only (no integer fast path, since gauges go up and down).
+- `Set(v)` — `atomic.StoreUint64(&g.valBits, math.Float64bits(v))`.
+
+---
+
+### 6. The Registry — Collector Coordination & Gather
+
+**`Registry`** (`prom_registry.go:260`):
+```go
+type Registry struct {
+    mtx             sync.RWMutex
+    collectorsByID  map[uint64]Collector  // keyed by XOR of desc IDs
+    descIDs         map[uint64]struct{}   // all known descriptor hashes
+    dimHashesByName map[string]uint64     // fqName → label-set hash (for consistency)
+    uncheckedCollectors []Collector       // collectors with no Desc (skipped at registration)
+}
+```
+
+**Registration** (`prom_registry.go:270`): calls `c.Describe(descChan)` in a goroutine, checks that:
+- Each `Desc` is valid and unique.
+- Label names and help strings for the same `fqName` are consistent with what's already registered.
+- `collectorID` = XOR of all desc IDs.
+
+**`Registry.Gather`** (`prom_registry.go:412`) — the exposition path:
+1. Drains all collectors into `checkedCollectors` / `uncheckedCollectors` channels.
+2. Spawns `collectWorker` goroutines (one per collector, up to budget) that call `collector.Collect(metricChan)`.
+3. Main loop reads from `metricChan` and calls **`processMetric`** for each metric.
+4. `processMetric` calls `metric.Write(dtoMetric)` (which reads the atomic value), groups by `fqName` into `metricFamiliesByName map[string]*dto.MetricFamily`, validates type consistency and label uniqueness.
+5. Returns `internal.NormalizeMetricFamilies(metricFamiliesByName)` — sorted by name.
+
+**`MetricFamily`** (protobuf `dto.MetricFamily`) is the wire format:
+```
+MetricFamily {
+  name: "http_requests_total"
+  type: COUNTER
+  metric: [
+    Metric { label:[...], counter: { value: 42 } },
+    Metric { label:[...], counter: { value: 17 } },
+  ]
+}
+```
+
+---
+
+### Full Data Flow Summary
+
+```
+Service Discovery
+      │ tsets channel
+      ▼
+Manager.Run() → reload() → scrapePool.Sync()
+                                  │
+                    ┌─────────────┤  one loop per target
+                    ▼             ▼
+             scrapeLoop.run()  [ticker every interval]
+                    │
+                    ▼
+             scraper.scrape()   ← HTTP GET /metrics
+                    │ []byte body
+                    ▼
+             textparse.New()    ← picks parser from Content-Type
+                    │
+                    ▼
+             Parser.Next() loop
+               EntrySeries → app.Append(labels, ts, float64)
+               EntryHistogram → app.AppendHistogram(...)
+                    │
+                    ▼
+             app.Commit()       → TSDB WAL + head block
+
+   (separately, for exposition to scrapers of this process)
+
+counter.Inc() / gauge.Set()
+      │ atomic store
+      ▼
+Registry.Gather()
+      │ collector.Collect() → metric.Write() → dto.Metric
+      ▼
+[]*dto.MetricFamily  →  text/protobuf encoder  →  HTTP /metrics response
+```
+
+The two halves are independent: the scrape pipeline reads remote metrics into TSDB storage, while the registry/counter/gauge machinery manages this process's own instrumentation exposed via `/metrics`.

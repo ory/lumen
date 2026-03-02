@@ -1,0 +1,145 @@
+## TSDB Compaction End-to-End
+
+### 1. Compactor Interface
+
+**`compact.go:54-77`** — Three core methods:
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+- **Plan** — scans block directories and returns groups that should be compacted together
+- **Write** — persists a `BlockReader` (e.g. the in-memory head) into a new on-disk block
+- **Compact** — merges multiple existing blocks into one (or more) new blocks
+
+---
+
+### 2. LeveledCompactor
+
+**`compact.go:79-93`** — the production implementation:
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64              // time ranges: e.g. 2h, 4h, 8h…
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    maxBlockChunkSegmentSize    int64
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    blockExcludeFunc            BlockExcludeFilterFunc
+    enableOverlappingCompaction bool
+    // …
+}
+```
+
+**Key methods:**
+
+| Method | Location | Role |
+|--------|----------|------|
+| `Plan()` | lines 249-277 | Reads block metas, delegates to internal `plan()` |
+| `plan()` | lines 311-393 | Overlap detection → level-based grouping → tombstone cleanup |
+| `Compact()` | line 485 | Wrapper → `CompactWithBlockPopulator()` |
+| `CompactWithBlockPopulator()` | lines 489-584 | Opens blocks, merges metas, calls `write()`, marks sources deletable |
+| `Write()` | lines 586-636 | Creates Level=1 block from head, calls `write()` |
+| `write()` | lines 658-768 | Actual I/O: tmp dir → ChunkWriter + IndexWriter → PopulateBlock → atomic rename |
+
+**Planning strategy** (inside `plan()`):
+
+1. **Overlapping blocks** — detected first; all overlapping blocks are returned for vertical compaction
+2. **Level-based grouping** — blocks are grouped by configured time ranges (exponential: 2h → 4h → 8h…). A group compacts when it spans the full range or sits before the newest block
+3. **Tombstone cleanup** — blocks with >5% tombstone ratio trigger single-block compaction to reclaim space
+
+**Persistence** (`write()`, lines 658-768):
+
+1. Create `.tmp-for-creation` directory
+2. Write chunks via `ChunkWriter`, index via `IndexWriter`
+3. Call `BlockPopulator.PopulateBlock()` to merge series
+4. Write `meta.json` + `tombstones.db`
+5. `fsync` directory
+6. Atomic rename to final path via `fileutil.Replace()`
+
+---
+
+### 3. How the DB Triggers Compaction
+
+**`db.go`** — three layers, called from `DB.Compact()` (lines 1414-1505):
+
+```
+DB.Compact()
+  ├── 1. Head compaction loop    → compactHead()
+  ├── 2. OOO head compaction     → compactOOOHead()
+  └── 3. Block compaction loop   → compactBlocks()
+```
+
+**Step 1 — Head compaction** (`compactHead()`, lines 1636-1662):
+- Checks `head.compactable()` and compaction delay logic
+- Waits for overlapping appenders to finish
+- Creates a `RangeHead` bounding reads to a time window
+- Calls `compactor.Write(db.dir, head, mint, maxt, nil)` — produces a Level=1 block
+- Reloads blocks, truncates head memory + WAL
+
+**Step 2 — OOO head compaction** (`compactOOOHead()`, lines 1535-1585):
+- Wraps out-of-order chunks in `OOOCompactionHead`
+- Splits into time ranges, calls `compactor.Write()` for each
+- Truncates OOO WAL
+
+**Step 3 — Block compaction** (`compactBlocks()`, lines 1721-1763):
+```go
+for {
+    plan, _ := db.compactor.Plan(db.dir)
+    if len(plan) == 0 {
+        break
+    }
+    db.compactor.Compact(db.dir, plan, db.blocks)
+    db.reloadBlocks()
+}
+```
+Loops until `Plan()` returns nothing — each iteration merges one group of blocks and reloads.
+
+**Block cleanup** happens in `reloadBlocks()` (lines 1792-1902): blocks marked `Deletable`, parent blocks superseded by compaction output, and blocks past time/size retention are all deleted.
+
+---
+
+### 4. Key Types
+
+**BlockMeta** fields (used throughout `compact.go`):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `ULID` | `ulid.ULID` | Unique block ID |
+| `MinTime` / `MaxTime` | `int64` | Time range (half-open) |
+| `Compaction.Level` | `int` | 1 for head writes, increments on merge |
+| `Compaction.Sources` | `[]ulid.ULID` | Original source block IDs |
+| `Compaction.Parents` | `[]BlockDesc` | Immediate parent blocks |
+| `Compaction.Deletable` | `bool` | Marked for deletion after compaction |
+| `Stats.NumSamples` | `uint64` | Sample count (0 → block not written) |
+
+**CompactBlockMetas()** (lines 441-481) — merges N metas into one: `Level = max(inputs) + 1`, union of sources, parents = input blocks, time range = union.
+
+---
+
+### Summary Flow
+
+```
+time passes, samples accumulate in head
+        │
+        ▼
+head.compactable() == true
+        │
+        ▼
+compactor.Write(head) ──► Level 1 block on disk
+        │
+        ▼
+compactor.Plan(dir) ──► groups blocks by time range / overlap
+        │
+        ▼
+compactor.Compact(group) ──► merged Level N+1 block
+        │                     sources marked Deletable
+        ▼
+reloadBlocks() ──► deletes old blocks, applies retention
+```

@@ -1,0 +1,62 @@
+There are four label matcher types, defined as constants on the `MatchType` integer enum. Here's the full picture from `labels_matcher.go` (also mirrored in `matcher.go`):
+
+---
+
+### `MatchType` — the four match operators
+
+```go
+// labels_matcher.go:21-22
+type MatchType int
+
+// labels_matcher.go:26-29
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Their string representations (`=`, `!=`, `=~`, `!~`) are in the `matchTypeToStr` var at `labels_matcher.go:32-37`.
+
+---
+
+### `Matcher` — the struct
+
+```go
+// labels_matcher.go:46-53
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // non-nil only for MatchRegexp / MatchNotRegexp
+}
+```
+
+---
+
+### `NewMatcher` — the constructor
+
+```go
+// labels_matcher.go:55-70
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+For `MatchEqual` and `MatchNotEqual`, the `re` field is left nil. For `MatchRegexp` and `MatchNotRegexp`, the value string is compiled into a `FastRegexMatcher` (`labels_regexp.go:37`) — which adds optimizations like prefix/suffix extraction and a pre-computed `matchString` function to avoid full regex evaluation when possible.
+
+There is also `MustNewMatcher` at `labels_matcher.go:72-79` — a panic-on-error wrapper intended only for tests.

@@ -1,0 +1,50 @@
+Here's how the Django Permission model works:
+
+### `PermissionManager` (`django-models.py:27-36`)
+
+A custom manager that enables natural key lookups:
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+`get_by_natural_key` takes a `codename`, `app_label`, and `model` name. It resolves the `ContentType` via its own natural key lookup, then finds the matching permission. This is used during deserialization (e.g., `loaddata`) so permissions can be referenced by human-readable identifiers instead of primary keys.
+
+### `Permission` model (`django-models.py:39-85`)
+
+```python
+class Permission(models.Model):
+    name = models.CharField(_("name"), max_length=255)
+    content_type = models.ForeignKey(
+        ContentType, models.CASCADE, verbose_name=_("content type"),
+    )
+    codename = models.CharField(_("codename"), max_length=100)
+
+    objects = PermissionManager()
+```
+
+**Three fields:**
+- **`name`** — Human-readable label (e.g., "Can add log entry")
+- **`content_type`** — FK to `ContentType`, linking the permission to a specific model. Cascades on delete.
+- **`codename`** — Machine-readable identifier (e.g., `add_logentry`)
+
+**Meta constraints:**
+- `unique_together = [["content_type", "codename"]]` — a codename is unique per content type
+- `ordering` by app label, model, then codename
+
+**Key methods:**
+- `__str__` returns `"content_type | name"` (e.g., `"admin | log entry | Can add log entry"`)
+- `natural_key()` returns `(codename, app_label, model)` — the inverse of `get_by_natural_key`
+
+### How it all fits together
+
+Django auto-creates four permissions per model: `add_`, `change_`, `delete_`, and `view_`. Each permission is scoped to a `ContentType` (which represents a model in an app). The `PermissionManager` allows serialization/deserialization via natural keys so that fixtures and migrations don't depend on auto-increment IDs. Permissions are checked at runtime through backends like `ModelBackend` (`django-backends.py:104`), which queries `Permission.objects.all()` for superusers or fetches user/group-specific permissions and caches them as `"app_label.codename"` strings.

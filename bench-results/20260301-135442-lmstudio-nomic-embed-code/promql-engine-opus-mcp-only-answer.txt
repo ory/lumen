@@ -1,0 +1,211 @@
+Now I have a comprehensive picture. Here's how PromQL query evaluation works in this codebase:
+
+---
+
+## PromQL Query Evaluation Architecture
+
+### 1. The Engine — Entry Point
+
+The `Engine` struct (`engine.go:343-361`) is the central coordinator. It manages query lifetime, concurrency, timeouts, and metrics.
+
+```go
+// engine.go:343
+type Engine struct {
+    logger                   *slog.Logger
+    metrics                  *engineMetrics
+    timeout                  time.Duration
+    maxSamplesPerQuery       int
+    activeQueryTracker       QueryTracker
+    lookbackDelta            time.Duration
+    enableDelayedNameRemoval bool
+    parser                   parser.Parser
+    // ...
+}
+```
+
+It exposes queries through the **`QueryEngine` interface** (`engine.go:124-128`):
+
+```go
+type QueryEngine interface {
+    NewInstantQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, ts time.Time) (Query, error)
+    NewRangeQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, start, end time.Time, interval time.Duration) (Query, error)
+}
+```
+
+Both methods create a `query` struct internally via `Engine.newQuery` (`engine.go:574-599`), which wraps a `parser.EvalStmt` containing the parsed expression, time range, and interval.
+
+### 2. Query Execution Flow
+
+The **`Query` interface** (`engine.go:141-156`) is what callers interact with:
+
+```go
+type Query interface {
+    Exec(ctx context.Context) *Result
+    Close()
+    Statement() parser.Statement
+    Stats() *stats.Statistics
+    Cancel()
+    String() string
+}
+```
+
+Execution follows this path:
+
+1. **`query.Exec`** (`engine.go:247-256`) — calls `ng.exec(ctx, q)`
+2. **`Engine.exec`** (`engine.go:669-750`) — sets up timeout, logging, tracing, queues the query via `ActiveQueryTracker`, then dispatches on statement type:
+   ```go
+   switch s := q.Statement().(type) {
+   case *parser.EvalStmt:
+       return ng.execEvalStmt(ctx, q, s)
+   case parser.TestStmt:
+       return nil, nil, s(ctx)
+   }
+   ```
+   Note the comment: *"Alert and record statements are not handled by the Engine."*
+
+3. **`Engine.execEvalStmt`** (`engine.go:772-889`) — the core execution:
+   - Creates a `Querier` for the required time range
+   - Populates series data from storage (`populateSeries`)
+   - Creates an `evaluator` struct
+   - For **instant queries** (start == end): creates evaluator with a single step
+   - For **range queries**: creates evaluator spanning start→end with the given interval
+   - Calls `evaluator.Eval(ctx, expr)`
+   - Converts the result based on expression type (Vector, Scalar, Matrix)
+
+### 3. The Evaluator — AST Tree Walker
+
+The `evaluator` struct (`engine.go:1134-1152`) is the recursive AST visitor:
+
+```go
+type evaluator struct {
+    startTimestamp int64
+    endTimestamp   int64
+    interval       int64
+    maxSamples     int
+    currentSamples int
+    lookbackDelta  time.Duration
+    // ...
+}
+```
+
+**`evaluator.Eval`** (`engine.go:1189-1197`) is the public entry point with panic recovery:
+
+```go
+func (ev *evaluator) Eval(ctx context.Context, expr parser.Expr) (v parser.Value, ws annotations.Annotations, err error) {
+    defer ev.recover(expr, &ws, &err)
+    v, ws = ev.eval(ctx, expr)
+    // ...
+}
+```
+
+**Error handling uses panics** — `evaluator.error()` (`engine.go:1159`) panics, and `evaluator.recover()` (`engine.go:1164-1187`) catches them, converting runtime panics, typed errors, and warning-bearing errors into return values.
+
+### 4. AST Node Evaluation — The Big Switch
+
+**`evaluator.eval`** (`engine.go:1904+`) is the recursive workhorse. It type-switches on `parser.Expr` nodes:
+
+| AST Node | Handling |
+|---|---|
+| `*parser.AggregateExpr` | Sorts grouping labels, delegates to `rangeEvalAgg` (or `rangeEval` for COUNT_VALUES) |
+| `*parser.Call` | Looks up function in `FunctionCalls` map, handles matrix vs. instant args, special-cases `timestamp`, `label_replace`, `label_join`, `info` |
+| `*parser.ParenExpr` | Recursively evaluates inner expression |
+| `*parser.UnaryExpr` | Evaluates inner, negates floats/histograms for SUB |
+| `*parser.BinaryExpr` | Dispatches on operand types (scalar×scalar, vector×vector, vector×scalar) using `rangeEval` with appropriate binary op functions (`VectorAnd`, `VectorOr`, `VectorBinop`, etc.) |
+| `*parser.NumberLiteral` | Returns constant value via `rangeEval` |
+| `*parser.StringLiteral` | Returns `String{V: e.Val}` directly |
+| `*parser.VectorSelector` | Expands series set, calls `evalSeries` to read from storage iterators |
+| `*parser.MatrixSelector` | Calls `matrixSelector` — only valid for instant evaluation |
+| `*parser.SubqueryExpr` | Creates a new child `evaluator` with adjusted time range and recursively evaluates |
+| `*parser.StepInvariantExpr` | Evaluates once at start time, then duplicates the result across all steps (optimization for expressions that don't change per step) |
+
+### 5. Function Registration and Calling
+
+Functions are registered in a **global map** (`functions.go:2152-2237`):
+
+```go
+var FunctionCalls = map[string]FunctionCall{
+    "abs":               funcAbs,
+    "rate":              funcRate,
+    "histogram_quantile": funcHistogramQuantile,
+    // ~80+ functions total
+}
+```
+
+The function signature type (`functions.go:39-60`):
+
+```go
+type FunctionCall func(
+    vectorVals []Vector,
+    matrixVals Matrix,
+    args parser.Expressions,
+    enh *EvalNodeHelper,
+) (Vector, annotations.Annotations)
+```
+
+When `eval` hits a `*parser.Call` node, it:
+1. Looks up the function: `call := FunctionCalls[e.Func.Name]`
+2. Checks if any argument is a `MatrixSelector` (range vector functions like `rate`)
+3. For **instant vector functions**: wraps in `rangeEval` which gathers vectors at each timestamp and calls the function per-step
+4. For **range vector functions**: iterates over series, builds a sliding window of samples per step, and calls the function with the matrix slice
+5. Special functions (`label_replace`, `label_join`, `info`) are handled directly without the map
+
+### 6. The `rangeEval` Step Loop
+
+`rangeEval` (`engine.go:1431+`) is the core iteration mechanism for range queries. For each timestamp from start to end:
+1. Gathers input vectors from pre-evaluated matrices
+2. Optionally computes join signatures for binary operations (`VectorMatching`)
+3. Calls the provided function with the gathered vectors
+4. Collects outputs into a result Matrix
+
+### 7. Step-Invariant Optimization
+
+Before evaluation, `preprocessExprHelper` (`engine.go:4246-4341`) walks the AST and wraps sub-expressions that are step-invariant (e.g., a `VectorSelector` with `@ start()`) in `StepInvariantExpr` nodes. These are evaluated once and duplicated across all steps, avoiding redundant computation.
+
+### 8. Alert and Recording Rules
+
+Rules live **outside** the PromQL engine. The engine explicitly does *not* handle them (`engine.go:673`: *"Alert and record statements are not handled by the Engine"*).
+
+**`RecordingRule`** (`recording.go:37-54`):
+```go
+type RecordingRule struct {
+    name   string
+    vector parser.Expr
+    labels labels.Labels
+    health *atomic.String
+    evaluationTimestamp *atomic.Time
+    // ...
+}
+```
+
+**`RecordingRule.Eval`** (`recording.go:84-122`):
+```go
+func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration,
+    ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error)
+```
+
+It works by:
+1. Calling `query(ctx, rule.vector.String(), ts.Add(-queryOffset))` — this is a `QueryFunc` that executes the PromQL expression through the engine
+2. Overriding metric names and labels on the result vector
+3. Checking for duplicate label sets
+4. Enforcing series limits
+
+The `QueryFunc` callback is the bridge: rule groups provide a function that creates and executes a PromQL instant query through the engine, closing the loop. Rules are evaluated on a schedule by a rule group manager (not in this file set), which calls `rule.Eval()` at each evaluation interval, passing the current timestamp and the query function.
+
+### Summary Flow
+
+```
+User/API → Engine.NewInstantQuery/NewRangeQuery → query.Exec
+  → Engine.exec → Engine.execEvalStmt
+    → evaluator.Eval → evaluator.eval (recursive AST walk)
+      ├── AggregateExpr  → rangeEvalAgg → aggregation()
+      ├── Call           → FunctionCalls[name] via rangeEval
+      ├── BinaryExpr     → rangeEval with VectorBinop/VectorAnd/etc.
+      ├── VectorSelector → evalSeries (reads from storage)
+      ├── MatrixSelector → matrixSelector (reads sliding windows)
+      ├── SubqueryExpr   → new child evaluator, recursive eval
+      └── StepInvariantExpr → eval once, duplicate across steps
+    → convert result (Vector/Scalar/Matrix)
+
+Rules (outside engine):
+  RuleGroup.Eval() → RecordingRule.Eval(queryFunc) → queryFunc → Engine instant query
+```

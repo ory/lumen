@@ -1,0 +1,274 @@
+Here's how the Django QuerySet evaluation and filtering pipeline works in this codebase:
+
+---
+
+## 1. The Manager: Entry Point
+
+Everything starts with the **Manager**, which is how you access querysets from a model (e.g. `MyModel.objects.filter(...)`).
+
+**`django-manager.py:176-177`** — `Manager` is almost empty:
+```python
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+It inherits from a dynamically-created class built by `from_queryset()`.
+
+**`django-manager.py:108-118`** — `from_queryset` uses `type()` to create a new class that merges `BaseManager` with all public `QuerySet` methods:
+```python
+def from_queryset(cls, queryset_class, class_name=None):
+    return type(class_name, (cls,), {
+        "_queryset_class": queryset_class,
+        **cls._get_queryset_methods(queryset_class),
+    })
+```
+
+**`django-manager.py:83-105`** — `_get_queryset_methods` introspects the QuerySet class and creates proxy methods:
+```python
+def create_method(name, method):
+    def manager_method(self, *args, **kwargs):
+        return getattr(self.get_queryset(), name)(*args, **kwargs)
+    return manager_method
+```
+
+So `MyModel.objects.filter(...)` calls `manager.get_queryset().filter(...)`.
+
+**`django-manager.py:150-155`** — `get_queryset` creates a fresh QuerySet:
+```python
+def get_queryset(self):
+    return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+```
+
+**`django-manager.py:120-126`** — The manager is installed on the model class via a descriptor:
+```python
+def contribute_to_class(self, cls, name):
+    setattr(cls, name, ManagerDescriptor(self))
+    cls._meta.add_manager(self)
+```
+
+**`django-manager.py:180-204`** — `ManagerDescriptor.__get__` prevents instance access and returns the manager from `cls._meta.managers_map`.
+
+---
+
+## 2. QuerySet: Lazy by Design
+
+**`django-query.py:303-321`** — `QuerySet.__init__`:
+```python
+class QuerySet(AltersData):
+    """Represent a lazy database lookup for a set of objects."""
+
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._query = query or sql.Query(self.model)  # ← the internal Query object
+        self._result_cache = None       # ← None = not yet evaluated
+        self._iterable_class = ModelIterable
+        self._defer_next_filter = False
+        self._deferred_filter = None
+        # ... other fields
+```
+
+The key insight: **`_result_cache = None`** means no SQL has been executed. The QuerySet just holds a description of the query via `self._query` (a `sql.Query` object).
+
+---
+
+## 3. Chaining: Clone, Don't Mutate
+
+Every chainable method (`filter`, `exclude`, `order_by`, `only`, `defer`, etc.) follows the same pattern: **clone the QuerySet, modify the clone, return it**.
+
+**`django-query.py:2137-2146`** — `_chain()` is the entry point for cloning:
+```python
+def _chain(self):
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+        obj._sticky_filter = False
+    return obj
+```
+
+**`django-query.py:2148-2166`** — `_clone()` does a lightweight copy:
+```python
+def _clone(self):
+    c = self.__class__(
+        model=self.model,
+        query=self.query.chain(),   # ← the Query object clones itself too
+        using=self._db,
+        hints=self._hints,
+    )
+    c._sticky_filter = self._sticky_filter
+    c._for_write = self._for_write
+    c._prefetch_related_lookups = self._prefetch_related_lookups[:]
+    c._known_related_objects = self._known_related_objects
+    c._iterable_class = self._iterable_class
+    c._fields = self._fields
+    return c
+```
+
+This means `qs.filter(a=1).filter(b=2)` creates two new QuerySet objects. The original is untouched.
+
+---
+
+## 4. Filtering: Q Objects and `add_q`
+
+**`django-query.py:1624-1630`** — `filter()`:
+```python
+def filter(self, *args, **kwargs):
+    self._not_support_combined_queries("filter")
+    return self._filter_or_exclude(False, args, kwargs)
+```
+
+**`django-query.py:1632-1638`** — `exclude()`:
+```python
+def exclude(self, *args, **kwargs):
+    self._not_support_combined_queries("exclude")
+    return self._filter_or_exclude(True, args, kwargs)
+```
+
+**`django-query.py:1640-1649`** — `_filter_or_exclude` clones then delegates:
+```python
+def _filter_or_exclude(self, negate, args, kwargs):
+    if (args or kwargs) and self.query.is_sliced:
+        raise TypeError("Cannot filter a query once a slice has been taken.")
+    clone = self._chain()
+    if self._defer_next_filter:
+        clone._deferred_filter = negate, args, kwargs
+    else:
+        clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+```
+
+**`django-query.py:1651-1658`** — The actual filter application converts kwargs into a `Q` object and adds it to the internal `Query`:
+```python
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+The `Q` object tree is pushed into `self._query` (the `sql.Query` instance), which compiles lookups like `name__icontains="foo"` into SQL WHERE clauses. The `Query` object resolves field names, traverses relations (joins), and constructs the `WHERE` tree.
+
+**`django-query.py:324-329`** — The `query` property also handles deferred filters:
+```python
+@property
+def query(self):
+    if self._deferred_filter:
+        negate, args, kwargs = self._deferred_filter
+        self._filter_or_exclude_inplace(negate, args, kwargs)
+        self._deferred_filter = None
+    return self._query
+```
+
+---
+
+## 5. Lazy Evaluation: When SQL Actually Runs
+
+SQL is only executed when you **consume** the QuerySet. The trigger points all go through `_fetch_all`:
+
+**`django-query.py:2168-2172`** — `_fetch_all`:
+```python
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+This is called by all the Python magic methods:
+
+| Trigger | Method | Reference |
+|---------|--------|-----------|
+| `for obj in qs` | `__iter__` | `django-query.py:396-412` |
+| `len(qs)` | `__len__` | `django-query.py:392-394` |
+| `bool(qs)` / `if qs:` | `__bool__` | `django-query.py:424-426` |
+| `qs[5]` or `qs[2:10]` | `__getitem__` | `django-query.py:428-463` |
+| `repr(qs)` | `__repr__` | `django-query.py:386-390` |
+
+**`django-query.py:396-412`** — The `__iter__` docstring explains the three-layer iterator protocol:
+```python
+def __iter__(self):
+    """
+    The queryset iterator protocol uses three nested iterators:
+        1. sql.compiler.execute_sql()
+           - Returns 100 rows at a time using cursor.fetchmany()
+        2. sql.compiler.results_iter()
+           - Returns one row at a time, converting to Python values
+        3. self.iterator()
+           - Turns rows into model objects
+    """
+    self._fetch_all()
+    return iter(self._result_cache)
+```
+
+**`django-query.py:428-463`** — `__getitem__` is smart about slicing — if the cache exists, it uses it; otherwise it sets SQL `LIMIT`/`OFFSET` via `query.set_limits()`:
+```python
+def __getitem__(self, k):
+    if self._result_cache is not None:
+        return self._result_cache[k]
+    if isinstance(k, slice):
+        qs = self._chain()
+        qs.query.set_limits(start, stop)
+        return list(qs)[::k.step] if k.step else qs
+    qs = self._chain()
+    qs.query.set_limits(k, k + 1)
+    qs._fetch_all()
+    return qs._result_cache[0]
+```
+
+---
+
+## 6. The Iterable Classes: Rows → Objects
+
+The `_iterable_class` (default `ModelIterable`) handles the actual DB execution and object construction.
+
+**`django-query.py:88-139`** — `ModelIterable.__iter__`:
+```python
+class ModelIterable(BaseIterable):
+    """Iterable that yields a model instance for each row."""
+
+    def __iter__(self):
+        queryset = self.queryset
+        db = queryset.db
+        compiler = queryset.query.get_compiler(using=db)
+        results = compiler.execute_sql(chunked_fetch=..., chunk_size=...)
+        # ... extract field metadata from compiler ...
+        for row in compiler.results_iter(results):
+            obj = model_cls.from_db(db, init_list, row[start:end], fetch_mode=...)
+            # populate related objects, annotations
+            yield obj
+```
+
+The flow is: `Query.get_compiler()` → `compiler.execute_sql()` (runs SQL) → `compiler.results_iter()` (row-level iteration) → `model_cls.from_db()` (hydrate model instances).
+
+Other iterable classes change what's yielded:
+
+| Class | Yields | Reference |
+|-------|--------|-----------|
+| `ModelIterable` | Model instances | `django-query.py:88` |
+| `ValuesIterable` | Dicts | `django-query.py:222` |
+| `ValuesListIterable` | Tuples | `django-query.py:248` |
+| `FlatValuesListIterable` | Scalar values | `django-query.py:288` |
+
+---
+
+## 7. The Full Pipeline
+
+```
+MyModel.objects.filter(name="foo").exclude(active=False).order_by("-created")[:10]
+
+1. Manager.filter()          → Manager.get_queryset().filter()
+2. QuerySet.filter()         → clone + query.add_q(Q(name="foo"))
+3. QuerySet.exclude()        → clone + query.add_q(~Q(active=False))
+4. QuerySet.order_by()       → clone + query.set ordering
+5. QuerySet.__getitem__[:10] → clone + query.set_limits(0, 10)
+   ↑ nothing has hit the DB yet — all 5 steps just build the Query tree
+
+6. Iteration / len / bool    → _fetch_all()
+7. _fetch_all()              → list(ModelIterable(self))
+8. ModelIterable.__iter__    → query.get_compiler(db)
+9. compiler.execute_sql()    → cursor.execute(SQL)    ← SQL runs HERE
+10. compiler.results_iter()  → yield rows
+11. model_cls.from_db()      → hydrate model instances
+12. _result_cache = [...]    → cached for subsequent access
+```
+
+The `sql.Query` object (accessed via `self._query`) is the internal representation that accumulates all the WHERE clauses, JOINs, ORDER BY, LIMIT/OFFSET, annotations, etc. Each `QuerySet` method mutates the `Query` on a clone. The `Query` is only compiled to SQL when a compiler is requested via `get_compiler()`, and SQL only executes inside `compiler.execute_sql()`. The `Query` class itself lives in `django.db.models.sql` (not in these fixture files), but it's the bridge between the high-level QuerySet API and the database.

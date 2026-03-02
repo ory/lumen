@@ -1,0 +1,60 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Core Iterator Pattern
+
+Bucket counting is driven by two iterator types in `histogram.go`:
+
+**`regularBucketIterator`** — yields individual bucket counts:
+```go
+func newRegularBucketIterator(spans []Span, buckets []int64, schema int32, positive bool, customValues []float64) regularBucketIterator
+func (r *regularBucketIterator) Next() bool
+```
+Each call to `Next()` advances through spans and accumulates delta-encoded counts:
+```go
+r.currCount += r.buckets[r.bucketsIdx]
+```
+
+**`cumulativeBucketIterator`** — yields running totals:
+```go
+func (c *cumulativeBucketIterator) Next() bool
+func (c *cumulativeBucketIterator) At() Bucket[uint64]
+```
+Accumulates a rolling sum across all buckets:
+```go
+c.currCount += c.h.PositiveBuckets[c.posBucketsIdx]
+c.currCumulativeCount += uint64(c.currCount)
+```
+
+## Entry Points
+```go
+func (h *Histogram) PositiveBucketIterator() BucketIterator[uint64]
+func (h *Histogram) NegativeBucketIterator() BucketIterator[uint64]
+func (h *Histogram) CumulativeBucketIterator() BucketIterator[uint64]
+func (h *Histogram) ZeroBucket() Bucket[uint64]
+```
+
+## Prometheus Client Side (`prom_histogram.go`)
+
+**Finding which bucket a value falls into:**
+```go
+func (h *histogram) findBucket(v float64) int
+// Linear search for n < 35 buckets, binary search (sort.SearchFloat64s) for n >= 35
+```
+
+**Adding to a bucket atomically:**
+```go
+func addToBucket(buckets *sync.Map, key int, increment int64) bool
+// Fast path: existing bucket → atomic add
+// Slow path: LoadOrStore to create new bucket
+```
+
+**Bucket limit enforcement (compression strategies):**
+```go
+func (h *histogram) limitBuckets(counts *histogramCounts, value float64, bucket int)
+func (h *histogram) maybeWidenZeroBucket(hot, cold *histogramCounts) bool
+func (h *histogram) doubleBucketWidth(hot, cold *histogramCounts)
+```
+
+## Storage Format
+
+Buckets are **delta-encoded**: `PositiveBuckets []int64` stores differences between consecutive counts, not absolute values. `makeBuckets()` converts from a sparse `sync.Map` to this compact spans+deltas format. Validation in `Validate()` checks that `sum(NegativeBuckets) + ZeroCount + sum(PositiveBuckets) == Count`.

@@ -1,0 +1,58 @@
+Here's how Flask configuration loading works in this file:
+
+## Class Hierarchy
+
+**`Config(dict)`** (line 50) — the main config class, inherits directly from `dict`. It stores all config key-value pairs as dictionary entries. Initialized with a `root_path` (for resolving relative file paths) and optional `defaults`.
+
+**`ConfigAttribute(Generic[T])`** (line 20) — a descriptor that forwards attribute access on an `App` object to `app.config[name]`. It uses `__get__`/`__set__` to make `app.secret_key` equivalent to `app.config['SECRET_KEY']`.
+
+## Key Rule: Only Uppercase Keys
+
+Every loading method filters for **uppercase keys only** (`key.isupper()`). This lets you use lowercase names for temporary/local values that won't leak into config.
+
+## Loading Methods
+
+### `from_object(obj)` — line 218
+The foundational method. Takes a module, class, or import string. Iterates `dir(obj)` and copies all uppercase attributes into the config dict:
+```python
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+### `from_pyfile(filename)` — line 187
+Loads a `.py` or `.cfg` file by **compiling and executing** it as a Python module, then delegates to `from_object()`:
+```python
+d = types.ModuleType("config")
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+Filenames are resolved relative to `self.root_path`.
+
+### `from_envvar(variable_name)` — line 102
+Reads an environment variable that should contain a **file path**, then calls `from_pyfile()` with that path. It's a convenience shortcut:
+```python
+rv = os.environ.get(variable_name)
+return self.from_pyfile(rv, silent=silent)
+```
+
+### `from_prefixed_env(prefix="FLASK")` — line 126
+Scans all env vars starting with `FLASK_`, strips the prefix, and sets them as config keys. Values are parsed through `json.loads` (so `"true"` becomes `True`, `"42"` becomes `42`). Supports **nested dicts** via double underscores — `FLASK_SQLALCHEMY__DATABASE_URI` sets `config["SQLALCHEMY"]["DATABASE_URI"]`.
+
+### `from_file(filename, load=...)` — line 256
+Generic file loader. Takes a callable (like `json.load` or `tomllib.load`) that reads the file handle and returns a mapping, then delegates to `from_mapping()`. Supports both text and binary modes.
+
+### `from_mapping(mapping)` — line 304
+Takes a dict/mapping and copies only uppercase keys into config. Used by `from_file()` and can be called directly.
+
+## Utility
+
+**`get_namespace(namespace)`** (line 323) — extracts a subset of keys sharing a common prefix (e.g., `IMAGE_STORE_`) into a new dict, optionally trimming the prefix and lowercasing keys. Useful for passing config subsets as `**kwargs` to constructors.
+
+## Loading Chain Summary
+
+```
+from_envvar  ──→  from_pyfile  ──→  from_object  ──→  self[KEY] = value
+from_file    ──→  from_mapping ──→  self[KEY] = value
+from_prefixed_env ──────────────→  self[KEY] = value (+ nested dict support)
+```

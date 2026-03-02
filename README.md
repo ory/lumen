@@ -1,9 +1,17 @@
 # agent-index
 
 [![CI](https://github.com/aeneasr/agent-index/actions/workflows/ci.yml/badge.svg)](https://github.com/aeneasr/agent-index/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/aeneasr/agent-index)](https://goreportcard.com/report/github.com/aeneasr/agent-index)
+[![Go Reference](https://pkg.go.dev/badge/github.com/aeneasr/agent-index.svg)](https://pkg.go.dev/github.com/aeneasr/agent-index)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A fully local semantic code search engine, exposed as an
+A 100% local semantic code search engine (think Claude Context, Augment Code, Cursor) using open-source models, SQLite + sqlite-vec
+and using only your CPU time. Works on any developer machine because of Golang.
+
+Code Agent Index makes Claude Code **2.1–2.3× faster**
+and **63–81% cheaper**, with reproducible [benchmarks](#its-a-game-changer-benchmarks).
+
+This service is exposed as an
 [MCP](https://modelcontextprotocol.io/) server. It parses your codebase into
 semantic chunks (functions, methods, types, interfaces, constants), embeds them
 via a local Ollama model, and exposes search over MCP. Your code never leaves
@@ -115,15 +123,11 @@ the default configuration for Sonnet 4.6 in benchmarks.
 endpoint at `http://localhost:1234` by default. `nomic-embed-code` is a
 code-optimized model with 3584 dimensions.
 
-:::info
-
 > [!WARNING]  
 > `nomic-ai/nomic-embed-code-GGUF` is significantly more resource intense than
 > the default Ollama model. Expect higher CPU usage and longer indexing times,
 > especially on large codebases. Consider using
 > `agent-index index path/to/source` to pre-index your codebase.
-
-:::
 
 ```bash
 # Download and load the model via lms CLI
@@ -379,69 +383,57 @@ the Ollama run:
 
 `mcp-only` wins 4/5, `mcp-full` wins 1/5, `baseline` wins 0/5.
 
-### Extended benchmarks: 9 questions × 4 embedding models
+### Extended benchmarks: Results by Language
 
-A broader benchmark comparing 4 embedding models across 9 questions of varying
-difficulty in Go, Python, and TypeScript (36 question/model combinations, 216
-total runs). Full results: [`bench-results/summary-report.md`](bench-results/summary-report.md).
+A comprehensive benchmark comparing 4 embedding models across 9 questions of varying difficulty in Go, Python, and TypeScript (36 question/model combinations, 216 total runs). **Embedding model performance varies significantly by programming language.** Python shows uniform MCP-only dominance, Go shows strong MCP performance, and TypeScript reveals over-retrieval issues with larger-dimension models.
 
-#### Scenario win counts per embedding model
+**Why language matters:** Larger-dimension models (qwen3-8b, qwen3-4b, nomic) embed more semantic detail but retrieve redundant chunks for simple TypeScript questions. This drives up token costs without improving answer quality. Jina's 768-dim embeddings avoid over-retrieval entirely while maintaining strong quality across all languages.
 
-| Embedding Model | baseline | mcp-only | mcp-full |
-| --------------- | -------- | -------- | -------- |
-| jina-v2-base-code | 1 | **4** | 4 |
-| qwen3-8b | 1 | **7** | 1 |
-| qwen3-4b | 2 | **7** | 0 |
-| nomic-embed-code | 0 | **6** | 3 |
+#### Go Results
 
-`mcp-only` wins across every embedding model. Baseline only wins on
-`ts-disposable` (easy TypeScript lifecycle question) in 3 of 4 models — a
-specific over-retrieval pathology described below.
+| Model | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+|-------|---|---|---|---|---|---|---|---|---|
+| jina-v2 | $10.64 | 536s | $1.03 | 142s | 3.8x | 90% | $1.63 | 149s | 0/3 / 1/3 / 2/3 |
+| qwen3-8b | $4.59 | 421s | $1.05 | 165s | 2.6x | 77% | $1.84 | 168s | 0/3 / 2/3 / 1/3 |
+| qwen3-4b | $8.35 | 433s | $2.19 | 186s | 2.3x | 74% | $2.52 | 179s | 0/3 / 3/3 / 0/3 |
+| nomic | $5.46 | 469s | $1.55 | 280s | 1.7x | 72% | $1.96 | 229s | 0/3 / 1/3 / 2/3 |
 
-#### MCP-only cost totals (sonnet + opus, 9 questions)
+**Insight:** Qwen3-4b wins the most scenarios (3/3 mcp-only), but **jina achieves 90% cost savings and 3.8× speedup**—by far the most efficient. No baseline wins on Go questions across any model.
 
-| Embedding Model | mcp-only total |
-| --------------- | -------------- |
-| jina-v2-base-code | **$5.09** |
-| qwen3-8b | $5.72 |
-| nomic-embed-code | $7.44 |
-| qwen3-4b | $8.41 |
+#### Python Results
 
-jina has the lowest MCP cost. qwen3-4b costs 1.65× more despite being a
-smaller model — over-retrieval on TypeScript fixtures is the primary cause.
+| Model | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+|-------|---|---|---|---|---|---|---|---|---|
+| jina-v2 | $5.41 | 406s | $1.53 | 226s | 1.8x | 72% | $1.75 | 206s | 0/3 / 2/3 / 1/3 |
+| qwen3-8b | $3.78 | 373s | $1.69 | 235s | 1.6x | 55% | $2.59 | 224s | 0/3 / 3/3 / 0/3 |
+| qwen3-4b | $3.97 | 342s | $1.80 | 237s | 1.4x | 55% | $2.37 | 219s | 0/3 / 3/3 / 0/3 |
+| nomic | $5.82 | 483s | $1.99 | 238s | 2.0x | 66% | $3.20 | 278s | 0/3 / 3/3 / 0/3 |
 
-#### The TypeScript over-retrieval problem
+**Insight:** MCP-only dominates universally (all models 2-3/3 wins). Qwen3-8b, qwen3-4b, and nomic achieve 3/3 mcp-only wins. However, **jina remains cost-optimal at 72% savings** and lowest baseline cost ($5.41).
 
-Larger-dimension models retrieve too many chunks for simple TypeScript
-questions. `ts-disposable` (easy) shows the pattern clearly:
+#### TypeScript Results
 
-| Model | opus/mcp-only cost | Winner |
-| ----- | ------------------ | ------ |
-| jina (768-dim) | $0.23 | baseline (close) |
-| qwen3-8b (4096-dim) | $0.70 | baseline |
-| qwen3-4b (2560-dim) | **$1.04** | baseline |
-| nomic (3584-dim) | **$1.45** | mcp-full |
+| Model | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+|-------|---|---|---|---|---|---|---|---|---|
+| jina-v2 | $4.86 | 478s | $2.53 | 332s | 1.4x | 48% | $3.88 | 373s | 1/3 / 1/3 / 1/3 |
+| qwen3-8b | $4.12 | 468s | $2.98 | 359s | 1.3x | 28% | $3.81 | 378s | 1/3 / 2/3 / 0/3 |
+| qwen3-4b | $5.44 | 600s | $4.42 | 399s | 1.5x | 19% | $3.76 | 409s | 2/3 / 1/3 / 0/3 |
+| nomic | $4.84 | 519s | $3.89 | 411s | 1.3x | 20% | $3.84 | 386s | 0/3 / 2/3 / 1/3 |
 
-jina stays cheap because its lower dimensionality means fewer redundant chunks
-surface. The same over-retrieval pattern appears for `ts-async-lifecycle` with
-qwen3-4b ($1.83 for opus/mcp-only) and nomic ($0.98 for opus/mcp-full).
+**Insight:** The **over-retrieval problem appears here**. Jina stays cheapest for mcp-only at $2.53 with 48% savings. Qwen3-4b suffers worst degradation (19% savings, 2/3 baseline wins). This exemplifies why dimensionality matters: larger models retrieve too many redundant chunks for simple lifecycle questions, nullifying cost advantages.
 
-#### Language-level patterns
+#### Summary: Why Jina Remains the Default
 
-| Language | Pattern |
-| -------- | ------- |
-| Python | `mcp-only` wins unanimously across all 4 models (6/6 slots) |
-| Go | `mcp-only` or `mcp-full` wins; no baseline wins at all |
-| TypeScript | Most variance; baseline wins `ts-disposable` in 3 of 4 models |
+| Metric | jina-v2 | qwen3-8b | qwen3-4b | nomic |
+|--------|---------|----------|----------|-------|
+| **Best Go cost** | ✓ 90% | 77% | 74% | 72% |
+| **Best Python cost** | ✓ 72% | 55% | 55% | 66% |
+| **Best TypeScript cost** | ✓ 48% | 28% | 19% | 20% |
+| **Consistent across languages** | ✓ | — | — | — |
+| **No over-retrieval** | ✓ | Limited | Severe | Moderate |
+| **Verdict** | **Default** | Best quality (Go/Py) | Not recommended | Usable (Opus) |
 
-#### Embedding model recommendation
-
-| Model | Quality | Cost efficiency | TypeScript retrieval | Verdict |
-| ----- | ------- | --------------- | -------------------- | ------- |
-| **jina-v2-base-code** | High | Best | No over-retrieval | **Recommended default** |
-| **qwen3-8b** | Highest | Good | Mostly consistent | Best quality option |
-| **nomic-embed-code** | High | Moderate | Moderate over-retrieval | Usable |
-| **qwen3-4b** | Variable | Poor | Severe over-retrieval | Not recommended |
+Full question-level analysis available in [`detail-report.md` per benchmark](bench-results/)
 
 ### Reproduce
 

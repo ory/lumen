@@ -1,0 +1,74 @@
+Here's the full picture from `labels_matcher.go`:
+
+---
+
+### `MatchType` — the enum (`labels_matcher.go:21-29`)
+
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four types in total, mapping to the familiar PromQL label-matching operators.
+
+---
+
+### `Matcher` struct (`labels_matcher.go:46-53`)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // non-nil only for MatchRegexp / MatchNotRegexp
+}
+```
+
+---
+
+### Constructor: `NewMatcher` (`labels_matcher.go:55-70`)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+The only non-trivial step is that regex matchers (`=~` / `!~`) compile a `FastRegexMatcher` eagerly at construction time — an invalid regex returns an error immediately, before any matching occurs.
+
+---
+
+### Test helper: `MustNewMatcher` (`labels_matcher.go:72-79`)
+
+```go
+// MustNewMatcher panics on error - only for use in tests!
+func MustNewMatcher(mt MatchType, name, val string) *Matcher {
+    m, err := NewMatcher(mt, name, val)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+```
+
+A panic-on-error variant intended for test code where you know the regex is valid and don't want to handle the error.

@@ -1,0 +1,114 @@
+Here's a full breakdown of Flask's configuration system from `flask-config.py`:
+
+---
+
+## Class Hierarchy
+
+```
+dict
+ └── Config                  # The main config object (flask-config.py:50)
+
+ConfigAttribute[T]           # Descriptor that proxies app attributes → Config (flask-config.py:20)
+```
+
+### `ConfigAttribute` — descriptor proxy (`flask-config.py:20`)
+
+A generic descriptor that makes app-level attributes (like `app.debug`, `app.secret_key`) transparently read/write from `app.config`:
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj, owner):
+        rv = obj.config[self.__name__]          # reads from config dict
+        if self.get_converter:
+            rv = self.get_converter(rv)
+        return rv
+
+    def __set__(self, obj, value):
+        obj.config[self.__name__] = value       # writes to config dict
+```
+
+An optional `get_converter` callable allows type coercion on reads.
+
+---
+
+## `Config` class (`flask-config.py:50`)
+
+Inherits directly from `dict`. Stores all config values as uppercase string keys. Constructed with a `root_path` (the app's root, used to resolve relative filenames) and optional `defaults`.
+
+---
+
+## Loading Methods
+
+### 1. `from_pyfile(filename, silent=False)` — `flask-config.py:182`
+Loads a `.cfg`/`.py` file by executing it as Python code:
+```python
+d = types.ModuleType("config")
+d.__file__ = filename
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)   # then filters uppercase keys
+```
+The file runs in a fresh module namespace, then `from_object` harvests uppercase attributes.
+
+### 2. `from_object(obj)` — `flask-config.py:218`
+Accepts either an **import path string** or a **live object** (module or class):
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)   # only uppercase attributes
+```
+**Key rule:** only `UPPERCASE` keys are imported. This lets you mix config constants with lowercase helpers in the same module/class.
+
+### 3. `from_envvar(variable_name, silent=False)` — `flask-config.py:102`
+Thin wrapper: reads a path from an env var, delegates to `from_pyfile`:
+```python
+rv = os.environ.get(variable_name)   # e.g. "YOURAPPLICATION_SETTINGS"
+return self.from_pyfile(rv, silent=silent)
+```
+
+### 4. `from_prefixed_env(prefix="FLASK", loads=json.loads)` — `flask-config.py:126`
+Scans all env vars starting with `FLASK_`, strips the prefix, parses values as JSON:
+```python
+for key in sorted(os.environ):
+    if not key.startswith("FLASK_"):
+        continue
+    value = json.loads(os.environ[key])   # falls back to raw string on error
+    self[key] = value
+```
+Supports **nested dicts** via `__` separator — `FLASK_DATABASE__HOST` sets `config["DATABASE"]["HOST"]`.
+
+### 5. `from_file(filename, load, silent=False, text=True)` — `flask-config.py:256`
+Generic file loader — you supply the parser callable:
+```python
+with open(filename, "r") as f:
+    obj = load(f)         # e.g. json.load or tomllib.load
+return self.from_mapping(obj)
+```
+
+### 6. `from_mapping(mapping=None, **kwargs)` — `flask-config.py:305`
+The lowest-level method — all others funnel through it or `from_object`:
+```python
+for key, value in mappings.items():
+    if key.isupper():
+        self[key] = value
+return True   # always True
+```
+
+---
+
+## Utility: `get_namespace(namespace, lowercase=True, trim_namespace=True)` — `flask-config.py:323`
+
+Extracts a subset of config keys by prefix, returning a plain dict:
+```python
+# config has IMAGE_STORE_TYPE, IMAGE_STORE_PATH
+image_store_config = app.config.get_namespace('IMAGE_STORE_')
+# → {'type': 'fs', 'path': '/var/app/images'}
+```
+Useful for passing grouped config options as kwargs to constructors.
+
+---
+
+## Key Design Invariant
+
+**Only `UPPERCASE` keys are ever stored.** This is enforced by `from_object` (`key.isupper()`) and `from_mapping` (`key.isupper()`). Lowercase keys in config files/objects are silently ignored, allowing you to store temporary values or helpers without polluting the config.

@@ -1,0 +1,43 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Regular (Classic) Bucket Counting
+
+**Finding the bucket** — `prom_histogram.go:864`
+```go
+func (h *histogram) findBucket(v float64) int
+```
+Uses a linear search for arrays < 35 elements, binary search (`sort.SearchFloat64s`) for larger arrays. Returns the index into `h.upperBounds`, or `len(h.upperBounds)` for the implicit `+Inf` bucket.
+
+**Recording an observation** — `prom_histogram.go:899`
+```go
+func (h *histogram) observe(v float64, bucket int)
+```
+Atomically increments `h.countAndHotIdx` to get the hot counts slot (double-buffered with a hot/cold index), then delegates to `histogramCounts.observe`.
+
+**The actual count update** — `prom_histogram.go:652`
+```go
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+- `atomic.AddUint64(&hc.buckets[bucket], 1)` — increments the raw (non-cumulative) bucket counter
+- `atomicAddFloat(&hc.sumBits, v)` — updates the running sum
+- Atomically increments `hc.count` last (acts as a completion signal)
+
+**Serializing to cumulative counts** — `prom_histogram.go:779`
+```go
+func (h *histogram) Write(out *dto.Metric) error
+```
+Iterates `h.upperBounds`, accumulating a `cumCount` by summing raw bucket values. Prometheus exposes buckets as cumulative (`le` label), so this conversion happens only at read time.
+
+## Native/Sparse Bucket Counting
+
+For native histograms, `histogramCounts.observe` additionally computes a bucket key using the schema:
+- **Schema > 0**: `key = sort.SearchFloat64s(bounds, frac) + (exp-1)*len(bounds)` (sub-power-of-two divisions)
+- **Schema ≤ 0**: `key = (exp + offset) >> -schema` (power-of-two grouping)
+
+The key maps into a `sync.Map` (`nativeHistogramBucketsPositive` / `nativeHistogramBucketsNegative`) via `addToBucket`. Values near zero fall into the zero bucket: `atomic.AddUint64(&hc.nativeHistogramZeroBucket, 1)`.
+
+## Key Design Points
+
+- **Double-buffering**: `h.counts[0]` and `h.counts[1]` are swapped via the MSB of `h.countAndHotIdx`. `Write` flips the hot index and waits for the cold counts to settle (`waitForCooldown`) before reading.
+- **Non-cumulative storage, cumulative output**: Raw per-bucket counts are stored; cumulation happens in `Write`.
+- **`+Inf` bucket is implicit**: Removed from `upperBounds` at construction (`prom_histogram.go:588`); the total `count` serves as its value.

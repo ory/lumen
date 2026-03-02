@@ -1,0 +1,202 @@
+Here's a thorough walkthrough of how Prometheus metrics scraping and collection works in this codebase:
+
+---
+
+## Data Flow: Scrape to In-Memory Storage
+
+```
+Discovery Manager
+      │  target groups
+      ▼
+  Manager.Run()
+      │  triggers reload
+      ▼
+  Manager.reload()
+      │  creates/syncs
+      ▼
+  scrapePool.Sync()
+      │  starts loops
+      ▼
+  scrapeLoop.run()       ← one goroutine per target
+      │  on each tick
+      ▼
+  scrapeAndReport()
+      │  HTTP GET /metrics
+      ▼
+  scraper.readResponse() → Parser (text/proto)
+      │  parsed samples
+      ▼
+  appender.append()
+      │  Commit()
+      ▼
+  TSDB / WAL (storage.Appender)
+```
+
+---
+
+## 1. Manager — The Top-Level Coordinator
+
+**`manager.go:133`** — `Manager` holds a map of `scrapePool` objects (one per job), keyed by job name:
+
+```go
+type Manager struct {
+    scrapePools   map[string]*scrapePool
+    scrapeConfigs map[string]*config.ScrapeConfig
+    triggerReload chan struct{}
+    ...
+}
+```
+
+**`manager.go:158`** — `Manager.Run()` reads target group updates from a channel (fed by service discovery), stores them, and signals `triggerReload`. A `reloader()` goroutine debounces those signals with a 5-second ticker before calling `Manager.reload()`.
+
+**`manager.go:211`** — `Manager.reload()` either creates new `scrapePool`s for new jobs, or calls `sp.Sync(groups)` for existing ones, both in parallel goroutines.
+
+**`manager.go:278`** — `Manager.ApplyConfig()` handles config reloads — it calls `sp.reload(cfg)` on changed pools (which restarts all loops with new config) and `sp.stop()` on removed ones.
+
+---
+
+## 2. scrapePool — Per-Job State
+
+**`scrape.go:83`** — One `scrapePool` per scrape job, tracking all active targets and their loops:
+
+```go
+type scrapePool struct {
+    loops         map[uint64]loop    // hash(labelset) → loop
+    activeTargets map[uint64]*Target
+    config        *config.ScrapeConfig
+    client        *http.Client
+    appendable    storage.Appendable
+    ...
+}
+```
+
+`Sync()` diffs old vs new target sets, stopping loops for removed targets and starting new ones. Each active target gets a `scrapeLoop`.
+
+---
+
+## 3. scrapeLoop — Per-Target Scrape Goroutine
+
+**`scrape.go:822`** — `scrapeLoop` is the core per-target worker:
+
+```go
+type scrapeLoop struct {
+    scraper    scraper         // does the HTTP fetch
+    cache      *scrapeCache    // tracks known series refs
+    appendable storage.Appendable
+    interval   time.Duration
+    timeout    time.Duration
+    ...
+}
+```
+
+**`scrape.go:1234`** — `scrapeLoop.run()` is a ticker loop:
+1. Waits for an initial offset (to spread load across HA setups).
+2. On each tick, calls `scrapeAndReport(last, scrapeTime, errc)`.
+3. On context cancellation, emits staleness markers for all series then exits.
+
+**`scrape.go:1308`** — `scrapeAndReport()` is the main per-scrape function:
+```
+1. resp = scraper.scrape(ctx)           // HTTP GET
+2. buf = scraper.readResponse(...)      // decompress, read body
+3. total, added, seriesAdded = app.append(buf, contentType, ts)
+4. deferred: app.Commit()
+5. deferred: sl.report(app, ...)        // write scrape_duration_seconds, up, etc.
+```
+
+---
+
+## 4. Parser — Text Format to Samples
+
+**`textparse_interface.go:28`** — The `Parser` interface is the abstraction for all exposition formats (PrometheusText, OpenMetrics, ProtoBuffer):
+
+```go
+type Parser interface {
+    Next() (Entry, error)        // iterate entries
+    Series() ([]byte, *int64, float64)           // float sample
+    Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram)
+    Help() ([]byte, []byte)      // # HELP lines
+    Type() ([]byte, model.MetricType)            // # TYPE lines
+    Unit() ([]byte, []byte)
+    Labels(b *labels.Builder)    // label set for current entry
+    Metric(p *string) model.LabelValue
+}
+```
+
+The loop in `app.append()` calls `p.Next()` iteratively. For each `EntrySeries` entry, it calls `p.Series()` to get the raw label bytes, float value, and optional timestamp, then calls `storage.Appender.Append(ref, lset, ts, val)`.
+
+**`textparse_interface.go:125`** — `ParserOptions` controls behavior like native histogram conversion, OpenMetrics `_created` series skipping, and type/unit label injection.
+
+---
+
+## 5. Counter and Gauge — In-Memory Storage
+
+**`prom_counter.go:103`** — `counter` struct uses a split-integer trick for lock-free performance:
+
+```go
+type counter struct {
+    valBits uint64  // float64 bits for fractional adds
+    valInt  uint64  // integer portion (fast path)
+    exemplar atomic.Value
+    ...
+}
+```
+
+- `Inc()` → `atomic.AddUint64(&c.valInt, 1)` (fastest path)
+- `Add(v float64)` → if `v` is a whole number, same integer add; otherwise CAS loop on `valBits`
+- `Write(dto.Metric)` → reads both fields, combines into final float64 for exposition
+
+**`prom_gauge.go:90`** — `gauge` is simpler — a single `uint64` storing `math.Float64bits(val)`:
+
+```go
+type gauge struct {
+    valBits uint64  // float64 bits stored atomically
+    ...
+}
+```
+
+- `Set(val)` → `atomic.StoreUint64(&g.valBits, math.Float64bits(val))`
+- `Add(val)` → CAS loop: load → add → store
+- No integer fast path since gauges can be any value
+
+---
+
+## 6. Registry — Gathering Metric Families
+
+**`prom_registry.go:253`** — `Registry` stores collectors by ID (hash of their descriptors):
+
+```go
+type Registry struct {
+    collectorsByID      map[uint64]Collector
+    descIDs             map[uint64]struct{}
+    dimHashesByName     map[string]uint64
+    uncheckedCollectors []Collector
+}
+```
+
+**`prom_registry.go:411`** — `Registry.Gather()` is the pull path (called at scrape time for the Prometheus server's own metrics):
+1. Fans out `Collector.Collect(chan Metric)` calls concurrently into goroutines.
+2. Each metric is processed by `processMetric()`, which calls `metric.Write(*dto.Metric)` to get the protobuf representation.
+3. `processMetric()` groups metrics into `metricFamiliesByName map[string]*dto.MetricFamily`, validating type consistency.
+4. Returns a lexicographically sorted `[]*dto.MetricFamily` slice.
+
+**`prom_registry.go:619`** — `processMetric()` handles both existing and new family names:
+- **Existing**: validates the incoming metric matches the already-seen type (e.g., won't accept a `Counter` where a `Gauge` was registered)
+- **New**: infers type from which `dto.Metric` field is non-nil (`dtoMetric.Gauge != nil` → `GAUGE`, etc.)
+
+**`prom_registry.go:1036`** — `TransactionalGatherer` extends this with a `done()` callback, allowing cache implementations to release memory after the caller is finished exposing.
+
+---
+
+## Summary: Key Types
+
+| Type | File | Role |
+|---|---|---|
+| `Manager` | `manager.go:133` | Top-level; owns all `scrapePool`s; reacts to discovery |
+| `scrapePool` | `scrape.go:83` | Per-job; owns `scrapeLoop`s; syncs targets |
+| `scrapeLoop` | `scrape.go:822` | Per-target; ticks, fetches, parses, appends |
+| `scraper` (interface) | `scrape.go:677` | HTTP fetch + response reading |
+| `Parser` (interface) | `textparse_interface.go:28` | Text/proto format → sample iteration |
+| `counter` | `prom_counter.go:103` | Lock-free split int/float counter |
+| `gauge` | `prom_gauge.go:90` | Lock-free float64 via atomic uint64 |
+| `Registry` | `prom_registry.go:253` | Collector registry + fan-out gather |
+| `scrapeLoopAppendAdapter` | `scrape.go:129` | Bridges parser output → `storage.Appender` |

@@ -1,0 +1,66 @@
+Here's how the Django `Permission` model works, based on `django-models.py`:
+
+---
+
+## `PermissionManager` (line 27–36)
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+`PermissionManager` extends Django's base `Manager`. Its sole addition is `get_by_natural_key`, which looks up a `Permission` by its **natural key** — a 3-tuple of `(codename, app_label, model)`. It delegates the `ContentType` lookup to `ContentType.objects.get_by_natural_key(app_label, model)`, ensuring it uses the same database (`self.db`) for proper multi-db support. Natural keys are used during fixture serialization/deserialization instead of raw PKs.
+
+---
+
+## `Permission` model (line 39–85)
+
+**Fields:**
+
+| Field          | Type         | Notes                                                |
+| -------------- | ------------ | ---------------------------------------------------- |
+| `name`         | `CharField`  | Human-readable label, max 255 chars                  |
+| `content_type` | `ForeignKey` | Links to `ContentType` (the model this perm applies to); CASCADE delete |
+| `codename`     | `CharField`  | Machine name like `add_article`, max 100 chars       |
+
+**Manager:** `objects = PermissionManager()` — replaces the default manager.
+
+**Meta constraints:**
+- `unique_together = [["content_type", "codename"]]` — a codename must be unique per model type
+- `ordering = ["content_type__app_label", "content_type__model", "codename"]` — predictable sort order
+
+**Key methods:**
+```python
+def __str__(self):
+    return "%s | %s" % (self.content_type, self.name)
+    # e.g. "myapp | Can add article"
+
+def natural_key(self):
+    return (self.codename, *self.content_type.natural_key())
+    # e.g. ("add_article", "myapp", "article")
+
+natural_key.dependencies = ["contenttypes.contenttype"]
+```
+
+`natural_key()` returns the inverse of what `get_by_natural_key` accepts: `(codename, app_label, model)`. The `.dependencies` attribute tells Django's serializer to dump `ContentType` data before `Permission` data.
+
+---
+
+## Summary of the flow
+
+```
+Permission.objects.get_by_natural_key("add_article", "myapp", "article")
+    └─► PermissionManager.get_by_natural_key(codename, app_label, model)
+            └─► ContentType.objects.get_by_natural_key("myapp", "article")
+            └─► Permission.objects.get(codename="add_article", content_type=<ct>)
+```
+
+Permissions are **global per model type** (not per instance). The four built-in codenames are `add`, `change`, `delete`, and `view`, created automatically for every model registered with Django.

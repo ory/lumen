@@ -1,0 +1,98 @@
+Here's how Flask's configuration system works, based on `flask-config.py`:
+
+## Class Hierarchy
+
+There are two classes:
+
+### `ConfigAttribute` (lines 20–47) — Descriptor proxy
+
+A generic descriptor that forwards attribute access on a Flask `App` instance to `app.config[name]`. This lets you write `app.debug` instead of `app.config["DEBUG"]`. It supports an optional `get_converter` callable to transform the value on read.
+
+### `Config(dict)` (lines 50–367) — The main config object
+
+Subclasses `dict` directly, so all standard dict operations work. Initialized with a `root_path` (used to resolve relative filenames) and optional `defaults`.
+
+## Loading Methods
+
+The `Config` class provides **six** ways to load configuration, each building on simpler primitives:
+
+### 1. `from_object(obj)` — Core primitive (line 218)
+The foundational method. Takes a Python object (module, class, or import string) and copies all **uppercase** attributes into the config:
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+### 2. `from_pyfile(filename, silent=False)` — Python files (line 187)
+Compiles and executes a `.py`/`.cfg` file into a temporary `ModuleType` object, then delegates to `from_object()`:
+
+```python
+filename = os.path.join(self.root_path, filename)
+d = types.ModuleType("config")
+d.__file__ = filename
+with open(filename, mode="rb") as config_file:
+    exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+### 3. `from_envvar(variable_name, silent=False)` — Env var → file (line 102)
+Reads a filename from an environment variable, then delegates to `from_pyfile()`:
+
+```python
+rv = os.environ.get(variable_name)
+if not rv:
+    raise RuntimeError(...)
+return self.from_pyfile(rv, silent=silent)
+```
+
+### 4. `from_prefixed_env(prefix="FLASK", loads=json.loads)` — Bulk env vars (line 126)
+Scans all environment variables starting with `{prefix}_`, strips the prefix, and attempts to JSON-decode values. Supports **nested dicts** via double-underscore separators (`FLASK_DB__HOST` → `config["DB"]["HOST"]`):
+
+```python
+for key in sorted(os.environ):
+    if not key.startswith(prefix):
+        continue
+    value = os.environ[key]
+    key = key.removeprefix(prefix)
+    try:
+        value = loads(value)
+    except Exception:
+        pass  # keep as string
+    # handle "__" nesting...
+    self[key] = value
+```
+
+### 5. `from_file(filename, load, silent=False, text=True)` — Structured files (line 256)
+Generic loader for JSON, TOML, etc. Takes a `load` callable (e.g. `json.load`, `tomllib.load`) and delegates to `from_mapping()`:
+
+```python
+with open(filename, "r" if text else "rb") as f:
+    obj = load(f)
+return self.from_mapping(obj)
+```
+
+### 6. `from_mapping(mapping=None, **kwargs)` — Dict-like sources (line 303)
+Filters and copies only **uppercase** keys from a mapping or keyword arguments:
+
+```python
+for key, value in mappings.items():
+    if key.isupper():
+        self[key] = value
+```
+
+## Utility: `get_namespace(namespace)` (line 323)
+Extracts a subset of config keys matching a prefix and optionally lowercases/trims them — useful for passing config subsets as `**kwargs` to constructors.
+
+## Delegation Chain
+
+```
+from_envvar ──→ from_pyfile ──→ from_object (uppercase attrs → dict)
+from_file   ──→ from_mapping   (uppercase keys → dict)
+from_prefixed_env               (direct dict writes with nesting)
+```
+
+The key invariant throughout: **only uppercase keys are stored in the config**.

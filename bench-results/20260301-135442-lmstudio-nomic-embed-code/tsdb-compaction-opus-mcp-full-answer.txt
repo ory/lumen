@@ -1,0 +1,116 @@
+## TSDB Compaction: End-to-End
+
+### The `Compactor` Interface
+
+**`compact.go:52-77`** — Three core methods:
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+- **`Plan`** — scans block directories and returns a set that should be compacted together
+- **`Write`** — persists an in-memory block (typically the Head) to disk as a new block
+- **`Compact`** — merges multiple on-disk blocks into fewer, larger blocks
+
+---
+
+### `LeveledCompactor`
+
+**`compact.go:79-93`** — The production implementation:
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64           // exponential time ranges for levels
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    blockExcludeFunc            BlockExcludeFilterFunc
+    enableOverlappingCompaction bool
+    // ... other fields
+}
+```
+
+**Key methods:**
+
+| Method | Purpose |
+|--------|---------|
+| `Plan(dir)` | Reads block metadata, delegates to internal `plan()` |
+| `plan(dms)` | Checks for overlapping blocks first (vertical compaction), then falls back to leveled (horizontal) compaction. Also handles tombstone cleanup (>5% deleted series) |
+| `selectDirs(ds)` | Picks blocks for leveled compaction based on `ranges` |
+| `selectOverlappingDirs(ds)` | Detects and selects time-overlapping blocks for vertical compaction |
+| `Compact(dest, dirs, open)` | Merges selected blocks into new ones |
+| `Write(dest, b, mint, maxt, base)` | Persists a single block (typically Head → disk) |
+
+---
+
+### How the DB Triggers Compaction
+
+The `DB` struct (`db.go:281-344`) holds a `compactc chan struct{}` channel and runs a background goroutine:
+
+**Trigger sources** (all non-blocking sends to `compactc`):
+
+1. **Appender commit** (`db.go:1360-1402`) — after every `Commit()`, checks `head.compactable()` and signals
+2. **Periodic timer** in `db.run()` (`db.go:1175-1243`) — fires every `BlockReloadInterval` (~1 min)
+3. **Stale series** — if stale ratio exceeds threshold, calls `CompactStaleHead()` immediately
+
+**The background loop** (`db.run`):
+```
+select {
+case <-timer:      → reloadBlocks(), then send to compactc
+case <-compactc:   → call db.Compact(ctx)
+case <-stopc:      → exit
+}
+```
+
+---
+
+### `DB.Compact()` — The Four Phases
+
+**`db.go:1414-1506`** — holds `cmtx` lock for the entire duration:
+
+```
+Phase 1: COMPACT HEAD
+  Loop while head.compactable():
+    → Create RangeHead for time window
+    → Wait for overlapping appenders
+    → compactor.Write() to persist head block to disk
+
+Phase 2: TRUNCATE WAL
+  → head.truncateWAL(lastBlockMaxt)
+
+Phase 3: COMPACT OUT-OF-ORDER HEAD
+  → db.compactOOOHead(ctx)
+
+Phase 4: COMPACT EXISTING BLOCKS (db.compactBlocks)
+  Loop:
+    → compactor.Plan(db.dir)     // get plan
+    → compactor.Compact(plan)    // merge blocks
+    → db.reloadBlocks()          // update in-memory state
+    (abort early if head becomes compactable again — head takes priority)
+```
+
+---
+
+### Flow Diagram
+
+```
+Appender.Commit() ──┐
+Periodic timer ─────┤──→ compactc channel ──→ db.run() ──→ DB.Compact()
+Stale series ───────┘                                          │
+                                                    ┌──────────┼──────────┐
+                                                    ▼          ▼          ▼
+                                              compactHead  compactOOO  compactBlocks
+                                              (Write)      (OOO head) (Plan→Compact)
+                                                    │          │          │
+                                                    └──────────┴──────────┘
+                                                               │
+                                                        reloadBlocks()
+```
+
+**Synchronization:** `cmtx` mutex ensures compactions and deletions never run concurrently. The `compactc` channel is buffered/non-blocking so triggers never block the appender hot path. An optional `CompactionDelay` prevents aggressive compaction during rapid ingestion bursts.

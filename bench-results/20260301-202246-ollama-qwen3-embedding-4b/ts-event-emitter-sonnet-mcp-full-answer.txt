@@ -1,0 +1,207 @@
+Now I have a thorough picture of the system. Here's a complete explanation:
+
+---
+
+## Event System in `event.ts`
+
+### 1. The `Event<T>` Interface — Events as Callable Functions
+
+```typescript
+// event.ts:37-39
+export interface Event<T> {
+  (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is **just a function**. You subscribe by calling it:
+- Pass a `listener` callback
+- Optionally bind `thisArgs`
+- Optionally register the returned `IDisposable` into a `DisposableStore` or array for automatic cleanup
+
+The return value is always an `IDisposable` — calling `.dispose()` removes the listener.
+
+```typescript
+Event.None: Event<any> = () => Disposable.None;  // no-op sentinel
+```
+
+---
+
+### 2. The `Emitter<T>` Class — The Producer
+
+```typescript
+// event.ts:1093-1140 (simplified)
+export class Emitter<T> {
+  private _listeners?: ListenerOrListeners<T>;  // single fn or sparse array
+  private _size = 0;
+  private _deliveryQueue?: EventDeliveryQueuePrivate;
+
+  get event(): Event<T> { /* returns the callable subscription function */ }
+  fire(event: T): void { /* dispatches to all listeners */ }
+  dispose(): void { /* clears all listeners */ }
+  hasListeners(): boolean { return this._size > 0; }
+}
+```
+
+**Key storage optimization**: a single listener is stored directly as a `UniqueContainer<fn>` (not an array). Only when a second listener is added does it promote to a sparse array. The array never downgrades back to a scalar.
+
+**`fire()` dispatch** (`event.ts:1315`):
+```typescript
+fire(event: T): void {
+  if (this._listeners instanceof UniqueContainer) {
+    this._deliver(this._listeners, event);     // fast path: one listener
+  } else {
+    dq.enqueue(this, event, this._listeners.length);
+    this._deliverQueue(dq);                    // slow path: iterate array
+  }
+}
+```
+
+**`EmitterOptions`** (`event.ts:858`) lets you hook into lifecycle:
+```typescript
+interface EmitterOptions {
+  onWillAddFirstListener?: Function;   // lazy resource acquisition
+  onDidAddFirstListener?: Function;
+  onDidRemoveLastListener?: Function;  // lazy resource release
+  onWillRemoveListener?: Function;
+  onListenerError?: (e: any) => void;
+  leakWarningThreshold?: number;
+  deliveryQueue?: EventDeliveryQueue;  // shared queue for ordered delivery
+}
+```
+
+---
+
+### 3. Disposable Integration
+
+`IDisposable` (`lifecycle.ts:312`) is just `{ dispose(): void }`.
+
+When subscribing, the `IDisposable` return value can be auto-tracked in two ways:
+
+```typescript
+// Register into an array (common in class constructors):
+const disposables: IDisposable[] = [];
+emitter.event(handler, this, disposables);  // pushes into array
+
+// Register into a DisposableStore (preferred):
+const store = new DisposableStore();
+emitter.event(handler, this, store);        // calls store.add(d)
+```
+
+Helper used internally:
+```typescript
+// event.ts:231-238
+function addAndReturnDisposable<T extends IDisposable>(d: T, store): T {
+  if (store instanceof Array) store.push(d);
+  else if (store) store.add(d);
+  return d;
+}
+```
+
+When you dispose the store (e.g., when a component is destroyed), all event subscriptions are automatically removed.
+
+---
+
+### 4. Event Composition — Functional Operators
+
+All operators follow the same pattern: **take an `Event<I>`, return an `Event<O>`**. They're lazy — the inner emitter is only wired up when a listener subscribes.
+
+#### `map` (`event.ts:133`)
+```typescript
+Event.map(event, fn)
+// Wraps event: each fired value is transformed through fn before delivery
+return snapshot((listener, ...) => event(i => listener(map(i)), ...), disposable);
+```
+
+#### `filter` (`event.ts:167`)
+```typescript
+Event.filter(event, predicate)
+// Only fires listener when predicate(value) is true
+return snapshot((listener, ...) => event(e => predicate(e) && listener(e), ...), disposable);
+```
+
+#### `debounce` (`event.ts:260`)
+The most complex operator. Uses `onWillAddFirstListener` / `onDidRemoveLastListener` to lazily subscribe and unsubscribe from the source:
+```typescript
+Event.debounce(event, merge, delay, leading, flushOnListenerRemove)
+// - Accumulates calls via merge()
+// - Fires via setTimeout or queueMicrotask
+// - leading=true fires immediately on first call
+// - flushOnListenerRemove=true flushes pending on unsubscribe
+```
+
+#### `throttle` (`event.ts:366`) — similar but fires at most once per period, with configurable leading/trailing edge.
+
+#### `accumulate` (`event.ts:338`) — sugar over `debounce` that batches events into `T[]`.
+
+#### `latch` (`event.ts:449`) — deduplicate: only fires when the value actually changes.
+
+#### `once` (`event.ts:87`) — fires once then auto-disposes:
+```typescript
+Event.once(event)
+// Disposes itself on first delivery, handles re-entrancy carefully
+```
+
+#### `any` (`event.ts:183`) — merge multiple events into one:
+```typescript
+Event.any(...events): Event<T>
+// Subscribes to all, fires listener when any fires
+```
+
+#### `forward` (`event.ts:731`) — wire one event directly into an Emitter:
+```typescript
+Event.forward(from, toEmitter) // from(e => toEmitter.fire(e))
+```
+
+---
+
+### 5. The `chain` API — Composable Pipeline
+
+```typescript
+// event.ts:577-589
+Event.chain(event, $ => $.filter(x => x > 0).map(x => x * 2))
+```
+
+`ChainableSynthesis` (`event.ts:593`) stores steps as a `((input) => unknown)[]` pipeline. `filter` uses a sentinel `HaltChainable` to short-circuit evaluation — if any step returns `HaltChainable`, the listener is not called.
+
+---
+
+### 6. Specialized Emitter Subclasses
+
+| Class | Behavior |
+|---|---|
+| `PauseableEmitter<T>` | `pause()`/`resume()` — queues events while paused |
+| `MicrotaskEmitter<T>` | Batches via `queueMicrotask`; optional `merge` fn |
+| `EventMultiplexer<T>` | Aggregates N event sources into one |
+| `DynamicListEventMultiplexer<T>` | Like Multiplexer but items can be added/removed at runtime |
+
+---
+
+### 7. External Event Adapters
+
+```typescript
+// Wrap a Node.js EventEmitter:
+Event.fromNodeEventEmitter(emitter, 'data', (buf) => buf.toString())
+
+// Wrap a DOM EventTarget:
+Event.fromDOMEventEmitter(element, 'click', e => e.clientX)
+```
+
+Both use `onWillAddFirstListener` / `onDidRemoveLastListener` to lazily attach/detach the underlying native listener — **zero overhead when nobody is subscribed**.
+
+---
+
+### Pattern Summary
+
+```
+Emitter<T>             ← producer, owns .fire()
+    └── .event: Event<T>  ← callable subscription function
+           │
+           ├── Event.map / filter / debounce / latch ...
+           │       └── returns new Event<O> (lazy, operator-chained)
+           │
+           └── subscriber calls event(listener, thisArgs, disposables)
+                   └── returns IDisposable
+                           └── add to DisposableStore → auto-cleanup on destroy
+```
+
+The whole design is functional and allocation-conscious: composed events only create inner `Emitter`s when actually subscribed to, and they tear down automatically via the disposable chain when the outer listener is removed.

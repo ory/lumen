@@ -1,0 +1,121 @@
+## TSDB Compaction — End-to-End
+
+### 1. The `Compactor` Interface
+
+**`compact.go:52-77`** — Three methods define the contract:
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)                                              // select compactable block dirs
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error) // persist a BlockReader as a new block
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)         // merge multiple block dirs into one
+}
+```
+
+### 2. `LeveledCompactor` — The Implementation
+
+**`compact.go:79-95`**
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64          // time range levels (e.g. 2h, 6h, 36h, 72h)
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    // ... other fields
+}
+```
+
+### 3. How the DB Triggers Compaction
+
+**`db.go:1414-1506`** — `DB.Compact(ctx)` orchestrates three phases:
+
+```
+DB.Compact(ctx)
+ ├─ Phase 1: Head compaction loop
+ │   └─ db.compactHead(rh)  →  compactor.Write(dir, head, mint, maxt, nil)
+ │       └─ reloadBlocks() + head.truncateMemory() + head.truncateWAL()
+ │
+ ├─ Phase 2: OOO (out-of-order) head compaction
+ │   └─ db.compactOOOHead(ctx)  →  db.compactOOO()
+ │       └─ For each time range: compactor.Write(dest, oooHead.CloneForTimeRange(...))
+ │
+ └─ Phase 3: Block compaction loop
+     └─ db.compactBlocks()
+         └─ loop {
+              plan, _ := compactor.Plan(dir)      // pick blocks
+              if len(plan) == 0 { break }
+              compactor.Compact(dir, plan, blocks) // merge them
+              db.reloadBlocks()                    // swap in new, delete old
+            }
+```
+
+**Phase 1 — Head compaction** (`db.go:1636-1662`): Checks `head.compactable()`, respects a random delay to stagger compactions, then calls `compactor.Write()` to flush the in-memory head as an on-disk block. After writing, it reloads blocks, truncates the WAL, and rebuilds the symbol table.
+
+**Phase 2 — OOO compaction** (`db.go:1535-1632`): Creates an `OOOCompactionHead`, then writes one block per chunk-range-aligned time window using `compactor.Write()`.
+
+**Phase 3 — Block compaction** (`db.go:1721-1763`): A loop that repeatedly calls `Plan` → `Compact` → `reloadBlocks` until `Plan` returns nothing. Aborts early if the head becomes compactable again (head persistence takes priority).
+
+### 4. `Plan()` — Three Selection Strategies
+
+**`compact.go:248-437`** — The internal `plan()` method tries strategies in priority order:
+
+| Priority | Strategy | Condition |
+|----------|----------|-----------|
+| 1 | **Overlapping blocks** | Any blocks with overlapping `[MinTime, MaxTime)` ranges |
+| 2 | **Level-based** | Groups blocks into aligned time ranges; picks groups that span a full range or are behind the most recent block, with >1 block |
+| 3 | **Tombstone-based** | Single blocks with >5% tombstones, or blocks where all series have tombstones |
+
+The level-based strategy uses `splitByRange()` to align blocks into windows defined by `c.ranges` (e.g., 2h → 6h → 36h → 72h). Small blocks get merged into medium blocks, medium into large — a classic LSM-tree leveled approach.
+
+### 5. `Compact()` — Merging Blocks
+
+**`compact.go:485-584`** — Opens (or reuses already-open) source blocks, merges metadata via `CompactBlockMetas()` (increments compaction level, unions sources, sets parent references), then delegates to `write()`.
+
+```go
+func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta
+// Merges min/max times, increments level, collects sources and parents
+```
+
+If the result is empty (0 samples), source blocks are marked `Compaction.Deletable = true` instead of producing a new block. On error (non-cancellation), source blocks are marked `Compaction.Failed` to prevent re-selection.
+
+### 6. `write()` — Creating the Physical Block
+
+**`compact.go:658-769`** — The core I/O path:
+
+1. Create a temp directory (`<ulid>.tmp-for-creation`)
+2. Open a `ChunkWriter` (instrumented with metrics at level 1)
+3. Open an `IndexWriter`
+4. Call `BlockPopulator.PopulateBlock()` to merge data from source blocks
+5. Write `meta.json` and empty `tombstones`
+6. `fsync` the temp dir
+7. Atomically rename temp → final via `fileutil.Replace()`
+
+### 7. `DefaultBlockPopulator.PopulateBlock()` — The Data Merge
+
+**`compact.go:788-939`** — This is where series data actually gets merged:
+
+- Opens index/chunk/tombstone readers for each source block
+- Creates `BlockChunkSeriesSet` per block with time bounds
+- If multiple blocks: merges via `storage.NewMergeChunkSeriesSet` with the configured `VerticalChunkSeriesMergeFunc`
+- Iterates merged series in sorted order, writing chunks and index entries
+- Accumulates `NumChunks`, `NumSeries`, `NumSamples` (split by encoding: float vs histogram)
+- Returns chunks to pool for reuse
+
+### 8. Compaction Control
+
+**`db.go:2243-2262`**:
+
+```go
+func (db *DB) DisableCompactions()  // sets db.autoCompact = false
+func (db *DB) EnableCompactions()   // sets db.autoCompact = true
+```
+
+A random compaction delay (`generateCompactionDelay`) prevents all TSDB instances from compacting simultaneously after startup.
+
+---
+
+**In summary:** The DB drives compaction through a three-phase `Compact()` method — flush head → flush OOO head → merge on-disk blocks. The `LeveledCompactor` implements a leveled strategy where small blocks are progressively merged into larger ones based on time-range alignment, with overlapping blocks and tombstone-heavy blocks prioritized. All writes go through a crash-safe temp-dir-then-atomic-rename pattern.

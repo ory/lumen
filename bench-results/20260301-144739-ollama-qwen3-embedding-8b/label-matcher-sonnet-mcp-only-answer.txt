@@ -1,0 +1,58 @@
+There are two files with identical definitions (`labels_matcher.go` and `matcher.go`). Here's a summary of the types and constructor:
+
+---
+
+### `MatchType` — the enum (`labels_matcher.go:21-29`)
+
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four types are available: exact equality, negated equality, regex match, and negated regex match.
+
+---
+
+### `Matcher` — the struct (`labels_matcher.go:46-53`)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // only set for regexp types
+}
+```
+
+---
+
+### `NewMatcher` — the constructor (`labels_matcher.go:55-70`)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+`NewMatcher` takes a `MatchType`, a label name, and a value string. For regexp types (`MatchRegexp` / `MatchNotRegexp`), it compiles the value into a `FastRegexMatcher` and stores it in the private `re` field — returning an error if the regex is invalid. For equality types, `re` is left nil.
+
+There's also `MustNewMatcher` (`labels_matcher.go:72-79`) which wraps `NewMatcher` and panics on error, intended only for use in tests.

@@ -1,0 +1,59 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Two Bucket Systems
+
+The code supports **two distinct bucket systems**: classic (fixed) buckets and native (sparse/exponential) buckets.
+
+### Classic Buckets
+
+Defined by fixed upper bounds (e.g. `DefBuckets = {.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}`). Counting is straightforward — find which bucket the value falls into and atomically increment:
+
+```go
+// prom_histogram.go:652-706
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+The `bucket` parameter is the pre-computed index into `hc.buckets []uint64`. The count is simply:
+```go
+atomic.AddUint64(&hc.buckets[bucket], 1)
+```
+
+When writing output, counts are made **cumulative** in `histogram.Write` (`prom_histogram.go:779`):
+```go
+var cumCount uint64
+for i, upperBound := range h.upperBounds {
+    cumCount += atomic.LoadUint64(&coldCounts.buckets[i])
+    // ...
+}
+```
+
+### Native (Sparse/Exponential) Buckets
+
+These use a **schema-based logarithmic** bucketing scheme. The key logic is in `histogramCounts.observe` (`prom_histogram.go:652-706`):
+
+1. **Decompose** the value via `math.Frexp(math.Abs(v))` → fraction + exponent
+2. **Compute bucket key** based on schema:
+   - **Schema > 0**: binary search in `nativeHistogramBounds[schema]`, then `key = SearchResult + (exp-1)*len(bounds)`
+   - **Schema ≤ 0**: `key = exp` (adjusted for exact powers of 2), then bit-shifted: `key = (key + offset) >> -schema`
+3. **Route** to the appropriate map:
+   - `v > zeroThreshold` → `addToBucket(&hc.nativeHistogramBucketsPositive, key, 1)`
+   - `v < -zeroThreshold` → `addToBucket(&hc.nativeHistogramBucketsNegative, key, 1)`
+   - Otherwise → `atomic.AddUint64(&hc.nativeHistogramZeroBucket, 1)`
+
+### Key Types for Iteration
+
+For the sparse `Histogram` struct (`histogram.go:35-80`), bucket iteration uses:
+
+```go
+// histogram.go:481
+type regularBucketIterator struct { baseBucketIterator[uint64, int64] }
+
+// histogram.go:530-548
+type cumulativeBucketIterator struct { ... }
+```
+
+The `cumulativeBucketIterator` walks spans and reconstructs cumulative counts, handling gaps between spans via `emptyBucketCount`.
+
+### Hot/Cold Swap for Thread Safety
+
+`histogram.Write` (`prom_histogram.go:779`) uses a **hot/cold index swap** — observations go to the "hot" `histogramCounts`, while `Write` reads from the "cold" one after swapping via `atomic.AddUint64(&h.countAndHotIdx, 1<<63)`.

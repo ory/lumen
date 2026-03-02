@@ -1,0 +1,50 @@
+Here's how the Django Permission model works:
+
+### `PermissionManager` (`django-models.py:27-36`)
+
+A custom manager that enables natural key lookups:
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+`get_by_natural_key` takes three arguments — `codename`, `app_label`, and `model` — and resolves the permission by looking up its `content_type` through `ContentType.objects.get_by_natural_key`. This is used for serialization/deserialization (e.g., fixtures, `dumpdata`/`loaddata`). The `use_in_migrations = True` flag makes this manager available in migration operations.
+
+### `Permission` model (`django-models.py:39-85`)
+
+```python
+class Permission(models.Model):
+    name = models.CharField(_("name"), max_length=255)
+    content_type = models.ForeignKey(
+        ContentType,
+        models.CASCADE,
+        verbose_name=_("content type"),
+    )
+    codename = models.CharField(_("codename"), max_length=100)
+
+    objects = PermissionManager()
+```
+
+**Fields:**
+- **`name`** — human-readable name (e.g., "Can add log entry"), max 255 chars
+- **`content_type`** — FK to `ContentType`, linking the permission to a specific model. Cascades on delete.
+- **`codename`** — machine-readable identifier (e.g., `add_logentry`), max 100 chars
+
+**Key constraints** (from `Meta`):
+- `unique_together = [["content_type", "codename"]]` — a codename is unique per content type
+- `ordering = ["content_type__app_label", "content_type__model", "codename"]`
+
+**Methods:**
+- `__str__` returns `"content_type | name"` (e.g., `"admin | log entry | Can add log entry"`)
+- `natural_key()` returns `(codename, *content_type.natural_key())` — a tuple of `(codename, app_label, model)` that uniquely identifies the permission without using PKs
+
+The docstring explains that Django auto-creates four permissions per model: **add**, **change**, **delete**, and **view**. Permissions are global per model type, not per object instance.

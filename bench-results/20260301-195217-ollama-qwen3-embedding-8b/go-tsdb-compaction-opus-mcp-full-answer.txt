@@ -1,0 +1,160 @@
+Here's an end-to-end explanation of TSDB compaction:
+
+---
+
+## 1. The `Compactor` Interface (`compact.go:52-77`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three responsibilities:
+- **`Plan`** — scans block directories and returns a set of block dirs that should be compacted together.
+- **`Write`** — persists a single `BlockReader` (typically the in-memory Head) as a new on-disk block. Used for head compaction.
+- **`Compact`** — merges multiple existing on-disk blocks into one new block. Used for block-level compaction.
+
+## 2. `LeveledCompactor` — the Implementation (`compact.go:79-93`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64          // time ranges per compaction level
+    chunkPool                   chunkenc.Pool
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    blockExcludeFunc            BlockExcludeFilterFunc
+    // ... metrics, logger, encoders
+}
+```
+
+**Key field**: `ranges []int64` — defines the leveled compaction strategy. Blocks are grouped by progressively larger time ranges (e.g., 2h → 6h → 18h → 54h). When enough small blocks accumulate to fill a larger range, they get compacted together.
+
+### Planning (`compact.go:248-328`)
+
+`Plan()` reads all block directories, loads their `meta.json`, and delegates to `plan()`:
+
+1. **Sort blocks by MinTime**
+2. **Check for overlapping blocks** via `selectOverlappingDirs()` — if any overlap, compact them first (vertical compaction)
+3. **Level-based selection** via `selectDirs()` — iterates through `ranges[1:]`, calls `splitByRange()` to group blocks, and picks a group that either spans a full range or precedes the most recent block with >1 block in it
+4. **Tombstone compaction** — if nothing else qualifies, compact any block with >5% tombstones (or 100% deleted series)
+
+### Compacting (`compact.go:483-577`)
+
+`Compact()` delegates to `CompactWithBlockPopulator()`:
+1. Opens each source block (reuses already-open blocks when possible)
+2. Generates a new ULID, calls `CompactBlockMetas()` to merge metadata
+3. Calls `c.write()` to produce the new block
+4. If the result has 0 samples, marks source blocks as `Deletable`
+
+### Writing (`compact.go:657-716`)
+
+`write()` does the actual I/O:
+1. Creates a temp directory (`<ulid>.tmp-for-creation`)
+2. Opens a `ChunkWriter` and `IndexWriter` pointing at the temp dir
+3. Calls `blockPopulator.PopulateBlock()` — this is where series are merged, chunks re-encoded, and the index rebuilt
+4. Closes writers, writes `meta.json`, syncs, then atomically renames temp → final
+
+### `BlockPopulator` Interface (`compact.go:771-773`)
+
+```go
+type BlockPopulator interface {
+    PopulateBlock(ctx context.Context, metrics *CompactorMetrics, logger *slog.Logger,
+        chunkPool chunkenc.Pool, mergeFunc storage.VerticalChunkSeriesMergeFunc,
+        blocks []BlockReader, meta *BlockMeta, indexw IndexWriter, chunkw ChunkWriter,
+        postingsFunc IndexReaderPostingsFunc) error
+}
+```
+
+`DefaultBlockPopulator` (`compact.go:790+`) opens index/chunk/tombstone readers from each source block, builds `ChunkSeriesSet`s, detects overlapping blocks, and writes merged series into the new index and chunk files.
+
+## 3. How the DB Triggers Compaction
+
+### The Background Loop (`db.go:1175-1243`)
+
+`DB.run()` is a goroutine started at DB open:
+
+```
+for {
+    select {
+    case <-time.After(BlockReloadInterval):
+        reloadBlocks()
+        signal compactc channel
+        check stale series ratio → maybe CompactStaleHead()
+
+    case <-db.compactc:
+        if db.autoCompact {
+            db.Compact(ctx)    // ← main entry point
+        }
+    }
+}
+```
+
+Compaction is also triggered by **appenders**: `dbAppender` and `dbAppenderV2` (`db.go:1344-1379`) signal `compactc` on commit when the head is compactable.
+
+### `DB.Compact()` — the Orchestrator (`db.go:1410-1506`)
+
+This is the central method, called under `db.cmtx` (compaction mutex):
+
+**Phase 1 — Head Compaction** (lines 1440-1481):
+```
+loop:
+    if !head.compactable() → break
+    if waiting for compaction delay → break
+    mint, maxt = head time range
+    rh = NewRangeHead(head, mint, maxt-1)
+    head.WaitForAppendersOverlapping(rh.MaxTime())
+    db.compactHead(rh)          // → compactor.Write()
+    lastBlockMaxt = maxt
+```
+Persists the in-memory head as an on-disk block via `compactor.Write()`, then truncates head memory and WAL.
+
+**Phase 2 — OOO Head Compaction** (lines 1498-1503):
+If the head was compacted, also compact out-of-order data via `compactOOOHead()` → `compactOOO()`, which calls `compactor.Write()` once per block-sized time range.
+
+**Phase 3 — Block Compaction** (line 1505):
+```go
+return db.compactBlocks()
+```
+
+### `DB.compactBlocks()` (`db.go:1719-1763`)
+
+Loops calling the compactor's `Plan` and `Compact` in a cycle:
+```
+loop:
+    if head.compactable() → abort (head has priority)
+    plan = compactor.Plan(db.dir)
+    if empty → break
+    compactor.Compact(db.dir, plan, db.blocks)
+    db.reloadBlocks()    // picks up new block, drops old ones
+```
+
+After `reloadBlocks()`, old source blocks that fall outside retention or are superseded get deleted.
+
+## End-to-End Flow Summary
+
+```
+Appender.Commit() / periodic timer
+        │
+        ▼
+    db.compactc channel
+        │
+        ▼
+    DB.Compact()
+        │
+        ├─► Phase 1: Head → Block   (compactor.Write)
+        │       └─► truncate WAL + head memory
+        │
+        ├─► Phase 2: OOO Head → Blocks  (compactor.Write per range)
+        │
+        └─► Phase 3: Block merging loop  (compactor.Plan → compactor.Compact)
+                └─► LeveledCompactor.plan()
+                      ├─ overlapping? → merge them
+                      ├─ level ranges? → merge small → big
+                      └─ tombstones? → rewrite
+                └─► LeveledCompactor.CompactWithBlockPopulator()
+                      └─► write() → PopulateBlock() → atomic rename
+                └─► reloadBlocks() → delete old blocks
+```

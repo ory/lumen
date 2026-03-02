@@ -1,0 +1,59 @@
+Here's how the Django `Permission` model works, based on the source at `django-models.py`:
+
+---
+
+## `PermissionManager` (`django-models.py:27-36`)
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+- A custom Manager that enables **natural key deserialization** (used by Django's `dumpdata`/`loaddata`).
+- `get_by_natural_key` resolves a permission using `(codename, app_label, model)` — it first resolves the `ContentType` from `app_label + model`, then fetches the `Permission` by `codename` against that type.
+- `use_in_migrations = True` means this manager is available inside migration operations.
+
+---
+
+## `Permission` model (`django-models.py:39-85`)
+
+```python
+class Permission(models.Model):
+    name         = models.CharField(_("name"), max_length=255)
+    content_type = models.ForeignKey(ContentType, models.CASCADE, ...)
+    codename     = models.CharField(_("codename"), max_length=100)
+
+    objects = PermissionManager()
+
+    class Meta:
+        unique_together = [["content_type", "codename"]]
+        ordering = ["content_type__app_label", "content_type__model", "codename"]
+
+    def natural_key(self):
+        return (self.codename, *self.content_type.natural_key())
+
+    natural_key.dependencies = ["contenttypes.contenttype"]
+```
+
+**Fields:**
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | `CharField(255)` | Human-readable label, e.g. `"Can add user"` |
+| `content_type` | `ForeignKey(ContentType)` | Links to the model this permission applies to |
+| `codename` | `CharField(100)` | Machine name, e.g. `"add_user"` |
+
+**Key design points:**
+
+- **Uniqueness** is enforced on `(content_type, codename)` — no duplicate permissions per model type.
+- **`natural_key()`** returns `(codename, app_label, model)`, mirroring exactly what `get_by_natural_key` accepts. The `dependencies` attribute tells Django's serializer to serialize `contenttypes` first.
+- Permissions are **global per model type**, not per object instance — you can't say "only this specific row", only "this model".
+- The four built-in permission verbs (`add`, `change`, `delete`, `view`) are auto-created for every model registered with Django.

@@ -1,0 +1,48 @@
+### Label Matcher Types
+
+**File:** `testdata/fixtures/go/labels_matcher.go`
+
+#### `MatchType` enum (lines 21–30)
+
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+#### `Matcher` struct (lines 46–53)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // populated only for regexp types
+}
+```
+
+#### Constructor (lines 55–70)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{Type: t, Name: n, Value: v}
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+There's also `MustNewMatcher` (lines 72–79) — a panic-on-error variant intended only for tests.
+
+The key design point: the `re *FastRegexMatcher` field is lazily populated only when the type is `MatchRegexp` or `MatchNotRegexp`, so equality matchers have zero regex overhead.

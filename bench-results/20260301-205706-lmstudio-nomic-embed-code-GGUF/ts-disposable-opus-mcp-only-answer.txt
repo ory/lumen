@@ -1,0 +1,156 @@
+I have all the pieces now. From the search results, I can see the constructor at line 537, dispose at 542, and _register at 551 all belong to a `Disposable` class. Let me also check if there's a `Disposable[1/N]` chunk I might have missed.
+
+Here's the full breakdown:
+
+---
+
+## `IDisposable` Interface (`lifecycle.ts:312-314`)
+
+The foundation — a single-method contract:
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+Any object that holds resources implements this interface. There's also a runtime type guard:
+
+```typescript
+// lifecycle.ts:319-322
+export function isDisposable<E>(thing: E): thing is E & IDisposable {
+    return typeof thing === 'object' && thing !== null
+        && typeof (<IDisposable><any>thing).dispose === 'function'
+        && (<IDisposable><any>thing).dispose.length === 0;
+}
+```
+
+---
+
+## `Disposable` Base Class (`lifecycle.ts:~525-556`)
+
+An abstract base class that owns a private `DisposableStore` called `_store`. Subclasses register child disposables via `_register()`, and everything gets cleaned up automatically when the parent is disposed:
+
+```typescript
+// Reconstructed from chunks at lines 537-540, 542-546, 551-556
+export abstract class Disposable implements IDisposable {
+
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    private readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+Key design points:
+- **`Disposable.None`** — a frozen no-op disposable, used as a sentinel (e.g. in `DisposableStore.add` to skip no-ops)
+- **`_register()`** — the main API for subclasses. You call `this._register(someDisposable)` and it gets automatically disposed when the parent is disposed
+- **Delegates to `DisposableStore`** internally — `dispose()` just calls `this._store.dispose()`
+
+---
+
+## `DisposableStore` (`lifecycle.ts:416-504+`)
+
+A collection that manages multiple `IDisposable` objects. This is the workhorse behind both standalone usage and the `Disposable` base class:
+
+```typescript
+export class DisposableStore implements IDisposable {
+
+    static DISABLE_DISPOSED_WARNING = false;
+
+    private readonly _toDispose = new Set<IDisposable>();
+    private _isDisposed = false;
+
+    constructor() {
+        trackDisposable(this);
+    }
+
+    // Dispose all registered disposables and mark as disposed.
+    // Future add() calls will warn (leak).
+    public dispose(): void {
+        if (this._isDisposed) { return; }
+        markAsDisposed(this);
+        this._isDisposed = true;
+        this.clear();
+    }
+
+    public get isDisposed(): boolean {
+        return this._isDisposed;
+    }
+
+    // Dispose all registered disposables but DON'T mark as disposed.
+    // The store can be reused after clear().
+    public clear(): void {
+        if (this._toDispose.size === 0) { return; }
+        try {
+            dispose(this._toDispose);  // calls dispose() on each, collects errors
+        } finally {
+            this._toDispose.clear();
+        }
+    }
+
+    // Add a disposable. Returns it for chaining.
+    public add<T extends IDisposable>(o: T): T {
+        if (!o || o === Disposable.None) { return o; }
+        if ((o as unknown as DisposableStore) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        setParentOfDisposable(o, this);
+        if (this._isDisposed) {
+            // Already disposed — warn about the leak
+            if (!DisposableStore.DISABLE_DISPOSED_WARNING) {
+                console.warn(new Error('Trying to add a disposable to a DisposableStore that has already been disposed of. The added object will be leaked!').stack);
+            }
+        } else {
+            this._toDispose.add(o);
+        }
+        return o;
+    }
+
+    // Remove from store AND dispose it.
+    public delete<T extends IDisposable>(o: T): void {
+        if (!o) { return; }
+        if ((o as unknown as DisposableStore) === this) {
+            throw new Error('Cannot dispose a disposable on itself!');
+        }
+        this._toDispose.delete(o);
+        o.dispose();
+    }
+}
+```
+
+Key behaviors:
+- **`add()`** — registers a disposable and sets parent tracking. If the store is already disposed, it warns instead of silently leaking.
+- **`clear()` vs `dispose()`** — `clear()` disposes children but the store stays usable. `dispose()` calls `clear()` then marks the store as permanently dead.
+- **`delete()`** — removes AND disposes a specific item.
+- **Self-registration guard** — prevents `store.add(store)` which would cause infinite recursion.
+
+---
+
+## How They Compose
+
+The pattern flows like this:
+
+1. A class extends `Disposable`
+2. In its constructor or methods, it calls `this._register(child)` for any disposable resources (event listeners, timers, child objects)
+3. `_register` delegates to the internal `DisposableStore._store.add()`
+4. When the parent's `dispose()` is called, it disposes the store, which iterates the `Set<IDisposable>` and calls `dispose()` on each child
+5. The `dispose()` helper function (`lifecycle.ts:332-357`) handles error aggregation — if multiple children throw, errors are collected into an `AggregateError`
+
+The disposable tracking system (`trackDisposable`, `setParentOfDisposable`, `markAsDisposed`) forms a parallel tree that enables leak detection — any disposable without a parent that gets garbage collected triggers a warning via `GCBasedDisposableTracker` or can be enumerated via `DisposableTracker`.

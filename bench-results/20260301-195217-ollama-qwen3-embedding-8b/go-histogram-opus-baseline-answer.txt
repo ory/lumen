@@ -1,0 +1,66 @@
+Here's how histogram bucket counting works in this codebase (from the Prometheus client library fixtures):
+
+## Two-layer bucket system
+
+There are **classic (fixed) buckets** and **native (sparse/exponential) buckets**, both tracked simultaneously.
+
+### 1. Finding the classic bucket
+
+```go
+func (h *histogram) findBucket(v float64) int
+```
+`prom_histogram.go:866` — Given a value, finds which classic bucket it belongs to by searching `h.upperBounds`. Uses linear search for small arrays (<35 bounds) and binary search (`sort.SearchFloat64s`) for larger ones.
+
+### 2. Observing a value
+
+```go
+func (h *histogram) Observe(v float64)                        // :766
+func (h *histogram) observe(v float64, bucket int)            // :900
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool) // :655
+```
+
+The flow is `Observe` → `findBucket` → `observe`:
+
+- **Classic bucket**: Atomically increments the count in `hc.buckets[bucket]` (line 657)
+- **Native/sparse bucket**: Computes an exponential bucket key from the value using `math.Frexp` to decompose the float into fraction + exponent, then maps that to a bucket index based on the schema. The value goes into one of three places:
+  - `nativeHistogramBucketsPositive` (sync.Map) if `v > zeroThreshold`
+  - `nativeHistogramBucketsNegative` (sync.Map) if `v < -zeroThreshold`
+  - `nativeHistogramZeroBucket` if within the zero threshold
+
+### 3. Bucket creation tracking
+
+```go
+func addToBucket(buckets *sync.Map, key int, increment int64) bool  // :1534
+```
+Returns `true` if a new bucket was created. When that happens, `nativeHistogramBucketsNumber` is atomically incremented (line 700).
+
+### 4. Limiting bucket count
+
+```go
+func (h *histogram) limitBuckets(counts *histogramCounts, value float64, bucket int) // :919
+func (h *histogram) maybeWidenZeroBucket(hot, cold *histogramCounts) bool            // :1017
+func (h *histogram) doubleBucketWidth(hot, cold *histogramCounts)                    // :1087
+```
+
+After each observation, `limitBuckets` checks if `nativeHistogramMaxBuckets` is exceeded. If so, it tries two strategies: widening the zero bucket (absorbing nearby buckets) or doubling bucket width (reducing schema by 1, merging adjacent buckets).
+
+### 5. Classic bucket generation helpers
+
+```go
+func LinearBuckets(start, width float64, count int) []float64         // :295
+func ExponentialBuckets(start, factor float64, count int) []float64   // :315
+func ExponentialBucketsRange(minBucket, maxBucket float64, count int) []float64 // :339
+```
+
+These generate the `upperBounds` slices used by classic histograms.
+
+### 6. Sparse histogram iteration (in `histogram.go`)
+
+```go
+func (h *Histogram) PositiveBucketIterator() BucketIterator[uint64]   // :216
+func (h *Histogram) NegativeBucketIterator() BucketIterator[uint64]   // :223
+func (h *Histogram) CumulativeBucketIterator() BucketIterator[uint64] // :232
+func (h *Histogram) Validate() error                                  // :426
+```
+
+The iterators decode spans + delta-encoded bucket counts. `Validate` sums all bucket counts and verifies `nCount + pCount + zeroCount == h.Count`.

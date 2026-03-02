@@ -1,0 +1,93 @@
+Here's how the event emitter system works in this file (VS Code's event system):
+
+## Core Type: `Event<T>` (line 37)
+
+```ts
+export interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is simply a **callable function**. You subscribe by calling it with a listener callback. It returns an `IDisposable` that unsubscribes when disposed. The optional `disposables` parameter auto-registers the subscription for bulk cleanup.
+
+## `Emitter<T>` Class (line 1093)
+
+The producer side. It follows a **private emitter / public event** pattern:
+
+```ts
+class Document {
+    private readonly _onDidChange = new Emitter<string>();
+    public onDidChange = this._onDidChange.event;  // expose read-only Event<T>
+
+    private _doIt(value: string) {
+        this._onDidChange.fire(value);  // only the owner can fire
+    }
+}
+```
+
+Key internals:
+- **Listener storage optimization** (line 1102-1118): A single listener is stored as a bare `UniqueContainer`, not an array. Only upgrades to an array when a second listener attaches. This avoids allocation for the common single-listener case.
+- **Sparse array compaction** (line 1267): Removed listeners are set to `undefined` (sparse). The array compacts when more than `1/compactionThreshold` slots are empty.
+- **`EmitterOptions`** (line 858): Lifecycle hooks — `onWillAddFirstListener`, `onDidAddFirstListener`, `onDidRemoveLastListener`, etc. These enable lazy subscription patterns (only connect to upstream when someone is actually listening).
+- **Leak detection** (line 948, `LeakageMonitor`): Warns when listener count exceeds a threshold, tracking stack traces to identify the most frequent leak source.
+- **`EventDeliveryQueuePrivate`** (line 1347): Manages in-order delivery. If `fire()` is called re-entrantly, the queue finishes the current dispatch first.
+
+## Event Composition (`Event` namespace, line 41)
+
+The namespace provides functional combinators that transform events, analogous to array methods:
+
+| Combinator | Line | Behavior |
+|---|---|---|
+| `Event.map(event, fn)` | 133 | Transforms event data: `Event<I>` → `Event<O>` |
+| `Event.filter(event, pred)` | 164 | Only fires when predicate is true |
+| `Event.once(event)` | 87 | Fires once then auto-disposes |
+| `Event.debounce(event, merge, delay)` | 260 | Debounces with a merge function to accumulate values |
+| `Event.throttle(event, merge, delay)` | 366 | Throttles with leading/trailing edge control |
+| `Event.accumulate(event, delay)` | 338 | Debounce that collects into `T[]` |
+| `Event.latch(event, equals)` | 449 | Suppresses consecutive duplicates |
+| `Event.any(...events)` | 183 | Merges multiple events into one |
+| `Event.reduce(event, merge)` | 195 | Running accumulator (like `Array.reduce`) |
+| `Event.split(event, isT)` | 478 | Splits a union event into two typed events |
+| `Event.buffer(event)` | 505 | Buffers events until first listener attaches, then flushes |
+| `Event.chain(event, $)` | 577 | Fluent builder API for composing multiple transforms |
+
+### The `snapshot` pattern (line 204)
+
+Most combinators (`map`, `filter`, `forEach`) delegate to `snapshot()`. It creates a new `Emitter` that **lazily subscribes** to the source — only connects upstream when someone listens, disconnects when the last listener leaves:
+
+```ts
+function snapshot<T>(event: Event<T>, disposable: DisposableStore | undefined): Event<T> {
+    let listener: IDisposable | undefined;
+    const emitter = new Emitter<T>({
+        onWillAddFirstListener() { listener = event(emitter.fire, emitter); },
+        onDidRemoveLastListener() { listener?.dispose(); }
+    });
+    disposable?.add(emitter);
+    return emitter.event;
+}
+```
+
+### The `chain` API (line 577)
+
+A fluent pipeline builder using `ChainableSynthesis` (line 593). Each `.map()`, `.filter()`, `.latch()` etc. pushes a step function. On fire, `evaluate()` runs the pipeline; a special `HaltChainable` sentinel short-circuits (acts as filter rejection):
+
+```ts
+Event.chain(onKeyPress.event, $ => $
+    .map(e => new StandardKeyboardEvent(e))
+    .filter(e => e.keyCode === KeyCode.Enter)
+);
+```
+
+## Disposable Integration
+
+The event system is deeply integrated with VS Code's disposable lifecycle:
+
+1. **Every subscription returns `IDisposable`** — calling `.dispose()` unsubscribes.
+2. **`DisposableStore` parameter** — combinators accept an optional `DisposableStore` so the derived emitter is auto-cleaned when the store disposes. This prevents leaked intermediate emitters.
+3. **`Emitter.dispose()`** (line 1137) — tears down all listeners, resets the delivery queue, and calls `onDidRemoveLastListener`. Subsequent `fire()` calls are no-ops.
+4. **`addAndReturnDisposable`** (line 231) — helper that registers disposables into either an array or `DisposableStore`.
+
+## Specialized Emitters
+
+- **`AsyncEmitter<T extends IWaitUntil>`** (line 1390): Listeners can call `waitUntil(promise)` to defer completion. `fireAsync()` awaits all promises sequentially per listener.
+- **`PauseableEmitter<T>`** (line 1448): Can be paused/resumed. While paused, events queue up. On resume, fires them individually or merges them via an optional `merge` function.

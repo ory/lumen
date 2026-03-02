@@ -1,0 +1,148 @@
+Here's a complete end-to-end explanation of TSDB compaction:
+
+---
+
+## TSDB Compaction: End-to-End
+
+### 1. The `Compactor` Interface (`compact.go:52`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three methods, each with a distinct role:
+- **`Plan`** — reads block metadata on disk and returns which block directories should be compacted next. Returns directories that can be compacted concurrently.
+- **`Write`** — persists a `BlockReader` (e.g. the in-memory Head) to a new on-disk block. Used for Head → disk flushing. Returns 0 or 1 ULIDs.
+- **`Compact`** — merges the blocks in the given dirs into a new block. Used for merging multiple existing on-disk blocks.
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:79`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64   // time range levels, e.g. [2h, 6h, 24h, ...]
+    chunkPool                   chunkenc.Pool
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    blockExcludeFunc            BlockExcludeFilterFunc
+    postingsEncoder             index.PostingsEncoder
+    // ...
+}
+```
+
+The `ranges` slice defines the compaction level hierarchy (e.g. `[2h, 6h, 24h, 72h]`). Each level is a multiple of the previous.
+
+#### `Plan` (`compact.go:248`)
+```go
+func (c *LeveledCompactor) Plan(dir string) ([]string, error)
+```
+Reads all block dirs, loads their `meta.json`, then calls the internal `plan(dms []dirMeta)`:
+
+1. **Sort** blocks by `MinTime`.
+2. **Overlapping blocks first** (`selectOverlappingDirs`): if any blocks have overlapping time ranges, return them immediately for vertical compaction (merging with `mergeFunc`). Only runs if `enableOverlappingCompaction=true`.
+3. **Level-based selection** (`selectDirs`): iterates through range levels (`c.ranges[1:]`), splits blocks into groups that fit within each level's window, and picks a group of 2+ blocks that spans the full range or is older than the newest block. This avoids premature compaction.
+4. **Tombstone compaction**: if no level selection applies, compact any block where tombstones exceed 5% of series.
+
+#### `Compact` → `CompactWithBlockPopulator` (`compact.go:483`, `compact.go:489`)
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+// delegates to:
+func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string, open []*Block, blockPopulator BlockPopulator) ([]ulid.ULID, error)
+```
+- Opens each block dir (reuses already-open `*Block` objects to avoid double memory).
+- Calls `CompactBlockMetas` to compute merged metadata.
+- Calls `c.write(dest, meta, ...)` to stream all series through the merge and write the new block.
+- If the resulting block has 0 samples, marks all source blocks as `Deletable` instead.
+
+#### `Write` (`compact.go:586`)
+```go
+func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+```
+Creates a new `Level=1` block from a `BlockReader`. Used exclusively to flush the Head to disk.
+
+---
+
+### 3. How `DB` Triggers Compaction
+
+#### Background loop: `DB.run` (`db.go:1175`)
+```go
+func (db *DB) run(ctx context.Context)
+```
+A goroutine started on `Open`. It listens on two channels:
+- **`time.After(BlockReloadInterval)`**: periodically reloads blocks and sends to `db.compactc`.
+- **`db.compactc`**: triggers `db.Compact(ctx)` if `db.autoCompact` is true.
+
+Stale series are also checked here — if the ratio exceeds `staleSeriesCompactionThreshold`, it calls `db.CompactStaleHead()` immediately without waiting.
+
+#### `dbAppender` triggers compaction on commit (`db.go:1344`)
+```go
+type dbAppender struct {
+    storage.Appender
+    db *DB
+}
+```
+On `Commit()`, it checks if the Head needs compacting and sends to `db.compactc` — this is what drives compaction from the write path.
+
+#### `DB.Compact` (`db.go:1410`) — the main entry point
+```go
+func (db *DB) Compact(ctx context.Context) (returnErr error)
+```
+Holds `db.cmtx`. Two phases:
+
+**Phase 1 — Head compaction (highest priority):**
+```
+for head.compactable():
+    wait for CompactionDelay (jittered, avoids thundering herd)
+    mint = head.MinTime()
+    maxt = rangeForTimestamp(mint, chunkRange)
+    db.compactHead(NewRangeHead(head, mint, maxt-1))
+```
+`compactHead` (`db.go:1634`) calls `compactor.Write(db.dir, head, ...)` → flushes Head to disk → `reloadBlocks()` → `head.truncateMemory(maxt)`.
+
+**Phase 2 — On-disk block compaction:**
+```go
+db.compactBlocks()  // db.go:1719
+```
+```
+for:
+    if head.compactable(): abort (head has priority)
+    plan = compactor.Plan(db.dir)
+    if len(plan) == 0: break
+    uids = compactor.Compact(db.dir, plan, db.blocks)
+    db.reloadBlocks()
+```
+Loops until no more compactable plan exists.
+
+#### OOO (Out-of-Order) compaction (`db.go:1534`)
+Out-of-order samples are stored in a separate WBL (write-behind log). `compactOOOHead` creates an `OOOCompactionHead` and calls `compactOOO`, which iterates over block-sized time windows and calls `compactor.Write` for each, producing multiple blocks.
+
+---
+
+### Flow Summary
+
+```
+dbAppender.Commit()
+    └─► db.compactc channel
+
+DB.run() goroutine
+    └─► receives db.compactc
+    └─► DB.Compact(ctx)
+            ├─ Phase 1: Head → disk
+            │       head.compactable()?
+            │       wait CompactionDelay
+            │       compactor.Write(head)  ← LeveledCompactor.Write
+            │       reloadBlocks()
+            │       head.truncateMemory()
+            │
+            └─ Phase 2: on-disk merges
+                    compactor.Plan(dir)    ← selectOverlappingDirs | selectDirs | tombstones
+                    compactor.Compact(plan)← merge N blocks → 1
+                    reloadBlocks()         ← marks old blocks Deletable
+```
+
+The `ranges` slice (`e.g. [2h, 6h, 24h, 72h]`) controls when blocks graduate to the next level. A block only gets compacted once enough peers at the same level exist to fill the next level's range.

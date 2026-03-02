@@ -1,0 +1,62 @@
+The definitions appear in two files (`labels_matcher.go` and `matcher.go`) with identical content. Here's the full picture:
+
+---
+
+### `MatchType` — the enum (`labels_matcher.go:21-29`, `matcher.go:21-29`)
+
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four matcher types are available:
+
+| Constant | Operator | Meaning |
+|---|---|---|
+| `MatchEqual` | `=` | exact equality |
+| `MatchNotEqual` | `!=` | exact inequality |
+| `MatchRegexp` | `=~` | regex match |
+| `MatchNotRegexp` | `!~` | regex non-match |
+
+---
+
+### `Matcher` struct (`labels_matcher.go:46-53`)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // non-nil only for regexp types
+}
+```
+
+---
+
+### Constructor — `NewMatcher` (`labels_matcher.go:55-70`)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{Type: t, Name: n, Value: v}
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+`NewMatcher` takes the match type, label name, and value. For regexp types (`MatchRegexp`/`MatchNotRegexp`), it compiles the value into a `FastRegexMatcher` and stores it in the unexported `re` field — this is the only path that can return an error (invalid regex). For `MatchEqual`/`MatchNotEqual`, it always succeeds.
+
+There's also `MustNewMatcher` (`labels_matcher.go:72-79`) which panics on error, intended only for tests.

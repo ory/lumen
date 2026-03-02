@@ -1,0 +1,158 @@
+Here's a comprehensive breakdown of the event emitter system in `event.ts`:
+
+---
+
+## The `Event<T>` Interface
+
+```typescript
+// event.ts:37-39
+export interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` **is a function**. Subscribing to an event means calling it as a function. It returns an `IDisposable` — the unsubscription handle. The optional `disposables` parameter auto-registers the subscription for cleanup.
+
+---
+
+## The `Emitter<T>` Class
+
+The emitter is the write side; `.event` is the read side.
+
+```typescript
+// event.ts:1093-1140
+export class Emitter<T> {
+    private _listeners?: ListenerOrListeners<T>;  // single fn or sparse array
+    private _deliveryQueue?: EventDeliveryQueuePrivate;
+    protected _size = 0;
+
+    get event(): Event<T> { ... }  // subscribable function
+    fire(event: T): void { ... }   // broadcast to all listeners
+    dispose(): void { ... }
+}
+```
+
+**Key listener storage optimization** (event.ts:1093): A single listener is stored as a plain function (not an array). It only upgrades to a sparse array when a second listener is added, and the array never downgrades back. Sparse slots (from removed listeners) are compacted only when `> 1/compactionThreshold` of slots are empty.
+
+**Delivery queue** (event.ts:1347): `EventDeliveryQueuePrivate` handles re-entrant `fire()` calls — if `fire()` is called while a delivery is in progress, the in-flight delivery finishes first.
+
+**`EmitterOptions`** (event.ts:858) offers lifecycle hooks:
+- `onWillAddFirstListener` / `onDidAddFirstListener` — lazy subscription (start work only when needed)
+- `onDidRemoveLastListener` — cleanup when no one is listening
+- `onWillRemoveListener` — pre-removal hook
+- `onListenerError` — per-emitter error boundary
+- `leakWarningThreshold`, `deliveryQueue`, `_profName`
+
+---
+
+## Event Composition
+
+All combinators follow the same pattern: create a new `Emitter`, use `onWillAddFirstListener`/`onDidRemoveLastListener` to lazily connect/disconnect from the source event.
+
+### `map` — transform values
+```typescript
+// event.ts:133-135
+export function map<I, O>(event: Event<I>, map: (i: I) => O, disposable?: DisposableStore): Event<O> {
+    return snapshot((listener, thisArgs = null, disposables?) =>
+        event(i => listener.call(thisArgs, map(i)), null, disposables), disposable);
+}
+```
+
+### `filter` — conditional delivery
+```typescript
+// event.ts:167-169
+export function filter<T>(event: Event<T>, filter: (e: T) => boolean, disposable?: DisposableStore): Event<T> {
+    return snapshot((listener, thisArgs = null, disposables?) =>
+        event(e => filter(e) && listener.call(thisArgs, e), null, disposables), disposable);
+}
+```
+
+### `debounce` — coalesce rapid events
+```typescript
+// event.ts:260-322
+export function debounce<I, O>(event: Event<I>, merge: (last: O | undefined, event: I) => O,
+    delay = 100, leading = false, flushOnListenerRemove = false, ...): Event<O>
+```
+Uses `onWillAddFirstListener` to subscribe and `onDidRemoveLastListener` to tear down. Supports `MicrotaskDelay` (instead of `setTimeout`) and a `leading` edge flag. The `merge` function accumulates intermediate events.
+
+### `once` — fire at most once
+```typescript
+// event.ts:87-110
+export function once<T>(event: Event<T>): Event<T>
+```
+Handles the re-entrant case: if the event fires synchronously during subscription setup, `didFire` prevents double-delivery.
+
+### Other combinators
+| Combinator | Purpose |
+|---|---|
+| `any(...events)` | Merges N events into one |
+| `reduce` | Stateful fold over events |
+| `throttle` | Leading/trailing edge throttle |
+| `accumulate` | Collects events into arrays via debounce |
+| `latch` | Skips duplicate consecutive values |
+| `buffer` | Queues events before first listener attaches |
+| `split` | Splits `Event<T \| U>` into two typed streams |
+| `runAndSubscribe` | Calls handler immediately, then on each event |
+
+---
+
+## `snapshot` — the composition primitive
+
+```typescript
+// event.ts:204-225
+function snapshot<T>(event: Event<T>, disposable: DisposableStore | undefined): Event<T> {
+    let listener: IDisposable | undefined;
+    const emitter = new Emitter<T>({
+        onWillAddFirstListener() { listener = event(emitter.fire, emitter); },
+        onDidRemoveLastListener() { listener?.dispose(); }
+    });
+    disposable?.add(emitter);
+    return emitter.event;
+}
+```
+
+`snapshot` is the backbone of `map` and `filter`. It wraps any event subscription in a new `Emitter` that **only subscribes to the source when it has listeners**, and auto-registers itself into a `DisposableStore` if provided.
+
+---
+
+## Disposable Integration
+
+Every `Event<T>` subscription returns an `IDisposable`. There are two ways to manage lifetime:
+
+**1. Manual array** — pass `IDisposable[]` as the third argument; the listener is pushed into it for later batch-disposal.
+
+**2. `DisposableStore`** — pass a `DisposableStore`; the listener is `.add()`-ed. When the store is disposed, all registered listeners are unsubscribed automatically.
+
+```typescript
+// event.ts:1877-1895
+function addToDisposables(result: IDisposable, disposables: DisposableStore | IDisposable[] | undefined) { ... }
+function addAndReturnDisposable<T extends IDisposable>(d: T, store: ...) { ... }
+function disposeAndRemove(result: IDisposable, disposables: ...) { ... }
+```
+
+All combinators accept an optional `disposable?: DisposableStore` parameter and call `disposable?.add(emitter)` on the intermediate emitter they create — so the entire derived event chain is cleaned up when the store is disposed.
+
+---
+
+## Specialized Emitter Subclasses
+
+| Class | Behavior |
+|---|---|
+| `PauseableEmitter<T>` (event.ts:1448) | `pause()`/`resume()` with optional merge fn for queued events |
+| `DebounceEmitter<T>` (event.ts:1499) | Extends `PauseableEmitter`; `fire()` triggers a timed `pause`→`resume` |
+| `MicrotaskEmitter<T>` (event.ts:1525) | Batches synchronous `fire()` calls into a single microtask delivery |
+| `EventMultiplexer<T>` (event.ts:1576) | Fans in N event sources; only hooks them when it has listeners |
+| `EventBufferer` (event.ts:1706) | Defers delivery inside `bufferEvents(fn)` scopes |
+| `Relay<T>` (event.ts:1782) | Switchable input — `relay.input = someEvent` rewires the source |
+
+---
+
+## The Core Pattern
+
+```
+Emitter<T>           →  .event (Event<T>)  →  subscriber gets IDisposable
+   ↑ .fire(value)       ↑ map/filter/debounce wraps it in another Emitter
+                         ↑ disposable?.add(intermediateEmitter) for lifetime
+```
+
+The key insight: `Event<T>` is just a callable, so composition is function wrapping. The disposable parameter threads lifetime management through the entire chain without extra boilerplate.

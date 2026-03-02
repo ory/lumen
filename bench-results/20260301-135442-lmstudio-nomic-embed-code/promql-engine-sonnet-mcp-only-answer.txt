@@ -1,0 +1,221 @@
+Here is a comprehensive explanation of how PromQL query evaluation works in this codebase (Prometheus).
+
+---
+
+## PromQL Query Evaluation: End-to-End
+
+### 1. Key Interfaces and Types
+
+**`QueryEngine` interface** (`engine.go:124`):
+```go
+type QueryEngine interface {
+    NewInstantQuery(ctx context.Context, q storage.Queryable, opts QueryOpts,
+        qs string, ts time.Time) (Query, error)
+    NewRangeQuery(ctx context.Context, q storage.Queryable, opts QueryOpts,
+        qs string, start, end time.Time, interval time.Duration) (Query, error)
+}
+```
+This is the public interface that callers use. `*Engine` satisfies it, but anything else can be plugged in (for mocking/wrapping).
+
+**`QueryOpts` interface** (`engine.go:182`):
+```go
+type QueryOpts interface {
+    EnablePerStepStats() bool
+    LookbackDelta() time.Duration
+}
+```
+
+**`evaluator` struct** (`engine.go:1134`):
+```go
+type evaluator struct {
+    startTimestamp int64  // ms
+    endTimestamp   int64  // ms
+    interval       int64  // ms
+    maxSamples     int
+    currentSamples int
+    lookbackDelta  time.Duration
+    querier        storage.Querier
+    // ... stats, logger, flags
+}
+```
+This is the internal workhorse. It is not exposed; it is created fresh per `Exec` call.
+
+---
+
+### 2. Query Lifecycle
+
+#### Step 1 — Create a query object
+
+`Engine.NewInstantQuery` / `Engine.NewRangeQuery` (`engine.go:530`, `engine.go:550`):
+1. Calls `ng.parser.ParseExpr(qs)` to produce a `parser.Expr` AST.
+2. Calls `PreprocessExpr(expr, ...)` to annotate the tree (e.g., wraps constants in `StepInvariantExpr`).
+3. Wraps everything in a `query` struct containing a `parser.EvalStmt` (start, end, interval, lookbackDelta).
+
+#### Step 2 — Execute
+
+`query.Exec(ctx)` (`engine.go:247`) → `ng.exec(ctx, q)` (`engine.go:669`):
+```
+exec()
+  → switch q.Statement().(type)
+      case *parser.EvalStmt → ng.execEvalStmt(ctx, q, s)
+```
+
+#### Step 3 — Prepare and dispatch
+
+`execEvalStmt` (`engine.go:772`):
+1. Opens a `storage.Querier` for the time range `[mint, maxt]`.
+2. Calls `ng.populateSeries(...)` — walks the AST and attaches matching series from storage to each `VectorSelector`/`MatrixSelector` node.
+3. Builds an `evaluator` struct.
+4. Calls `evaluator.Eval(ctx, s.Expr)`.
+5. Post-processes the returned `Matrix` into `Vector`, `Scalar`, or `Matrix` depending on `s.Expr.Type()`.
+
+---
+
+### 3. AST Evaluation: The `eval` Switch
+
+`evaluator.Eval` (`engine.go:1189`) is the public entry point; it calls `ev.eval(ctx, expr)` and optionally runs `cleanupMetricLabels` when delayed name removal is on.
+
+`ev.eval` (`engine.go:1904`) is a giant type switch on `parser.Expr`:
+
+| AST node | Evaluation |
+|---|---|
+| `*parser.AggregateExpr` | Recursively evals sub-expression, then calls `rangeEvalAgg` or `rangeEval` with aggregation logic. |
+| `*parser.Call` | Looks up `FunctionCalls[e.Func.Name]` and dispatches. Range-vector functions iterate series step-by-step; instant-vector functions go through `rangeEval`. |
+| `*parser.BinaryExpr` | Scalar–scalar: `rangeEval` + `scalarBinop`. Vector–vector: `VectorAnd/Or/Unless/Binop`. Vector–scalar: `VectorscalarBinop`. |
+| `*parser.VectorSelector` | Calls `ev.evalSeries(...)` which extracts float/histogram samples per step. |
+| `*parser.MatrixSelector` | Calls `ev.matrixSelector(...)` which fills a `Matrix` with windowed samples. |
+| `*parser.SubqueryExpr` | Spawns a nested `evaluator` for the sub-range, copies results. |
+| `*parser.StepInvariantExpr` | Evaluates once, then replicates across all steps. |
+| `*parser.UnaryExpr` | Negates float values; drops metric name. |
+| `*parser.ParenExpr` | Transparent pass-through. |
+| `*parser.NumberLiteral` / `*parser.StringLiteral` | Returns constant value. |
+
+#### `rangeEval` — the step loop (`engine.go:1384`)
+
+Most nodes ultimately go through `rangeEval`:
+```go
+func (ev *evaluator) rangeEval(
+    ctx context.Context,
+    matching *parser.VectorMatching,
+    funcCall func([]Vector, Matrix, [][]EvalSeriesHelper, *EvalNodeHelper) (Vector, annotations.Annotations),
+    exprs ...parser.Expr,
+) (Matrix, annotations.Annotations)
+```
+It:
+1. Evaluates each sub-expression's full time range into a `Matrix`.
+2. Loops `for ts := startTimestamp; ts <= endTimestamp; ts += interval`.
+3. At each step, slices out the per-step `Vector` from each matrix (`gatherVector`).
+4. Calls `funcCall(vectors, ..., enh)` — the actual operation (binary op, aggregation, built-in function, etc.).
+5. Accumulates results into output series by hash.
+
+---
+
+### 4. Function Registration and Dispatch
+
+**`FunctionCall` type** (`functions.go:39`):
+```go
+type FunctionCall func(
+    vectorVals []Vector,
+    matrixVals Matrix,
+    args parser.Expressions,
+    enh *EvalNodeHelper,
+) (Vector, annotations.Annotations)
+```
+
+**`FunctionCalls` map** (`functions.go:2152`) — a static `map[string]FunctionCall`:
+```go
+var FunctionCalls = map[string]FunctionCall{
+    "abs":              funcAbs,
+    "rate":             funcRate,
+    "histogram_quantile": funcHistogramQuantile,
+    "avg_over_time":    funcAvgOverTime,
+    "label_replace":    nil,  // handled specially in eval()
+    // ~80+ entries
+}
+```
+
+**Dispatch** in `eval()` for `*parser.Call` (`engine.go:1956`):
+```go
+case *parser.Call:
+    call := FunctionCalls[e.Func.Name]
+    // Special cases first:
+    switch e.Func.Name {
+    case "label_replace": return ev.evalLabelReplace(...)
+    case "label_join":    return ev.evalLabelJoin(...)
+    case "info":          return ev.evalInfo(...)
+    }
+    // Range-vector argument path: iterate series manually, call call(...)
+    if matrixArg { /* per-series loop */ }
+    // Instant-vector path:
+    return ev.rangeEval(ctx, nil, func(v []Vector, ...) {
+        return call(v, nil, e.Args, enh)
+    }, e.Args...)
+```
+
+Range-vector functions (e.g. `rate`, `avg_over_time`) receive a pre-filled `inMatrix[0]` with the window's samples for each series at each step.
+
+---
+
+### 5. Alert and Recording Rules
+
+Rules don't use the engine directly — they go through a `QueryFunc`:
+
+```go
+// rules/manager.go (inferred from usage)
+type QueryFunc func(ctx context.Context, q string, t time.Time) (promql.Vector, error)
+```
+
+#### Recording rules (`recording.go:84`)
+
+```go
+func (rule *RecordingRule) Eval(
+    ctx context.Context,
+    queryOffset time.Duration,
+    ts time.Time,
+    query QueryFunc,
+    _ *url.URL,
+    limit int,
+) (promql.Vector, error) {
+    vector, err := query(ctx, rule.vector.String(), ts.Add(-queryOffset))
+    // Rewrite metric name + labels on each sample
+    // Check for duplicate labelsets
+    return vector, nil
+}
+```
+
+`QueryFunc` is typically `EngineQueryFunc` which internally calls:
+```
+engine.NewInstantQuery(...) → Query.Exec(ctx)
+```
+
+#### Alerting rules
+
+Same signature: `AlertingRule.Eval(ctx, queryOffset, ts, query, externalURL, limit)`. It calls `query(...)` to get a `Vector`, then compares results against alert states to fire/resolve alerts.
+
+#### Rule group scheduling
+
+A `Group` runs on a ticker (its `interval`). On each tick it iterates its rules in order and calls `rule.Eval(...)`. This is entirely outside the engine — the engine only knows how to evaluate a single `EvalStmt`; rules/alerting owns the scheduling loop.
+
+---
+
+### Summary: The Call Chain
+
+```
+RuleGroup tick
+  └─ rule.Eval(ctx, queryOffset, ts, queryFunc, ...)
+       └─ queryFunc(ctx, exprString, ts)          ← EngineQueryFunc
+            └─ engine.NewInstantQuery(...)
+                 └─ query.Exec(ctx)
+                      └─ ng.exec(ctx, q)
+                           └─ ng.execEvalStmt(ctx, q, stmt)
+                                ├─ populateSeries()     ← attach storage series to AST
+                                └─ evaluator.Eval(ctx, expr)
+                                     └─ ev.eval(ctx, expr)   ← big type switch
+                                          ├─ AggregateExpr → rangeEvalAgg
+                                          ├─ Call → FunctionCalls[name](...)
+                                          ├─ BinaryExpr → VectorBinop / scalarBinop
+                                          ├─ VectorSelector → evalSeries
+                                          └─ MatrixSelector → matrixSelector
+```
+
+The engine is stateless between queries — all mutable state lives in the short-lived `evaluator` struct. Each query gets a fresh evaluator with its own sample budget (`maxSamples`/`currentSamples`) and stats counters.

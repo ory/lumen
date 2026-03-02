@@ -1,0 +1,191 @@
+Here's a thorough breakdown of how Prometheus metrics scraping and collection works in this codebase:
+
+---
+
+## Scrape Manager — Top-Level Coordinator
+
+**`manager.go:135-156`** — The `Manager` struct sits at the top:
+```go
+type Manager struct {
+    scrapeConfigs map[string]*config.ScrapeConfig
+    scrapePools   map[string]*scrapePool   // one pool per job
+    appendable    storage.Appendable
+    buffers       *pool.Pool
+    triggerReload chan struct{}
+    // ...
+}
+```
+It receives target groups from service discovery over a channel (`Run(tsets <-chan ...)`), calls `updateTsets()` to store the latest targets, then signals `triggerReload`. The `reloader()` goroutine picks that up and calls `reload()` which syncs each `scrapePool` with its new target set.
+
+---
+
+## Scrape Pool — Per-Job Target Synchronization
+
+**`scrape.go:84-116`** — Each `scrapePool` owns:
+```go
+type scrapePool struct {
+    loops         map[uint64]loop    // one loop per target, keyed by hash
+    activeTargets map[uint64]*Target
+    config        *config.ScrapeConfig
+    client        *http.Client
+    // ...
+}
+```
+On `sync(targets []*Target)`, it diffs the incoming targets against active ones: new targets get new `scrapeLoop`s, disappeared targets get their loops stopped, unchanged targets keep running.
+
+---
+
+## Scrape Loop — Per-Target Scrape Executor
+
+**`scrape.go:822-881`** — The `scrapeLoop` runs on a ticker at the configured interval:
+1. Calls `targetScraper.scrape()` — issues an HTTP GET with `Accept`, `Accept-Encoding`, and timeout headers
+2. Calls `readResponse()` — decompresses gzip if needed, copies to a pooled buffer
+3. Passes the buffer to `append()` for parsing and storage
+
+**`scrape.go:685-752`** — `targetScraper.scrape()` builds the request once and reuses it per target, setting `User-Agent`, `X-Prometheus-Scrape-Timeout-Seconds`, and content negotiation headers.
+
+---
+
+## Text Format Parsing
+
+**`textparse_interface.go:28-87`** — The `Parser` interface has:
+```go
+type Entry int
+const (
+    EntryType      Entry = 0  // # TYPE line
+    EntryHelp      Entry = 1  // # HELP line
+    EntryUnit      Entry = 4  // # UNIT line
+    EntrySeries    Entry = 2  // name{labels} value [timestamp]
+    EntryHistogram Entry = 5  // native histogram
+)
+```
+`Next()` advances the parser; callers switch on the returned `Entry` type. Three format parsers implement this: classic Prometheus text, OpenMetrics, and protobuf.
+
+The `append()` loop **`scrape.go:1562-1870`** drives it:
+```go
+for {
+    et, err = p.Next()
+    switch et {
+    case textparse.EntryType:
+        sl.cache.setType(p.Type())
+    case textparse.EntryHelp:
+        sl.cache.setHelp(p.Help())
+    case textparse.EntrySeries:
+        // extract labels → mutate → validate → append
+    case textparse.EntryHistogram:
+        // same but with app.AppendHistogram()
+    }
+}
+```
+
+---
+
+## Label Pipeline (scrape → storage labels)
+
+For each series, **`scrape.go:1675-1745`**:
+1. Check `scrapeCache.get(met)` — fast path if series was seen before
+2. If miss: `p.Labels(&lset)` extracts raw labels
+3. `sampleMutator(lset)` applies target labels + relabeling config
+4. `verifyLabelLimits()` enforces per-target label count/length limits
+5. `app.Append(ref, lset, t, val)` writes to TSDB
+
+---
+
+## Scrape Cache — Series Tracking and Staleness
+
+**`scrape.go:887-935`**:
+```go
+type scrapeCache struct {
+    iter        uint64
+    series      map[string]*cacheEntry  // metric string → ref + lset + hash
+    droppedSeries map[string]*uint64
+    seriesCur   map[storage.SeriesRef]*cacheEntry  // seen this scrape
+    seriesPrev  map[storage.SeriesRef]*cacheEntry  // seen last scrape
+    metadata    map[string]*metaEntry              // by metric family name
+}
+```
+After each scrape, `iterDone()` swaps `seriesCur`/`seriesPrev`. Series in `seriesPrev` but not `seriesCur` are stale — `updateStaleMarkers()` writes `StaleNaN` values so downstream storage can tombstone them.
+
+---
+
+## Counter Internals
+
+**`prom_counter.go:103-144`** — Uses *two* atomic uint64 fields for performance:
+```go
+type counter struct {
+    valInt  uint64  // for Inc() / integer Add()
+    valBits uint64  // for fractional float Add()
+}
+```
+`Inc()` → `atomic.AddUint64(&c.valInt, 1)`. For float adds, a CAS loop updates `valBits`. `get()` sums both. This avoids a mutex while handling both integer and float increments efficiently.
+
+---
+
+## Gauge Internals
+
+**`prom_gauge.go:90-139`** — Single atomic field:
+```go
+type gauge struct {
+    valBits uint64  // stores float64 as bits
+}
+```
+`Set(v)` → `atomic.StoreUint64(&g.valBits, math.Float64bits(v))`. `Add(v)` uses a CAS loop. Simpler than counter because gauges need `Set()` (not just increment).
+
+---
+
+## Registry and Metric Families
+
+**`prom_registry.go:253-267`**:
+```go
+type Registry struct {
+    collectorsByID  map[uint64]Collector   // keyed by descriptor hash
+    descIDs         map[uint64]struct{}
+    dimHashesByName map[string]uint64      // enforces label consistency per family
+    mtx             sync.RWMutex
+}
+```
+`Gather()` calls every registered `Collector.Collect(ch chan<- Metric)`, reads `dto.Metric` protos from the channel, groups them by family name into `[]*dto.MetricFamily`, and sorts lexicographically. On registration, `dimHashesByName` ensures all metrics sharing a family name have identical label dimensions (panics otherwise).
+
+---
+
+## End-to-End Data Flow
+
+```
+HTTP endpoint
+    │
+    ▼
+targetScraper.scrape()         — GET with timeout + headers
+    │
+    ▼
+targetScraper.readResponse()   — gzip decompress → pooled []byte
+    │
+    ▼
+textparse.New(b, contentType)  — pick parser (text/protobuf/openmetrics)
+    │
+    ▼
+scrapeLoop.append() loop
+    ├─ p.Next() → EntryType/Help → scrapeCache.setType/setHelp
+    └─ p.Next() → EntrySeries
+         ├─ scrapeCache.get() → cache hit: reuse ref+lset
+         │                   → cache miss: p.Labels() + sampleMutator() + validate
+         ├─ app.Append(ref, lset, t, val)       — float sample
+         ├─ app.AppendHistogram(ref, lset, t, h) — native histogram
+         ├─ app.AppendExemplar(ref, lset, e)     — exemplar if present
+         ├─ app.UpdateMetadata(ref, lset, meta)  — WAL metadata
+         └─ scrapeCache.trackStaleness(ref, ce)
+    │
+    ▼
+scrapeCache.updateStaleMarkers()  — StaleNaN for disappeared series
+    │
+    ▼
+app.Commit()                      — flush to TSDB WAL
+```
+
+---
+
+**Key design choices:**
+- **Lock-free metrics** — counters/gauges use only atomics, no mutexes
+- **Per-target loop isolation** — a slow target never blocks others
+- **Two-scrape staleness** — `seriesCur`/`seriesPrev` swap detects disappearing series in exactly one interval
+- **Symbol table** — label strings are interned across all targets in a pool to reduce allocations
+- **Pooled buffers** — HTTP response bodies are allocated from `pool.Pool` to reduce GC pressure

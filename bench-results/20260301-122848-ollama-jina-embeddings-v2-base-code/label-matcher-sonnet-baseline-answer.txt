@@ -1,0 +1,45 @@
+Here's the breakdown from `matcher.go`:
+
+---
+
+**Match types** — a typed `int` enum with 4 values:
+
+```go
+// matcher.go:21-30
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+**`Matcher` struct** (`matcher.go:47-53`):
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // non-nil only for regexp types
+}
+```
+
+**Two constructors:**
+
+`NewMatcher` (`matcher.go:55-70`) — normal constructor, returns `(*Matcher, error)`. For regexp types it compiles the pattern into a `FastRegexMatcher`; for equality types `re` stays nil.
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error)
+```
+
+`MustNewMatcher` (`matcher.go:72-79`) — test-only variant that panics instead of returning an error:
+
+```go
+func MustNewMatcher(mt MatchType, name, val string) *Matcher
+```
+
+The key design point: regex compilation happens eagerly at construction time, so `Matches(s string)` never errors at call time.

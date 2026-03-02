@@ -1,0 +1,273 @@
+Here's a comprehensive walkthrough of PromQL query evaluation in this codebase (Prometheus):
+
+---
+
+## 1. Key Interfaces and Types
+
+**`ast.go` — The AST**
+
+```go
+// Expr is the interface all expression nodes implement
+type Expr interface {
+    Node
+    Type() ValueType
+    PromQLExpr()  // marker method to prevent accidental implementations
+}
+```
+
+AST node types (each implements `Expr`):
+| Node | Description |
+|---|---|
+| `*AggregateExpr` | `sum`, `avg`, `topk`, etc. |
+| `*Call` | Function call, e.g. `rate(...)` |
+| `*BinaryExpr` | `+`, `-`, `and`, `or`, etc. |
+| `*VectorSelector` | `http_requests_total{job="api"}` |
+| `*MatrixSelector` | `http_requests_total[5m]` |
+| `*SubqueryExpr` | `expr[range:step]` |
+| `*UnaryExpr` | Unary `-` |
+| `*NumberLiteral` | Scalar constant |
+| `*StepInvariantExpr` | Wraps exprs whose value doesn't change per step |
+
+---
+
+## 2. The Engine and Query Lifecycle
+
+**`engine.go`**
+
+```go
+// query implements the Query interface
+type query struct {
+    queryable storage.Queryable
+    q         string
+    stmt      parser.Statement  // parsed AST
+    stats     *stats.QueryTimers
+    ng        *Engine
+    cancel    func()
+}
+
+// Entry point
+func (q *query) Exec(ctx context.Context) *Result {
+    res, warnings, err := q.ng.exec(ctx, q)
+    return &Result{Err: err, Value: res, Warnings: warnings}
+}
+```
+
+`exec` → `execEvalStmt` → creates an `evaluator` → calls `evaluator.Eval`:
+
+```go
+// execEvalStmt — engine.go:772
+func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *parser.EvalStmt) (parser.Value, annotations.Annotations, error) {
+    // 1. Open a storage Querier for the time range
+    querier, _ := query.queryable.Querier(mint, maxt)
+    // 2. Pre-populate series on all selectors (storage lookup)
+    ng.populateSeries(ctxPrepare, querier, s)
+    // 3. Create evaluator and run
+    evaluator := &evaluator{
+        startTimestamp: timeMilliseconds(s.Start),
+        endTimestamp:   timeMilliseconds(s.End),
+        interval:       durationMilliseconds(s.Interval),
+        querier:        querier,
+        ...
+    }
+    val, warnings, err := evaluator.Eval(ctxInnerEval, s.Expr)
+}
+```
+
+---
+
+## 3. The Evaluator — AST Node Dispatch
+
+**`engine.go:1134`** — the evaluator struct:
+```go
+type evaluator struct {
+    startTimestamp int64  // ms
+    endTimestamp   int64  // ms
+    interval       int64  // ms (step for range queries)
+    maxSamples     int
+    currentSamples int
+    lookbackDelta  time.Duration
+    querier        storage.Querier
+    ...
+}
+```
+
+**`engine.go:1189`** — public entry point:
+```go
+func (ev *evaluator) Eval(ctx context.Context, expr parser.Expr) (v parser.Value, ws annotations.Annotations, err error) {
+    defer ev.recover(expr, &ws, &err)
+    v, ws = ev.eval(ctx, expr)
+    return v, ws, nil
+}
+```
+
+**`engine.go:1904`** — the core recursive `eval` method dispatches on node type:
+
+```go
+func (ev *evaluator) eval(ctx context.Context, expr parser.Expr) (parser.Value, annotations.Annotations) {
+    switch e := expr.(type) {
+
+    case *parser.AggregateExpr:
+        // Recursively eval child, then aggregate over label groups
+        val, ws := ev.eval(ctx, e.Expr)
+        result, ws := ev.rangeEvalAgg(ctx, e, sortedGrouping, inputMatrix, fp)
+
+    case *parser.Call:
+        // Look up implementation, handle matrix vs instant args
+        call := FunctionCalls[e.Func.Name]
+        // If no matrix arg: evaluate args, call per step via rangeEval
+        // If matrix arg: iterate series with sliding window, call per series
+        return ev.rangeEval(ctx, nil, func(v []Vector, ...) (Vector, annotations.Annotations) {
+            return call(v, nil, e.Args, enh)
+        }, e.Args...)
+
+    case *parser.BinaryExpr:
+        // Dispatch by LHS/RHS types (scalar+scalar, vector+vector, etc.)
+        return ev.rangeEval(ctx, e.VectorMatching, func(v []Vector, ...) (Vector, annotations.Annotations) {
+            return ev.VectorBinop(e.Op, v[0], v[1], ...)
+        }, e.LHS, e.RHS)
+
+    case *parser.VectorSelector:
+        // Fetch pre-populated series with lookback delta
+        mat := ev.evalSeries(ctx, e.Series, e.Offset, false)
+        return mat, ws
+
+    case *parser.MatrixSelector:
+        return ev.matrixSelector(ctx, e)
+
+    case *parser.SubqueryExpr:
+        // Create a nested evaluator with its own step/range, eval recursively
+        newEv := &evaluator{interval: durationMilliseconds(e.Step), ...}
+        return newEv.eval(ctx, e.Expr)
+
+    case *parser.UnaryExpr:
+        val, ws := ev.eval(ctx, e.Expr)
+        // negate all float/histogram values
+
+    case *parser.ParenExpr:
+        return ev.eval(ctx, e.Expr)  // transparent
+
+    case *parser.NumberLiteral:
+        return ev.rangeEval(ctx, nil, func(...) (Vector, ...) {
+            return append(enh.Out, Sample{F: e.Val}), nil
+        })
+
+    case *parser.StepInvariantExpr:
+        // Evaluate only at startTimestamp, replicate across all steps
+    }
+}
+```
+
+**`rangeEval`** (`engine.go:1384`) is the step-loop workhorse — it evaluates sub-expressions into `Matrix` form, then calls the provided `funcCall` closure for each timestamp step, collecting results into output series.
+
+---
+
+## 4. Function Registration and Calling
+
+**`functions.go:39`** — the function signature:
+```go
+// All built-in functions share this type
+type FunctionCall func(
+    vectorVals []Vector,        // evaluated instant vector args
+    matrixVals Matrix,          // evaluated range vector arg (if any)
+    args       parser.Expressions, // original AST args (for string literals, etc.)
+    enh        *EvalNodeHelper,    // pre-allocated output vector + helpers
+) (Vector, annotations.Annotations)
+```
+
+**`functions.go:2152`** — the global registry (map from name → implementation):
+```go
+var FunctionCalls = map[string]FunctionCall{
+    "abs":                funcAbs,
+    "rate":               funcRate,
+    "histogram_quantile": funcHistogramQuantile,
+    "label_replace":      funcLabelReplace,
+    // ~80+ entries ...
+}
+```
+
+At call time (`engine.go:1960`):
+```go
+case *parser.Call:
+    call := FunctionCalls[e.Func.Name]  // direct map lookup
+```
+
+Special cases (`label_replace`, `label_join`, `info`) bypass `rangeEval` entirely and get their own evaluator methods because they operate on the metric structure, not sample values.
+
+---
+
+## 5. Alert and Recording Rules
+
+Both implement the `Rule` interface and are evaluated by a **rule group** on a ticker loop.
+
+**`QueryFunc`** is the bridge between rules and the engine:
+```go
+type QueryFunc func(ctx context.Context, q string, t time.Time) (promql.Vector, error)
+```
+
+**Recording rule** (`recording.go:84`):
+```go
+func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration,
+    ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error) {
+
+    // 1. Execute the PromQL expression via QueryFunc
+    vector, err := query(ctx, rule.vector.String(), ts.Add(-queryOffset))
+
+    // 2. Override metric name and labels on each result sample
+    for i := range vector {
+        lb.Set(labels.MetricName, rule.name)
+        rule.labels.Range(func(l labels.Label) { lb.Set(l.Name, l.Value) })
+        vector[i].Metric = lb.Labels()
+    }
+    return vector, nil
+}
+```
+
+**Alerting rule** (`alerting.go:380`):
+```go
+func (r *AlertingRule) Eval(ctx context.Context, queryOffset time.Duration,
+    ts time.Time, query QueryFunc, externalURL *url.URL, limit int) (promql.Vector, error) {
+
+    // 1. Execute PromQL via QueryFunc
+    res, err := query(ctx, r.vector.String(), ts.Add(-queryOffset))
+
+    // 2. For each result sample → create/update a pending Alert
+    for _, smpl := range res {
+        // Template-expand label/annotation values
+        // Transition: inactive → Pending → Firing based on holdDuration
+    }
+
+    // 3. Expire alerts no longer in result set
+    // 4. Return ALERT_FOR_STATE series for active alerts
+}
+```
+
+**Alert state machine:**
+```
+inactive ──(expr fires)──▶ Pending ──(holdDuration elapsed)──▶ Firing
+Firing   ──(expr stops)──▶ (keepFiringFor countdown) ──▶ inactive
+```
+
+The **rule group** (not shown in detail here) runs a ticker at the configured `interval`, calls `rule.Eval(...)` on each rule in sequence, and for recording rules writes the resulting vector back to the TSDB.
+
+---
+
+## Summary Flow
+
+```
+query.Exec()
+  └─ Engine.exec()
+       └─ Engine.execEvalStmt()
+            ├─ populateSeries()       ← storage lookup, attach Series to selectors
+            └─ evaluator.Eval(expr)
+                 └─ evaluator.eval()  ← recursive AST dispatch
+                      ├─ AggregateExpr → rangeEvalAgg()
+                      ├─ Call         → FunctionCalls[name](…) via rangeEval()
+                      ├─ BinaryExpr   → VectorBinop() via rangeEval()
+                      ├─ VectorSelector → evalSeries() ← storage iterator
+                      └─ MatrixSelector → matrixSelector() ← sliding window
+
+Rule ticker (every interval)
+  └─ rule.Eval(ts, QueryFunc, …)
+       └─ QueryFunc(expr.String(), ts)  ← re-enters Engine
+            └─ (same path as above)
+```

@@ -1,0 +1,269 @@
+Here's a thorough breakdown of how Django's QuerySet evaluation and filtering pipeline works, based directly on the fixture code.
+
+---
+
+## 1. `QuerySet` — Lazy by Design
+
+**`django-query.py:303`**
+
+```python
+class QuerySet(AltersData):
+    """Represent a lazy database lookup for a set of objects."""
+
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._db = using
+        self._query = query or sql.Query(self.model)  # ← the SQL builder
+        self._result_cache = None                      # ← None = not evaluated yet
+        self._sticky_filter = False
+        self._iterable_class = ModelIterable
+        self._defer_next_filter = False
+        self._deferred_filter = None
+```
+
+The `_result_cache` starts as `None`. No SQL is executed until something forces evaluation. The `_query` is an `sql.Query` object that accumulates clauses imperatively.
+
+---
+
+## 2. The `query` Property — Deferred Filter Flush
+
+**`django-query.py:324`**
+
+```python
+@property
+def query(self):
+    if self._deferred_filter:
+        negate, args, kwargs = self._deferred_filter
+        self._filter_or_exclude_inplace(negate, args, kwargs)
+        self._deferred_filter = None
+    return self._query
+```
+
+Accessing `.query` flushes any deferred filter before returning the `sql.Query` object. This allows filters to be staged and applied atomically.
+
+---
+
+## 3. Chaining — Clone on Every Operation
+
+**`django-query.py:2137`**
+
+```python
+def _chain(self):
+    obj = self._clone()                          # deep copy of QuerySet state
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True        # for M2M table reuse
+        obj._sticky_filter = False
+    return obj
+```
+
+Every method that modifies a QuerySet calls `_chain()` first, returning a **new** QuerySet with a copied `sql.Query`. The original is never mutated. This is what makes chaining work:
+
+```python
+qs = Model.objects.filter(active=True).exclude(name="test").order_by("created")
+```
+
+Each step creates a new `QuerySet` with the previous's `sql.Query` cloned and extended.
+
+---
+
+## 4. The Filter Pipeline
+
+### `filter()` / `exclude()`
+
+**`django-query.py:1624`**
+
+```python
+def filter(self, *args, **kwargs):
+    self._not_support_combined_queries("filter")
+    return self._filter_or_exclude(False, args, kwargs)
+
+def exclude(self, *args, **kwargs):
+    return self._filter_or_exclude(True, args, kwargs)
+```
+
+### `_filter_or_exclude()` — Clone + Optionally Defer
+
+**`django-query.py:1640`**
+
+```python
+def _filter_or_exclude(self, negate, args, kwargs):
+    if (args or kwargs) and self.query.is_sliced:
+        raise TypeError("Cannot filter a query once a slice has been taken.")
+    clone = self._chain()
+    if self._defer_next_filter:
+        self._defer_next_filter = False
+        clone._deferred_filter = negate, args, kwargs   # ← stage it
+    else:
+        clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+```
+
+### `_filter_or_exclude_inplace()` — Translate to `Q` → `add_q()`
+
+**`django-query.py:1651`**
+
+```python
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if invalid_kwargs := PROHIBITED_FILTER_KWARGS.intersection(kwargs):
+        raise TypeError(...)
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))   # NOT(...)
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+All keyword-style filter arguments (`name__startswith="foo"`) are wrapped in a `Q` object and handed to `sql.Query.add_q()`. The `Q` class is the tree node; negation wraps it in `~Q`. `add_q()` on the `sql.Query` builds the `WhereNode` tree that eventually compiles to `WHERE` SQL.
+
+### `complex_filter()` — Q Objects Directly
+
+**`django-query.py:1660`**
+
+```python
+def complex_filter(self, filter_obj):
+    if isinstance(filter_obj, Q):
+        clone = self._chain()
+        clone.query.add_q(filter_obj)        # raw Q tree
+        return clone
+    else:
+        return self._filter_or_exclude(False, args=(), kwargs=filter_obj)
+```
+
+---
+
+## 5. Combining QuerySets — `|`, `&`, `^`
+
+**`django-query.py:478`**
+
+```python
+def __or__(self, other):
+    ...
+    combined = query._chain()
+    combined._merge_known_related_objects(other)
+    combined.query.combine(other.query, sql.OR)   # ← merges WhereNode trees
+    return combined
+```
+
+`sql.Query.combine()` merges two `sql.Query` objects by combining their `WhereNode` trees with `OR` / `AND` / `XOR`.
+
+---
+
+## 6. Forcing Evaluation — `_fetch_all()`
+
+Three Python protocols all converge on `_fetch_all()`:
+
+**`django-query.py:392`, `396`, `2168`**
+
+```python
+def __len__(self):
+    self._fetch_all()
+    return len(self._result_cache)
+
+def __iter__(self):
+    # Three nested iterators:
+    # 1. sql.compiler.execute_sql()  — fetches rows in chunks via cursor.fetchmany()
+    # 2. sql.compiler.results_iter() — yields one row at a time as tuples
+    # 3. self.iterator()             — turns rows into model objects
+    self._fetch_all()
+    return iter(self._result_cache)
+
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))  # ← hits the DB
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+Evaluation is triggered by: iteration (`for x in qs`), `len()`, slicing, `bool()`, `list()`, `repr()`. Until then, the `sql.Query` just accumulates state.
+
+---
+
+## 7. The Manager — Entry Point
+
+### `BaseManager` and `from_queryset()`
+
+**`django-manager.py:10`, `108`**
+
+```python
+class BaseManager:
+    def get_queryset(self):
+        return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+    @classmethod
+    def _get_queryset_methods(cls, queryset_class):
+        def create_method(name, method):
+            @wraps(method)
+            def manager_method(self, *args, **kwargs):
+                return getattr(self.get_queryset(), name)(*args, **kwargs)
+            return manager_method
+        # copies all public, non-queryset_only methods from QuerySet onto Manager
+        ...
+
+    @classmethod
+    def from_queryset(cls, queryset_class, class_name=None):
+        return type(class_name, (cls,), {
+            "_queryset_class": queryset_class,
+            **cls._get_queryset_methods(queryset_class),
+        })
+```
+
+`from_queryset()` dynamically creates a new class by introspecting the `QuerySet` class and copying every public method as a thin proxy: `manager.filter(...)` → `self.get_queryset().filter(...)`. This is how `Model.objects.filter(...)` works — `objects` is a `Manager`, and calling `.filter()` on it transparently creates a fresh `QuerySet` and delegates.
+
+### `Manager` (concrete class)
+
+**`django-manager.py:176`**
+
+```python
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+That's it — `Manager` inherits everything by calling `from_queryset` at class definition time.
+
+### `ManagerDescriptor` — Class-Level Guard
+
+**`django-manager.py:180`**
+
+```python
+class ManagerDescriptor:
+    def __get__(self, instance, cls=None):
+        if instance is not None:
+            raise AttributeError("Manager isn't accessible via %s instances" % cls.__name__)
+        ...
+        return cls._meta.managers_map[self.manager.name]
+```
+
+`contribute_to_class()` installs a `ManagerDescriptor` on the model class. Accessing `instance.objects` raises `AttributeError`; accessing `Model.objects` returns the real manager from `_meta.managers_map`.
+
+---
+
+## Summary: Full Call Path
+
+```
+Model.objects.filter(name="foo").exclude(active=False)
+      │
+      │  Manager.__get__  →  returns Manager instance
+      │
+      ▼
+Manager.filter("foo")
+  └─ get_queryset()          →  QuerySet(model=Model, query=sql.Query(Model))
+  └─ QuerySet.filter("foo")
+       └─ _filter_or_exclude(negate=False, ...)
+            └─ _chain()                    →  clone with copied sql.Query
+            └─ _filter_or_exclude_inplace()
+                 └─ sql.Query.add_q(Q(name="foo"))  →  builds WhereNode
+
+.exclude(active=False)
+  └─ _filter_or_exclude(negate=True, ...)
+       └─ _chain()
+       └─ _filter_or_exclude_inplace()
+            └─ sql.Query.add_q(~Q(active=False))   →  extends WhereNode with NOT
+
+for obj in qs:               ← triggers __iter__
+  └─ _fetch_all()
+       └─ list(self._iterable_class(self))
+            └─ sql.compiler.execute_sql()           →  cursor.execute(SQL, params)
+            └─ sql.compiler.results_iter()          →  row tuples
+            └─ ModelIterable                        →  Model instances
+```
+
+The key insight is **immutable chaining** (clone-on-write), **lazy accumulation** in `sql.Query` via `add_q()` / `WhereNode`, and **deferred execution** until a consuming operation forces `_fetch_all()`.

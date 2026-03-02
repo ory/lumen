@@ -1,0 +1,150 @@
+Here is a comprehensive breakdown of the event emitter system in `event.ts`.
+
+---
+
+## The `Event<T>` Interface
+
+`event.ts:37`
+
+```typescript
+export interface Event<T> {
+  (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+`Event<T>` is not a class — it's a **callable type**: a function that, when called with a listener, registers it and returns an `IDisposable` to unsubscribe. This makes it composable: any function with the right signature *is* an `Event<T>`.
+
+The optional `disposables` argument lets you pass a `DisposableStore` or array, and the returned `IDisposable` is automatically added to it — wiring event lifetime directly to object lifetime.
+
+---
+
+## The `Emitter<T>` Class
+
+`event.ts:1093`
+
+The `Emitter<T>` is the producer side. It holds the listener list and exposes:
+- **`.event`** — the `Event<T>` function consumers subscribe to.
+- **`.fire(value)`** — dispatches the value to all listeners.
+- **`.dispose()`** — clears all listeners and marks itself dead.
+
+```typescript
+// Producer owns an Emitter:
+private readonly _onDidChange = new Emitter<string>();
+public readonly onDidChange: Event<string> = this._onDidChange.event;
+
+// Consumer subscribes via the Event:
+this._onDidChange(value => { ... }, this, this._disposables);
+```
+
+**Listener storage is optimized:** the single-listener case stores the function directly (not in an array), since the vast majority of emitters have exactly one subscriber (`event.ts:1093`). The array only forms on the second listener and never downgrades back.
+
+**`EmitterOptions`** (`event.ts:858`) provides lifecycle hooks:
+- `onWillAddFirstListener` / `onDidAddFirstListener` — lazy initialization (e.g., bridge to a DOM event).
+- `onDidRemoveLastListener` — teardown when no one is listening.
+- `leakWarningThreshold` — warn on listener accumulation (memory leak detection).
+- `deliveryQueue` — coordinate ordered delivery across multiple emitters.
+
+---
+
+## Event Composition Operators
+
+All operators take an `Event<T>`, wrap it in a new `Emitter`, and return the emitter's `Event`. The inner subscription is created lazily on first listener (`snapshot` pattern, `event.ts:204`).
+
+### `map` — transform values
+```typescript
+Event.map(onFileChanged, path => path.toLowerCase())
+// event.ts:133
+export function map<I, O>(event: Event<I>, map: (i: I) => O): Event<O>
+```
+
+### `filter` — gate values
+```typescript
+Event.filter(onKeyPress, e => e.ctrlKey)
+// event.ts:167
+export function filter<T>(event: Event<T>, filter: (e: T) => boolean): Event<T>
+```
+
+### `debounce` — coalesce rapid events
+`event.ts:260` — the most complex operator. It takes a `merge` accumulator function and a delay:
+```typescript
+Event.debounce(onInput, (last, cur) => cur, 300 /*ms*/)
+```
+Fires at most once per delay window. Supports `leading` (fire on first call, skip trailing), microtask delay (`MicrotaskDelay`), and `flushOnListenerRemove` to emit accumulated state on cleanup.
+
+### `once` — fire exactly once
+`event.ts:87` — wraps an event so the listener is auto-disposed after the first delivery. Handles the race where the event fires synchronously during `subscribe`.
+
+### `reduce` / `accumulate` / `latch` / `defer`
+- **`reduce`** (`event.ts:195`): stateful fold over events.
+- **`accumulate`** (`event.ts:338`): collects events into an array, delivers the batch after the delay.
+- **`latch`** (`event.ts:449`): suppresses re-emits of the same value (equality-based dedup).
+- **`defer`** (`event.ts:78`): collapses any event to a `void` signal, delivered async.
+
+### `chain` — fluent builder API
+`event.ts:577` — allows composing `map`, `filter`, `reduce`, `latch` in a chainable DSL:
+```typescript
+Event.chain(onRaw, $ => $.filter(e => e.kind === 'edit').map(e => e.content))
+```
+Internally builds a `ChainableSynthesis` pipeline (`event.ts:593`). Each step runs in sequence; returning `HaltChainable` from a `filter` step stops propagation without invoking later steps or the listener.
+
+---
+
+## Emitter Variants
+
+| Class | Purpose |
+|---|---|
+| `PauseableEmitter<T>` (`event.ts:1448`) | Can `pause()` / `resume()` — queues events while paused, replays on resume. Optional `merge` fn collapses the queue into one event. |
+| `DebounceEmitter<T>` (`event.ts:1499`) | Extends `PauseableEmitter`. `fire()` starts a timeout; pauses the emitter for the delay, then resumes. `merge` is required. |
+| `MicrotaskEmitter<T>` (`event.ts:1525`) | Queues events, flushes them all in a single `queueMicrotask`. Optional `merge` combines the batch. |
+
+---
+
+## Integration with Disposables
+
+The disposable system (`lifecycle.ts:416`) is the lifecycle backbone.
+
+**`IDisposable`** — anything with a `dispose(): void`.
+
+**`DisposableStore`** — a `Set<IDisposable>` that disposes all members at once. `add()` returns the passed object so it can be chained. If the store is already disposed, newly added items are immediately disposed (and warned).
+
+**How they connect to events:**
+
+1. **Listener returns a disposable** — every `Event<T>(listener)` call returns an `IDisposable`. Call `.dispose()` to unsubscribe.
+
+2. **Collect into a store** — pass your store as the third argument:
+   ```typescript
+   event(listener, this, this._store); // _store.dispose() unsubscribes
+   ```
+
+3. **`Emitter.dispose()` warns on stale listeners** (`event.ts:1137`) — when an emitter is disposed with active listeners, it logs their allocation stacks (via `_enableDisposeWithListenerWarning`) on the next microtask to help trace leaks, without crashing the current call.
+
+4. **`onWillAddFirstListener` / `onDidRemoveLastListener`** — the canonical pattern for bridging external event sources (DOM, Node.js EventEmitter) lazily:
+   ```typescript
+   // event.ts:666 — fromNodeEventEmitter
+   const result = new Emitter<T>({
+     onWillAddFirstListener: () => emitter.on(eventName, fn),
+     onDidRemoveLastListener: () => emitter.removeListener(eventName, fn),
+   });
+   ```
+   This means the underlying source subscription is only held while someone is listening — a clean, leak-free pattern.
+
+5. **`snapshot`** (`event.ts:204`) — the internal helper all functional operators use. Creates a new `Emitter` that subscribes to the upstream lazily (on first listener) and tears down on last removal. If a `DisposableStore` is passed, the emitter itself is registered there.
+
+---
+
+## Key Pattern Summary
+
+```
+Source (Emitter<T>)
+  └─ .event (Event<T>) ──── composed via map/filter/debounce ──── Event<R>
+                                                                     │
+                                                           subscriber calls it
+                                                                     │
+                                                               returns IDisposable
+                                                                     │
+                                                          added to DisposableStore
+                                                                     │
+                                                        store.dispose() → all unsub
+```
+
+Everything composes through the single `Event<T>` callable interface. Operators are just functions that wrap one `Event` in another — no classes, no inheritance, no coupling to the source emitter.

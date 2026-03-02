@@ -1,0 +1,64 @@
+There are four `MatchType` values and two constructors. Here are the relevant definitions from `labels_matcher.go`:
+
+**`MatchType` enum** (`labels_matcher.go:21-29`):
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+**`Matcher` struct** (`labels_matcher.go:46-53`):
+```go
+// Matcher models the matching of a label.
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher
+}
+```
+
+**Constructors** (`labels_matcher.go:55-79`):
+
+```go
+// NewMatcher returns a matcher object.
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+
+// MustNewMatcher panics on error - only for use in tests!
+func MustNewMatcher(mt MatchType, name, val string) *Matcher {
+    m, err := NewMatcher(mt, name, val)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+```
+
+**Summary:**
+
+- Four match types: `MatchEqual` (`=`), `MatchNotEqual` (`!=`), `MatchRegexp` (`=~`), `MatchNotRegexp` (`!~`)
+- `NewMatcher(t, name, value)` is the primary constructor — it returns an error if the regexp types are given an invalid pattern (it compiles the regex eagerly via `NewFastRegexMatcher`)
+- `MustNewMatcher` is a panic-on-error convenience wrapper intended only for tests
+
+Note: the definitions appear in both `labels_matcher.go` and `matcher.go` — likely two parallel/duplicate files in the fixture set.

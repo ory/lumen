@@ -1,0 +1,191 @@
+Here is a complete end-to-end explanation of how TSDB compaction works in this codebase.
+
+---
+
+## TSDB Compaction: End-to-End
+
+### 1. The `Compactor` Interface (`compact.go:52-77`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three operations:
+- **`Plan`** — scans a directory and returns paths of block groups that are ready to be compacted.
+- **`Write`** — flushes a single in-memory `BlockReader` (e.g. the Head) to a new on-disk block at compaction level 1.
+- **`Compact`** — merges two or more existing on-disk blocks into one higher-level block.
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:79-93`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64   // time range boundaries per level [2h, 6h, 24h, ...]
+    chunkPool                   chunkenc.Pool
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    postingsEncoder             index.PostingsEncoder
+    // ... metrics, logger, ctx
+}
+```
+
+The `ranges` slice defines compaction levels. For example `[2h, 6h, 24h]` means:
+- Level 1 blocks cover 2 h (written directly from Head).
+- Three 2 h blocks → one 6 h block.
+- Four 6 h blocks → one 24 h block.
+
+**Planning (`compact.go:248-328`):**
+
+`Plan` → `plan(dms []dirMeta)`:
+1. Sort blocks by `MinTime`.
+2. `selectOverlappingDirs` — if any blocks have overlapping time ranges, compact those first (vertical compaction).
+3. `selectDirs` — otherwise, scan through each configured range level; find a group of adjacent blocks that span a full range interval and select them.
+4. Tombstone heuristic — if a block has >5% tombstones and is large enough, select it for solo re-compaction (to remove deleted data).
+
+**Executing (`compact.go:483-577`):**
+
+`Compact` → `CompactWithBlockPopulator`:
+1. Opens all source block directories (reuses already-open `*Block` objects to avoid double-loading the index).
+2. Builds merged `BlockMeta` via `CompactBlockMetas`.
+3. Calls `c.write(dest, meta, blockPopulator, blocks...)`.
+
+`write` (`compact.go:657-716`):
+1. Creates a temp directory `<ulid>.tmp.creation`.
+2. Opens a `ChunkWriter` and `IndexWriter` into the temp dir.
+3. Calls `blockPopulator.PopulateBlock(...)` — iterates all series across all source blocks, merges chunks with `mergeFunc`, writes them to chunk and index files.
+4. Atomically renames temp dir to final path.
+5. If the result has 0 samples, marks source blocks `Deletable` instead of producing a new block.
+
+`Write` (level-1 flush from Head, `compact.go:586-636`) does the same `write` call but wraps the `ChunkWriter` with `instrumentedChunkWriter` to record size/sample/range metrics.
+
+---
+
+### 3. `BlockPopulator` Interface (`compact.go:771-773`)
+
+```go
+type BlockPopulator interface {
+    PopulateBlock(ctx context.Context, metrics *CompactorMetrics, logger *slog.Logger,
+        chunkPool chunkenc.Pool, mergeFunc storage.VerticalChunkSeriesMergeFunc,
+        blocks []BlockReader, meta *BlockMeta,
+        indexw IndexWriter, chunkw ChunkWriter,
+        postingsFunc IndexReaderPostingsFunc) error
+}
+```
+
+`DefaultBlockPopulator{}` is used by default. This is the seam that downstream projects (Thanos, Mimir) override to inject custom merge logic.
+
+---
+
+### 4. How `DB` Triggers Compaction
+
+#### The `DB` struct (`db.go:281-342`)
+
+```go
+type DB struct {
+    compactor  Compactor        // LeveledCompactor
+    compactc   chan struct{}     // signal channel
+    autoCompact bool
+    cmtx       sync.Mutex       // serializes compaction + deletion
+    head       *Head
+    // ...
+}
+```
+
+#### The `run` goroutine (`db.go:1175-1243`)
+
+Started at `Open` time. Two triggers:
+
+```
+BlockReloadInterval tick
+    → reloadBlocks()
+    → send to compactc (non-blocking)
+
+compactc received
+    → if autoCompact: db.Compact(ctx)
+    → else: increment compactionsSkipped
+```
+
+There is also a stale-series threshold check on each tick that can call `db.CompactStaleHead()` early.
+
+#### `DB.Compact` (`db.go:1410+`)
+
+```go
+func (db *DB) Compact(ctx context.Context) (returnErr error) {
+    db.cmtx.Lock()   // serializes with deletions
+    // Phase 1: flush Head blocks first (highest priority)
+    for db.head.compactable() {
+        // apply CompactionDelay before flushing
+        mint := db.head.MinTime()
+        maxt := rangeForTimestamp(mint, db.head.chunkRange.Load())
+        // db.compactor.Write(db.dir, rangeHead, mint, maxt, nil)
+        // then db.reloadBlocks()
+    }
+    // Phase 2: compact OOO head if needed
+    // db.compactOOOHead(ctx)
+
+    // Phase 3: compact existing on-disk blocks
+    // db.compactBlocks()
+}
+```
+
+#### `DB.compactBlocks` (`db.go:1719-1763`)
+
+```go
+func (db *DB) compactBlocks() error {
+    for {
+        // Bail out if Head needs flushing again
+        if db.head.compactable() && !db.waitingForCompactionDelay() { return nil }
+
+        plan, _ := db.compactor.Plan(db.dir)
+        if len(plan) == 0 { break }
+
+        uids, _ := db.compactor.Compact(db.dir, plan, db.blocks)
+        db.reloadBlocks()   // picks up new block, marks old ones for deletion
+    }
+}
+```
+
+---
+
+### End-to-End Summary
+
+```
+Ticker fires (BlockReloadInterval)
+  └─ compactc ← signal
+
+run() goroutine receives compactc
+  └─ DB.Compact()
+       ├─ Phase 1: Head flush
+       │    head.compactable()?  (minTime old enough + >chunkRange data)
+       │    compactor.Write(dir, RangeHead, mint, maxt, nil)
+       │      └─ LeveledCompactor.write → PopulateBlock → chunks + index files
+       │    reloadBlocks()
+       │
+       ├─ Phase 2: OOO Head
+       │    compactOOO() → compactor.Write() per block range
+       │
+       └─ Phase 3: On-disk blocks
+            compactBlocks() loop:
+              compactor.Plan(dir)
+                └─ LeveledCompactor.Plan
+                     ├─ selectOverlappingDirs → overlapping blocks first
+                     ├─ selectDirs → leveled range groups
+                     └─ tombstone heuristic
+              compactor.Compact(dir, plan, openBlocks)
+                └─ CompactWithBlockPopulator
+                     ├─ open source blocks
+                     ├─ CompactBlockMetas → merged meta
+                     └─ write → PopulateBlock → new block on disk
+              reloadBlocks()   → sources marked Deletable, new block registered
+```
+
+Key invariants:
+- `cmtx` ensures compaction and deletion never run concurrently.
+- `autoCompactMtx` gate lets `DisableCompactions` / `EnableCompactions` safely toggle the flag.
+- Head flush always runs before on-disk block compaction so fresh data gets persisted first.
+- The compaction delay (`CompactionDelay` option) gives a grace window before flushing the Head to allow piece-wise backups.

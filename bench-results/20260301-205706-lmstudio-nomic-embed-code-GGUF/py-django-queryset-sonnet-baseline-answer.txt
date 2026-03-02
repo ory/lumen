@@ -1,0 +1,187 @@
+Here's how Django's QuerySet evaluation and filtering pipeline works, based on the fixtures at `testdata/fixtures/python/`:
+
+---
+
+## The Manager: Entry Point
+
+`BaseManager` (`django-manager.py:10`) is the model-level API. It ties to a QuerySet class via `from_queryset`:
+
+```python
+# django-manager.py:82
+@classmethod
+def _get_queryset_methods(cls, queryset_class):
+    # Copies every public QuerySet method onto the Manager
+    def create_method(name, method):
+        @wraps(method)
+        def manager_method(self, *args, **kwargs):
+            return getattr(self.get_queryset(), name)(*args, **kwargs)
+        return manager_method
+    ...
+
+# django-manager.py:150
+def get_queryset(self):
+    return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+# django-manager.py:176 — the default Manager
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+`Manager.filter(...)` is literally a forwarding wrapper that calls `self.get_queryset().filter(...)`. Every chain starts here.
+
+---
+
+## QuerySet: Lazy, Immutable Chain
+
+`QuerySet.__init__` (`django-query.py:306`) creates a fresh `sql.Query` and sets `_result_cache = None` — the laziness flag:
+
+```python
+def __init__(self, model=None, query=None, using=None, hints=None):
+    self._query = query or sql.Query(self.model)
+    self._result_cache = None   # None = not yet evaluated
+    self._iterable_class = ModelIterable
+    ...
+```
+
+Every mutating method returns a **new clone**, never modifying `self`:
+
+```python
+# django-query.py:2148
+def _clone(self):
+    c = self.__class__(model=self.model, query=self.query.chain(), ...)
+    # copies sticky_filter, prefetch lookups, iterable_class, etc.
+    return c
+
+# django-query.py:2137
+def _chain(self):
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+    return obj
+```
+
+`query.chain()` copies the `sql.Query` object so each clone has its own SQL state.
+
+---
+
+## Filtering Pipeline: `filter()` → `add_q()`
+
+```python
+# django-query.py:1624
+def filter(self, *args, **kwargs):
+    return self._filter_or_exclude(False, args, kwargs)
+
+# django-query.py:1640
+def _filter_or_exclude(self, negate, args, kwargs):
+    clone = self._chain()
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+
+# django-query.py:1651
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+`exclude()` is identical but passes `negate=True`, which wraps the `Q` object in `~`. The `Q` object is a tree of lookup conditions. `sql.Query.add_q()` (not in fixtures) walks this tree, resolves field lookups (`__gte`, `__contains`, etc.) through the ORM's lookup registry, and compiles them into SQL `WHERE` clauses.
+
+---
+
+## Other Chaining Methods
+
+All follow the same clone-and-mutate pattern:
+
+| Method | Key mutation on `self.query` |
+|--------|------------------------------|
+| `annotate()` (`line 1782`) | `query.add_annotation(expr, alias)` |
+| `order_by()` (`line 1855`) | `query.clear_ordering(); query.add_ordering(*fields)` |
+| `distinct()` (`line 1864`) | `query.add_distinct_fields(*fields)` |
+| `select_related()` (`line 1733`) | `query.select_related = True/False/fields` |
+| `defer()` (`line 1902`) | `query.add_deferred_loading(fields)` |
+| `only()` (`line 1921`) | `query.add_immediate_loading(fields)` |
+| `values()` (`line 1488`) | swaps `_iterable_class = ValuesIterable` |
+
+---
+
+## Evaluation: `_fetch_all()`
+
+The QuerySet only hits the DB when you iterate, slice, call `len()`, `bool()`, etc.:
+
+```python
+# django-query.py:392
+def __len__(self):     self._fetch_all(); return len(self._result_cache)
+def __bool__(self):   self._fetch_all(); return bool(self._result_cache)
+def __iter__(self):   self._fetch_all(); return iter(self._result_cache)
+
+# django-query.py:2168
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+`_iterable_class` defaults to `ModelIterable`. Calling `list()` on it triggers the SQL execution:
+
+```python
+# django-query.py:91
+class ModelIterable(BaseIterable):
+    def __iter__(self):
+        compiler = self.queryset.query.get_compiler(using=db)
+        results = compiler.execute_sql(chunked_fetch=..., chunk_size=...)
+        for row in compiler.results_iter(results):
+            yield model_cls.from_db(db, init_list, row[...])
+```
+
+For `values()` queries, `ValuesIterable.__iter__` (`line 227`) does the same but yields `dict`s instead of model instances.
+
+---
+
+## The SQL Compilation Chain
+
+```
+QuerySet._fetch_all()
+  └─ list(ModelIterable(self))
+       └─ query.get_compiler(using=db)      # returns SQLCompiler
+            └─ compiler.execute_sql(...)    # runs SELECT via cursor
+                 └─ compiler.results_iter() # yields rows
+```
+
+For writes, the query object is reclassed:
+
+```python
+# django-query.py:1337 — UPDATE
+query = self.query.chain(sql.UpdateQuery)
+query.get_compiler(self.db).execute_sql(ROW_COUNT)
+
+# django-query.py:1326 — DELETE
+query = self.query.clone()
+query.__class__ = sql.DeleteQuery
+query.get_compiler(using).execute_sql(ROW_COUNT)
+```
+
+---
+
+## End-to-End Flow
+
+```
+MyModel.objects.filter(status="active").order_by("-created")[:10]
+│
+├─ Manager.filter()         → get_queryset().filter()
+├─ QuerySet.filter()        → _chain() + _query.add_q(Q(status="active"))
+├─ .order_by("-created")    → _chain() + _query.add_ordering("-created")
+├─ [:10]                    → sets query.low_mark/high_mark (is_sliced=True)
+│
+│  [NO SQL YET — lazy]
+│
+└─ list(...) / for x in ... / len(...)
+     └─ _fetch_all()
+          └─ ModelIterable.__iter__()
+               └─ query.get_compiler().execute_sql()
+                    └─ SELECT ... FROM mytable WHERE status='active'
+                       ORDER BY created DESC LIMIT 10
+```
+
+The `sql.Query` class (referenced as `self._query` throughout but not defined in these fixtures) is the mutable SQL AST that accumulates all conditions, ordering, grouping, and annotation state until the compiler serializes it to SQL.

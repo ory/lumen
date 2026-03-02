@@ -1,0 +1,50 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Two-level bucket counting
+
+There are **regular (static) buckets** and **native (sparse/exponential) buckets**.
+
+### Regular buckets
+
+Observations are counted into pre-defined upper-bound buckets via `histogramCounts.observe` at `prom_histogram.go:652`:
+
+```go
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+The `bucket` index is pre-computed by the caller. It simply does:
+```go
+atomic.AddUint64(&hc.buckets[bucket], 1)
+```
+
+### Native (sparse) buckets
+
+Within the same `observe` method (`prom_histogram.go:652-706`), if `doSparse` is true, a **bucket key** is computed from the observation value using `math.Frexp` to extract the fraction and exponent:
+
+- **Positive schema** (`schema > 0`): uses `sort.SearchFloat64s` on precomputed `nativeHistogramBounds` to find the sub-bucket within the power-of-two range
+- **Non-positive schema**: uses the exponent directly, shifted by the schema
+
+Then the observation is routed to one of three places:
+- `addToBucket(&hc.nativeHistogramBucketsPositive, key, 1)` — for `v > zeroThreshold`
+- `addToBucket(&hc.nativeHistogramBucketsNegative, key, 1)` — for `v < -zeroThreshold`
+- `atomic.AddUint64(&hc.nativeHistogramZeroBucket, 1)` — for values within the zero threshold
+
+After bucket creation, `h.limitBuckets(hotCounts, v, bucket)` is called to enforce the max bucket count.
+
+### Key function signatures
+
+| Signature | Location |
+|---|---|
+| `func (h *histogram) observe(v float64, bucket int)` | `prom_histogram.go:899` |
+| `func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)` | `prom_histogram.go:652` |
+| `func newHistogram(desc *Desc, opts HistogramOpts, labelValues ...string) Histogram` | `prom_histogram.go:535` |
+| `func (h *Histogram) ZeroBucket() Bucket[uint64]` | `histogram.go:200` |
+| `func newRegularBucketIterator(spans []Span, buckets []int64, schema int32, positive bool, customValues []float64) regularBucketIterator` | `histogram.go:485` |
+| `func funcHistogramCount(vectorVals []Vector, _ Matrix, _ parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations)` | `functions.go:1598` |
+
+### Iteration
+
+For reading buckets back, there are two iterators:
+
+- **`regularBucketIterator`** (`histogram.go:481`) — iterates exponential buckets decoded from spans
+- **`cumulativeBucketIterator`** (`histogram.go:530`) — wraps the regular iterator to produce cumulative counts, tracking empty gaps between spans via `emptyBucketCount`

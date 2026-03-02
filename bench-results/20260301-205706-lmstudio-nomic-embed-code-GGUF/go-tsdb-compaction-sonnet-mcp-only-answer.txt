@@ -1,0 +1,156 @@
+Here's the full end-to-end picture of TSDB compaction:
+
+---
+
+## TSDB Compaction — End-to-End
+
+### 1. The `Compactor` Interface (`compact.go:52`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three responsibilities:
+- **`Plan`** — decide *which* on-disk block directories should be compacted next
+- **`Write`** — flush a live in-memory reader (e.g. the Head) to a new on-disk block
+- **`Compact`** — merge multiple existing on-disk blocks into one
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:79`)
+
+The production implementation. Key fields:
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64   // e.g. [2h, 6h, 24h, 72h]
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    blockExcludeFunc            BlockExcludeFilterFunc
+    postingsEncoder             index.PostingsEncoder
+    // ...
+}
+```
+
+`ranges` defines the leveled hierarchy. Each level is a multiple of the previous. Blocks are promoted up the ladder as they fill a time range.
+
+---
+
+### 3. Planning (`compact.go:248`, `compact.go:279`)
+
+`Plan(dir)` reads all block metadata from disk and calls `plan(dms []dirMeta)`:
+
+```
+plan(dms):
+  1. Sort blocks by MinTime
+  2. selectOverlappingDirs → if any blocks have overlapping time ranges, compact those first
+  3. selectDirs → group blocks by range levels; pick a group that fills a full interval
+  4. Tombstone threshold → if a big enough block has >5% tombstones, rewrite it solo
+```
+
+**`selectDirs`** (`compact.go:330`) iterates `ranges[1:]` and calls `splitByRange` to bucket blocks into aligned time windows. It returns a group only when the group spans a full interval (or is older than the newest block), preventing premature compaction.
+
+**`selectOverlappingDirs`** (`compact.go:369`) scans sorted blocks for any whose `MinTime < globalMaxt` of previous blocks — these are compacted first regardless of level.
+
+---
+
+### 4. Compacting On-Disk Blocks (`compact.go:483`)
+
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error) {
+    return c.CompactWithBlockPopulator(dest, dirs, open, DefaultBlockPopulator{})
+}
+```
+
+`CompactWithBlockPopulator` (`compact.go:489`):
+1. Opens each source block (reusing already-open `*Block` instances to avoid double memory load)
+2. Computes a merged `BlockMeta` via `CompactBlockMetas`
+3. Calls `c.write(dest, meta, blockPopulator, blocks...)`
+4. If the result is empty (0 samples), marks source blocks `Deletable` instead of writing
+5. Calls `db.reloadBlocks()` afterward (done by DB, not compactor)
+
+---
+
+### 5. Writing a New Block (`compact.go:638`, `compact.go:790`)
+
+`c.write` creates the new block directory, then calls:
+
+```go
+BlockPopulator.PopulateBlock(ctx, metrics, logger, chunkPool, mergeFunc,
+    blocks, meta, indexw, chunkw, postingsFunc)
+```
+
+`DefaultBlockPopulator.PopulateBlock` (`compact.go:790`):
+1. Opens `IndexReader`, `ChunkReader`, `TombstoneReader` for each source block
+2. Creates a `BlockChunkSeriesSet` per block
+3. Merges them with `storage.NewMergeChunkSeriesSet` using the configured `mergeFunc`
+4. Iterates merged series, writing chunks → `chunkw.WriteChunks`, then series + label set → `indexw.AddSeries`
+5. Accumulates stats (`NumSeries`, `NumChunks`, `NumSamples`)
+
+**Flushing the Head** uses `LeveledCompactor.Write` (`compact.go:586`) which wraps the in-memory `RangeHead` in a `BlockReader` and calls the same `write` path, creating a level-1 block.
+
+---
+
+### 6. How `DB` Triggers Compaction (`db.go:1175`, `db.go:1410`)
+
+**Background loop** — `db.run(ctx)` (`db.go:1175`):
+
+```go
+func (db *DB) run(ctx context.Context) {
+    for {
+        select {
+        case <-time.After(db.opts.BlockReloadInterval):
+            db.reloadBlocks()
+            db.compactc <- struct{}{}   // signal compaction
+            db.head.mmapHeadChunks()
+            // stale series check → maybe CompactStaleHead()
+
+        case <-db.compactc:
+            db.metrics.compactionsTriggered.Inc()
+            if db.autoCompact {
+                db.Compact(ctx)         // the main entry point
+            }
+        }
+    }
+}
+```
+
+**`DB.Compact(ctx)`** (`db.go:1410`) orchestrates in priority order:
+
+```
+1. Head compaction (highest priority)
+   └─ head.compactable()? → yes → compactHead(RangeHead)
+      └─ compactor.Write(db.dir, head, mint, maxt, nil)
+      └─ reloadBlocks(), truncateMemory()
+
+2. OOO head compaction (if head was compacted)
+   └─ compactOOOHead(ctx)
+
+3. On-disk block compaction
+   └─ compactBlocks()  ← loops until Plan() returns empty
+      └─ compactor.Plan(db.dir) → dirs
+      └─ compactor.Compact(db.dir, dirs, db.blocks)
+      └─ reloadBlocks()
+```
+
+**`db.compactBlocks()`** (`db.go:1719`) loops: plan → compact → reload, aborting early if the head becomes compactable again mid-loop (so head blocks always take priority).
+
+---
+
+### Summary Flow
+
+```
+time.After(BlockReloadInterval)
+    → db.compactc signal
+    → DB.Compact(ctx)
+        ├─ head.compactable() → compactor.Write(head) → new L1 block on disk
+        ├─ compactOOOHead()
+        └─ loop: compactor.Plan() → compactor.Compact(dirs)
+                    └─ open blocks → merge series → write index+chunks → new block
+                    └─ mark sources Deletable
+                    └─ reloadBlocks() (deletes Deletable blocks, enforces retention)
+```

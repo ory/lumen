@@ -1,0 +1,116 @@
+Here's a complete breakdown of how Flask configuration loading works, sourced from `flask-config.py`.
+
+---
+
+## Class Hierarchy
+
+```
+dict
+ └── Config
+```
+
+`Config` (`flask-config.py:50`) simply **subclasses `dict`** — the config object _is_ the dictionary. It adds a `root_path` attribute used to resolve relative filenames, and a suite of loading methods.
+
+There's also a companion descriptor class:
+
+```
+ConfigAttribute(Generic[T])   # flask-config.py:20
+```
+
+`ConfigAttribute` acts as a Python descriptor on the `App`/`Flask` class. When you write `app.debug = True`, the `__set__` method transparently writes into `app.config["DEBUG"]`. When you read `app.debug`, `__get__` reads it back out, optionally passing through a converter function.
+
+---
+
+## `Config.__init__` (`flask-config.py:94`)
+
+```python
+def __init__(self, root_path, defaults=None):
+    super().__init__(defaults or {})
+    self.root_path = root_path
+```
+
+Initializes the underlying `dict` with any provided defaults, and stores `root_path` for relative file resolution.
+
+---
+
+## Loading Methods
+
+### 1. `from_pyfile` — Load a `.cfg`/`.py` file (`flask-config.py:187`)
+
+```python
+d = types.ModuleType("config")
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+Reads any Python file, compiles it, and `exec`s it into a fresh module namespace. Then delegates to `from_object`. **Only UPPERCASE keys** get added (enforced by `from_object`).
+
+### 2. `from_object` — Load from a module or class (`flask-config.py:218`)
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+Accepts either an import path string (e.g. `'myapp.config.Production'`) or a live object (module, class, instance). Iterates all attributes and copies only those with ALL-UPPERCASE names. This is the **core filter** — lowercase names are intentionally ignored for temporary/internal values.
+
+### 3. `from_file` — Generic file loader (`flask-config.py:256`)
+
+```python
+with open(filename, "r" if text else "rb") as f:
+    obj = load(f)
+return self.from_mapping(obj)
+```
+
+Takes a callable `load` parameter — you pass `json.load`, `tomllib.load`, etc. More flexible than `from_pyfile`. Routes through `from_mapping` (not `from_object`), so the filter is still uppercase-only.
+
+### 4. `from_mapping` — Load from a dict/kwargs (`flask-config.py:302`)
+
+The primitive building block. Updates the config from a mapping, filtering to uppercase keys only. Returns `True` always.
+
+---
+
+## Environment Variable Methods
+
+### 5. `from_envvar` — Indirect env-var file pointer (`flask-config.py:102`)
+
+```python
+rv = os.environ.get(variable_name)
+return self.from_pyfile(rv, silent=silent)
+```
+
+Reads an env var whose **value is a file path**, then loads that file via `from_pyfile`. e.g., `YOURAPPLICATION_SETTINGS=/etc/myapp.cfg`.
+
+### 6. `from_prefixed_env` — Direct env-var values (`flask-config.py:126`)
+
+```python
+for key in sorted(os.environ):
+    if not key.startswith(prefix):   # default: "FLASK_"
+        continue
+    value = loads(value)             # default: json.loads
+    self[key] = value
+```
+
+Scans all env vars starting with `FLASK_` (configurable prefix), strips the prefix, and JSON-parses each value. Supports **nested dicts** via double-underscore separator: `FLASK_DATABASE__HOST=localhost` sets `config["DATABASE"]["HOST"]`.
+
+---
+
+## Method Dependency Map
+
+```
+from_envvar ──────────────────► from_pyfile ──► from_object ──► self[key] = value
+from_prefixed_env ────────────────────────────► self[key] = value
+from_pyfile ──────────────────► from_object ──► self[key] = value
+from_file ────────────────────► from_mapping ──► self[key] = value (uppercase filter)
+from_object ──────────────────► self[key] = value (uppercase filter via isupper())
+from_mapping ─────────────────► self[key] = value (uppercase filter)
+```
+
+---
+
+## Key Design Invariant
+
+**All loading paths filter to uppercase keys only.** This allows config files and modules to contain lowercase "temporary" values that are never promoted into the live config. For example, a `.cfg` file can have helper variables in lowercase that are invisible to Flask.

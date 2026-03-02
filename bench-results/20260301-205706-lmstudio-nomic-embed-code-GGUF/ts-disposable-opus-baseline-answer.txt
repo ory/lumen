@@ -1,0 +1,81 @@
+Here's how the disposable system works in this file (`lifecycle.ts`):
+
+---
+
+### `IDisposable` interface (line 312)
+
+```ts
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The core contract — any object with a `dispose()` method. Used for event listeners, file watchers, provider registrations, etc.
+
+---
+
+### `Disposable` base class (line 526)
+
+```ts
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        return this._store.add(o);
+    }
+}
+```
+
+Key points:
+- **Owns a `DisposableStore` internally** — subclasses call `this._register(disposable)` to add child disposables that get cleaned up automatically when the parent is disposed.
+- **`Disposable.None`** — a frozen no-op disposable, useful as a default/sentinel value.
+- **Leak tracking** — constructor calls `trackDisposable(this)` and sets the store's parent to `this` for the tracker hierarchy.
+
+---
+
+### `DisposableStore` (line 416)
+
+Manages a `Set<IDisposable>` with lifecycle-aware operations:
+
+| Method | Behavior |
+|---|---|
+| `add(o)` | Registers a disposable. If the store is already disposed, logs a warning (leak). Sets parent for tracking. |
+| `dispose()` | Disposes all registered items, marks store as disposed. Idempotent — second call is a no-op. |
+| `clear()` | Disposes all items but does **not** mark the store as disposed (can be reused). |
+| `delete(o)` | Removes and disposes a specific item. |
+| `deleteAndLeak(o)` | Removes without disposing — caller takes ownership. Clears the parent tracker. |
+
+Safety guards:
+- **Self-registration check** — throws if you try `store.add(store)`.
+- **Post-dispose warning** — adding to an already-disposed store logs a stack trace warning.
+- **Error aggregation** — `dispose()` delegates to the free `dispose()` function which catches errors from each item and throws an `AggregateError` if multiple fail, ensuring all items get their `dispose()` called even if some throw.
+
+---
+
+### How they compose
+
+A typical subclass looks like:
+
+```ts
+class MyService extends Disposable {
+    constructor() {
+        super();
+        this._register(someEventEmitter.on('data', ...));
+        this._register(fileWatcher.watch(...));
+    }
+}
+```
+
+When `myService.dispose()` is called, `Disposable.dispose()` calls `this._store.dispose()`, which iterates the `Set<IDisposable>` and disposes each registered item. The leak tracker maintains a parent-child hierarchy so it can identify disposables that were never disposed or never registered as children.

@@ -1,0 +1,171 @@
+## How PromQL Query Evaluation Works
+
+### 1. Evaluation Engine
+
+The engine is built around three key types:
+
+**`QueryEngine` interface** (`engine.go:125`) — the public API:
+```go
+type QueryEngine interface {
+    NewInstantQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, ts time.Time) (Query, error)
+    NewRangeQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, start, end time.Time, interval time.Duration) (Query, error)
+}
+```
+
+**`Engine` struct** (`engine.go:344`) — the concrete implementation holding config (timeout, max samples, lookback delta, parser, etc.).
+
+**`evaluator` struct** (`engine.go:1138`) — the internal workhorse created per-query:
+```go
+type evaluator struct {
+    startTimestamp, endTimestamp, interval int64  // milliseconds
+    maxSamples, currentSamples            int
+    lookbackDelta                         time.Duration
+    querier                               storage.Querier
+    // ...
+}
+```
+
+**Execution flow:**
+1. `Engine.NewInstantQuery` / `NewRangeQuery` — parses the expression string, validates, wraps step-invariant subtrees in `StepInvariantExpr`, returns a `*query`
+2. `query.Exec(ctx)` → `Engine.exec(ctx, q)` → `Engine.execEvalStmt(ctx, q, s)`
+3. `execEvalStmt` computes time bounds, acquires a `storage.Querier`, calls `populateSeries(...)` which walks the AST and calls `Querier.Select(...)` for every `VectorSelector`, then creates an `evaluator` and calls `evaluator.Eval(ctx, expr)`
+
+---
+
+### 2. AST Node Types
+
+All expressions implement `Expr` (`ast.go:77`):
+```go
+type Expr interface {
+    Node
+    Type() ValueType
+    PromQLExpr()
+}
+```
+
+Key node types:
+
+| Node | Example | Returns |
+|---|---|---|
+| `VectorSelector` | `http_requests_total{job="api"}` | `ValueTypeVector` |
+| `MatrixSelector` | `metric[5m]` | `ValueTypeMatrix` |
+| `Call` | `rate(metric[5m])` | `e.Func.ReturnType` |
+| `AggregateExpr` | `sum by (job) (...)` | `ValueTypeVector` |
+| `BinaryExpr` | `a + b`, `a > b` | vector or scalar |
+| `SubqueryExpr` | `expr[1h:5m]` | `ValueTypeMatrix` |
+| `StepInvariantExpr` | (engine-inserted optimization) | same as child |
+| `NumberLiteral` / `StringLiteral` | `42`, `"hello"` | scalar / string |
+
+The `Call` node holds a `*Function` descriptor and `Expressions` args:
+```go
+type Call struct {
+    Func     *Function
+    Args     Expressions
+    PosRange posrange.PositionRange
+}
+```
+
+---
+
+### 3. Recursive Evaluation — `evaluator.eval()`
+
+The core dispatch is `evaluator.eval(ctx, expr)` (`engine.go:1904`), a large `switch` on expression type:
+
+- **`*AggregateExpr`** — evaluates the inner expression, then calls `rangeEvalAgg(...)` to apply `sum`, `avg`, `topk`, etc. at each timestamp step
+- **`*Call`** — looks up `FunctionCalls[e.Func.Name]`, then:
+  - If no matrix arg: uses `rangeEval(...)` with a closure calling the function at each step
+  - If has matrix arg: iterates per-series, per-step calling the function
+  - Special-cased: `timestamp`, `label_replace`, `label_join`, `info`
+- **`*BinaryExpr`** — dispatches on LHS/RHS types (scalar-scalar, vector-vector with AND/OR/UNLESS/arithmetic, vector-scalar)
+- **`*VectorSelector`** — expands the `SeriesSet`, calls `evalSeries(...)` to read data points
+- **`*MatrixSelector`** — calls `matrixSelector(...)`, only valid for instant queries
+- **`*SubqueryExpr`** — creates a nested `evaluator` with finer interval and recurses
+- **`*StepInvariantExpr`** — evaluates once at `startTimestamp`, replicates across all steps
+
+`rangeEval` (`engine.go:1390`) is the generic step-by-step evaluator: it iterates over every timestamp from start to end, gathers input vectors via `gatherVector(...)`, calls the provided function, and accumulates results into a `Matrix`.
+
+---
+
+### 4. Function Registry
+
+**`FunctionCall` type** (`functions.go:60`):
+```go
+type FunctionCall func(vectorVals []Vector, matrixVals Matrix, args parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations)
+```
+
+**`FunctionCalls` map** (`functions.go:2153`) — the global registry of ~60 functions:
+```go
+var FunctionCalls = map[string]FunctionCall{
+    "abs":       funcAbs,
+    "rate":      funcRate,
+    "increase":  funcIncrease,
+    "irate":     funcIrate,
+    "delta":     funcDelta,
+    "histogram_quantile": funcHistogramQuantile,
+    "label_replace": nil,  // handled specially in eval
+    "label_join":    nil,  // handled specially in eval
+    // ...
+}
+```
+
+The engine resolves calls with `call := FunctionCalls[e.Func.Name]`. Functions receive an `EvalNodeHelper` (`engine.go:1211`) that provides the current timestamp (`enh.Ts`), a pre-allocated output `Vector` (`enh.Out`), and various caches (histogram buckets, label builders, binary matching structures).
+
+---
+
+### 5. Alert and Recording Rules
+
+Both rule types call the same `QueryFunc` to trigger evaluation:
+```go
+type QueryFunc func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
+```
+
+**`RecordingRule.Eval`** (`recording.go:85`):
+- Calls `query(ctx, rule.vector.String(), ts)` to evaluate the PromQL expression
+- Rewrites metric names and labels on each sample (sets `MetricName` to the rule name, applies rule labels)
+- Checks for duplicate labelsets
+- Returns the vector to be written to storage
+
+**`AlertingRule.Eval`** (`alerting.go:382`):
+- Calls `query(ctx, r.vector.String(), ts)` to evaluate the expression
+- For each result sample: expands label/annotation templates, builds alert labels, creates or updates the alert in `r.active` map
+- Manages the alert state machine:
+  - Expression fires → `StatePending` (sets `ActiveAt = ts`)
+  - `holdDuration` elapses → `StateFiring` (sets `FiredAt`)
+  - Expression stops firing → `StateInactive` (sets `ResolvedAt`); kept 15 min
+  - If `keepFiringFor > 0`, a firing alert continues for that duration after resolution
+- Emits `ALERTS{}` and `ALERTS_FOR_STATE{}` sample points
+
+**Alert states** (`alerting.go:54`):
+```go
+const (
+    StateUnknown  AlertState = iota
+    StateInactive
+    StatePending
+    StateFiring
+)
+```
+
+---
+
+### End-to-End Path
+
+```
+Query string "rate(http_requests_total[5m])"
+    │
+    ▼ Engine.NewInstantQuery → parse → PreprocessExpr
+    │
+    ▼ query.Exec → Engine.execEvalStmt
+    │   populateSeries: walk AST, Querier.Select for each VectorSelector
+    │   create evaluator{start, end, interval}
+    │
+    ▼ evaluator.eval (recursive)
+    │   Call("rate") → FunctionCalls["rate"] = funcRate
+    │   MatrixSelector → read range data from storage
+    │   rangeEval: for each step, call funcRate(vectors, matrix, args, enh)
+    │
+    ▼ Matrix result → convert to Vector/Scalar/Matrix per query type
+    │
+    ▼ Rules layer (optional):
+       RecordingRule.Eval → query() → rewrite labels → write to storage
+       AlertingRule.Eval  → query() → manage Pending→Firing→Inactive FSM
+```

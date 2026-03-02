@@ -1,0 +1,114 @@
+Here's how Flask configuration loading works, based on `flask-config.py`:
+
+## Class Hierarchy
+
+**`Config(dict)`** — the main configuration class, literally a `dict` subclass with extra loading methods.
+
+**`ConfigAttribute`** — a Python descriptor that proxies attribute access on the `App` object to `app.config[name]`. This is how `app.debug` transparently reads/writes `app.config["DEBUG"]`.
+
+## `Config` class (`flask-config.py:50-367`)
+
+### Construction
+
+```python
+def __init__(self, root_path, defaults=None):
+    super().__init__(defaults or {})
+    self.root_path = root_path
+```
+
+`root_path` is the base for resolving relative filenames. `defaults` seeds the dict.
+
+### Key invariant
+
+**Only uppercase keys are stored.** Every loading method filters for `key.isupper()` before setting values. This lets config files use lowercase variables as temporaries.
+
+## Loading Methods
+
+### 1. `from_object(obj)` — load from Python object (`flask-config.py:218-254`)
+
+The foundation — most other methods delegate to this.
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+Accepts either an import path string or a direct object reference (module, class instance). Iterates `dir()` and copies uppercase attributes.
+
+### 2. `from_pyfile(filename, silent=False)` — load from `.py`/`.cfg` file (`flask-config.py:187-216`)
+
+```python
+filename = os.path.join(self.root_path, filename)
+d = types.ModuleType("config")
+d.__file__ = filename
+with open(filename, mode="rb") as config_file:
+    exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+Creates a temporary module, `exec`s the file into it, then delegates to `from_object`. This means any valid Python can be in the config file.
+
+### 3. `from_envvar(variable_name, silent=False)` — load file path from env var (`flask-config.py:102-124`)
+
+```python
+rv = os.environ.get(variable_name)
+# ... error handling if not set ...
+return self.from_pyfile(rv, silent=silent)
+```
+
+Just a convenience wrapper: reads the env var to get a file path, then calls `from_pyfile`.
+
+### 4. `from_prefixed_env(prefix="FLASK", loads=json.loads)` — bulk load from env vars (`flask-config.py:126-185`)
+
+Scans all env vars starting with `FLASK_`, strips the prefix, and attempts JSON parsing on values. Supports nested dicts via double underscores:
+
+- `FLASK_SECRET_KEY="abc"` → `config["SECRET_KEY"] = "abc"`
+- `FLASK_SQLALCHEMY__ENGINE="sqlite"` → `config["SQLALCHEMY"]["ENGINE"] = "sqlite"`
+
+### 5. `from_file(filename, load, silent=False, text=True)` — load from structured files (`flask-config.py:256-302`)
+
+Generic loader — you provide the deserializer:
+
+```python
+app.config.from_file("config.json", load=json.load)
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+
+Opens the file, passes the handle to `load`, then delegates to `from_mapping`.
+
+### 6. `from_mapping(mapping=None, **kwargs)` — load from dict (`flask-config.py:305-321`)
+
+Merges a dict/kwargs into the config, filtering for uppercase keys.
+
+## Helper Methods
+
+### `get_namespace(namespace, lowercase=True, trim_namespace=True)` (`flask-config.py:323-364`)
+
+Extracts a subset of config by prefix. E.g., `config.get_namespace('IMAGE_STORE_')` returns `{'type': 'fs', 'path': '/var/app/images'}`. Useful for passing config subsets as `**kwargs` to constructors.
+
+## `ConfigAttribute` descriptor (`flask-config.py:20-47`)
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj, owner):
+        rv = obj.config[self.__name__]
+        if self.get_converter is not None:
+            rv = self.get_converter(rv)
+        return rv
+
+    def __set__(self, obj, value):
+        obj.config[self.__name__] = value
+```
+
+Used on the `Flask`/`App` class so that e.g. `app.debug` is really `app.config["DEBUG"]`. The optional `get_converter` allows type coercion on read (e.g., converting a `timedelta`).
+
+## Summary of the loading chain
+
+```
+from_envvar  ──→  from_pyfile  ──→  from_object  ──→  self[KEY] = value
+from_file    ──→  from_mapping ──→  self[KEY] = value
+from_prefixed_env ──────────────→  self[KEY] = value (with nested dict support)
+```

@@ -1,0 +1,65 @@
+Here's how the disposable system works in `lifecycle.ts`:
+
+---
+
+## `IDisposable` Interface
+**`lifecycle.ts:312-314`**
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The minimal contract — any object that can be cleaned up implements this single method.
+
+---
+
+## `Disposable` Abstract Base Class
+**`lifecycle.ts:526-557`**
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+Subclasses call `this._register(child)` to own child disposables. When the parent is disposed, `_store.dispose()` cascades to all children automatically. `Disposable.None` is a sentinel no-op used as a safe default.
+
+---
+
+## `DisposableStore`
+**`lifecycle.ts:416-519`**
+
+`DisposableStore` is the actual container — it's what `Disposable` delegates to internally, but it can also be used standalone.
+
+| Method | Behavior |
+|---|---|
+| `add(o)` | Registers a disposable; warns if store is already disposed (the object leaks) |
+| `delete(o)` | Removes **and disposes** the object immediately |
+| `deleteAndLeak(o)` | Removes without disposing (intentional leak / transfer of ownership) |
+| `clear()` | Disposes all contained objects but keeps the store itself alive and reusable |
+| `dispose()` | Calls `clear()` and marks the store itself as disposed — future `add()` calls warn |
+
+The internal storage is a `Set<IDisposable>`, giving O(1) add/delete and deduplication. The parent-tracking calls (`setParentOfDisposable`) feed into a debug system that can detect leaked disposables — objects that are created but never disposed.
+
+The ownership model: `Disposable` owns its `_store`, the store owns its children. Disposing the root cascades the entire tree.

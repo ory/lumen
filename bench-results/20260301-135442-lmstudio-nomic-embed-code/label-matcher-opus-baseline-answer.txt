@@ -1,0 +1,47 @@
+Both `matcher.go` and `labels_matcher.go` are identical files. Here's the answer from `labels_matcher.go`:
+
+### MatchType enum (line 22-30)
+
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // "="
+    MatchNotEqual                     // "!="
+    MatchRegexp                       // "=~"
+    MatchNotRegexp                    // "!~"
+)
+```
+
+Four match types using `iota`: exact equality, not-equal, regex match, and negated regex match.
+
+### Matcher struct (line 47-53)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher  // unexported; only set for regex types
+}
+```
+
+### Constructor — `NewMatcher` (line 56-70)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{Type: t, Name: n, Value: v}
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+It sets the basic fields, then **only compiles a `FastRegexMatcher`** when the type is `MatchRegexp` or `MatchNotRegexp`. For equality types, `re` stays nil.
+
+There's also a convenience wrapper `MustNewMatcher` (line 73) that panics on error, intended for tests.

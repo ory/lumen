@@ -1,0 +1,107 @@
+This is VS Code's event emitter system (~1900 lines). Here's how it works:
+
+## The `Event<T>` Interface (line 37)
+
+```typescript
+export interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is just a **callable function**. You subscribe by calling it with a listener callback. It returns an `IDisposable` to unsubscribe. The optional `disposables` parameter auto-registers cleanup.
+
+## The `Emitter<T>` Class (line 1093)
+
+The core producer. Pattern: **private emitter, public event**.
+
+```typescript
+class Document {
+    private readonly _onDidChange = new Emitter<string>();
+    public onDidChange = this._onDidChange.event;  // expose read-only Event
+
+    private _doIt(value: string) {
+        this._onDidChange.fire(value);  // only the owner can fire
+    }
+}
+```
+
+Key internals:
+- **Single-listener optimization** (line 1104): When there's only 1 listener, it's stored directly as a `UniqueContainer`, not wrapped in an array. This avoids allocation for the common case.
+- **Sparse array with compaction** (line 1267): Removed listeners become `undefined` slots. The array compacts when more than `1/compactionThreshold` (50%) of slots are empty.
+- **`EventDeliveryQueuePrivate`** (line 1347): Shared delivery queue ensures in-order delivery across emitters. Tracks current index `i`, `end`, and the emitting value. Critical for re-entrant `fire()` calls — if `fire()` is called during delivery, pending items are flushed first (line 1316).
+- **Leak detection** via `LeakageMonitor` (line 948): When listener count exceeds a threshold, it captures stack traces and warns. Goes further at `threshold²` — refuses new listeners entirely (line 1176).
+
+### `EmitterOptions` (line 858)
+
+Lifecycle hooks that power the entire composition system:
+
+| Hook | When |
+|------|------|
+| `onWillAddFirstListener` | Before first subscriber |
+| `onDidAddFirstListener` | After first subscriber |
+| `onDidRemoveLastListener` | After last subscriber removed |
+| `onWillRemoveListener` | Before any subscriber removed |
+| `onListenerError` | When a listener throws |
+
+## Event Composition (the `Event` namespace, line 41)
+
+All composition functions work the same way: they create a **new internal `Emitter`** that lazily subscribes to the source event only when it has listeners, and unsubscribes when the last listener is removed. This is the `snapshot` pattern (line 204):
+
+```typescript
+function snapshot<T>(event: Event<T>, disposable: DisposableStore | undefined): Event<T> {
+    let listener: IDisposable | undefined;
+    const emitter = new Emitter<T>({
+        onWillAddFirstListener() { listener = event(emitter.fire, emitter); },
+        onDidRemoveLastListener() { listener?.dispose(); }
+    });
+    disposable?.add(emitter);
+    return emitter.event;
+}
+```
+
+### Combinators
+
+| Function | What it does |
+|----------|-------------|
+| `Event.map(event, fn)` | Transforms values: `fn(i)` before forwarding |
+| `Event.filter(event, pred)` | Only forwards when `pred(e)` is true |
+| `Event.reduce(event, merge, initial)` | Accumulates state across firings |
+| `Event.once(event)` | Auto-disposes after first fire |
+| `Event.any(...events)` | Merges N events into one (fires on any) |
+| `Event.latch(event, eq)` | Deduplicates consecutive equal values |
+| `Event.split(event, isT)` | Returns `[Event<T>, Event<U>]` from a union type event |
+| `Event.buffer(event)` | Queues events until first listener, then flushes |
+| `Event.debounce(event, merge, delay)` | Coalesces rapid fires via setTimeout/microtask |
+| `Event.throttle(event, merge, delay)` | Rate-limits with leading/trailing edge control |
+| `Event.accumulate(event, delay)` | Debounce that collects into `T[]` |
+| `Event.chain(event, $ => $.map(...).filter(...))` | Fluent chaining syntax via `ChainableSynthesis` |
+
+### `debounce` internals (line 260)
+
+The merge function coalesces events: `merge(last, current) => accumulated`. Supports:
+- Numeric delay (setTimeout) or `MicrotaskDelay` (queueMicrotask)
+- Leading edge fire (immediate first event)
+- `flushOnListenerRemove` — fires pending debounced events when a listener unsubscribes, preventing event loss
+
+## Disposable Integration
+
+Every subscription returns an `IDisposable`. Three patterns for cleanup:
+
+1. **Manual**: `const d = emitter.event(listener); ... d.dispose();`
+2. **Array**: `emitter.event(listener, null, disposablesArray)` — pushes the disposable into the array
+3. **DisposableStore**: `emitter.event(listener, null, store)` — registers via `store.add()`
+
+The `addToDisposables` helper (line 1877) handles both. Composition functions accept an optional `DisposableStore` to register the intermediate emitter, preventing leaks when composed events are public properties.
+
+## Emitter Variants
+
+| Class | Behavior |
+|-------|----------|
+| `PauseableEmitter<T>` (line 1448) | `pause()`/`resume()` — queues events while paused, optionally merges them |
+| `DebounceEmitter<T>` (line 1499) | Extends PauseableEmitter; auto-pauses on fire, resumes after delay |
+| `MicrotaskEmitter<T>` (line 1525) | Batches all sync fires, delivers in one microtask |
+| `AsyncEmitter<T>` (line 1390) | Listeners can `waitUntil(promise)` to delay subsequent listeners (sequential async) |
+| `EventMultiplexer<T>` (line 1576) | Dynamically add/remove source events into a single output event |
+| `Relay<T>` (line 1782) | Replugable pipe — swap the input event at any time |
+
+The `AsyncEmitter` is notable: it delivers to listeners one-at-a-time, each listener can call `waitUntil(promise)` synchronously, then the emitter awaits all those promises before moving to the next listener. The thenables array is frozen after the synchronous listener call to enforce this.

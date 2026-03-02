@@ -1,0 +1,54 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Two Bucket Systems
+
+There are **two distinct bucket counting mechanisms**: classic (regular) buckets and native (sparse/exponential) buckets.
+
+### Classic Bucket Counting
+
+**`histogram.findBucket(v float64) int`** (`prom_histogram.go:864-897`) — Finds which bucket an observation falls into using the upper bounds:
+- If ≤35 buckets: **linear scan** through `upperBounds`
+- If >35 buckets: **binary search** via `sort.SearchFloat64s`
+- Returns the index, or `len(upperBounds)` for the +Inf bucket
+
+**`histogramCounts.observe(v float64, bucket int, doSparse bool)`** (`prom_histogram.go:652-706`) — Increments the bucket:
+- `atomic.AddUint64(&hc.buckets[bucket], 1)` for the classic bucket
+- Atomically adds to `sumBits` and `count`
+
+### Native (Sparse/Exponential) Bucket Counting
+
+Inside the same `histogramCounts.observe`, when `doSparse` is true, it computes an exponential bucket key:
+
+```
+frac, exp := math.Frexp(math.Abs(v))
+```
+
+- **Positive schema** (`schema > 0`): looks up `frac` in precomputed `nativeHistogramBounds` and computes `key = SearchFloat64s(bounds, frac) + (exp-1)*len(bounds)`
+- **Zero/negative schema**: `key = exp`, adjusted by `(key + offset) >> -schema`
+
+Then routes to one of three places:
+- `v > zeroThreshold` → `nativeHistogramBucketsPositive` (sync.Map)
+- `v < -zeroThreshold` → `nativeHistogramBucketsNegative` (sync.Map)
+- Otherwise → `nativeHistogramZeroBucket` (atomic uint64)
+
+### Cumulative Count on Read
+
+**`histogram.Write(out *dto.Metric) error`** (`prom_histogram.go:779-830`) — When writing/exporting, converts per-bucket counts into **cumulative counts**:
+
+```go
+var cumCount uint64
+for i, upperBound := range h.upperBounds {
+    cumCount += atomic.LoadUint64(&coldCounts.buckets[i])
+    his.Bucket[i] = &dto.Bucket{CumulativeCount: proto.Uint64(cumCount), ...}
+}
+```
+
+### Sparse Histogram Iteration
+
+**`cumulativeBucketIterator`** (`histogram.go:530-548`) — Iterates over the span-encoded sparse buckets, tracking cumulative counts and handling empty buckets between spans via `emptyBucketCount`.
+
+**`regularBucketIterator`** (`histogram.go:481-483`) — Simple iterator wrapping `baseBucketIterator[uint64, int64]` for standard bucket traversal.
+
+### Bucket Limiting
+
+**`histogram.observe(v float64, bucket int)`** (`prom_histogram.go:899-912`) — After observing into sparse buckets, calls `h.limitBuckets(hotCounts, v, bucket)` to enforce `NativeHistogramMaxBucketNumber`, which can merge or reset buckets when the count exceeds the configured maximum.

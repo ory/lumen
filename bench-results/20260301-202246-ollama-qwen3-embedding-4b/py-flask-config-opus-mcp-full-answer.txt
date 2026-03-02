@@ -1,0 +1,44 @@
+Here's how Flask configuration loading works in this file:
+
+## Class Hierarchy
+
+There are two classes:
+
+1. **`ConfigAttribute`** (line 20) — a [descriptor](https://docs.python.org/3/howto/descriptor.html) (`__get__`/`__set__`) that proxies attribute access on a Flask `App` instance to `app.config[name]`. This lets you write `app.debug` instead of `app.config['DEBUG']`, with an optional `get_converter` callable.
+
+2. **`Config(dict)`** (line 50) — the main config class. It **subclasses `dict`** directly, so it supports all dict operations (`self[key] = value`, iteration, etc.). Constructed with a `root_path` (used to resolve relative filenames) and optional `defaults` dict.
+
+## Loading Methods
+
+The `Config` class offers five ways to populate itself, each building on the others:
+
+### `from_object(obj)` — line 218 (core primitive)
+Takes a Python object (module, class) or an import path string. Iterates `dir(obj)` and copies only **UPPERCASE** attributes into the config. This is the foundation — most other methods funnel through it.
+
+```python
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+### `from_mapping(mapping, **kwargs)` — line 304
+Takes a dict-like mapping and/or keyword arguments. Filters for **uppercase keys only**, then sets them. Returns `True` always.
+
+### `from_pyfile(filename, silent=False)` — line 187
+Loads a `.py` or `.cfg` file by **compiling and exec'ing** it into a temporary `types.ModuleType`, then passes that module to `from_object()`. Filenames are resolved relative to `self.root_path`. The `silent` flag suppresses `FileNotFoundError`.
+
+### `from_file(filename, load, silent=False, text=True)` — line 256
+A generic loader for structured files (JSON, TOML, etc.). You pass a `load` callable (e.g. `json.load`, `tomllib.load`). The file is opened, passed to `load()`, and the resulting mapping goes to `from_mapping()`. The `text` param controls text vs binary mode.
+
+### `from_envvar(variable_name, silent=False)` — line 102
+Reads an **environment variable** whose value is a path to a config file, then delegates to `from_pyfile()`. Raises `RuntimeError` if the env var is unset (unless `silent=True`).
+
+### `from_prefixed_env(prefix="FLASK", loads=json.loads)` — line 126
+Scans all env vars starting with `FLASK_`, strips the prefix, and sets config keys. Values are parsed through `json.loads` (so `"true"` → `True`, `"42"` → `42`). Supports **nested dicts** via double underscores — `FLASK_SQLALCHEMY__DATABASE_URI` sets `self["SQLALCHEMY"]["DATABASE_URI"]`.
+
+## Key Design Decisions
+
+- **Only uppercase keys** are ever loaded — this convention lets you mix config constants with local variables in the same Python file.
+- **`root_path`** anchors all relative file paths, set to `Flask.root_path` (the app's package directory) at creation time.
+- **`silent` parameter** is a consistent pattern across file-loading methods: when `True`, missing files return `False` instead of raising.
+- **`get_namespace()`** (line 323) extracts a subset of keys by prefix (e.g. `IMAGE_STORE_`) into a plain dict — useful for passing config subsets as `**kwargs` to constructors.

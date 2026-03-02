@@ -1,0 +1,64 @@
+Here's how the Django `Permission` model works, based on `django-models.py`:
+
+---
+
+## `PermissionManager` (`django-models.py:27-36`)
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+The custom manager sets `use_in_migrations = True` so Django uses it during data migrations. `get_by_natural_key` looks up a permission by its **natural key** — a `(codename, app_label, model)` tuple — by joining through `ContentType`.
+
+---
+
+## `Permission` model (`django-models.py:39-85`)
+
+```python
+class Permission(models.Model):
+    name        = models.CharField(_("name"), max_length=255)
+    content_type = models.ForeignKey(ContentType, models.CASCADE, verbose_name=_("content type"))
+    codename    = models.CharField(_("codename"), max_length=100)
+
+    objects = PermissionManager()
+
+    class Meta:
+        unique_together = [["content_type", "codename"]]
+        ordering = ["content_type__app_label", "content_type__model", "codename"]
+```
+
+**Three fields:**
+
+| Field | Purpose |
+|---|---|
+| `name` | Human-readable label, e.g. `"Can add user"` |
+| `content_type` | FK to `ContentType` — which model this permission applies to |
+| `codename` | Machine-readable code, e.g. `"add_user"` |
+
+The `unique_together` constraint on `(content_type, codename)` ensures each permission is unique per model. Ordering is by app → model → codename.
+
+---
+
+## `natural_key` (`django-models.py:82-83`)
+
+```python
+def natural_key(self):
+    return (self.codename, *self.content_type.natural_key())
+
+natural_key.dependencies = ["contenttypes.contenttype"]
+```
+
+The natural key is `(codename, app_label, model)` — the codename plus the content type's own natural key `(app_label, model)`. The `dependencies` attribute tells Django's serializer to serialize `ContentType` first.
+
+---
+
+**Summary flow:** A permission ties a human-readable `name` and a `codename` to a specific model via `ContentType`. The `PermissionManager.get_by_natural_key` enables fixture loading/serialization by looking up permissions without needing their numeric PKs.

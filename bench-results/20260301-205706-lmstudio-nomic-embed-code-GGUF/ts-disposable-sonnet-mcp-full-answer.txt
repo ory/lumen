@@ -1,0 +1,86 @@
+Here's a breakdown of the disposable system in `lifecycle.ts`:
+
+---
+
+## `IDisposable` — The Interface (`lifecycle.ts:312`)
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The entire pattern rests on this single-method contract. Any object that needs cleanup implements `dispose()`.
+
+---
+
+## `Disposable` — Abstract Base Class (`lifecycle.ts:526`)
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } }); // no-op sentinel
+
+    protected readonly _store = new DisposableStore();  // owns child disposables
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this); // links store to this for leak tracking
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose(); // delegates to the store
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o); // adds child to store
+    }
+}
+```
+
+Subclasses call `this._register(someDisposable)` to attach child lifetimes. When the parent's `dispose()` is called, the store cascades `dispose()` to everything registered.
+
+`Disposable.None` is a frozen no-op sentinel used as a safe null-stand-in (e.g. `if (o === Disposable.None) return o`).
+
+---
+
+## `DisposableStore` — Collection Manager (`lifecycle.ts:416`)
+
+Holds a `Set<IDisposable>` and provides safe lifecycle management:
+
+| Method | Behavior |
+|---|---|
+| `add(o)` | Registers a child. If already disposed, warns about the leak and skips. Guards against self-registration. |
+| `delete(o)` | Removes **and disposes** the item immediately. |
+| `deleteAndLeak(o)` | Removes without disposing — caller takes ownership. |
+| `clear()` | Disposes all children but keeps the store itself alive (reusable). |
+| `dispose()` | Marks disposed, calls `clear()`. Future `add()` calls will warn about leaks. |
+
+Key safety behaviors:
+- **Self-registration guard**: throws if you try to add a store to itself.
+- **Post-dispose leak warning**: adding to an already-disposed store logs a stack trace (unless `DISABLE_DISPOSED_WARNING` is set).
+- **Error aggregation**: `dispose(iterable)` catches all errors and re-throws as `AggregateError` so one bad disposable doesn't skip the rest.
+
+---
+
+## How They Fit Together
+
+```
+Disposable (abstract base)
+  └── _store: DisposableStore
+        └── _toDispose: Set<IDisposable>
+              ├── child A (registered via _register)
+              ├── child B
+              └── child C
+
+myObj.dispose()
+  → markAsDisposed(myObj)
+  → _store.dispose()
+      → dispose(_toDispose)   ← calls dispose() on each child, aggregates errors
+      → _toDispose.clear()
+```
+
+Subclasses never manage `Set` lifecycle manually — they call `_register()` and get cascading cleanup for free.

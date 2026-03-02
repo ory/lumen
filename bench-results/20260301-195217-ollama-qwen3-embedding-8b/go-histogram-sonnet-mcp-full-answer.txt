@@ -1,0 +1,69 @@
+Here's how histogram bucket counting works, with the key function signatures:
+
+---
+
+## Regular (Static) Bucket Counting
+
+**`histogramCounts.observe`** (`prom_histogram.go:652`) is the core method:
+
+```go
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+For regular buckets, it's a simple atomic increment:
+```go
+if bucket < len(hc.buckets) {
+    atomic.AddUint64(&hc.buckets[bucket], 1)
+}
+```
+
+The `bucket` index is pre-computed by the caller (via `sort.SearchFloat64s` on `upperBounds`) and passed in. Each element of `hc.buckets []uint64` is a raw count (not cumulative) for that upper-bound slot.
+
+**`histogram.observe`** (`prom_histogram.go:899`) wraps it:
+
+```go
+func (h *histogram) observe(v float64, bucket int)
+```
+
+---
+
+## Native (Sparse/Exponential) Bucket Counting
+
+Still inside `histogramCounts.observe`, when `doSparse=true`, the bucket key is computed from the observation value using floating-point decomposition:
+
+```go
+frac, exp := math.Frexp(math.Abs(v))
+if schema > 0 {
+    bounds := nativeHistogramBounds[schema]
+    key = sort.SearchFloat64s(bounds, frac) + (exp-1)*len(bounds)
+} else {
+    key = exp
+    // ...offset and shift by schema
+}
+```
+
+Then the key is dispatched to positive/negative/zero sparse maps:
+```go
+case v > zeroThreshold:
+    bucketCreated = addToBucket(&hc.nativeHistogramBucketsPositive, key, 1)
+case v < -zeroThreshold:
+    bucketCreated = addToBucket(&hc.nativeHistogramBucketsNegative, key, 1)
+default:
+    atomic.AddUint64(&hc.nativeHistogramZeroBucket, 1)
+```
+
+---
+
+## Reading Cumulative Counts (for Prometheus exposition)
+
+**`cumulativeBucketIterator.At`** (`histogram.go:609`) exposes the cumulative view (each bucket = all observations ≤ upper bound):
+
+```go
+func (c *cumulativeBucketIterator) At() Bucket[uint64]
+```
+
+It maintains `currCumulativeCount` by accumulating as it iterates, while the underlying storage holds only delta-encoded counts.
+
+---
+
+**Summary:** Raw counts are stored atomically per-bucket index. The bucket index for a given value is found via binary search on `upperBounds` (regular) or floating-point schema math (native). Cumulative counts are only materialized during iteration/export, not at observation time.

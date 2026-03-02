@@ -1,0 +1,81 @@
+Here's how Flask's configuration loading works, based on `flask-config.py`:
+
+## Class Hierarchy
+
+There are two classes:
+
+### `ConfigAttribute` (lines 20–47) — Descriptor proxy
+
+A generic descriptor that forwards attribute access on the `Flask` app object to `app.config[name]`. This lets you write `app.debug` instead of `app.config["DEBUG"]`. It optionally applies a `get_converter` on read.
+
+### `Config(dict)` (lines 50–367) — The main config class
+
+Subclasses `dict` directly. Initialized with a `root_path` (used to resolve relative filenames) and optional `defaults`. Because it's a dict, you can always do `app.config["KEY"] = value` directly.
+
+## Loading Methods
+
+The `Config` class provides **six** ways to populate configuration, each building on simpler ones:
+
+### 1. `from_envvar(variable_name, silent=False)` — lines 102–124
+The simplest entry point. Reads an environment variable that should contain a **file path**, then delegates to `from_pyfile()`:
+```python
+rv = os.environ.get(variable_name)
+return self.from_pyfile(rv, silent=silent)
+```
+
+### 2. `from_prefixed_env(prefix="FLASK", loads=json.loads)` — lines 126–185
+Scans **all** env vars starting with `FLASK_`, strips the prefix, and sets them as config keys. Values are passed through `json.loads` to coerce types (falls back to raw string on error). Supports **nested dicts** via double underscores — `FLASK_SQLALCHEMY__DATABASE_URI` sets `config["SQLALCHEMY"]["DATABASE_URI"]`.
+
+### 3. `from_pyfile(filename, silent=False)` — lines 187–216
+Loads a **Python file** by compiling and executing it into a temporary module, then passes that module to `from_object()`:
+```python
+d = types.ModuleType("config")
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+Filenames are resolved relative to `root_path`.
+
+### 4. `from_object(obj)` — lines 218–254
+The core filtering mechanism. Takes a module, class, or import string. Iterates `dir(obj)` and **only copies uppercase attributes**:
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+This is why config keys must be uppercase — it's enforced here.
+
+### 5. `from_file(filename, load, silent=False, text=True)` — lines 256–302
+A generic loader for structured files (JSON, TOML, etc.). You provide the `load` callable:
+```python
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+Delegates to `from_mapping()` with the loaded data.
+
+### 6. `from_mapping(mapping=None, **kwargs)` — lines 304–322
+Lowest-level loader. Accepts a dict/mapping and only sets **uppercase keys**:
+```python
+for key, value in mappings.items():
+    if key.isupper():
+        self[key] = value
+```
+
+## Call Graph
+
+```
+from_envvar ──► from_pyfile ──► from_object ──► self[KEY] = value
+from_prefixed_env ──────────────────────────► self[KEY] = value
+from_file ──► from_mapping ─────────────────► self[KEY] = value
+```
+
+## Utility Method
+
+### `get_namespace(namespace, lowercase=True, trim_namespace=True)` — lines 323–365
+Extracts a subset of config by prefix. For example, `get_namespace("IMAGE_STORE_")` returns `{"type": "fs", "path": "/var/app/images"}` — trimming the prefix and lowercasing by default. Useful for passing config subsets as `**kwargs` to constructors.
+
+## Key Design Decisions
+
+- **Uppercase-only**: Every loader filters to uppercase keys, so you can mix config constants with helper variables in config files.
+- **`silent` parameter**: Most loaders accept `silent=True` to swallow `FileNotFoundError`, useful for optional config files.
+- **`root_path` resolution**: All filename-based loaders join against `self.root_path`, so relative paths resolve from the app root (or instance path).

@@ -1,0 +1,60 @@
+Here's how the Django `Permission` model works, based on `django-models.py`:
+
+---
+
+## `PermissionManager` (lines 27–36)
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+A custom manager that supports **natural key lookups**. `get_by_natural_key` takes three arguments — `codename`, `app_label`, and `model` — and resolves the permission by looking up the matching `ContentType` first (delegating to `ContentType`'s own `get_by_natural_key`). The `use_in_migrations = True` flag means this manager is available during data migrations.
+
+---
+
+## `Permission` model (lines 39–85)
+
+```python
+class Permission(models.Model):
+    name = models.CharField(_("name"), max_length=255)
+    content_type = models.ForeignKey(ContentType, models.CASCADE,
+                                     verbose_name=_("content type"))
+    codename = models.CharField(_("codename"), max_length=100)
+
+    objects = PermissionManager()
+
+    class Meta:
+        unique_together = [["content_type", "codename"]]
+        ordering = ["content_type__app_label", "content_type__model", "codename"]
+
+    def __str__(self):
+        return "%s | %s" % (self.content_type, self.name)
+
+    def natural_key(self):
+        return (self.codename, *self.content_type.natural_key())
+
+    natural_key.dependencies = ["contenttypes.contenttype"]
+```
+
+**Three fields:**
+
+| Field | Type | Purpose |
+|---|---|---|
+| `name` | `CharField(255)` | Human-readable label, e.g. `"Can add user"` |
+| `content_type` | `ForeignKey(ContentType)` | Links to the model this permission applies to |
+| `codename` | `CharField(100)` | Machine-readable code, e.g. `"add_user"` |
+
+**Key design points:**
+- `unique_together = [["content_type", "codename"]]` — a permission is uniquely identified by its content type + codename pair
+- Ordered by `app_label → model → codename` for predictable listing
+- `natural_key()` returns `(codename, app_label, model)` — the inverse of `get_by_natural_key` — enabling serialization without relying on auto-increment PKs
+- `natural_key.dependencies` tells the serializer to serialize `ContentType` before `Permission`

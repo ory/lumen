@@ -1,0 +1,70 @@
+Here's how the event emitter system works in this file (from VS Code's codebase):
+
+## The `Event<T>` Interface (line 37)
+
+```ts
+export interface Event<T> {
+  (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is simply a **callable function**. You subscribe by calling it with a listener callback, and it returns an `IDisposable` to unsubscribe. The optional `disposables` parameter lets you register the subscription into a `DisposableStore` for batch cleanup.
+
+## The `Emitter<T>` Class (line 1093)
+
+The Emitter is the **producer** side. It owns the listener list and exposes a public `event` getter (line 1174) for consumers to subscribe, while keeping `fire()` (line 1315) private/internal.
+
+**Key design choices:**
+
+- **Single-listener optimization** (line 1101-1118): When there's only one listener, it's stored directly as a `UniqueContainer<T>` rather than in an array — avoiding allocation for the most common case.
+- **Sparse array + compaction**: Removing a listener sets the slot to `undefined`. When more than `1/compactionThreshold` of slots are empty, the array is compacted.
+- **Listener lifecycle hooks** via `EmitterOptions` (line 858): `onWillAddFirstListener`, `onDidAddFirstListener`, `onDidRemoveLastListener`, etc. These are critical for lazy resource setup — the emitter only subscribes to its upstream source when the first listener attaches, and unsubscribes when the last detaches.
+- **Leak detection**: A `LeakageMonitor` warns (and eventually refuses) when listener count exceeds a threshold, tracking stack traces to identify the most frequent offender.
+- **Delivery queue** (`EventDeliveryQueuePrivate`, line 1347): Handles reentrant `fire()` calls. If `fire()` is called while already dispatching, pending deliveries complete first. A shared delivery queue can enforce cross-emitter ordering.
+
+## Event Composition (the `Event` namespace, line 41)
+
+The `Event` namespace provides **functional combinators** that transform events, analogous to array methods. Each returns a new `Event<T>`:
+
+| Combinator | Purpose |
+|---|---|
+| `Event.map(event, fn)` | Transform event data (`Array.map` analog) |
+| `Event.filter(event, pred)` | Only fire when predicate is true |
+| `Event.once(event)` | Auto-dispose after first fire |
+| `Event.debounce(event, merge, delay)` | Batch rapid fires into one, with configurable merge |
+| `Event.throttle(event, merge, delay)` | Rate-limit with leading/trailing edge control |
+| `Event.reduce(event, merge, init)` | Accumulate state across fires |
+| `Event.latch(event, equals?)` | Suppress consecutive duplicate values |
+| `Event.any(...events)` | Merge multiple events into one |
+| `Event.split(event, pred)` | Split a union event into two typed events |
+| `Event.buffer(event)` | Queue events until first listener attaches, then flush |
+| `Event.accumulate(event, delay)` | Debounce into `T[]` arrays |
+| `Event.chain(event, $)` | Fluent/chainable pipeline syntax |
+
+**The `snapshot` pattern** (line 204) is the core primitive behind `map`, `filter`, `forEach`, and `reduce`. It creates a new `Emitter` that lazily subscribes to the source on first listener and unsubscribes on last listener removal:
+
+```ts
+function snapshot<T>(event: Event<T>, disposable?: DisposableStore): Event<T> {
+  let listener: IDisposable | undefined;
+  const emitter = new Emitter<T>({
+    onWillAddFirstListener() { listener = event(emitter.fire, emitter); },
+    onDidRemoveLastListener() { listener?.dispose(); },
+  });
+  disposable?.add(emitter);
+  return emitter.event;
+}
+```
+
+## Disposable Integration
+
+The system is deeply integrated with the disposable pattern:
+
+1. **Every subscription returns `IDisposable`** — calling `.dispose()` unsubscribes.
+2. **`DisposableStore` parameter** — listeners auto-register into a store for batch disposal (line 38, `disposables` param).
+3. **Composed events must be owned** — every combinator accepts an optional `DisposableStore` parameter. The docs warn that if the returned event is publicly accessible, it **must** be registered in a store to prevent leaks. Without it, a leaked downstream listener keeps the intermediate `Emitter` alive, which keeps a listener on the source.
+4. **`Emitter.dispose()`** (line 1137) clears all listeners and resets the delivery queue.
+
+## Specialized Emitters
+
+- **`AsyncEmitter<T extends IWaitUntil>`** (line 1390): Listeners can call `waitUntil(promise)` to delay subsequent listeners, enabling sequential async event handling.
+- **`PauseableEmitter<T>`** (line 1448): Supports `pause()`/`resume()` — events queue during pause and flush on resume, with an optional merge function to collapse queued events into one.

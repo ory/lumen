@@ -1,0 +1,24 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Observation Flow
+
+1. **`histogram.findBucket(v float64) int`** (`prom_histogram.go:864-897`) — Finds which bucket an observed value belongs to. Uses early exits for boundary cases, linear search for small arrays (<35 buckets), and binary search (`sort.SearchFloat64s`) for larger arrays.
+
+2. **`histogram.observe(v float64, bucket int)`** (`prom_histogram.go:899-912`) — Core observation logic. Atomically increments `countAndHotIdx` to get the current hot counts, then delegates to `hotCounts.observe()`. If native (sparse) histograms are enabled, calls `limitBuckets` afterward.
+
+3. **`addToBucket(buckets *sync.Map, key int, increment int64) bool`** (`prom_histogram.go:1532-1549`) — Increments a sparse bucket's counter atomically. Fast path loads existing bucket; slow path allocates a new `int64` via `LoadOrStore`. Returns `true` if a new bucket was created.
+
+## Bucket Limiting Strategies
+
+**`histogram.limitBuckets(counts *histogramCounts, value float64, bucket int)`** (`prom_histogram.go:914-958`) — When `nativeHistogramMaxBuckets` is exceeded, tries three strategies in order:
+- `maybeReset` — full reset if enough time has passed
+- `maybeWidenZeroBucket` — merge closest-to-zero buckets into a wider zero bucket
+- `doubleBucketWidth` — decrement the schema (halving resolution) and merge pairs of adjacent buckets
+
+## Serialization
+
+**`makeBuckets(buckets *sync.Map) ([]*dto.BucketSpan, []int64)`** (`prom_histogram.go:1477-1530`) — Converts the sparse `sync.Map` buckets into spans and delta-encoded counts for protobuf serialization. Gaps of ≤2 empty buckets are inlined rather than creating new spans.
+
+## Data Structure
+
+**`histogramCounts`** (`prom_histogram.go:613-650`) — Holds both regular buckets (`[]uint64`) and native histogram sparse buckets (`sync.Map` for positive/negative), plus the zero bucket count, schema, and sum. All fields are accessed atomically for lock-free concurrent writes using a hot/cold swap pattern.

@@ -1,0 +1,72 @@
+There are four `MatchType` values, and a `Matcher` struct with a `NewMatcher` constructor. The same definitions appear in two files (`matcher.go` and `labels_matcher.go` — likely duplicates or variants). Here's the complete picture:
+
+---
+
+### `MatchType` enum (`labels_matcher.go:21-37`)
+
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+
+var matchTypeToStr = [...]string{
+    MatchEqual:     "=",
+    MatchNotEqual:  "!=",
+    MatchRegexp:    "=~",
+    MatchNotRegexp: "!~",
+}
+```
+
+The four matcher types are:
+| Constant | Operator | Semantics |
+|---|---|---|
+| `MatchEqual` | `=` | exact equality |
+| `MatchNotEqual` | `!=` | exact inequality |
+| `MatchRegexp` | `=~` | regex match |
+| `MatchNotRegexp` | `!~` | regex non-match |
+
+---
+
+### `Matcher` struct (`labels_matcher.go:46-53`)
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // only populated for regexp types
+}
+```
+
+---
+
+### Constructor (`labels_matcher.go:55-70`)
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+`NewMatcher` takes the match type, label name, and value string. For `MatchRegexp` / `MatchNotRegexp`, it compiles the value into a `FastRegexMatcher` (stored in the private `re` field) and returns an error if the regex is invalid. For equality types, no compilation is needed and it never errors.
+
+There's also `MustNewMatcher` (`labels_matcher.go:72-79`) which wraps `NewMatcher` and panics on error — intended for test code only.

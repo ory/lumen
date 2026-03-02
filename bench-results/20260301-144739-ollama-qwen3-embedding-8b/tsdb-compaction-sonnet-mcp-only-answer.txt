@@ -1,0 +1,199 @@
+Now I have everything from the actual source. Here's the complete end-to-end explanation:
+
+---
+
+## TSDB Compaction: End-to-End
+
+---
+
+### 1. The `Compactor` Interface (`compact.go:52-77`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three distinct responsibilities:
+
+| Method | Role |
+|---|---|
+| `Plan` | Decides *which* on-disk block directories to compact together |
+| `Write` | Flushes a single in-memory source (the Head) to a new Level 1 block |
+| `Compact` | Merges multiple existing on-disk blocks into one larger block |
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:79-93`)
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64   // e.g. [2h, 6h, 24h, 72h] in ms
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    maxBlockChunkSegmentSize    int64
+    useUncachedIO               bool
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    blockExcludeFunc            BlockExcludeFilterFunc
+    postingsEncoder             index.PostingsEncoder
+    postingsDecoderFactory      PostingsDecoderFactory
+    enableOverlappingCompaction bool
+}
+```
+
+The `ranges` slice is the key: it defines a leveled hierarchy of block durations. Blocks are promoted upward as they get merged (level 1 → 2 → 3…). Created via `NewLeveledCompactorWithOptions` (`compact.go:202-241`).
+
+#### `Plan` → `plan` (`compact.go:248-328`)
+
+`Plan` reads all `meta.json` files from block subdirectories (skipping any excluded by `blockExcludeFunc`), then delegates to `plan(dms []dirMeta)` which applies three strategies **in priority order**:
+
+1. **Overlapping blocks** (`selectOverlappingDirs`, `compact.go:369-394`): If `enableOverlappingCompaction` is true and any blocks have overlapping `[MinTime, MaxTime)`, they're returned first — fixes data integrity immediately (vertical compaction).
+
+2. **Leveled range compaction** (`selectDirs`, `compact.go:330-367`): Iterates `ranges[1:]`, uses `splitByRange` to group blocks into aligned time windows. Returns the first group with >1 block that either spans the full range interval or predates the most recent block. **The newest block is always excluded** to give backup tools a safe window.
+
+3. **Tombstone cleanup**: If a sufficiently old block has `>5%` tombstones (or `NumTombstones >= NumSeries`), it's returned alone for rewriting to reclaim space.
+
+#### `Compact` → `CompactWithBlockPopulator` (`compact.go:483-577`)
+
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error) {
+    return c.CompactWithBlockPopulator(dest, dirs, open, DefaultBlockPopulator{})
+}
+```
+
+`CompactWithBlockPopulator`:
+1. Opens each source block dir (reuses already-open `*Block` objects from the `open` slice to avoid double-loading index data into memory)
+2. Allocates a fresh `ulid.ULID` for the output block
+3. Calls `CompactBlockMetas(uid, metas...)` — merges metadata: union of all `Sources` ULIDs, all parents recorded, time range = `[min(MinTime), max(MaxTime))`, and `Level = max(sources) + 1`
+4. Calls internal `write()` to produce the merged block on disk
+5. If the result has 0 samples: marks all source blocks `Deletable` in their `meta.json` instead of writing anything
+
+#### `Write` (`compact.go:586-636`)
+
+Used exclusively for flushing the in-memory Head to disk:
+
+```go
+func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error) {
+    meta := &BlockMeta{ULID: uid, MinTime: mint, MaxTime: maxt}
+    meta.Compaction.Level = 1   // always level 1 — brand-new block
+    meta.Compaction.Sources = []ulid.ULID{uid}
+    // ...
+    err := c.write(dest, meta, DefaultBlockPopulator{}, b)
+}
+```
+
+#### Internal `write` (`compact.go:657-716`)
+
+The shared write path used by both `Write` and `CompactWithBlockPopulator`:
+
+1. Creates a temp directory `<ULID>.tmp.for-creation`
+2. Opens a `ChunkWriter` (segment files) and `IndexWriter`
+3. Calls `blockPopulator.PopulateBlock(...)` to stream-merge all series, write chunks and inverted index
+4. Atomically renames temp dir to final `<ULID>/` path
+5. On any error: removes the temp dir (crash-safe)
+
+`DefaultBlockPopulator.PopulateBlock` (`compact.go:790+`) merges chunk series from all source `BlockReader`s using `mergeFunc`, writes them sorted, and builds the new postings index.
+
+---
+
+### 3. How `DB` Triggers Compaction
+
+**Trigger 1 — Appender commit** (`db.go:1360-1372`):
+
+```go
+func (a dbAppender) Commit() error {
+    err := a.Appender.Commit()
+    if a.db.head.compactable() {
+        select {
+        case a.db.compactc <- struct{}{}:  // non-blocking signal
+        default:
+        }
+    }
+    return err
+}
+```
+
+**Trigger 2 — Periodic timer** (`db.go:1175-1243`, `DB.run`):
+
+```go
+func (db *DB) run(ctx context.Context) {
+    for {
+        select {
+        case <-time.After(db.opts.BlockReloadInterval):
+            db.reloadBlocks()
+            db.compactc <- struct{}{}        // periodic nudge
+            db.head.mmapHeadChunks()
+            // also checks stale series ratio → CompactStaleHead()
+        case <-db.compactc:
+            if db.autoCompact {
+                db.Compact(ctx)             // exponential backoff on error
+            }
+        }
+    }
+}
+```
+
+**`DB.Compact`** (`db.go:1410-1506`) — the orchestrator, holds `cmtx` lock throughout:
+
+**Phase 1 — Head compaction (highest priority):**
+```
+while head.compactable() && !waitingForCompactionDelay():
+    rh = NewRangeHeadWithIsolationDisabled(head, mint, maxt-1)
+    head.WaitForAppendersOverlapping(rh.MaxTime())
+    db.compactHead(rh)    // → compactor.Write() + reloadBlocks() + truncateMemory()
+    lastBlockMaxt = maxt
+```
+
+**Phase 2 — WAL truncation** (deferred): `head.truncateWAL(lastBlockMaxt)`
+
+**Phase 3 — OOO head compaction**: `db.compactOOOHead(ctx)` (if out-of-order writes are enabled)
+
+**Phase 4 — On-disk block compaction**: `db.compactBlocks()`
+
+**`DB.compactBlocks`** (`db.go:1719-1763`):
+
+```go
+for {
+    if db.head.compactable() && !db.waitingForCompactionDelay() {
+        // Head needs flushing again — abort block compaction, yield to Phase 1
+        return nil
+    }
+    plan, _ := db.compactor.Plan(db.dir)
+    if len(plan) == 0 { break }
+
+    uids, _ := db.compactor.Compact(db.dir, plan, db.blocks)
+    db.reloadBlocks()   // opens new block, marks/deletes old ones
+}
+```
+
+`reloadBlocks` scans all block dirs, identifies superseded blocks (their ULIDs appear in children's `Compaction.Sources`), applies retention, and physically deletes blocks marked `Deletable`.
+
+---
+
+### End-to-End Flow Summary
+
+```
+WAL/Head accumulates samples
+      │
+      ▼  (dbAppender.Commit or periodic timer → compactc)
+DB.Compact()
+      │
+      ├─Phase 1: head.compactable() == true
+      │    compactor.Write(RangeHead) → Level-1 block on disk
+      │    reloadBlocks() + head.truncateMemory()
+      │
+      ├─Phase 2: head.truncateWAL()
+      │
+      ├─Phase 3: compactOOOHead() (if OOO enabled)
+      │
+      └─Phase 4: compactBlocks() loop
+           Plan() → selectOverlappingDirs OR selectDirs by ranges
+           Compact() → CompactBlockMetas (level++) + write()
+           reloadBlocks() → delete Deletable source blocks
+```
+
+Small 2h Level-1 blocks get merged into 6h Level-2, then 24h Level-3, etc. — each merge increments `Compaction.Level` and records source ULIDs in `Compaction.Parents`, which is how `reloadBlocks` knows what to delete.

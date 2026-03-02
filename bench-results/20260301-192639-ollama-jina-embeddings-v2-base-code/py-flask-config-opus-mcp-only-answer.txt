@@ -1,0 +1,72 @@
+Here's how Flask's configuration system works, based on the code in `flask-config.py`:
+
+## Class Hierarchy
+
+There are two classes:
+
+### `ConfigAttribute` (`flask-config.py:20-47`)
+
+A descriptor that forwards attribute access on the `Flask` app object to `app.config[name]`. This lets you write `app.debug` instead of `app.config["DEBUG"]`. It supports an optional `get_converter` callable to transform the value on read.
+
+### `Config(dict)` (`flask-config.py:50-367`)
+
+The main configuration class. It **subclasses `dict`** directly, so all standard dict operations work. It's initialized with a `root_path` (used to resolve relative filenames) and optional `defaults`.
+
+## Loading Methods
+
+The `Config` class provides **six** ways to load configuration, forming a layered pipeline:
+
+### 1. `from_envvar(variable_name, silent=False)` — `flask-config.py:102-124`
+A convenience wrapper: reads an **environment variable** that points to a file path, then delegates to `from_pyfile()`. Raises `RuntimeError` if the env var isn't set (unless `silent=True`).
+
+### 2. `from_prefixed_env(prefix="FLASK", loads=json.loads)` — `flask-config.py:126-185`
+Scans **all environment variables** starting with `{prefix}_`, strips the prefix, and sets them as config keys. Values are passed through `json.loads` to coerce types (falls back to string on error). Supports **nested dicts** via double-underscore separators — `FLASK_SQLALCHEMY__ENGINE` sets `config["SQLALCHEMY"]["ENGINE"]`.
+
+### 3. `from_pyfile(filename, silent=False)` — `flask-config.py:187-216`
+Loads a **Python file** by compiling and `exec`-ing it into a temporary `ModuleType`, then passes that module to `from_object()`. The filename is resolved relative to `root_path`. This is the classic `config.cfg` approach.
+
+Key lines:
+```python
+d = types.ModuleType("config")
+d.__file__ = filename
+with open(filename, mode="rb") as config_file:
+    exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+### 4. `from_object(obj)` — `flask-config.py:218-254`
+The core loading primitive. Takes a **module, class, or import string**. Iterates `dir(obj)` and copies only **uppercase** attributes into the config:
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+This uppercase-only rule is what allows config files to use lowercase variables as temporaries without polluting the config.
+
+### 5. `from_file(filename, load, silent=False, text=True)` — `flask-config.py:256-302`
+A generic file loader: opens the file and passes the handle to a caller-provided `load` callable, then passes the result to `from_mapping()`. Supports JSON, TOML, etc:
+
+```python
+app.config.from_file("config.json", load=json.load)
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+
+### 6. `from_mapping(mapping=None, **kwargs)` — `flask-config.py:304-322`
+Updates the config from a dict/mapping, again filtering to **uppercase keys only**.
+
+## Utility: `get_namespace()` (`flask-config.py:323-365`)
+
+Extracts a subset of config keys matching a prefix, optionally stripping the prefix and lowercasing. Useful for passing config subsections to libraries:
+
+```python
+app.config.get_namespace('IMAGE_STORE_')
+# {'type': 'fs', 'path': '/var/app/images', ...}
+```
+
+## Design Summary
+
+The overall pattern is a **funnel**: every loading method ultimately writes to the `dict` (since `Config` *is* a dict), and most delegate to `from_object` or `from_mapping` as the final step. The uppercase-only filter is enforced consistently across all paths. The `silent` parameter on file-based methods lets you optionally ignore missing files — useful for optional overrides.

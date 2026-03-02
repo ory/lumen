@@ -1,0 +1,218 @@
+Now I have a comprehensive picture. Here's how PromQL query evaluation works in this codebase:
+
+---
+
+## PromQL Query Evaluation
+
+### 1. The Engine — Entry Point
+
+The `Engine` is the central orchestrator. It implements `QueryEngine` (`engine.go:124-128`):
+
+```go
+type QueryEngine interface {
+    NewInstantQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, ts time.Time) (Query, error)
+    NewRangeQuery(ctx context.Context, q storage.Queryable, opts QueryOpts, qs string, start, end time.Time, interval time.Duration) (Query, error)
+}
+```
+
+Both methods parse the PromQL string and create a `query` struct (`engine.go:189-208`):
+
+```go
+type query struct {
+    queryable   storage.Queryable
+    q           string              // original query string
+    stmt        parser.Statement    // parsed AST
+    stats       *stats.QueryTimers
+    sampleStats *stats.QuerySamples
+    matrix      Matrix
+    cancel      func()
+    ng          *Engine
+}
+```
+
+The `Query` interface (`engine.go:141-156`) exposes `Exec()`, `Close()`, `Cancel()`, `Statement()`, and `Stats()`.
+
+Configuration lives in `EngineOpts` (`engine.go:298-341`) — max samples, timeout, lookback delta, feature flags, etc.
+
+### 2. Query Execution Flow
+
+When `query.Exec()` is called (`engine.go:247-256`), it delegates to `Engine.exec()`:
+
+```
+query.Exec() → Engine.exec() → Engine.execEvalStmt() → evaluator.Eval() → evaluator.eval()
+```
+
+**`Engine.exec()`** (`engine.go:669-726`): Sets up context with timeout, queues the query for concurrency control, logs the query, and delegates to `execEvalStmt`.
+
+**`Engine.execEvalStmt()`** (`engine.go:772-880`): This is where the real work begins:
+1. Determines the time range (`mint`, `maxt`) from the `EvalStmt`
+2. Creates a `Querier` from the storage layer
+3. Populates series data via `ng.populateSeries()`
+4. Creates an `evaluator` struct
+5. For **instant queries** (Start == End): runs as a single-step range evaluation
+6. For **range queries**: iterates over the `[Start, End]` interval at `Interval` steps
+7. Converts the raw `Matrix` result to the appropriate return type (`Vector`, `Scalar`, or `Matrix`)
+
+### 3. The Evaluator — Recursive AST Walking
+
+The `evaluator` struct (`engine.go:1134-1152`):
+
+```go
+type evaluator struct {
+    startTimestamp           int64
+    endTimestamp             int64
+    interval                 int64
+    maxSamples               int
+    currentSamples           int
+    logger                   *slog.Logger
+    lookbackDelta            time.Duration
+    samplesStats             *stats.QuerySamples
+    noStepSubqueryIntervalFn func(rangeMillis int64) int64
+    enableDelayedNameRemoval bool
+    enableTypeAndUnitLabels  bool
+    querier                  storage.Querier
+}
+```
+
+**`evaluator.Eval()`** (`engine.go:1189-1197`) is the public entry point — it calls `eval()` and handles panic-based error recovery.
+
+**`evaluator.eval()`** (`engine.go:1904+`) is the core recursive method. It does a type switch over the AST node types:
+
+| AST Node | Evaluation Strategy |
+|---|---|
+| `*parser.AggregateExpr` | Recursively eval inner expr, then `rangeEvalAgg()` for aggregation (sum, avg, topk, etc.) |
+| `*parser.Call` | Look up function in `FunctionCalls` map, handle matrix vs instant args, call via `rangeEval()` |
+| `*parser.BinaryExpr` | Eval both sides, dispatch to `VectorAnd`/`VectorOr`/`VectorUnless`/`VectorBinop`/`VectorscalarBinop` |
+| `*parser.VectorSelector` | Fetch series from storage via `evalSeries()` |
+| `*parser.MatrixSelector` | Handled within `Call` processing for range vector functions |
+| `*parser.NumberLiteral` | Wrap scalar value in a `Vector` via `rangeEval()` |
+| `*parser.StringLiteral` | Return `String` value directly |
+| `*parser.ParenExpr` | Recurse into inner expression |
+| `*parser.UnaryExpr` | Eval inner, negate floats/histograms if SUB |
+| `*parser.SubqueryExpr` | Replaced with a `MatrixSelector` after evaluation |
+| `*parser.StepInvariantExpr` | Eval at a single timestamp, expand across steps |
+
+**`rangeEval()`** (`engine.go:1384-1430`) is the workhorse for step-by-step evaluation. It:
+1. Evaluates all sub-expressions into `Matrix` results
+2. For each timestamp step, extracts the current `Vector` from each matrix
+3. Calls the provided `funcCall` callback with those vectors
+4. Accumulates results back into an output `Matrix`
+
+### 4. Function Registration and Calling
+
+Functions are registered as a global map (`functions.go:2152+`):
+
+```go
+var FunctionCalls = map[string]FunctionCall{
+    "abs":               funcAbs,
+    "rate":              funcRate,
+    "histogram_quantile": funcHistogramQuantile,
+    // ~80+ functions...
+}
+```
+
+The `FunctionCall` type (`functions.go:39-60`):
+
+```go
+type FunctionCall func(
+    vectorVals []Vector,
+    matrixVals Matrix,
+    args parser.Expressions,
+    enh *EvalNodeHelper,
+) (Vector, annotations.Annotations)
+```
+
+When `eval()` encounters a `*parser.Call` node (`engine.go:1956-2077`):
+1. Looks up the function: `call := FunctionCalls[e.Func.Name]`
+2. Special-cases `timestamp`, `label_replace`, `label_join`, `info`
+3. Checks if any argument is a `MatrixSelector` (range vector functions like `rate`, `increase`)
+4. **Without matrix arg**: calls `rangeEval()` with the function as the step callback
+5. **With matrix arg**: iterates over each series, builds a sliding window of samples per step, and calls the function per-series per-step
+
+### 5. The AST — Node Types
+
+The `Expr` interface (`ast.go:76-85`):
+
+```go
+type Expr interface {
+    Node
+    Type() ValueType
+    PromQLExpr()  // marker method — prevents accidental implementation
+}
+```
+
+The `EvalStmt` wraps an expression with evaluation boundaries (`ast.go:60-72`):
+
+```go
+type EvalStmt struct {
+    Expr          Expr
+    Start, End    time.Time
+    Interval      time.Duration
+    LookbackDelta time.Duration
+}
+```
+
+Key concrete node types and their `Type()` returns:
+- `AggregateExpr` → `ValueTypeVector`
+- `Call` → depends on function definition
+- `BinaryExpr` → depends on operand types
+- `VectorSelector` → `ValueTypeVector`
+- `MatrixSelector` → `ValueTypeMatrix`
+- `NumberLiteral` → `ValueTypeScalar`
+- `SubqueryExpr` → `ValueTypeMatrix`
+
+Tree traversal uses `ChildrenIter()` (`ast.go:401-450`) which yields child nodes via a switch over concrete types.
+
+### 6. Alert and Recording Rules
+
+Both rule types delegate to the PromQL engine via a `QueryFunc` callback — they do **not** use the engine directly. The engine comment confirms this: *"At this point per query only one EvalStmt is evaluated. Alert and record statements are not handled by the Engine."*
+
+**`AlertingRule`** (`alerting.go:115-157`):
+
+```go
+type AlertingRule struct {
+    name           string
+    vector         parser.Expr        // the PromQL expression
+    holdDuration   time.Duration      // "for" duration
+    keepFiringFor  time.Duration
+    labels         labels.Labels
+    annotations    labels.Labels
+    active         map[uint64]*Alert  // currently active alerts by fingerprint
+    // ...
+}
+```
+
+**`AlertingRule.Eval()`** (`alerting.go:380+`):
+```go
+func (r *AlertingRule) Eval(ctx context.Context, queryOffset time.Duration, ts time.Time,
+    query QueryFunc, externalURL *url.URL, limit int) (promql.Vector, error)
+```
+1. Calls `query(ctx, r.vector.String(), ts.Add(-queryOffset))` — this executes the PromQL via the engine
+2. For each result sample, expands template labels/annotations
+3. Creates or updates `Alert` instances in the `active` map
+4. Manages state transitions: Inactive → Pending → Firing (after `holdDuration` elapses)
+5. Returns a vector of `ALERTS` and `ALERTS_FOR_STATE` samples
+
+**`RecordingRule`** (`recording.go:37-54`):
+
+```go
+type RecordingRule struct {
+    name   string
+    vector parser.Expr
+    labels labels.Labels
+    // ...
+}
+```
+
+**`RecordingRule.Eval()`** (`recording.go:84-122`):
+```go
+func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration, ts time.Time,
+    query QueryFunc, _ *url.URL, limit int) (promql.Vector, error)
+```
+1. Calls `query(ctx, rule.vector.String(), ts.Add(-queryOffset))`
+2. Overrides `__name__` label with the recording rule name
+3. Applies any additional labels
+4. Checks for duplicate labelsets
+5. Returns the relabeled vector (which gets written back to storage)
+
+Both rule types are evaluated periodically by a rule `Group` (referenced in the API layer at `api.go:1577+`), which iterates over its rules and calls `Eval()` at each group interval.

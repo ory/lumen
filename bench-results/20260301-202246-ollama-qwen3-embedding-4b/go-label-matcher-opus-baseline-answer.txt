@@ -1,0 +1,37 @@
+Here are the label matcher types and constructor from `testdata/fixtures/go/labels_matcher.go`:
+
+**`MatchType` enum** (line 22):
+
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // "="
+    MatchNotEqual                     // "!="
+    MatchRegexp                       // "=~"
+    MatchNotRegexp                    // "!~"
+)
+```
+
+Four match types: exact equality, not-equal, regex match, and negated regex match.
+
+**`Matcher` struct** (line 47):
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher  // only set for regex types
+}
+```
+
+**Constructor — `NewMatcher`** (line 56):
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error)
+```
+
+Takes a `MatchType`, label name, and value. For regex types (`MatchRegexp` / `MatchNotRegexp`), it compiles the value into a `FastRegexMatcher` (from `labels_regexp.go`). Returns an error if the regex is invalid. There's also a `MustNewMatcher` (line 73) that panics on error, intended for tests.
+
+The `Matches(s string) bool` method (line 108) dispatches on the type: direct string comparison for equal/not-equal, or delegates to `FastRegexMatcher.MatchString` for regex types.

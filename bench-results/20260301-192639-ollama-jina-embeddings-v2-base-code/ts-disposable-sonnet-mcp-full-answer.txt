@@ -1,0 +1,93 @@
+Here's how the disposable pattern works in `lifecycle.ts`:
+
+---
+
+## `IDisposable` — The Interface (`lifecycle.ts:312`)
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+The minimal contract: one method, `dispose()`. Anything that needs cleanup implements this.
+
+---
+
+## `Disposable` — The Abstract Base Class (`lifecycle.ts:526`)
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    static readonly None = Object.freeze<IDisposable>({ dispose() { } });
+
+    protected readonly _store = new DisposableStore();
+
+    constructor() {
+        trackDisposable(this);
+        setParentOfDisposable(this._store, this);  // links store to this for leak tracking
+    }
+
+    public dispose(): void {
+        markAsDisposed(this);
+        this._store.dispose();  // delegates to the store
+    }
+
+    protected _register<T extends IDisposable>(o: T): T {
+        if ((o as unknown as Disposable) === this) {
+            throw new Error('Cannot register a disposable on itself!');
+        }
+        return this._store.add(o);
+    }
+}
+```
+
+**Key design:** `Disposable` owns a `DisposableStore` internally. Subclasses call `this._register(something)` to hand off ownership — when the subclass is disposed, all registered children are disposed automatically. `Disposable.None` is a no-op sentinel used as a null-safe default.
+
+---
+
+## `DisposableStore` — The Collection (`lifecycle.ts:416`)
+
+`DisposableStore` is the workhorse. It manages a `Set<IDisposable>` and handles several edge cases:
+
+| Method | Behavior |
+|---|---|
+| `add(o)` | Adds to the set; warns (not throws) if already disposed — the item leaks |
+| `dispose()` | Marks disposed, calls `clear()`, idempotent |
+| `clear()` | Disposes all items and empties the set, but does **not** mark the store itself as disposed (reusable) |
+| `delete(o)` | Removes from set **and** disposes the item |
+| `deleteAndLeak(o)` | Removes from set but does **not** dispose — caller takes ownership |
+
+**The "already disposed" warning** at `add()` is a deliberate design choice: adding to a disposed store is likely a bug, but throwing would be worse than leaking since it could crash in error handlers. The `DISABLE_DISPOSED_WARNING` flag exists for test scenarios.
+
+---
+
+## How They Fit Together
+
+```
+Disposable (abstract base)
+  └── _store: DisposableStore
+        └── _toDispose: Set<IDisposable>
+              ├── child1
+              ├── child2
+              └── child3
+
+subclass.dispose()
+  → Disposable.dispose()
+  → _store.dispose()
+  → _store.clear()
+  → dispose(child1), dispose(child2), dispose(child3)
+```
+
+A typical subclass looks like:
+
+```typescript
+class MyService extends Disposable {
+    constructor() {
+        super();
+        this._register(someEventListener);   // auto-cleaned up
+        this._register(someSubscription);
+    }
+}
+```
+
+When `MyService.dispose()` is called, both `someEventListener` and `someSubscription` are disposed without the subclass needing to track them explicitly.

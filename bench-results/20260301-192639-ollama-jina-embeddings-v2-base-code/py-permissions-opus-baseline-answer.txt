@@ -1,0 +1,52 @@
+Here's how the Django Permission model works in this codebase (`testdata/fixtures/python/django-models.py`):
+
+## `PermissionManager` (lines 27-36)
+
+A custom manager that enables natural key lookups:
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+`get_by_natural_key` takes a `codename`, `app_label`, and `model` name. It resolves the `ContentType` via `ContentType.objects.get_by_natural_key(app_label, model)` and then looks up the permission by its codename + content type. This is used by Django's serialization/deserialization (fixtures, `dumpdata`/`loaddata`) so permissions can be referenced by human-readable keys instead of database PKs. `use_in_migrations = True` makes the manager available in migration code.
+
+## `Permission` model (lines 39-85)
+
+```python
+class Permission(models.Model):
+    name = models.CharField(max_length=255)           # Human-readable name, e.g. "Can add log entry"
+    content_type = models.ForeignKey(ContentType, models.CASCADE)  # Links to the model this permission applies to
+    codename = models.CharField(max_length=100)       # Machine name, e.g. "add_logentry"
+
+    objects = PermissionManager()
+
+    class Meta:
+        unique_together = [["content_type", "codename"]]
+        ordering = ["content_type__app_label", "content_type__model", "codename"]
+```
+
+**Fields:**
+- **`name`** — display label (e.g. "Can change user")
+- **`content_type`** — FK to `ContentType`, identifying which model (app_label + model name) the permission governs. `CASCADE` deletes permissions when the content type is removed.
+- **`codename`** — programmatic identifier (e.g. `add_user`, `change_user`, `delete_user`, `view_user`)
+
+**Constraints:** `unique_together` on `(content_type, codename)` ensures no duplicate permissions per model.
+
+**Key methods:**
+- `__str__` returns `"content_type | name"` (e.g. `"auth | Can add user"`)
+- `natural_key()` returns `(codename, app_label, model)` — the inverse of `get_by_natural_key`
+
+Django auto-creates four permissions per model: **add**, **change**, **delete**, and **view**. Permissions are global per model type, not per object instance.
+
+## How it connects to users
+
+The `PermissionsMixin` (line 317) adds `user_permissions = ManyToManyField(Permission)` and `groups = ManyToManyField(Group)` to user models. `Group` also has a `ManyToManyField(Permission)`. So users get permissions both directly and through group membership, checked via the `has_perm()` method which queries all configured auth backends.

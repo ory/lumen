@@ -1,0 +1,37 @@
+Here are the label matcher types and constructor from `labels_matcher.go`:
+
+**`MatchType` enum** (`labels_matcher.go:21-22`):
+```go
+type MatchType int
+```
+
+With four constants (`labels_matcher.go:26-29`):
+```go
+MatchEqual    MatchType = iota  // "="
+MatchNotEqual                    // "!="
+MatchRegexp                      // "=~"
+MatchNotRegexp                   // "!~"
+```
+
+**`Matcher` struct** (`labels_matcher.go:46-53`):
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher  // unexported, set for regex types
+}
+```
+
+**Constructor** (`labels_matcher.go:55-70`):
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error)
+```
+
+It builds a `Matcher` with the given type, name, and value. If the type is `MatchRegexp` or `MatchNotRegexp`, it compiles a `FastRegexMatcher` from the value string, returning an error if the regex is invalid.
+
+There's also a test helper (`labels_matcher.go:72-79`):
+```go
+func MustNewMatcher(mt MatchType, name, val string) *Matcher
+```
+which panics on error instead of returning it.

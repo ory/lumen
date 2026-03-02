@@ -1,0 +1,57 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Two Levels of Histograms
+
+There are two histogram implementations: a **Prometheus client histogram** (`prom_histogram.go`) that collects observations, and a **data model histogram** (`histogram.go`) that represents the stored/transmitted result.
+
+## Key Function Signatures
+
+### Observation (incrementing bucket counts)
+
+**`histogramCounts.observe`** — `prom_histogram.go:652-706`
+```go
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+This is the core counting logic. It:
+1. Increments the **regular bucket** via `atomic.AddUint64(&hc.buckets[bucket], 1)` — the `bucket` index is pre-computed by a binary search over upper bounds
+2. For **native/sparse buckets**, computes an exponential bucket key using `math.Frexp(math.Abs(v))` and the schema, then calls `addToBucket` on the positive or negative sync.Map
+3. Values within the zero threshold go into `nativeHistogramZeroBucket`
+4. Tracks total `count` and running `sumBits`
+
+**`histogram.observe`** — `prom_histogram.go:899-912`
+```go
+func (h *histogram) observe(v float64, bucket int)
+```
+The outer wrapper that picks the hot counts (for lock-free swap) and calls `histogramCounts.observe`, then runs `limitBuckets` if sparse buckets are active.
+
+### Bucket Iteration (reading counts)
+
+**`cumulativeBucketIterator`** — `histogram.go:530-548`
+```go
+type cumulativeBucketIterator struct { ... }
+```
+Iterates over sparse buckets, converting delta-encoded counts into cumulative counts. Tracks `currCumulativeCount` and handles empty gaps between spans via `emptyBucketCount`.
+
+**`cumulativeBucketIterator.At`** — `histogram.go:609-618`
+```go
+func (c *cumulativeBucketIterator) At() Bucket[uint64]
+```
+Returns the current bucket with cumulative count from `-Inf` to `currUpper`.
+
+**`regularBucketIterator`** / `newRegularBucketIterator` — `histogram.go:481-494`
+```go
+func newRegularBucketIterator(spans []Span, buckets []int64, schema int32, positive bool, customValues []float64) regularBucketIterator
+```
+Iterates non-cumulative (delta-encoded) buckets using spans to skip empty regions.
+
+### PromQL Access
+
+**`funcHistogramCount`** — `functions.go:1598-1603`
+```go
+func funcHistogramCount(vectorVals []Vector, _ Matrix, _ parser.Expressions, enh *EvalNodeHelper) (Vector, annotations.Annotations)
+```
+Exposes `histogram_count()` in PromQL, simply returning `h.Count`.
+
+## In Summary
+
+Bucket counting follows an **exponential schema**: observations are mapped to bucket indices via `math.Frexp` (extracting mantissa/exponent), with the schema controlling sub-divisions per power of two. Counts are stored as **deltas** in sparse maps (positive/negative) and reconstructed into cumulative counts during iteration. Regular (classic) buckets use a simple pre-sorted `[]float64` upper bounds array with binary search.

@@ -1,0 +1,189 @@
+Here's how the Django QuerySet pipeline works based on the fixtures at `testdata/fixtures/python/`:
+
+---
+
+## 1. Manager — the Entry Point (`django-manager.py`)
+
+```python
+class BaseManager:
+    def get_queryset(self):
+        return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+    def all(self):
+        return self.get_queryset()   # always a fresh QuerySet, not a clone
+
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+`from_queryset` (lines 107–118) uses `type()` to dynamically create a Manager subclass that copies every public, non-underscore QuerySet method onto itself via `_get_queryset_methods`. Each copied method is a thin wrapper:
+
+```python
+def manager_method(self, *args, **kwargs):
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+```
+
+So `Model.objects.filter(...)` → `get_queryset().filter(...)`.
+
+---
+
+## 2. QuerySet — Lazy, Chainable (`django-query.py:303`)
+
+```python
+class QuerySet(AltersData):
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self._query = query or sql.Query(self.model)   # the SQL builder
+        self._result_cache = None                       # None = not evaluated yet
+        self._iterable_class = ModelIterable
+```
+
+### Chaining via `_chain` / `_clone`
+
+Every mutating method returns a **new** QuerySet — the original is untouched:
+
+```python
+def _chain(self):                          # line 2137
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+    return obj
+
+def _clone(self):                          # line 2148
+    c = self.__class__(
+        model=self.model,
+        query=self.query.chain(),          # Query.chain() deep-copies the SQL state
+        using=self._db,
+        hints=self._hints,
+    )
+    c._result_cache = None                 # clone starts unevaluated
+    ...
+    return c
+```
+
+`filter` / `exclude` both call `_filter_or_exclude`, which calls `_chain()` first:
+
+```python
+def filter(self, *args, **kwargs):         # line 1624
+    return self._filter_or_exclude(False, args, kwargs)
+
+def exclude(self, *args, **kwargs):        # line 1631
+    return self._filter_or_exclude(True, args, kwargs)
+
+def _filter_or_exclude(self, negate, args, kwargs):
+    clone = self._chain()
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+```
+
+---
+
+## 3. Lazy Evaluation — `_result_cache` + `_fetch_all`
+
+```python
+def __iter__(self):    # line 406
+    self._fetch_all()
+    return iter(self._result_cache)
+
+def __len__(self):     # line 392
+    self._fetch_all()
+    return len(self._result_cache)
+
+def __bool__(self):
+    self._fetch_all()
+    return bool(self._result_cache)
+
+def _fetch_all(self):  # line 2168
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+**No SQL fires until `_result_cache is None` is true** — i.e., until you iterate, call `len()`, `bool()`, or slice. `__deepcopy__` explicitly resets `_result_cache = None` to preserve laziness.
+
+---
+
+## 4. The `Query` Class — SQL State Machine
+
+`QuerySet._query` is a `sql.Query` instance that accumulates all SQL fragments. The QuerySet never builds SQL directly; it delegates:
+
+```python
+def _filter_or_exclude_inplace(self, negate, args, kwargs):   # line 1651
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+`Q` objects represent tree nodes (AND/OR/NOT) of filter conditions. `add_q` walks the tree and appends `WHERE` clauses.
+
+When mutating to a different query type (delete/update), the query is cloned and its `__class__` is swapped:
+
+```python
+# delete — line 1326
+query = self.query.clone()
+query.__class__ = sql.DeleteQuery
+
+# update — line 1337
+query = self.query.chain(sql.UpdateQuery)
+query.add_update_values(kwargs)
+```
+
+---
+
+## 5. Lookup Pipeline → SQL
+
+The double-underscore filter syntax (`name__icontains="foo"`) flows:
+
+```
+QuerySet.filter(name__icontains="foo")
+  → _filter_or_exclude_inplace
+  → query.add_q(Q(name__icontains="foo"))
+  → Query.build_filter()          # resolves the lookup path
+  → Lookup.as_sql()               # e.g. "name LIKE %s"
+  → WhereNode.as_sql()            # assembles the WHERE tree
+  → compiler.execute_sql()        # fires the query
+```
+
+`LOOKUP_SEP` (`__`) is the separator; `PROHIBITED_FILTER_KWARGS` (`_connector`, `_negated`) blocks Q-object internals from being used as filter kwargs (line 49).
+
+---
+
+## 6. Compiler Execution (`ModelIterable.__iter__`, line 91)
+
+```python
+def __iter__(self):
+    compiler = queryset.query.get_compiler(using=db)
+    results = compiler.execute_sql(chunked_fetch=True, chunk_size=GET_ITERATOR_CHUNK_SIZE)
+    # results → compiler.results_iter() → one row at a time
+    # rows are hydrated into model instances here
+```
+
+Three nested layers:
+1. `execute_sql` — fetches 100 rows at a time via `cursor.fetchmany()`
+2. `results_iter` — yields one row (still a tuple) at a time, applies Python-level type coercion
+3. `ModelIterable.__iter__` — turns tuples into model instances
+
+---
+
+## Summary Flow
+
+```
+Model.objects                          ← Manager (ManagerDescriptor)
+  .filter(x=1)                         ← QuerySet._chain() + query.add_q(Q(x=1))
+  .exclude(y=2)                         ← QuerySet._chain() + query.add_q(~Q(y=2))
+  .order_by('z')                        ← QuerySet._chain() + query.add_ordering(...)
+  # ↑ all lazy; _result_cache=None ↑
+for obj in qs:                          ← __iter__ → _fetch_all()
+                                            → list(ModelIterable(self))
+                                            → query.get_compiler().execute_sql()
+                                            → SQL: SELECT ... WHERE x=1 AND NOT y=2 ORDER BY z
+```
+
+Key files:
+- `django-query.py:303` — `QuerySet` class
+- `django-query.py:1624` — `filter` / `exclude`
+- `django-query.py:2137` — `_chain` / `_clone`
+- `django-query.py:2168` — `_fetch_all`
+- `django-manager.py:82` — `_get_queryset_methods` / `from_queryset`
+- `django-manager.py:150` — `get_queryset`

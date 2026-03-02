@@ -1,0 +1,108 @@
+Here's a comprehensive explanation of Flask's configuration loading system:
+
+---
+
+## Class Hierarchy
+
+```
+dict
+ └── Config                    # flask-config.py:50
+ConfigAttribute[T]             # flask-config.py:20 (separate descriptor)
+```
+
+`Config` subclasses `dict` directly — the config object **is** the dictionary. `ConfigAttribute` is a descriptor that proxies app-level attribute access (e.g. `app.debug`) through to `app.config['DEBUG']`.
+
+---
+
+## `ConfigAttribute` — The Descriptor Bridge (`flask-config.py:20`)
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj, owner):
+        rv = obj.config[self.__name__]
+        if self.get_converter is not None:
+            rv = self.get_converter(rv)
+        return rv
+
+    def __set__(self, obj, value):
+        obj.config[self.__name__] = value   # writes go back to dict
+```
+
+When Flask does `app.debug = True`, it's actually writing `app.config['DEBUG'] = True`. The descriptor transparently forwards reads/writes with an optional type converter.
+
+---
+
+## `Config.__init__` (`flask-config.py:94`)
+
+```python
+def __init__(self, root_path, defaults=None):
+    super().__init__(defaults or {})   # initialize dict with defaults
+    self.root_path = root_path         # base for relative file paths
+```
+
+`root_path` is the app's root directory — all relative filenames are resolved against it.
+
+---
+
+## Loading Methods
+
+### 1. From an env var pointing to a file — `from_envvar` (`flask-config.py:102`)
+```python
+app.config.from_envvar('YOURAPPLICATION_SETTINGS')
+```
+Reads the env var, then delegates to `from_pyfile`. Raises `RuntimeError` if the var is unset (unless `silent=True`).
+
+### 2. From prefixed env vars — `from_prefixed_env` (`flask-config.py:126`)
+```python
+app.config.from_prefixed_env('FLASK')  # reads FLASK_* vars
+```
+Strips the prefix, JSON-parses values (falls back to string). Supports nested keys via `__` separator: `FLASK_DB__HOST` → `config['DB']['HOST']`. Keys are processed in sorted order for determinism.
+
+### 3. From a Python file — `from_pyfile` (`flask-config.py:187`)
+```python
+app.config.from_pyfile('settings.cfg')
+```
+Creates a synthetic module, reads the file as bytes, then `exec`s it with `compile()` into that module's `__dict__`. Then delegates to `from_object`. Only uppercase keys survive (enforced by `from_object`).
+
+### 4. From a Python object/module — `from_object` (`flask-config.py:218`)
+```python
+app.config.from_object('myapp.default_config')
+app.config.from_object(SomeClass)
+```
+Accepts a dotted import string or an actual object. Iterates `dir(obj)` and copies **uppercase attributes only**:
+```python
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+### 5. From a generic file with a loader — `from_file` (`flask-config.py:256`)
+```python
+import json, tomllib
+app.config.from_file("config.json", load=json.load)
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+Opens the file (text or binary mode), calls the provided `load` callable, then delegates to `from_mapping`. The most flexible loader — works with any format.
+
+### 6. From a dict/kwargs — `from_mapping` (`flask-config.py:303`)
+```python
+app.config.from_mapping({'DEBUG': True}, SECRET_KEY='abc')
+```
+Merges a mapping and/or kwargs, but **only uppercase keys** are stored.
+
+---
+
+## Key Design Rule: Uppercase Keys Only
+
+Every loading path ultimately enforces this. `from_object` checks `key.isupper()`, `from_mapping` checks `key.isupper()`. This lets config files mix Python code freely — lowercase variables are private temporaries, uppercase ones become real config entries.
+
+---
+
+## `get_namespace` — Subsetting Config (`flask-config.py:323`)
+
+```python
+image_store_config = app.config.get_namespace('IMAGE_STORE_')
+# {'type': 'fs', 'path': '/var/app/images', 'base_url': '...'}
+```
+
+Extracts keys matching a prefix, optionally lowercasing and trimming the prefix. Useful for passing grouped config options as keyword arguments to constructors.

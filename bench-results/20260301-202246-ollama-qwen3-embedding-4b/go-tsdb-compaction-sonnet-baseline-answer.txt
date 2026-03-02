@@ -1,0 +1,164 @@
+Now I have a complete picture. Here's the end-to-end explanation:
+
+---
+
+## TSDB Compaction: End-to-End
+
+### 1. The `Compactor` Interface (`compact.go:54-77`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three responsibilities:
+- **`Plan`** — scans a directory and returns a set of block dirs that are ready to be compacted together
+- **`Write`** — persists a single `BlockReader` (e.g., the in-memory Head) to disk as a new block
+- **`Compact`** — merges multiple existing on-disk blocks into one
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:80-93`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64   // exponential time buckets, e.g. [2h, 6h, 18h, ...]
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    // + metrics, pool, ctx, etc.
+}
+```
+
+Constructed via `NewLeveledCompactorWithOptions` (`compact.go:202`). The `ranges` slice drives the leveling strategy.
+
+#### `Plan` (`compact.go:249-277`)
+
+1. Reads `meta.json` for all block dirs
+2. Optionally applies `blockExcludeFunc` (stops at first excluded block)
+3. Delegates to the internal `plan(dms []dirMeta)`
+
+#### Internal `plan` (`compact.go:279-328`)
+
+Priority order:
+1. **Overlapping blocks** — `selectOverlappingDirs` finds any blocks whose time ranges overlap; these get vertical-compacted first
+2. **Level promotion** — `selectDirs` walks through range levels (e.g. 3 × 2h → 6h, 3 × 6h → 18h); picks a group that spans a full range interval or sits below the most recent block
+3. **High-tombstone blocks** — any block with >5% tombstone ratio is returned solo for recompaction
+
+#### `selectDirs` (`compact.go:332-367`)
+
+```go
+func (c *LeveledCompactor) selectDirs(ds []dirMeta) []dirMeta
+```
+
+Splits blocks by each range level via `splitByRange`, then returns the first group with `>1` block that either fills its range window exactly or is older than the most recent block. Skips groups containing a `Compaction.Failed` block.
+
+#### `Compact` (`compact.go:485-584`)
+
+```go
+func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+```
+
+1. Opens each block (reuses already-open ones to avoid double-caching the index)
+2. Calls `CompactBlockMetas` to merge all `BlockMeta`s into one (union of time range, incremented compaction level, merged sources/parents list)
+3. Calls internal `write(dest, meta, DefaultBlockPopulator{}, blocks...)`
+4. If result is empty (0 samples): marks source blocks `Deletable` instead of writing
+5. On error: marks each source block `Compaction.Failed`
+
+#### `write` (`compact.go:658-769`)
+
+1. Creates a `<dest>/<ulid>.tmp-for-creation` directory
+2. Opens `ChunkWriter` and `index.Writer`
+3. Calls `blockPopulator.PopulateBlock(...)` — iterates all series across input blocks (merging overlaps via `MergeChunkSeriesSet`), writes chunks + index
+4. Writes `meta.json` and empty tombstones
+5. Atomically renames `.tmp-for-creation` → final dir via `fileutil.Replace`
+
+---
+
+### 3. How `DB` Triggers Compaction
+
+#### Background loop — `db.run` (`db.go:1175-1243`)
+
+```go
+func (db *DB) run(ctx context.Context) {
+    // ...
+    select {
+    case <-time.After(db.opts.BlockReloadInterval):  // periodic tick
+        db.reloadBlocks()
+        db.compactc <- struct{}{}           // signal compaction
+        // check stale series threshold → CompactStaleHead()
+    case <-db.compactc:
+        if db.autoCompact {
+            db.Compact(ctx)                 // run compaction
+        }
+    }
+}
+```
+
+Compaction is signalled by sending to `db.compactc` (buffered chan of size 1). Started as `go db.run(ctx)` in `open` (`db.go:1144`).
+
+#### `db.Compact` (`db.go:1414-1506`)
+
+```go
+func (db *DB) Compact(ctx context.Context) error {
+    db.cmtx.Lock()        // serializes with deletions
+    // 1. Head compaction loop
+    for db.head.compactable() && !db.waitingForCompactionDelay() {
+        rh := NewRangeHeadWithIsolationDisabled(db.head, mint, maxt-1)
+        db.head.WaitForAppendersOverlapping(rh.MaxTime())
+        db.compactHead(rh)      // → compactor.Write(head → block)
+    }
+    // 2. OOO head compaction (if OOO was ever enabled)
+    db.compactOOOHead(ctx)      // → compactor.Write(oooHead slices → blocks)
+    // 3. On-disk block compaction
+    db.compactBlocks()          // → compactor.Plan + compactor.Compact loop
+}
+```
+
+#### `compactHead` (`db.go:1636-1662`)
+
+```go
+func (db *DB) compactHead(head *RangeHead) error {
+    uids, _ := db.compactor.Write(db.dir, head, head.MinTime(), head.BlockMaxTime(), nil)
+    db.reloadBlocks()
+    db.head.truncateMemory(head.BlockMaxTime())
+    db.head.RebuildSymbolTable(db.logger)
+}
+```
+
+Flushes the oldest `[mint, maxt)` window of the in-memory Head to a level-1 disk block.
+
+#### `compactBlocks` (`db.go:1721-1763`)
+
+```go
+func (db *DB) compactBlocks() error {
+    for {
+        if db.head.compactable() { break }   // head takes priority
+        plan, _ := db.compactor.Plan(db.dir)
+        if len(plan) == 0 { break }
+        uids, _ := db.compactor.Compact(db.dir, plan, db.blocks)
+        db.reloadBlocks()
+    }
+}
+```
+
+Keeps looping `Plan → Compact → reload` until nothing more can be compacted (or the head becomes urgent again).
+
+---
+
+### Summary Flow
+
+```
+WAL append → head.compactable() == true
+    → db.run signals compactc
+    → db.Compact()
+        ├─ compactHead()        → compactor.Write(RangeHead)   → level-1 block
+        ├─ compactOOOHead()     → compactor.Write(OOOHead)     → OOO blocks
+        └─ compactBlocks()      → compactor.Plan() → groups of blocks
+                                → compactor.Compact() → merged higher-level block
+                                → old blocks marked Deletable, removed on reload
+```
+
+Block levels grow exponentially: `[2h] → [6h] → [18h] → ...` up to `MaxBlockDuration`, controlled by `ExponentialBlockRanges` and the `LeveledCompactor.ranges` slice.

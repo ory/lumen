@@ -1,0 +1,145 @@
+Here's a complete breakdown of TSDB compaction end-to-end:
+
+---
+
+## Compactor Interface
+
+`compact.go:52-77`
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+- **`Plan`** — scans a directory and returns sets of block paths that are safe to compact concurrently.
+- **`Write`** — persists a single `BlockReader` as a new on-disk block (used for head flushing, not multi-block merges).
+- **`Compact`** — merges multiple existing blocks into one new block.
+
+---
+
+## LeveledCompactor
+
+`compact.go:79-93`
+
+```go
+type LeveledCompactor struct {
+    metrics                     *CompactorMetrics
+    logger                      *slog.Logger
+    ranges                      []int64   // time range per compaction level, e.g. [2h, 6h, 24h, ...]
+    chunkPool                   chunkenc.Pool
+    ctx                         context.Context
+    maxBlockChunkSegmentSize    int64
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    blockExcludeFunc            BlockExcludeFilterFunc
+    postingsEncoder             index.PostingsEncoder
+    enableOverlappingCompaction bool
+    // ...
+}
+```
+
+The `ranges` slice defines the compaction level boundaries. A block at level N spans `ranges[N]` milliseconds.
+
+### Key method flow
+
+**`Plan(dir)`** `compact.go:248`
+1. Reads all block dirs and loads their `BlockMeta`.
+2. Runs `blockExcludeFunc` to skip user-excluded blocks.
+3. Calls internal `plan()` → `selectDirs()` to find blocks that together fill a complete time range for a level, or `selectOverlappingDirs()` for overlapping blocks.
+4. Returns the chosen directory paths.
+
+**`Compact(dest, dirs, open)`** → **`CompactWithBlockPopulator`** `compact.go:489`
+1. Opens (or reuses from `open`) each source block.
+2. Allocates a fresh `ulid.ULID` for the output block.
+3. Calls `CompactBlockMetas(uid, metas...)` to produce merged metadata:
+   - Combines all `Sources` ULIDs.
+   - Increments `Compaction.Level`.
+   - Records all source blocks as `Compaction.Parents`.
+   - Time range spans `min(mint)…max(maxt)`.
+4. Calls `write()` to merge series/chunks/index to disk.
+5. If the resulting block has 0 samples: marks source dirs `Deletable`, returns empty slice.
+
+**`Write(dest, b, mint, maxt, base)`** `compact.go:586`
+Wraps a single `BlockReader` into a level-1 block. Used when flushing the in-memory head to disk.
+
+---
+
+## CompactorMetrics
+
+`compact.go:95-103`
+
+```go
+type CompactorMetrics struct {
+    Ran               prometheus.Counter    // total compactions run
+    PopulatingBlocks  prometheus.Gauge      // 1 while writing a block
+    OverlappingBlocks prometheus.Counter
+    Duration          prometheus.Histogram
+    ChunkSize         prometheus.Histogram
+    ChunkSamples      prometheus.Histogram
+    ChunkRange        prometheus.Histogram
+}
+```
+
+---
+
+## How DB triggers compaction
+
+`db.go:283` — the `DB` struct holds:
+
+```go
+type DB struct {
+    dir       string
+    compactor Compactor
+    compactc  chan struct{}   // signal: "please compact"
+    stopc     chan struct{}
+    cmtx      sync.Mutex     // serialises compactions and deletions
+    blocks    []*Block        // currently open on-disk blocks
+    head      *Head
+    // ...
+}
+```
+
+A background goroutine (started at `Open`) waits on `compactc`. When signalled it calls **`compact()`**, which orchestrates:
+
+1. **Flush head** — if `head.compactable()` (enough data accumulated), calls `compactor.Write()` to persist it as a new level-0 block, then reloads blocks.
+2. **`compactBlocks()`** `db.go:1721` — loop:
+   ```go
+   for {
+       if db.head.compactable() && !db.waitingForCompactionDelay() {
+           // head needs flushing — abort block compactions and go back to step 1
+           return nil
+       }
+       plan, err := db.compactor.Plan(db.dir)
+       if len(plan) == 0 { break }
+
+       uids, err := db.compactor.Compact(db.dir, plan, db.blocks)
+       db.reloadBlocks()   // opens new block, closes/deletes old ones
+   }
+   ```
+   Keeps compacting until `Plan` returns nothing.
+
+3. **Delete old blocks** — `reloadBlocks()` GCs any blocks flagged `Deletable`.
+
+---
+
+## End-to-end summary
+
+```
+WAL/Head accumulates samples
+         │
+         ▼  (head.compactable())
+  compactor.Write()  →  level-0 block on disk
+         │
+         ▼  (Plan finds N level-0 blocks filling a 2h range)
+  compactor.Compact() →  level-1 block  (sources marked Deletable)
+         │
+         ▼  (Plan finds N level-1 blocks filling a 6h range)
+  compactor.Compact() →  level-2 block
+         │
+        ...
+         ▼  reloadBlocks() deletes source blocks
+```
+
+Each compaction level doubles (or multiplies by the `ranges` config) the time span, keeping the total block count bounded as data ages.

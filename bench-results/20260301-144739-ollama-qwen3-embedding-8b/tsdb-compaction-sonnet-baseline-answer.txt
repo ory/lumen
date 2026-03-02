@@ -1,0 +1,112 @@
+Here's a full end-to-end explanation of TSDB compaction:
+
+---
+
+## TSDB Compaction: End-to-End
+
+### 1. The `Compactor` Interface (`compact.go:52-77`)
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+Three responsibilities:
+- **`Plan`** — scans a directory and returns groups of blocks that can be compacted (may overlap between groups)
+- **`Write`** — persists a single `BlockReader` (e.g. the head) to a new on-disk block
+- **`Compact`** — merges multiple existing blocks from `dirs` into one new block
+
+---
+
+### 2. `LeveledCompactor` (`compact.go:79-93`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64   // exponential time windows, e.g. [2h, 20h, 200h]
+    enableOverlappingCompaction bool      // vertical compaction for overlapping blocks
+    blockExcludeFunc            BlockExcludeFilterFunc
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    // ...metrics, logger, chunkPool, ctx
+}
+```
+
+The `ranges` slice is built with:
+
+```go
+// ExponentialBlockRanges returns [minSize, minSize*step, minSize*step^2, ...]
+func ExponentialBlockRanges(minSize int64, steps, stepSize int) []int64
+```
+
+---
+
+### 3. Compaction Planning (`compact.go:248-437`)
+
+`Plan(dir)` → reads all block dirs → calls `plan(dms []dirMeta)`:
+
+```
+Priority order:
+  1. Overlapping blocks  → selectOverlappingDirs()  (vertical compaction)
+  2. Leveled compaction  → selectDirs()             (horizontal, by time window)
+  3. Tombstone cleanup   → any block with >5% tombstone ratio
+```
+
+**Leveled selection** (`selectDirs`) splits blocks into aligned time buckets via `splitByRange`:
+
+```go
+// Example: blocks [0-10, 10-20, 50-60, 90-100], tr=30
+// → [[0-10, 10-20], [50-60], [90-100]]
+func splitByRange(ds []dirMeta, tr int64) [][]dirMeta
+```
+
+A group is selected if it spans the full window OR sits before the newest block, and has >1 block.
+
+**Overlapping detection** (`selectOverlappingDirs`): walks sorted blocks, adds any block whose `MinTime < globalMaxt` of the previous group.
+
+---
+
+### 4. DB Triggers Compaction (`db.go`)
+
+`DB.Compact(ctx)` is the main entry point, protected by `db.cmtx`:
+
+```
+DB.Compact()
+  ├─ loop: head.compactable()?
+  │    └─ compactHead(rh)          ← highest priority: flush in-memory → disk block
+  ├─ compactOOOHead(ctx)           ← out-of-order head data
+  └─ compactBlocks()               ← on-disk block merging
+       └─ loop:
+            plan  = compactor.Plan(db.dir)
+            uids  = compactor.Compact(db.dir, plan, db.blocks)
+            db.reloadBlocks()      ← marks compacted parents as Deletable
+```
+
+`compactBlocks()` loops until `Plan()` returns nothing, but aborts early if the head becomes compactable again (head always wins priority).
+
+The background goroutine calls `Compact` on a ticker; `DBOptions` controls:
+- `EnableOverlappingCompaction` — vertical merging
+- `EnableDelayedCompaction` / `CompactionDelay` — backup window support
+- `BlockCompactionExcludeFunc` — skip specific blocks
+
+---
+
+### Summary Flow
+
+```
+In-memory Head
+    │  head.compactable() → rangeForTimestamp crosses chunk range boundary
+    ▼
+compactHead()  ──→  Write() ──→  new on-disk Block  ──→  reloadBlocks()
+                                                               │
+                                        Plan() detects ≥2 blocks in same time window
+                                               │
+                                        Compact() merges → single larger Block
+                                               │
+                                        reloadBlocks() marks parents Deletable
+                                               │
+                                        Loop until Plan() returns []
+```
+
+Leveled compaction means small `[0–2h]` blocks eventually get merged into `[0–20h]`, then `[0–200h]`, reducing read amplification over time.

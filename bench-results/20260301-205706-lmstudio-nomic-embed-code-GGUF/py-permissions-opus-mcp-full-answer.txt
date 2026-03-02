@@ -1,0 +1,48 @@
+Here's how the Django `Permission` model works in this codebase (`django-models.py`):
+
+### `PermissionManager` (lines 27-36)
+
+A custom manager with `use_in_migrations = True` so it's available during migrations:
+
+```python
+class PermissionManager(models.Manager):
+    use_in_migrations = True
+
+    def get_by_natural_key(self, codename, app_label, model):
+        return self.get(
+            codename=codename,
+            content_type=ContentType.objects.db_manager(self.db).get_by_natural_key(
+                app_label, model
+            ),
+        )
+```
+
+`get_by_natural_key` looks up a permission by its three-part natural key: `(codename, app_label, model)`. It resolves the `content_type` by delegating to `ContentType.objects.get_by_natural_key(app_label, model)`, ensuring it uses the same database via `db_manager(self.db)`.
+
+### `Permission` model (lines 39-85)
+
+```python
+class Permission(models.Model):
+    name = models.CharField(max_length=255)              # Human-readable name
+    content_type = models.ForeignKey(ContentType, on_delete=CASCADE)  # Links to a model type
+    codename = models.CharField(max_length=100)          # Machine-readable identifier
+
+    objects = PermissionManager()
+```
+
+**Three fields:**
+- **`name`** — display name (e.g., "Can add log entry")
+- **`content_type`** — FK to `ContentType`, tying the permission to a specific model
+- **`codename`** — programmatic identifier (e.g., `add_logentry`)
+
+**Meta constraints:**
+- `unique_together = [["content_type", "codename"]]` — a codename is unique per content type
+- `ordering = ["content_type__app_label", "content_type__model", "codename"]`
+
+**Key methods:**
+- `__str__` returns `"content_type | name"` (e.g., `"admin | Can add log entry"`)
+- `natural_key()` returns `(codename, app_label, model)` — the inverse of `get_by_natural_key`
+
+### How it fits together
+
+Django auto-creates four permissions per model: `add_*`, `change_*`, `delete_*`, `view_*`. These are assigned to users either directly (via `PermissionsMixin.user_permissions` M2M) or through `Group.permissions` M2M. The `PermissionsMixin` (line 317) provides `has_perm()`, `has_perms()`, and `get_all_permissions()` which delegate to authentication backends to check if a user holds a given permission.

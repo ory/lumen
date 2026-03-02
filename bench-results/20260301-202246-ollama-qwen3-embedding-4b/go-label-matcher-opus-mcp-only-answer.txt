@@ -1,0 +1,62 @@
+There are **four** `MatchType` values available, and here are the relevant definitions from `labels_matcher.go`:
+
+### MatchType enum
+
+```go
+// labels_matcher.go:21-30
+type MatchType int
+
+const (
+    MatchEqual    MatchType = iota  // "="
+    MatchNotEqual                   // "!="
+    MatchRegexp                     // "=~"
+    MatchNotRegexp                  // "!~"
+)
+```
+
+### Matcher struct
+
+```go
+// labels_matcher.go:46-53
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher
+}
+```
+
+### Constructor
+
+```go
+// labels_matcher.go:55-70
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+There's also a convenience constructor for tests (`labels_matcher.go:72-79`):
+
+```go
+func MustNewMatcher(mt MatchType, name, val string) *Matcher {
+    m, err := NewMatcher(mt, name, val)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+```
+
+**Summary:** The four match types are equality (`=`), not-equal (`!=`), regex (`=~`), and not-regex (`!~`). `NewMatcher` builds a `Matcher` with a name/value pair, and for regex types it compiles a `FastRegexMatcher` eagerly at construction time.

@@ -1,0 +1,58 @@
+### Label Matcher Types — `labels_matcher.go`
+
+**MatchType enum** (lines 21–30):
+```go
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four matching strategies: exact equality, inequality, regex match, and negated regex match.
+
+---
+
+**Matcher struct** (lines 46–53):
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // compiled regex, set only for regexp types
+}
+```
+
+---
+
+**Constructors** (lines 55–79):
+
+```go
+// Primary constructor — compiles regex if needed.
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{Type: t, Name: n, Value: v}
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+
+// Panic variant — for tests only.
+func MustNewMatcher(mt MatchType, name, val string) *Matcher {
+    m, err := NewMatcher(mt, name, val)
+    if err != nil {
+        panic(err)
+    }
+    return m
+}
+```
+
+`NewMatcher` is the standard constructor. It lazily compiles a `FastRegexMatcher` only when the type is `MatchRegexp` or `MatchNotRegexp`. `MustNewMatcher` is a test-only convenience wrapper that panics instead of returning an error.

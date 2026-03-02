@@ -1,0 +1,30 @@
+Here's how histogram bucket counting works in this codebase:
+
+**Core observation flow:**
+
+1. **`histogram.observe`** (`prom_histogram.go:899-912`) — entry point. Increments the hot counter atomically, delegates to `histogramCounts.observe`, then calls `limitBuckets` if sparse buckets are enabled.
+
+2. **`histogramCounts.observe`** (`prom_histogram.go:652-706`) — the main bucket counting logic:
+   - Increments the classic `buckets[bucket]` counter atomically
+   - For native (sparse) histograms, computes a bucket key from the value using `math.Frexp` and the schema:
+     - **Positive schema** (`schema > 0`): binary-searches `nativeHistogramBounds` to find the sub-bucket, then combines with the exponent
+     - **Zero/negative schema**: uses the exponent directly, shifted by schema
+   - Routes the value to `nativeHistogramBucketsPositive`, `nativeHistogramBucketsNegative`, or `nativeHistogramZeroBucket` based on sign vs. zero threshold
+   - Increments `count` last as a completion signal
+
+3. **`addToBucket`** (`prom_histogram.go:1532-1549`) — concurrent-safe sparse bucket increment using `sync.Map`. Fast path loads existing bucket; slow path allocates a new `*int64` via `LoadOrStore`. Returns `true` if a new bucket was created (to track `nativeHistogramBucketsNumber`).
+
+**Bucket limiting:**
+
+4. **`histogram.limitBuckets`** (`prom_histogram.go:914-958`) — when `nativeHistogramMaxBuckets` is exceeded, tries strategies in order: reset, widen zero bucket, or double bucket width (halve resolution).
+
+**Validation:**
+
+5. **`validateCount`** (`prom_histogram.go:1871-1889`) — sums all bucket populations and checks they match `count` (or `<=` if sum is NaN).
+
+6. **`Histogram.Validate`** (`histogram.go:470-479`) — similar check on the model-layer `Histogram` struct.
+
+**Iteration:**
+
+7. **`cumulativeBucketIterator`** (`histogram.go:530-548`) — iterates buckets producing cumulative counts, tracking empty gaps between spans.
+8. **`regularBucketIterator`** / `newRegularBucketIterator` (`histogram.go:481-494`) — iterates non-cumulative buckets using spans and delta-encoded bucket counts.

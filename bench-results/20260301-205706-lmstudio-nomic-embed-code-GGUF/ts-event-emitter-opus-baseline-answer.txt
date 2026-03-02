@@ -1,0 +1,94 @@
+Here's how the event emitter system works in this file (VS Code's event infrastructure):
+
+## Core Type: `Event<T>` (line 37)
+
+```ts
+interface Event<T> {
+  (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is simply a **callable function**. You call it with a listener callback and get back an `IDisposable` to unsubscribe. The third parameter optionally registers the subscription into a `DisposableStore` or array for bulk cleanup.
+
+## The `Emitter<T>` Class (line 1093)
+
+The emitter is the **producer** side — it owns the listener list and exposes a read-only `.event` property for consumers:
+
+```ts
+class Document {
+  private readonly _onDidChange = new Emitter<string>();
+  public onDidChange = this._onDidChange.event;  // consumers subscribe here
+
+  private _doIt() {
+    this._onDidChange.fire(value);  // producer fires here
+  }
+}
+```
+
+Key internals:
+- **Optimized single-listener fast path** (lines 1101-1118): When there's only one listener, it's stored as a bare `UniqueContainer` instead of an array. Only upgrades to an array when a second listener attaches.
+- **Sparse array compaction** (line 1267): Removed listeners are set to `undefined`; the array compacts when more than `1/compactionThreshold` slots are empty.
+- **`EventDeliveryQueuePrivate`** (line 1347): Tracks iteration state (`i`, `end`, `current`, `value`) so that re-entrant `fire()` calls during delivery are handled correctly — any pending queue is drained first.
+- **Leak detection**: `LeakageMonitor` (line 948) warns when listener count exceeds a threshold, tracking the most frequent subscription stack trace. At `threshold²` listeners, the emitter **refuses** new subscriptions entirely (`ListenerRefusalError`).
+
+### `EmitterOptions` (line 858)
+
+Lifecycle hooks that the composition functions rely on:
+
+| Hook | When |
+|---|---|
+| `onWillAddFirstListener` | Before first subscription — used to lazily connect to upstream |
+| `onDidRemoveLastListener` | After last unsubscribe — used to disconnect from upstream |
+| `onWillRemoveListener` | Before any unsubscribe — used by `debounce` to flush |
+| `deliveryQueue` | Shared queue for cross-emitter ordered delivery |
+
+## Event Composition (the `Event` namespace, line 41)
+
+All composition functions follow the same pattern: create an internal `Emitter` with `onWillAddFirstListener`/`onDidRemoveLastListener` hooks that lazily subscribe/unsubscribe from the source event. This is the `snapshot()` helper (line 204):
+
+```ts
+function snapshot<T>(event: Event<T>, disposable: DisposableStore | undefined): Event<T> {
+  let listener: IDisposable | undefined;
+  const emitter = new Emitter<T>({
+    onWillAddFirstListener() { listener = event(emitter.fire, emitter); },
+    onDidRemoveLastListener() { listener?.dispose(); }
+  });
+  disposable?.add(emitter);
+  return emitter.event;
+}
+```
+
+This means upstream connections are **lazy** — no work is done until someone actually subscribes.
+
+### Composition operators:
+
+| Function | What it does |
+|---|---|
+| `map(event, fn)` | Transforms event values: `event(i => listener(fn(i)))` |
+| `filter(event, fn)` | Only forwards events where `fn(e)` is true |
+| `once(event)` | Fires once, then auto-disposes the subscription |
+| `debounce(event, merge, delay)` | Accumulates events via `merge`, fires after `delay`ms or microtask. Supports leading edge and flush-on-remove |
+| `throttle(event, merge, delay)` | Rate-limits to at most one fire per `delay`ms, with leading/trailing edge control |
+| `accumulate(event, delay)` | Debounce that collects into `T[]` |
+| `latch(event, equals)` | Deduplicates consecutive equal values |
+| `reduce(event, merge)` | Running accumulator (like `Array.reduce`) |
+| `buffer(event)` | Queues events until the first listener attaches, then flushes |
+| `split(event, isT)` | Returns `[Event<T>, Event<U>]` from `Event<T|U>` |
+| `any(...events)` | Merges multiple events into one |
+| `chain(event, $)` | Fluent pipeline: `$.map(...).filter(...).latch(...)` via `ChainableSynthesis` |
+
+## Disposable Integration
+
+Every subscription returns an `IDisposable`. The system integrates with disposables at three levels:
+
+1. **Subscription cleanup**: Calling the event with a `DisposableStore` or `IDisposable[]` as the third arg auto-registers the subscription for bulk disposal (`addAndReturnDisposable`, line 231).
+
+2. **Emitter disposal**: `Emitter.dispose()` (line 1137) clears all listeners, resets the delivery queue, and fires `onDidRemoveLastListener`. Subscribing to a disposed emitter returns `Disposable.None`.
+
+3. **Composition lifecycle**: All composition functions accept an optional `DisposableStore` parameter. When provided, the internal emitter is added to that store, so disposing the store tears down the entire event pipeline. The `snapshot()` helper automatically disconnects from upstream when the last listener is removed.
+
+## Emitter Variants
+
+- **`AsyncEmitter<T extends IWaitUntil>`** (line 1390): Listeners can call `event.waitUntil(promise)` to defer completion. `fireAsync()` delivers to each listener sequentially, awaiting all registered promises before moving to the next.
+
+- **`PauseableEmitter<T>`** (line 1448): Supports `pause()`/`resume()` with nestable pause counting. While paused, events queue up. On resume, they either fire individually or are merged into a single composite event via an optional `merge` function.

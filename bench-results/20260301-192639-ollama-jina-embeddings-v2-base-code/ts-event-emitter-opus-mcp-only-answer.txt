@@ -1,0 +1,107 @@
+Here's how the event emitter system works in this codebase (VSCode-style event system in `event.ts`):
+
+## The `Event<T>` Interface
+
+```typescript
+// event.ts:37-39
+export interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+An `Event<T>` is just a **callable function**. You subscribe by calling it with a listener callback and get back an `IDisposable` to unsubscribe. The optional `disposables` parameter lets you automatically track the subscription for cleanup.
+
+## The `Emitter<T>` Class
+
+`Emitter<T>` (`event.ts:1093`) is the core producer. Key design:
+
+- **Owns an `Event<T>`** via a lazy `get event()` getter (`event.ts:1174`). The emitter is private to the class that creates it; only `event` is exposed publicly.
+- **`fire(event: T)`** (`event.ts:1315-1335`) dispatches to all listeners. Uses an `EventDeliveryQueuePrivate` for ordered delivery when there are multiple listeners.
+- **Listener storage optimization**: A single listener is stored as a bare `UniqueContainer` (not an array), since most emitters only have one listener. Promotes to array on the second subscription.
+- **Sparse array compaction**: Removed listeners leave `undefined` holes. The array compacts only when more than `1/compactionThreshold` entries are empty.
+- **Lifecycle hooks** via `EmitterOptions` (`event.ts:858-899`):
+  - `onWillAddFirstListener` / `onDidAddFirstListener` — lazy resource setup
+  - `onDidRemoveLastListener` — cleanup when nobody's listening
+  - `onWillRemoveListener`, `onDidAddListener` — per-listener hooks
+  - `onListenerError` — custom error handling
+  - `leakWarningThreshold` — leak detection via `LeakageMonitor`
+
+**Typical pattern** — class exposes a public event, keeps the emitter private:
+
+```typescript
+private readonly _onDidChange = new Emitter<T>();
+readonly onDidChange: Event<T> = this._onDidChange.event;
+```
+
+## Event Composition (Functional Combinators)
+
+All combinators are static functions on the `Event` namespace. They follow a consistent pattern: create a new `Emitter` with `onWillAddFirstListener`/`onDidRemoveLastListener` hooks to lazily subscribe/unsubscribe from the source event. This means **no work happens until someone actually listens**.
+
+### `snapshot` (internal foundation) — `event.ts:204-225`
+Wraps an event so subscription to the source is lazy. Used internally by `map`, `filter`, etc.
+
+### `map` — `event.ts:133-135`
+```typescript
+export function map<I, O>(event: Event<I>, map: (i: I) => O, disposable?: DisposableStore): Event<O>
+```
+Transforms each emitted value.
+
+### `filter` — `event.ts:167-169`
+```typescript
+export function filter<T>(event: Event<T>, filter: (e: T) => boolean, disposable?: DisposableStore): Event<T>
+```
+Only forwards values where the predicate is true.
+
+### `debounce` — `event.ts:260-322`
+```typescript
+export function debounce<I, O>(event: Event<I>, merge: (last: O | undefined, event: I) => O, delay: number, ...): Event<O>
+```
+Coalesces rapid events. Uses a `merge` function to accumulate values during the delay window. Supports `leading` edge firing, `flushOnListenerRemove`, and microtask delay (`MicrotaskDelay` instead of a number).
+
+### `throttle` — `event.ts:366-429`
+Similar to debounce but rate-limits: fires on the leading edge then suppresses for the delay period, optionally firing a trailing event.
+
+### Other combinators:
+- **`reduce`** (`event.ts:195`) — accumulates state across events
+- **`latch`** (`event.ts:449`) — suppresses duplicate consecutive values
+- **`buffer`** (`event.ts:505`) — queues events until the first listener subscribes, then flushes
+- **`any`** (`event.ts:183`) — merges multiple events into one
+- **`accumulate`** (`event.ts:338`) — debounce that collects into arrays
+
+## Emitter Subclasses
+
+### `PauseableEmitter<T>` — `event.ts:1448-1497`
+Adds `pause()` / `resume()` with a counter (nestable). While paused, events queue in a `LinkedList`. On resume, fires them individually or through an optional `merge` function.
+
+### `DebounceEmitter<T>` — `event.ts:1499-1519`
+Extends `PauseableEmitter`. On first `fire()`, pauses itself and sets a timeout. When the timeout expires, resumes (flushing all queued events through the merge function).
+
+### `MicrotaskEmitter<T>` — `event.ts:1525-1551`
+Batches all `fire()` calls within a microtask, then delivers them at once (optionally merged).
+
+## Integration with Disposables
+
+The event system is deeply integrated with the disposable pattern:
+
+1. **Subscribing returns `IDisposable`**: Every call to `event(listener)` returns a disposable. Disposing it unsubscribes the listener.
+
+2. **Auto-registration**: The third parameter of `Event<T>` accepts `IDisposable[] | DisposableStore`. The returned subscription is automatically added to the collection (`event.ts:1228` — `addToDisposables(result, disposables)`).
+
+3. **`Emitter.dispose()`** (`event.ts:1137-1168`): Clears all listeners, resets the delivery queue, and fires `onDidRemoveLastListener`. If `_enableDisposeWithListenerWarning` is on, it logs stacks of listeners that were still attached (leak detection).
+
+4. **Leak detection**: `LeakageMonitor` (`event.ts:948`) tracks listener counts and stacks. When a threshold is exceeded, it warns about potential leaks. At extreme levels (`threshold²`), it **refuses** new listeners entirely (`ListenerRefusalError`).
+
+5. **`Relay<T>`** (`event.ts:1782-1814`): A disposable that forwards events from a swappable source. Uses `onDidAddFirstListener`/`onDidRemoveLastListener` to lazily connect. `dispose()` cleans up both the relay's subscription and its emitter.
+
+6. **`EventMultiplexer<T>`** (`event.ts:1607`, with `dispose` at line 1632): Merges multiple dynamic event sources. On dispose, cleans up the inner emitter and all listener subscriptions.
+
+## Key Pattern Summary
+
+```
+Emitter (private, fires)  →  Event (public, subscribes)  →  IDisposable (unsubscribes)
+    ↓                              ↓
+  dispose() clears all        composable via map/filter/debounce/etc.
+  listeners + leak warns      (each creates a lazy intermediate Emitter)
+```
+
+The entire system is **lazy** (no work until first listener), **disposable** (every subscription and emitter can be cleaned up), and **composable** (combinators chain by wrapping events in new emitters with lifecycle hooks).

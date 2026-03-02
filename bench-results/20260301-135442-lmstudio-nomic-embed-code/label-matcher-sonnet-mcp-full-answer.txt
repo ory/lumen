@@ -1,0 +1,59 @@
+Here's a summary of the label matcher types and how a `Matcher` is created:
+
+---
+
+### `MatchType` — `labels_matcher.go:21-30`
+
+```go
+// MatchType is an enum for label matching types.
+type MatchType int
+
+const (
+    MatchEqual     MatchType = iota  // =
+    MatchNotEqual                    // !=
+    MatchRegexp                      // =~
+    MatchNotRegexp                   // !~
+)
+```
+
+Four types, corresponding to the classic PromQL label matching operators.
+
+---
+
+### `Matcher` struct — `labels_matcher.go:46-53`
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+
+    re *FastRegexMatcher  // populated only for regexp types
+}
+```
+
+---
+
+### `NewMatcher` constructor — `labels_matcher.go:55-70`
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{
+        Type:  t,
+        Name:  n,
+        Value: v,
+    }
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+For `MatchRegexp`/`MatchNotRegexp`, it compiles the pattern into a `FastRegexMatcher` at construction time and returns an error on invalid regex. For `MatchEqual`/`MatchNotEqual`, no regex is compiled and construction is infallible.
+
+There's also `MustNewMatcher` (`labels_matcher.go:72-79`) which panics on error — intended only for tests.

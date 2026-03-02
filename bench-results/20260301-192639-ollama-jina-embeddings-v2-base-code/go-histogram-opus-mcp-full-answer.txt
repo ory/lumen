@@ -1,0 +1,45 @@
+Histogram bucket counting works through two distinct mechanisms:
+
+**1. Classic (regular) buckets** — uses a flat `[]uint64` slice indexed by pre-defined upper bounds. When an observation comes in, a binary search finds the right bucket index, then the count is atomically incremented:
+
+```go
+// prom_histogram.go:652
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+Inside, the classic path is simply:
+```go
+if bucket < len(hc.buckets) {
+    atomic.AddUint64(&hc.buckets[bucket], 1)
+}
+```
+
+**2. Native (sparse/exponential) buckets** — uses `sync.Map` keyed by a computed bucket index. The key calculation depends on the schema:
+
+- **Schema > 0** (fine-grained): `math.Frexp` decomposes the value, then `sort.SearchFloat64s` on precomputed bounds determines the sub-bucket within the octave.
+- **Schema <= 0** (coarser): the exponent from `math.Frexp` is shifted by `(1 << -schema) - 1` and right-shifted to merge adjacent buckets.
+
+Values within `zeroThreshold` go to a dedicated zero bucket. Positive/negative observations go to separate maps:
+
+```go
+// prom_histogram.go:708
+func addToBucket(buckets *sync.Map, key int, increment int64) bool
+```
+
+**Key type/iterator signatures:**
+
+```go
+// histogram.go:35   — the decoded histogram data model
+type Histogram struct { ... }
+
+// histogram.go:481  — iterates regular buckets
+type regularBucketIterator struct { baseBucketIterator[uint64, int64] }
+
+// histogram.go:530  — iterates with cumulative counts (for Prometheus exposition)
+type cumulativeBucketIterator struct { ... }
+
+// prom_histogram.go:613 — runtime mutable counts (hot/cold swapping)
+type histogramCounts struct { ... }
+```
+
+**Cumulative counting for output** happens in `histogram.Write` (`prom_histogram.go:779`), which iterates `coldCounts.buckets`, accumulating a running `cumCount` to produce cumulative bucket values for the Prometheus exposition format.

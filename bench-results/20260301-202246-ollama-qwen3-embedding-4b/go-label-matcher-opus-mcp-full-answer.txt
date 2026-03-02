@@ -1,0 +1,31 @@
+Here's the summary from `labels_matcher.go`:
+
+**`MatchType`** is an `int` enum with four variants:
+
+| Constant         | String | Meaning               |
+|------------------|--------|-----------------------|
+| `MatchEqual`     | `=`    | Exact equality        |
+| `MatchNotEqual`  | `!=`   | Not equal             |
+| `MatchRegexp`    | `=~`   | Regex match           |
+| `MatchNotRegexp` | `!~`   | Negative regex match  |
+
+**`Matcher`** struct (line 46–53):
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher  // unexported, set only for regex types
+}
+```
+
+**`NewMatcher`** constructor (line 55–70):
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error)
+```
+
+It populates `Type`, `Name`, and `Value` directly. If the type is `MatchRegexp` or `MatchNotRegexp`, it also compiles a `FastRegexMatcher` from the value string, returning an error if the regex is invalid. For equality types, `re` stays `nil`.
+
+There's also a convenience wrapper `MustNewMatcher` (line 72) that panics on error, intended for tests.

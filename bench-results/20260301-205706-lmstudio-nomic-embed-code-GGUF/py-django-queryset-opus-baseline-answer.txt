@@ -1,0 +1,246 @@
+Here's how the Django QuerySet pipeline works, based on the fixture code in `testdata/fixtures/python/`:
+
+---
+
+## The Full Pipeline
+
+```
+Manager.filter(age__gt=30)
+  → get_queryset().filter(age__gt=30)
+    → _filter_or_exclude(negate=False)
+      → _chain()  (clone QuerySet + Query)
+        → _filter_or_exclude_inplace()
+          → Query.add_q(Q(age__gt=30))   ← no SQL yet
+
+# SQL runs only on evaluation (iteration, len, etc.)
+for user in qs:
+  → _fetch_all()
+    → ModelIterable.__iter__()
+      → query.get_compiler(using=db)
+        → compiler.execute_sql()  → actual SQL hits DB
+          → results_iter()  → Python values
+            → yield User instances
+```
+
+---
+
+## 1. Manager — The Entry Point
+
+**`django-manager.py`** — `Manager` is dynamically constructed by merging `BaseManager` with `QuerySet` methods:
+
+```python
+class BaseManager:
+    def get_queryset(self):
+        return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+
+    def all(self):
+        return self.get_queryset()
+
+    @classmethod
+    def _get_queryset_methods(cls, queryset_class):
+        # Dynamically copies public QuerySet methods onto the Manager
+        def create_method(name, method):
+            @wraps(method)
+            def manager_method(self, *args, **kwargs):
+                return getattr(self.get_queryset(), name)(*args, **kwargs)
+            return manager_method
+        ...
+
+    @classmethod
+    def from_queryset(cls, queryset_class, class_name=None):
+        return type(class_name, (cls,), {
+            "_queryset_class": queryset_class,
+            **cls._get_queryset_methods(queryset_class),
+        })
+
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+Every `Model.objects.filter(...)` call creates a fresh `QuerySet` via `get_queryset()`, then delegates to it. The Manager never holds state.
+
+---
+
+## 2. QuerySet — Lazy Evaluation + Immutable Chaining
+
+**`django-query.py:302+`** — The core abstraction:
+
+```python
+class QuerySet(AltersData):
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._query = query or sql.Query(self.model)
+        self._result_cache = None        # None = unevaluated
+        self._iterable_class = ModelIterable
+        ...
+```
+
+**`_result_cache = None`** is the key to lazy evaluation — SQL only runs when something forces evaluation (`__iter__`, `__len__`, `__bool__`, `count()`, `exists()`, etc.).
+
+### Chaining via `_chain()` / `_clone()`
+
+Every filter/order/slice operation returns a **new** QuerySet:
+
+```python
+def _chain(self):
+    obj = self._clone()
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+        obj._sticky_filter = False
+    return obj
+
+def _clone(self):
+    c = self.__class__(
+        model=self.model,
+        query=self.query.chain(),   # deep-copies the Query object
+        using=self._db,
+        hints=self._hints,
+    )
+    c._sticky_filter = self._sticky_filter
+    c._for_write = self._for_write
+    c._prefetch_related_lookups = self._prefetch_related_lookups[:]
+    ...
+    return c
+```
+
+This means `qs1 = User.objects.filter(active=True)` and `qs2 = qs1.filter(age__gt=30)` are independent — `qs1` is unmodified.
+
+---
+
+## 3. Filter Pipeline — Q Objects → Query Tree
+
+```python
+def filter(self, *args, **kwargs):
+    return self._filter_or_exclude(False, args, kwargs)
+
+def exclude(self, *args, **kwargs):
+    return self._filter_or_exclude(True, args, kwargs)
+
+def _filter_or_exclude(self, negate, args, kwargs):
+    if (args or kwargs) and self.query.is_sliced:
+        raise TypeError("Cannot filter a query once a slice has been taken.")
+    clone = self._chain()
+    clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))
+    else:
+        self._query.add_q(Q(*args, **kwargs))
+```
+
+**`Q` objects** are composable condition nodes:
+- `Q(name='John')` → `WHERE name = 'John'`
+- `Q(age__gt=30) & Q(active=True)` → `WHERE age > 30 AND active = 1`
+- `Q(age=30) | Q(age=40)` → `WHERE age = 30 OR age = 40`
+- `~Q(active=False)` → `WHERE NOT (active = 0)`
+- `Q(user__profile__verified=True)` → auto-JOINs across relations
+
+The `__` notation (e.g. `age__gt`) is parsed to extract field name (`age`), lookup type (`gt`), and value (`30`), which the compiler maps to SQL operators.
+
+`Query.add_q()` adds these to the internal WHERE clause tree — **still no SQL generated**.
+
+---
+
+## 4. Other Chainable Methods — Same Pattern
+
+```python
+def order_by(self, *field_names):
+    obj = self._chain()
+    obj.query.clear_ordering(force=True, clear_default=False)
+    obj.query.add_ordering(*field_names)
+    return obj
+
+def select_related(self, *fields):
+    obj = self._chain()
+    if fields == (None,):
+        obj.query.select_related = False
+    elif fields:
+        obj.query.add_select_related(fields)
+    else:
+        obj.query.select_related = True
+    return obj
+```
+
+Every method: `_chain()` → modify clone → return clone.
+
+---
+
+## 5. Evaluation — Three-Layer Iteration
+
+When you iterate a QuerySet:
+
+```python
+def __iter__(self):
+    """
+    Three nested iterators:
+      1. sql.compiler.execute_sql()   — cursor.fetchmany(100)
+      2. sql.compiler.results_iter()  — converts to Python values
+      3. self._iterable_class         — turns rows into model objects
+    """
+    self._fetch_all()
+    return iter(self._result_cache)
+
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self._iterable_class(self))
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+```
+
+The `ModelIterable` drives SQL compilation:
+
+```python
+class ModelIterable(BaseIterable):
+    def __iter__(self):
+        queryset = self.queryset
+        db = queryset.db
+        compiler = queryset.query.get_compiler(using=db)
+        results = compiler.execute_sql(
+            chunked_fetch=self.chunked_fetch, chunk_size=self.chunk_size
+        )
+        select, klass_info, annotation_col_map = (
+            compiler.select, compiler.klass_info, compiler.annotation_col_map,
+        )
+        # ... hydrate model instances from rows
+```
+
+The `Query.get_compiler()` returns a `SQLCompiler` that walks the Query's tree (filters, joins, ordering, limits) and emits the final SQL string.
+
+---
+
+## 6. The `query` Property — Deferred Filter Resolution
+
+```python
+@property
+def query(self):
+    if self._deferred_filter:
+        negate, args, kwargs = self._deferred_filter
+        self._filter_or_exclude_inplace(negate, args, kwargs)
+        self._deferred_filter = None
+    return self._query
+
+@query.setter
+def query(self, value):
+    if value.values_select:
+        self._iterable_class = ValuesIterable
+    self._query = value
+```
+
+Filters can be deferred and only applied when the Query is actually accessed — another lazy evaluation optimization.
+
+---
+
+## Summary
+
+| Layer | Class | Role |
+|-------|-------|------|
+| Entry point | `Manager` | Proxies to fresh `QuerySet` via `get_queryset()` |
+| Lazy container | `QuerySet` | Chains via `_chain()`/`_clone()`, caches in `_result_cache` |
+| Condition tree | `Q` | Composable filter nodes (`&`, `|`, `~`) |
+| SQL builder | `Query` | Accumulates filters/joins/ordering, no SQL until compiled |
+| SQL generator | `SQLCompiler` | Walks Query tree → SQL string |
+| Hydration | `ModelIterable` | Rows → model instances |
+
+The key insight: **nothing touches the database until evaluation**. Every `.filter()`, `.exclude()`, `.order_by()` just clones and mutates a Query tree. SQL is generated and executed only when results are materialized (`list()`, `for`, `len()`, etc.).

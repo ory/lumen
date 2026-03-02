@@ -1,0 +1,67 @@
+Here's how histogram bucket counting works in this codebase:
+
+## Bucket Counting Flow
+
+There are two layers: **classic (fixed) buckets** and **native (sparse/exponential) buckets**.
+
+### Key Function Signatures
+
+**Finding which bucket an observation falls into:**
+
+```go
+// prom_histogram.go:866 — Binary/linear search over upper bounds
+func (h *histogram) findBucket(v float64) int
+```
+
+For small arrays (<35 elements) it does a linear scan; for larger ones it uses `sort.SearchFloat64s`.
+
+**Recording an observation:**
+
+```go
+// prom_histogram.go:900 — Dispatches to hot counts
+func (h *histogram) observe(v float64, bucket int)
+
+// prom_histogram.go:655 — Atomically increments the bucket counter
+func (hc *histogramCounts) observe(v float64, bucket int, doSparse bool)
+```
+
+Inside `histogramCounts.observe`, for **classic buckets** it simply does `atomic.AddUint64(&hc.buckets[bucket], 1)`. For **native (sparse) buckets**, it computes an exponential bucket key using `math.Frexp` to decompose the value into fraction and exponent, then:
+
+- **Schema > 0**: binary searches `nativeHistogramBounds[schema]` for the fractional part, combines with the exponent: `key = sort.SearchFloat64s(bounds, frac) + (exp-1)*len(bounds)`
+- **Schema <= 0**: uses the exponent directly, shifted by the schema: `key = (exp + offset) >> -schema`
+
+Then calls `addToBucket` based on sign:
+
+```go
+// prom_histogram.go:1534 — Atomically increment a sparse bucket, creating it if needed
+func addToBucket(buckets *sync.Map, key int, increment int64) bool
+```
+
+**Limiting bucket count:**
+
+```go
+// prom_histogram.go:919 — Reduces resolution if too many buckets exist
+func (h *histogram) limitBuckets(counts *histogramCounts, value float64, bucket int)
+```
+
+**Serializing buckets into spans + deltas:**
+
+```go
+// prom_histogram.go:1477 — Converts sync.Map buckets into BucketSpan/delta encoding
+func makeBuckets(buckets *sync.Map) ([]*dto.BucketSpan, []int64)
+```
+
+This collects all keys from the `sync.Map`, sorts them, and encodes as spans (with offsets for gaps) and delta-encoded counts.
+
+**On the Prometheus data model side** (`histogram.go`), the `Histogram` struct stores pre-encoded `PositiveSpans`/`NegativeSpans` (slice of `Span{Offset, Length}`) and `PositiveBuckets`/`NegativeBuckets` (delta-encoded `int64` counts). Iteration reconstructs absolute counts:
+
+```go
+// histogram.go:216
+func (h *Histogram) PositiveBucketIterator() BucketIterator[uint64]
+// histogram.go:223
+func (h *Histogram) NegativeBucketIterator() BucketIterator[uint64]
+// histogram.go:232
+func (h *Histogram) CumulativeBucketIterator() BucketIterator[uint64]
+```
+
+The iterator's `Next()` (`histogram.go:496`) accumulates deltas: `r.currCount += r.buckets[r.bucketsIdx]` to reconstruct the absolute count per bucket.

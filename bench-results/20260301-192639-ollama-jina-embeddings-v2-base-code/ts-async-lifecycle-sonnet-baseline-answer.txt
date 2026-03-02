@@ -1,0 +1,184 @@
+Here's how these systems compose together:
+
+---
+
+## Async Operations, Cancellation & Lifecycle in the TypeScript Fixtures
+
+### Core Building Blocks
+
+**`IDisposable` is the foundation everything builds on:**
+```typescript
+interface IDisposable { dispose(): void; }
+```
+Every resource — event subscriptions, timers, emitters, promise sources — is a disposable.
+
+**`CancellationToken` bridges events and promises:**
+```typescript
+interface CancellationToken {
+    readonly isCancellationRequested: boolean;
+    readonly onCancellationRequested: Event<void>; // ← an Event, not a callback!
+}
+```
+The key insight: `onCancellationRequested` is an `Event<void>`, so cancellation *is* an event.
+
+---
+
+### How Cancellation Works
+
+`CancellationTokenSource` owns a `MutableToken`. When `.cancel()` is called:
+
+```
+CancellationTokenSource.cancel()
+    → MutableToken._isCancelled = true
+    → Emitter<void>.fire(undefined)          // fires the event
+    → all onCancellationRequested listeners  // notified synchronously
+    → Promise rejection (CancellationError)  // via createCancelablePromise
+    → IDisposable.dispose()                  // cleanup
+```
+
+**`createCancelablePromise`** wires this together:
+```typescript
+function createCancelablePromise<T>(callback: (token: CancellationToken) => Promise<T>): CancelablePromise<T>
+```
+It creates a `CancellationTokenSource`, passes the token to the callback, and subscribes to `onCancellationRequested` to reject the promise. If the result is `IDisposable`, it auto-disposes it on cancellation.
+
+**Hierarchical cancellation** via parent tokens:
+```typescript
+new CancellationTokenSource(parentToken)
+// parent's onCancellationRequested → calls this.cancel
+```
+
+**`CancellationTokenPool`** fires when *all* tokens in the pool are cancelled — used for aggregating multiple cancellation sources.
+
+---
+
+### Lifecycle System
+
+Three containers for managing disposable lifetimes:
+
+| Class | Purpose |
+|---|---|
+| `DisposableStore` | Unordered set; `.add()`, `.clear()`, `.dispose()` |
+| `MutableDisposable<T>` | Single slot; setting a new value disposes the old one |
+| `DisposableMap<K,V>` | Keyed map; overwriting a key disposes the previous value |
+
+`Disposable` (abstract base class) owns a `_store: DisposableStore`. Subclasses call `this._register(x)` to track children:
+```typescript
+abstract class Disposable implements IDisposable {
+    protected readonly _store = new DisposableStore();
+    protected _register<T extends IDisposable>(o: T): T { return this._store.add(o); }
+    dispose() { this._store.dispose(); }
+}
+```
+`DisposableTracker` wraps every disposable with parent-child tracking for leak detection in tests.
+
+---
+
+### Event System
+
+`Event<T>` is just a function type:
+```typescript
+interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+Subscribing returns an `IDisposable` — you register it in whatever lifecycle store makes sense. This is how events integrate cleanly with the disposable system:
+```typescript
+this._register(someEvent(e => this.handle(e)));  // auto-unsubscribes on dispose
+```
+
+`Emitter<T>` produces `Event<T>` values. Key lifecycle hooks on `EmitterOptions`:
+- `onWillAddFirstListener` / `onDidRemoveLastListener` — activate/deactivate the source
+- `onListenerError` — per-emitter error handling
+
+---
+
+### Throttle & Debounce as Event Transformers
+
+Both are implemented in the `Event` namespace as *event-to-event* transforms, not just timer utilities:
+
+```typescript
+Event.debounce<I,O>(event, merge, delay, leading?, flushOnListenerRemove?): Event<O>
+Event.throttle<I,O>(event, merge, delay, leading?, trailing?): Event<O>
+```
+
+They use the `onWillAddFirstListener`/`onDidRemoveLastListener` hooks — the timer/subscription is only active while there are listeners. Both accept `MicrotaskDelay` as an alternative to a numeric delay (uses `queueMicrotask` instead of `setTimeout`).
+
+For **promise-based** throttling/debouncing, there are dedicated classes:
+
+```
+Throttler    — runs one promise at a time; queues next, discards middle ones
+Delayer<T>   — debounces task execution; .cancel() rejects with CancellationError
+ThrottledDelayer<T> — Delayer whose task runs through a Throttler
+```
+
+Both `Throttler` and `Delayer` implement `IDisposable`. `Throttler` holds a `CancellationTokenSource` internally — disposing it cancels any pending work.
+
+---
+
+### Async Emitter: Events + Cancellation Tokens
+
+`AsyncEmitter<T>` extends `Emitter` for async listeners that need to delay the event:
+```typescript
+class AsyncEmitter<T extends IWaitUntil> extends Emitter<T> {
+    async fireAsync(data, token: CancellationToken, promiseJoin?): Promise<void>
+}
+interface IWaitUntil {
+    token: CancellationToken;
+    waitUntil(thenable: Promise<unknown>): void;
+}
+```
+Each listener can call `event.waitUntil(promise)` to defer completion. `fireAsync` awaits all thenables per listener before moving to the next, and checks `token.isCancellationRequested` between listeners — allowing the caller to abort mid-delivery.
+
+---
+
+### Composition Hierarchy
+
+```
+IDisposable
+├── Disposable (abstract base — owns DisposableStore)
+├── DisposableStore
+├── DisposableMap<K,V>
+├── MutableDisposable<T>
+├── Emitter<T>
+│   ├── AsyncEmitter<T extends IWaitUntil>   ← async + CancellationToken
+│   ├── PauseableEmitter<T>                  ← pause/resume queuing
+│   │   ├── DebounceEmitter<T>
+│   │   └── MicrotaskEmitter<T>
+│   └── EventMultiplexer<T>                  ← fans in multiple events
+├── Throttler                                ← CancellationTokenSource inside
+├── Delayer<T>                               ← cancel() → CancellationError
+└── CancellationTokenSource                  ← owns MutableToken (Emitter<void>)
+
+CancellationToken (interface)
+└── MutableToken                             ← wraps Emitter<void>
+
+CancelablePromise<T> extends Promise<T>
+└── created by createCancelablePromise()     ← subscribes to token, owns source
+```
+
+---
+
+### The Integration Pattern
+
+The whole system composes around one idiom: **disposables scope everything**.
+
+```typescript
+class MyService extends Disposable {
+    constructor() {
+        // 1. Debounce an event stream
+        const debouncedChange = Event.debounce(rawChange, (_, e) => e, 300);
+
+        // 2. Subscribe — auto-unsubscribes when this.dispose() is called
+        this._register(debouncedChange(async e => {
+            // 3. Wrap async work in a cancelable promise
+            this._currentOp = createCancelablePromise(token =>
+                this._doWork(e, token)
+            );
+            await this._currentOp;
+        }));
+    }
+}
+```
+
+Cancellation tokens flow *into* async work; disposables flow *out* of subscriptions. The event system connects them, and `DisposableStore` ensures everything is cleaned up when the service dies.

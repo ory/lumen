@@ -1,0 +1,152 @@
+Here's the end-to-end explanation of TSDB compaction:
+
+---
+
+## 1. The `Compactor` Interface (`compact.go:52-77`)
+
+The top-level abstraction with three methods:
+
+```go
+type Compactor interface {
+    Plan(dir string) ([]string, error)
+    Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error)
+    Compact(dest string, dirs []string, open []*Block) ([]ulid.ULID, error)
+}
+```
+
+- **`Plan`** — scans the data directory and returns block directories eligible for compaction
+- **`Write`** — persists a single `BlockReader` (e.g. the in-memory Head) to a new on-disk block
+- **`Compact`** — merges multiple existing on-disk blocks into one new block
+
+## 2. `LeveledCompactor` — the implementation (`compact.go:79-93`)
+
+```go
+type LeveledCompactor struct {
+    ranges                      []int64          // time ranges per compaction level
+    chunkPool                   chunkenc.Pool
+    mergeFunc                   storage.VerticalChunkSeriesMergeFunc
+    enableOverlappingCompaction bool
+    blockExcludeFunc            BlockExcludeFilterFunc
+    // ... metrics, logger, postings encoder, etc.
+}
+```
+
+The `ranges` slice is the key parameter — it defines the leveled compaction strategy (e.g. `[2h, 6h, 18h, 54h]`). Blocks get progressively merged into larger time ranges.
+
+### Planning (`compact.go:248-328`)
+
+`Plan` → reads block metadata from disk → delegates to `plan(dms)` which applies three strategies in priority order:
+
+1. **Overlapping blocks** (`selectOverlappingDirs`, `compact.go:369-394`) — if `enableOverlappingCompaction` is true, any blocks with overlapping time ranges are selected first (vertical compaction).
+
+2. **Leveled range compaction** (`selectDirs`, `compact.go:330-367`) — iterates through `ranges[1:]`, calls `splitByRange` to group blocks into aligned time windows, and picks groups with >1 block that either span the full range or are older than the newest block.
+
+3. **Tombstone cleanup** — blocks with >5% tombstones (or 100% deleted series) are compacted to reclaim space.
+
+The most recent block is always excluded from leveled compaction to give backup tools a window.
+
+### Compacting (`compact.go:483-584`)
+
+`Compact` delegates to `CompactWithBlockPopulator`:
+1. Opens each block directory (reusing already-open `*Block` when possible)
+2. Merges metadata via `CompactBlockMetas` (union of time ranges, incremented compaction level)
+3. Calls `write()` which creates a temp dir, opens chunk + index writers, calls `BlockPopulator.PopulateBlock` to merge all series, then atomically renames into place
+4. If the result has 0 samples, source blocks are marked `Deletable` and no block is produced
+
+### Writing head to block (`compact.go:586-636`)
+
+`Write` creates a level-1 block from a `BlockReader` (typically a `RangeHead`), sets up parent info in the compaction metadata, and delegates to the same `write()` internal method.
+
+## 3. How the DB Triggers Compaction
+
+### The `DB` struct (`db.go:281-342`)
+
+Key fields:
+```go
+type DB struct {
+    compactor      Compactor
+    compactc       chan struct{}   // signal channel
+    autoCompact    bool
+    compactCancel  context.CancelFunc
+    cmtx           sync.Mutex     // serializes compactions and deletions
+    // ...
+}
+```
+
+### Initialization (`db.go:990-1059`)
+
+During `open()`, either `opts.NewCompactorFunc` is called or a default `LeveledCompactor` is created via `NewLeveledCompactorWithOptions`.
+
+### Three trigger paths:
+
+**a) Appender commit** (`db.go:1360-1372`)
+
+```go
+func (a dbAppender) Commit() error {
+    err := a.Appender.Commit()
+    if a.db.head.compactable() {
+        select {
+        case a.db.compactc <- struct{}{}:
+        default:
+        }
+    }
+    return err
+}
+```
+
+Every time samples are committed, if the head is compactable, a signal is sent on `compactc`.
+
+**b) Periodic reload** (`db.go:1175-1243`)
+
+The `DB.run` goroutine fires on `BlockReloadInterval` ticks — it reloads blocks, then sends a compaction signal. It also checks for stale series ratio and can trigger `CompactStaleHead` early.
+
+**c) `db.compactc` consumer** (also in `DB.run`)
+
+```go
+case <-db.compactc:
+    if db.autoCompact {
+        if err := db.Compact(ctx); err != nil {
+            backoff = exponential(backoff, 1*time.Second, 1*time.Minute)
+        }
+    }
+```
+
+### `DB.Compact` — the main orchestrator (`db.go:1410-1506`)
+
+Runs in three phases:
+
+1. **Head compaction loop** — while `head.compactable()` is true (head has enough data beyond chunkRange/2):
+   - Optionally waits for `CompactionDelay`
+   - Creates a `RangeHead` with `[mint, maxt-1]`
+   - Waits for overlapping appenders to finish
+   - Calls `db.compactHead(rh)` which uses `compactor.Write()` to persist the head range to a block, reloads blocks, then truncates head memory
+
+2. **OOO head compaction** — if the head was compacted, also compacts out-of-order data via `db.compactOOOHead(ctx)`
+
+3. **Block compaction** (`db.compactBlocks`, `db.go:1719-1763`) — loops calling `compactor.Plan()` → `compactor.Compact()` → `reloadBlocks()` until no more plans exist. Aborts early if the head becomes compactable again (head takes priority).
+
+### `compactHead` (`db.go:1634-1662`)
+
+```go
+func (db *DB) compactHead(head *RangeHead) error {
+    uids, err := db.compactor.Write(db.dir, head, head.MinTime(), head.BlockMaxTime(), nil)
+    // ... reload blocks, truncate head memory, rebuild symbol table
+}
+```
+
+---
+
+## End-to-end flow summary
+
+```
+Samples appended → dbAppender.Commit()
+    → head.compactable()? → signal compactc
+        → DB.run picks up signal
+            → DB.Compact()
+                1. Head → compactHead → compactor.Write → new level-1 block on disk
+                2. OOO head → compactOOOHead
+                3. compactBlocks loop:
+                    → compactor.Plan (overlapping? leveled? tombstones?)
+                    → compactor.Compact → merge blocks → new higher-level block
+                    → reloadBlocks (cleans up old blocks via parent info)
+```

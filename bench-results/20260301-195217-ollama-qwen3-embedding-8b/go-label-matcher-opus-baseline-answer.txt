@@ -1,0 +1,53 @@
+Both `labels_matcher.go` and `matcher.go` are identical files. Here's the answer:
+
+## MatchType (enum)
+
+Defined at `labels_matcher.go:22`:
+
+```go
+type MatchType int
+```
+
+Four variants via `iota` (lines 25-30):
+
+| Constant         | String | Meaning                     |
+|------------------|--------|-----------------------------|
+| `MatchEqual`     | `=`    | Exact equality              |
+| `MatchNotEqual`  | `!=`   | Not equal                   |
+| `MatchRegexp`    | `=~`   | Matches regex               |
+| `MatchNotRegexp` | `!~`   | Does not match regex        |
+
+## Matcher struct
+
+Defined at `labels_matcher.go:47-53`:
+
+```go
+type Matcher struct {
+    Type  MatchType
+    Name  string
+    Value string
+    re    *FastRegexMatcher  // unexported; only set for regex types
+}
+```
+
+## Constructor — `NewMatcher`
+
+Defined at `labels_matcher.go:56-70`:
+
+```go
+func NewMatcher(t MatchType, n, v string) (*Matcher, error) {
+    m := &Matcher{Type: t, Name: n, Value: v}
+    if t == MatchRegexp || t == MatchNotRegexp {
+        re, err := NewFastRegexMatcher(v)
+        if err != nil {
+            return nil, err
+        }
+        m.re = re
+    }
+    return m, nil
+}
+```
+
+It sets `Type`, `Name`, and `Value` directly. For the two regex match types (`MatchRegexp`, `MatchNotRegexp`), it additionally compiles a `FastRegexMatcher` from the value string — returning an error if the regex is invalid.
+
+There's also a test-only convenience wrapper `MustNewMatcher` (line 73) that panics on error instead of returning it.

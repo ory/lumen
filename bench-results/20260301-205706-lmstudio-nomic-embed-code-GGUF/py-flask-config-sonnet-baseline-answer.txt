@@ -1,0 +1,81 @@
+## Flask Configuration Loading
+
+The `Config` class is defined in `testdata/fixtures/python/flask-config.py` and inherits directly from `dict`.
+
+### Class Hierarchy
+
+```
+dict (built-in)
+  └── Config
+```
+
+`Config` stores all configuration values as dict entries, with a `root_path` attribute used to resolve relative file paths.
+
+### ConfigAttribute Descriptor (lines 20–47)
+
+A separate descriptor class that creates a proxy between Flask app attributes and the config dict:
+
+```python
+class ConfigAttribute(t.Generic[T]):
+    def __get__(self, obj, owner): return obj.config[self.__name__]
+    def __set__(self, obj, value): obj.config[self.__name__] = value
+```
+
+This lets `app.DEBUG` transparently read/write `app.config["DEBUG"]`.
+
+---
+
+### Loading Methods
+
+**Core rule across all methods: only UPPERCASE keys are stored.**
+
+| Method | Source | Mechanism |
+|---|---|---|
+| `from_object(obj)` | module/class/import string | `dir(obj)` → filters `.isupper()` → `getattr` |
+| `from_pyfile(filename)` | `.py`/`.cfg` file | `exec()` into a temporary module → delegates to `from_object` |
+| `from_file(filename, load)` | any file (JSON, TOML, etc.) | calls `load(f)` → delegates to `from_mapping` |
+| `from_mapping(mapping)` | dict / kwargs | filters `.isupper()` keys directly |
+| `from_envvar(var)` | env var → file path | reads `os.environ[var]` → delegates to `from_pyfile` |
+| `from_prefixed_env(prefix)` | env vars like `FLASK_*` | strips prefix, JSON-parses values, supports `__` for nesting |
+
+### Key Implementation Details
+
+**`from_pyfile` (line 187)** — executes a file as Python code:
+```python
+d = types.ModuleType("config")
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)
+```
+
+**`from_prefixed_env` (line 126)** — handles nested keys via `__`:
+```python
+# FLASK_DB__HOST=localhost → config["DB"]["HOST"] = "localhost"
+*parts, tail = key.split("__")
+# traverses/creates intermediate dicts
+```
+
+**`from_object` (line 218)** — accepts both import strings and live objects:
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+**`get_namespace` (line 323)** — extracts a config sub-section by prefix:
+```python
+app.config['IMAGE_STORE_TYPE'] = 'fs'
+app.config.get_namespace('IMAGE_STORE_')
+# → {'type': 'fs', ...}  (lowercased, prefix trimmed by default)
+```
+
+### Loading Chain
+
+```
+from_envvar  ──▶  from_pyfile  ──▶  from_object
+from_file    ──▶  from_mapping
+from_prefixed_env  (direct dict writes)
+```
+
+The design is composable: file-based loaders ultimately call `from_object` or `from_mapping`, which are the two primitive setters.

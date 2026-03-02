@@ -1,0 +1,201 @@
+Here's a thorough explanation of how Django's QuerySet pipeline works, based on the actual source code in this fixture.
+
+---
+
+## Django QuerySet Pipeline
+
+### 1. The Manager — Entry Point (`django-manager.py`)
+
+The `Manager` is a model class attribute that hands out `QuerySet` objects. It's attached via the descriptor protocol:
+
+```python
+# django-manager.py:120-126
+def contribute_to_class(self, cls, name):
+    self.name = self.name or name
+    self.model = cls
+    setattr(cls, name, ManagerDescriptor(self))  # installs on the class
+    cls._meta.add_manager(self)
+```
+
+`ManagerDescriptor.__get__` (lines 183-204) raises `AttributeError` if accessed on an instance (`obj.objects` → error), only allowing class-level access (`MyModel.objects`).
+
+`Manager` is itself built dynamically:
+
+```python
+# django-manager.py:176-177
+class Manager(BaseManager.from_queryset(QuerySet)):
+    pass
+```
+
+`from_queryset` (lines 108-118) creates a new class that copies every public `QuerySet` method onto the manager via `_get_queryset_methods`. Each copied method delegates through `get_queryset()`:
+
+```python
+# django-manager.py:86-87
+def manager_method(self, *args, **kwargs):
+    return getattr(self.get_queryset(), name)(*args, **kwargs)
+```
+
+`get_queryset` (lines 150-155) is the root of everything:
+
+```python
+def get_queryset(self):
+    return self._queryset_class(model=self.model, using=self._db, hints=self._hints)
+```
+
+---
+
+### 2. QuerySet — Lazy, Immutable Chain (`django-query.py:303`)
+
+```python
+class QuerySet(AltersData):
+    def __init__(self, model=None, query=None, using=None, hints=None):
+        self.model = model
+        self._query = query or sql.Query(self.model)  # the SQL builder
+        self._result_cache = None                     # None = not yet evaluated
+        self._iterable_class = ModelIterable
+        self._defer_next_filter = False
+        self._deferred_filter = None
+        ...
+```
+
+**Key invariant:** `_result_cache = None` means unevaluated. The QuerySet holds a `Query` object that accumulates SQL clauses but never hits the DB until forced.
+
+#### Chaining is copy-on-write
+
+Every filter/exclude/order_by/etc. calls `_chain()` first:
+
+```python
+# django-query.py:2137-2146
+def _chain(self):
+    obj = self._clone()          # deep copy of self
+    if obj._sticky_filter:
+        obj.query.filter_is_sticky = True
+        obj._sticky_filter = False
+    return obj
+```
+
+This means `qs.filter(x=1).filter(y=2)` creates two independent QuerySet objects sharing no mutable state — the original is never modified.
+
+---
+
+### 3. Filter Pipeline
+
+`filter()` → `_filter_or_exclude()` → `_filter_or_exclude_inplace()` → `query.add_q(Q(...))`
+
+```python
+# django-query.py:1624-1658
+def filter(self, *args, **kwargs):
+    self._not_support_combined_queries("filter")
+    return self._filter_or_exclude(False, args, kwargs)
+
+def exclude(self, *args, **kwargs):
+    return self._filter_or_exclude(True, args, kwargs)
+
+def _filter_or_exclude(self, negate, args, kwargs):
+    if (args or kwargs) and self.query.is_sliced:
+        raise TypeError("Cannot filter a query once a slice has been taken.")
+    clone = self._chain()
+    if self._defer_next_filter:
+        clone._deferred_filter = negate, args, kwargs  # lazy application
+    else:
+        clone._filter_or_exclude_inplace(negate, args, kwargs)
+    return clone
+
+def _filter_or_exclude_inplace(self, negate, args, kwargs):
+    if negate:
+        self._query.add_q(~Q(*args, **kwargs))   # NOT(...)
+    else:
+        self._query.add_q(Q(*args, **kwargs))    # AND(...)
+```
+
+**`Q` objects** represent composable WHERE conditions. `~Q(...)` is negation, `Q(...) | Q(...)` is OR. They're passed directly to the `Query` object via `add_q`.
+
+**Deferred filter** (lines 1644-1648): when `_defer_next_filter` is set, the filter application is stored as `_deferred_filter` and applied lazily when `.query` is accessed:
+
+```python
+# django-query.py:324-329
+@property
+def query(self):
+    if self._deferred_filter:
+        negate, args, kwargs = self._deferred_filter
+        self._filter_or_exclude_inplace(negate, args, kwargs)
+        self._deferred_filter = None
+    return self._query
+```
+
+---
+
+### 4. The Query Class — SQL Accumulator
+
+`sql.Query(self.model)` is the internal SQL builder. It holds:
+- WHERE conditions (via `add_q`)
+- ORDER BY, GROUP BY, LIMIT/OFFSET
+- JOIN tables
+- SELECT columns, annotations, extra
+
+`add_q(Q(...))` translates keyword lookups like `name__icontains="foo"` into SQL tree nodes. The double-underscore syntax is parsed into field traversals and lookup types (e.g. `icontains` → `LIKE '%foo%'`).
+
+`Query.get_compiler(db)` returns a backend-specific `SQLCompiler` that knows how to render the tree to a SQL string for the target database.
+
+---
+
+### 5. Evaluation — When SQL Actually Runs
+
+Evaluation is triggered by any of: iteration, `list()`, `bool()`, slicing with step, `len()`, `repr()`, etc. They all funnel into `_fetch_all`:
+
+```python
+# django-query.py:2360-2364 (async-capable QuerySet)
+def _fetch_all(self):
+    if self._result_cache is None:
+        self._result_cache = list(self.iterator())
+    if self._prefetch_related_lookups and not self._prefetch_done:
+        self._prefetch_related_objects()
+
+# django-query.py:2374-2376
+def __iter__(self):
+    self._fetch_all()
+    return iter(self._result_cache)
+```
+
+Once populated, `_result_cache` is reused — the DB is only hit once per QuerySet instance.
+
+---
+
+### 6. The Iterator Stack (Three Layers)
+
+`django-query.py:396-412` documents this precisely:
+
+```
+sql.compiler.execute_sql()   → fetches rows in batches of 100 via cursor.fetchmany()
+sql.compiler.results_iter()  → yields one row at a time as tuples, applies Python value converters
+self.iterator() / ModelIterable.__iter__() → converts tuples → model instances
+```
+
+The iterable class is swappable:
+- `ModelIterable` → yields `Model` instances (default)
+- `ValuesIterable` → yields `dict` (used by `.values()`)
+- `ValuesListIterable` → yields `tuple` (used by `.values_list()`)
+- `FlatValuesListIterable` → yields scalar (used by `.values_list(flat=True)`)
+
+`ModelIterable.__iter__` uses `model_cls.from_db(db, names, values)` to construct instances (line 203).
+
+---
+
+### Summary Flow
+
+```
+MyModel.objects                          # Manager.__get__ via ManagerDescriptor
+  .filter(status="active")              # returns new QuerySet (clone), adds Q to Query
+  .exclude(name__startswith="tmp")      # returns another QuerySet clone, adds ~Q
+  .order_by("-created_at")             # adds ORDER BY clause to Query
+  # ↑ nothing hits DB yet
+
+for obj in qs:                          # __iter__ → _fetch_all → iterator()
+                                        #   → ModelIterable.__iter__
+                                        #     → query.get_compiler(db)
+                                        #       → compiler.execute_sql()  ← DB hit here
+                                        #         → results_iter()
+                                        #           → model.from_db() per row
+```
+
+Every method that returns a QuerySet is a no-op against the database. The SQL only executes when you consume the result. The `Query` object is an append-only tree of SQL clauses; the `SQLCompiler` renders it to SQL at evaluation time.

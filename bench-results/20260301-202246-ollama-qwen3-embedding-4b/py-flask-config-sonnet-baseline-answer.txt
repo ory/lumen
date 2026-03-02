@@ -1,0 +1,138 @@
+## Flask Config — How Configuration Loading Works
+
+### Class Hierarchy
+
+```
+dict
+ └── Config
+```
+
+`Config` (`flask-config.py:50`) is a plain subclass of `dict`. It stores configuration as key-value pairs and adds specialized loading methods on top. The constructor takes a `root_path` (relative filenames resolve against it) and optional defaults:
+
+```python
+def __init__(self, root_path, defaults=None):
+    super().__init__(defaults or {})
+    self.root_path = root_path
+```
+
+---
+
+### Loading Methods
+
+**Invariant across all methods:** only **uppercase keys** are ever stored. This lets you keep lowercase helper variables in config files without polluting the config.
+
+---
+
+#### 1. `from_object(obj)` — from a Python module or class
+
+```python
+if isinstance(obj, str):
+    obj = import_string(obj)   # import by dotted path
+for key in dir(obj):
+    if key.isupper():
+        self[key] = getattr(obj, key)
+```
+
+Accepts either an import path string (`"myapp.config.Production"`) or a live object (module, class instance). Iterates `dir()` and copies uppercase attributes. **Does not instantiate classes** — if you use `@property`, instantiate first.
+
+---
+
+#### 2. `from_pyfile(filename)` — execute a `.py`/`.cfg` file
+
+```python
+filename = os.path.join(self.root_path, filename)
+d = types.ModuleType("config")          # synthetic module
+d.__file__ = filename
+exec(compile(config_file.read(), filename, "exec"), d.__dict__)
+self.from_object(d)                     # delegate to from_object
+```
+
+Reads the file, compiles and `exec`s it into a fresh module namespace, then calls `from_object` on that module. So any Python is valid in a config file. `silent=True` swallows missing-file errors.
+
+---
+
+#### 3. `from_envvar(variable_name)` — indirection through an env var
+
+```python
+rv = os.environ.get(variable_name)
+return self.from_pyfile(rv, silent=silent)
+```
+
+A thin wrapper: reads an env var whose **value** is a file path, then delegates to `from_pyfile`. The canonical pattern for production deploys (`YOURAPPLICATION_SETTINGS=/etc/myapp/prod.cfg`).
+
+---
+
+#### 4. `from_prefixed_env(prefix="FLASK")` — bulk env var loading
+
+```python
+for key in sorted(os.environ):
+    if not key.startswith(f"{prefix}_"):
+        continue
+    value = json.loads(value)   # tries JSON, falls back to string
+    if "__" not in key:
+        self[key] = value
+    else:
+        # FLASK_DB__HOST → self["DB"]["HOST"]
+        *parts, tail = key.split("__")
+        traverse nested dicts, creating intermediates as needed
+        current[tail] = value
+```
+
+Scans all env vars for the prefix (default `FLASK_`), strips it, attempts JSON parsing on the value. Double-underscore (`__`) separates nested dict keys, so `FLASK_DB__HOST=localhost` sets `config["DB"]["HOST"]`.
+
+---
+
+#### 5. `from_file(filename, load)` — generic file loader
+
+```python
+with open(filename, "r" if text else "rb") as f:
+    obj = load(f)               # e.g. json.load or tomllib.load
+return self.from_mapping(obj)
+```
+
+Decouples file format from loading. Pass any callable that reads a file handle and returns a mapping:
+
+```python
+app.config.from_file("config.json", load=json.load)
+app.config.from_file("config.toml", load=tomllib.load, text=False)
+```
+
+---
+
+#### 6. `from_mapping(mapping, **kwargs)` — from a dict/kwargs
+
+```python
+for key, value in mappings.items():
+    if key.isupper():
+        self[key] = value
+return True
+```
+
+The lowest-level loader. All other dict-based methods ultimately converge here. Always returns `True`.
+
+---
+
+### Call Graph
+
+```
+from_envvar
+    └── from_pyfile
+            └── from_object  (copies uppercase attrs from a module)
+
+from_file
+    └── from_mapping         (filters to uppercase keys)
+
+from_prefixed_env            (direct self[key] = value assignment)
+```
+
+---
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| Inherits `dict` | Config is a real dict — supports `app.config["KEY"]`, `in`, iteration |
+| Uppercase-only filter | Lets config files contain lowercase helpers without noise |
+| `root_path` on the instance | Relative paths always resolve to the app's directory |
+| `from_pyfile` uses `exec` into a synthetic module | Any valid Python can appear in config files; then `from_object` reuses the uppercase filter |
+| `silent` parameter | Production deployments often start before config files exist; callers opt in to fail-silently |

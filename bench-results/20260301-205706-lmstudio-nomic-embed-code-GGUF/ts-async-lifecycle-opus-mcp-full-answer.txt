@@ -1,0 +1,177 @@
+## Async, Cancellation & Resource Lifecycle in the TypeScript Fixtures
+
+This codebase implements a deeply integrated system across four files: `lifecycle.ts`, `cancellation.ts`, `async.ts`, and `event.ts`. Here's how the pieces fit together.
+
+---
+
+### 1. Foundation: `IDisposable` and `DisposableStore` (`lifecycle.ts`)
+
+Everything builds on a single interface:
+
+```typescript
+export interface IDisposable {
+    dispose(): void;
+}
+```
+
+**`DisposableStore`** is the primary collection — it tracks a `Set<IDisposable>`, disposes all members on `.dispose()`, and warns if you add to an already-disposed store. It supports leak detection via `IDisposableTracker` (using `FinalizationRegistry` or stack-trace tracking).
+
+**`Disposable`** is the base class most components extend. It owns a `_store: DisposableStore` and provides `_register<T>(o: T): T` to add child disposables:
+
+```typescript
+export abstract class Disposable implements IDisposable {
+    protected readonly _store = new DisposableStore();
+    protected _register<T extends IDisposable>(o: T): T {
+        return this._store.add(o);
+    }
+    public dispose(): void {
+        this._store.dispose();
+    }
+}
+```
+
+**`MutableDisposable<T>`** holds a single swappable resource — setting `.value` auto-disposes the previous one.
+
+---
+
+### 2. Cancellation Tokens (`cancellation.ts`)
+
+The cancellation system is built on top of `IDisposable` and the event system:
+
+```typescript
+export interface CancellationToken {
+    readonly isCancellationRequested: boolean;
+    readonly onCancellationRequested: Event<void>;  // ← bridges to event system
+}
+```
+
+**`CancellationTokenSource`** creates and controls tokens. It supports **parent propagation** — a child source cancels when its parent does:
+
+```typescript
+constructor(parent?: CancellationToken) {
+    this._parentListener = parent && parent.onCancellationRequested(this.cancel, this);
+}
+```
+
+The internal `MutableToken` uses **lazy `Emitter` creation** — it only allocates an `Emitter<void>` when someone actually subscribes to `onCancellationRequested`. If cancelled before any listener, it returns the `shortcutEvent` sentinel that fires immediately.
+
+**`CancellationTokenPool`** aggregates multiple tokens and only cancels when *all* of them cancel (useful for "cancel only when every consumer is done").
+
+**`cancelOnDispose(store)`** bridges the lifecycle system into cancellation — it creates a token that cancels when the `DisposableStore` is disposed.
+
+---
+
+### 3. `CancelablePromise` (`async.ts`)
+
+The bridge between promises and cancellation:
+
+```typescript
+export interface CancelablePromise<T> extends Promise<T> {
+    cancel(): void;
+}
+```
+
+`createCancelablePromise` is the key factory:
+
+```typescript
+export function createCancelablePromise<T>(
+    callback: (token: CancellationToken) => Promise<T>
+): CancelablePromise<T>
+```
+
+It creates a `CancellationTokenSource`, passes the token to the callback, and:
+- On **cancel**: rejects with `CancellationError`, disposes the subscription and source
+- On **success**: resolves normally, cleans up
+- On **cancel after resolve**: if the resolved value is `IDisposable`, **auto-disposes it** — this is the critical lifecycle integration point
+
+---
+
+### 4. Async Utilities (`async.ts`)
+
+All utilities implement `IDisposable` and integrate with cancellation:
+
+| Utility | Pattern | Cancellation Integration |
+|---------|---------|------------------------|
+| **`Throttler`** | Only one active + one queued task | Passes `CancellationTokenSource.token` to task factories; `dispose()` cancels the token |
+| **`Delayer<T>`** | Debounce with configurable delay | `cancel()` rejects with `CancellationError`; `dispose()` calls `cancel()` |
+| **`Limiter<T>`** | Bounded parallelism (max N concurrent) | Fires `onDrained` event when queue empties; `dispose()` clears queue |
+| **`ThrottledDelayer<T>`** | Composes `Delayer` + `Throttler` | `dispose()` disposes both inner utilities |
+| **`retry(task, delay, retries)`** | Simple retry loop | Uses cancellation-aware `timeout()` between attempts |
+
+The `Throttler` signature shows the cancellation threading clearly:
+
+```typescript
+type ICancellableTask<T> = (token: CancellationToken) => T;
+
+queue<T>(promiseFactory: ICancellableTask<Promise<T>>): Promise<T> {
+    // ...
+    this.activePromise = promiseFactory(this.cancellationTokenSource.token);
+}
+```
+
+---
+
+### 5. Event System (`event.ts`)
+
+Events are functions that return disposables:
+
+```typescript
+export interface Event<T> {
+    (listener: (e: T) => unknown, thisArgs?: any, disposables?: IDisposable[] | DisposableStore): IDisposable;
+}
+```
+
+**`Emitter<T>`** is the event source. Its lifecycle hooks (`EmitterOptions`) enable lazy resource management:
+
+```typescript
+new Emitter<T>({
+    onWillAddFirstListener: () => { /* start resource */ },
+    onDidRemoveLastListener: () => { /* stop resource */ }
+});
+```
+
+This pattern is used by **`Relay<T>`** — it only subscribes to its input event when someone is listening to its output.
+
+**Event composition** functions (`map`, `filter`, `once`, `debounce`, `throttle`, `buffer`, `latch`, `accumulate`) accept an optional `DisposableStore` parameter for lifecycle management and return new `Event<T>` instances that properly chain disposal.
+
+**`AsyncEmitter<T>`** bridges events and async — `fireAsync` accepts a `CancellationToken` and checks `token.isCancellationRequested` in its delivery loop:
+
+```typescript
+async fireAsync(data: IWaitUntilData<T>, token: CancellationToken): Promise<void> {
+    while (this._asyncDeliveryQueue.size > 0 && !token.isCancellationRequested) {
+        // deliver event, collect waitUntil promises, await them
+    }
+}
+```
+
+**`PauseableEmitter<T>`** buffers events during `pause()` and delivers on `resume()`, with optional merge functions.
+
+**`toPromise(event)`** converts a one-shot event into a `CancelablePromise`.
+
+---
+
+### How It All Connects
+
+```
+DisposableStore.dispose()
+        │
+        ├──► cancelOnDispose() ──► CancellationToken fires
+        │                                │
+        │                    ┌───────────┴───────────┐
+        │                    ▼                       ▼
+        │            Throttler rejects        CancelablePromise rejects
+        │            queued tasks             with CancellationError
+        │                                          │
+        │                                    if result is IDisposable
+        │                                          │
+        │                                          ▼
+        │                                    result.dispose()
+        │
+        ├──► Emitter.dispose() ──► all listeners removed
+        │
+        ├──► Delayer.dispose() ──► cancel() ──► CancellationError
+        │
+        └──► Limiter.dispose() ──► queue cleared, onDrained emitter disposed
+```
+
+The unifying principle: **disposing a parent cascades through cancellation tokens, event subscriptions, and async task queues**. A single `store.dispose()` call can cancel in-flight promises, reject pending debounced tasks, unsubscribe event listeners, and clean up resolved-but-no-longer-needed resources — all through the same `IDisposable` protocol.
