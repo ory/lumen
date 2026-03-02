@@ -79,66 +79,67 @@ func (c *StructuredChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 // maxChars, it emits a single chunk. Otherwise it recurses into children.
 func (c *StructuredChunker) recurse(filePath string, node *yaml.Node, path string) []Chunk {
 	text := serializeNode(node)
-	symbol := path
-	if symbol == "" {
-		symbol = "root"
-	}
+	symbol := normalizeSymbol(path)
 
 	if len(text) <= c.maxChars {
-		content := "# path: " + symbol + "\n" + text
-		startLine := node.Line
-		if startLine == 0 {
-			startLine = 1
-		}
-		endLine := startLine + strings.Count(text, "\n")
-		return []Chunk{makeChunk(filePath, symbol, "section", startLine, endLine, content)}
+		return c.createNodeChunk(filePath, symbol, text, node)
 	}
 
 	switch node.Kind {
 	case yaml.MappingNode:
-		// Content alternates: key₀, val₀, key₁, val₁, ...
-		var chunks []Chunk
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			keyNode := node.Content[i]
-			valNode := node.Content[i+1]
-			childPath := joinKeyPath(path, keyNode.Value)
-			// Wrap key+value so the chunk shows "key: value" not just the value.
-			wrapper := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{keyNode, valNode}}
-			wrapText := serializeNode(wrapper)
-			childSymbol := childPath
-			if len(wrapText) <= c.maxChars {
-				content := "# path: " + childSymbol + "\n" + wrapText
-				startLine := keyNode.Line
-				if startLine == 0 {
-					startLine = 1
-				}
-				endLine := startLine + strings.Count(wrapText, "\n")
-				chunks = append(chunks, makeChunk(filePath, childSymbol, "section", startLine, endLine, content))
-			} else {
-				// Value itself is too large — recurse into it.
-				chunks = append(chunks, c.recurse(filePath, valNode, childPath)...)
-			}
-		}
-		return chunks
-
+		return c.recurseMapping(filePath, node, path)
 	case yaml.SequenceNode:
-		var chunks []Chunk
-		for i, item := range node.Content {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
-			chunks = append(chunks, c.recurse(filePath, item, childPath)...)
-		}
-		return chunks
-
+		return c.recurseSequence(filePath, node, path)
 	default:
-		// Scalar or unknown: emit as-is; splitOversizedChunks handles if huge.
-		content := "# path: " + symbol + "\n" + text
-		startLine := node.Line
-		if startLine == 0 {
-			startLine = 1
-		}
-		endLine := startLine + strings.Count(text, "\n")
-		return []Chunk{makeChunk(filePath, symbol, "section", startLine, endLine, content)}
+		return c.createNodeChunk(filePath, symbol, text, node)
 	}
+}
+
+func normalizeSymbol(path string) string {
+	if path == "" {
+		return "root"
+	}
+	return path
+}
+
+func (c *StructuredChunker) createNodeChunk(filePath, symbol, text string, node *yaml.Node) []Chunk {
+	content := "# path: " + symbol + "\n" + text
+	startLine := node.Line
+	if startLine == 0 {
+		startLine = 1
+	}
+	endLine := startLine + strings.Count(text, "\n")
+	return []Chunk{makeChunk(filePath, symbol, "section", startLine, endLine, content)}
+}
+
+func (c *StructuredChunker) recurseMapping(filePath string, node *yaml.Node, path string) []Chunk {
+	var chunks []Chunk
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		chunks = append(chunks, c.processMappingPair(filePath, node, path, i)...)
+	}
+	return chunks
+}
+
+func (c *StructuredChunker) processMappingPair(filePath string, node *yaml.Node, path string, i int) []Chunk {
+	keyNode := node.Content[i]
+	valNode := node.Content[i+1]
+	childPath := joinKeyPath(path, keyNode.Value)
+	wrapper := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{keyNode, valNode}}
+	wrapText := serializeNode(wrapper)
+
+	if len(wrapText) <= c.maxChars {
+		return c.createNodeChunk(filePath, childPath, wrapText, keyNode)
+	}
+	return c.recurse(filePath, valNode, childPath)
+}
+
+func (c *StructuredChunker) recurseSequence(filePath string, node *yaml.Node, path string) []Chunk {
+	var chunks []Chunk
+	for i, item := range node.Content {
+		childPath := fmt.Sprintf("%s[%d]", path, i)
+		chunks = append(chunks, c.recurse(filePath, item, childPath)...)
+	}
+	return chunks
 }
 
 // serializeNode marshals a yaml.Node to text. Returns empty string on error.
