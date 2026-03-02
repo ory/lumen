@@ -5,63 +5,53 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/aeneasr/agent-index.svg)](https://pkg.go.dev/github.com/aeneasr/agent-index)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A 100% local semantic code search engine (think Claude Context, Augment Code,
-Cursor) using open-source models, SQLite + sqlite-vec and your CPU time and
-memory capacity. Works on any developer machine because of Golang.
+A 100% local semantic code search engine for AI coding agents. No API keys, no
+cloud, no external database. Just open-source embedding models (Ollama or LM
+Studio), SQLite + sqlite-vec, and your CPU. Works on any developer machine
+because of Golang.
 
 Code Agent Index makes Claude Code **2.1–2.3× faster** and **63–81% cheaper**,
-with reproducible [benchmarks](#its-a-game-changer-benchmarks) while **always**
-retaining or exceeding answer quality over the baseline.
+with reproducible [benchmarks](docs/BENCHMARKS.md) while **always** retaining
+or exceeding answer quality over the baseline.
 
-Everything local; No API keys, no code sent to external services, no cloud
-dependency, no external Database, no single-threaded NodeJS. Using open source
-embedding models via Ollama or LM Studio, and storing vectors in a local SQLite
-database. Your code stays on your machine, indexed and searchable without any
-network calls. It's fast and reliable.
+|                              | With agent-index            | Baseline (no MCP)           |
+| ---------------------------- | --------------------------- | --------------------------- |
+| Task completion              | **2.1–2.3× faster**        | baseline                    |
+| API cost                     | **63–81% cheaper**          | baseline                    |
+| Answer quality (blind judge) | **5/5 wins**                | 0/5 wins                    |
 
-|                              | Golang coding with agent-index | Golang coding with agent-index (baseline) |
-| ---------------------------- | ------------------------------ | ----------------------------------------- |
-| Task completion              | **2.1–2.3× faster**            | baseline                                  |
-| API cost                     | **63–81% cheaper**             | baseline                                  |
-| Answer quality (blind judge) | **5/5 wins**                   | 0/5 wins                                  |
-
-_Note: Golang is the best-supported language. Other languages are supported via
-tree-sitter but require additional work to reach the same level of quality and
-performance, primarily focusing on improving chunking for each language._
-
-## Supported languages
+## Supported Languages
 
 Supports **12 language families** with semantic chunking:
 
-| Language         | Extensions                                | Chunking strategy                                                   | Benchmark Results |
-| ---------------- | ----------------------------------------- | ------------------------------------------------------------------- | --- |
-| Go               | `.go`                                     | Native Go AST — functions, methods, types, interfaces, consts, vars | ✓ Tested: 3.8× faster, 90% cheaper |
-| Python           | `.py`                                     | tree-sitter — function definitions, class definitions               | ✓ Tested: 1.8× faster, 72% cheaper |
-| TypeScript / TSX | `.ts`, `.tsx`                             | tree-sitter — functions, classes, interfaces, type aliases, methods | ✓ Tested: 1.4× faster, 48% cheaper (over-retrieval on large models) |
-| JavaScript / JSX | `.js`, `.jsx`, `.mjs`                     | tree-sitter — functions, classes, methods, generators               | — Not yet tested |
-| Rust             | `.rs`                                     | tree-sitter — functions, structs, enums, traits, impls, consts      | — Not yet tested |
-| Ruby             | `.rb`                                     | tree-sitter — methods, singleton methods, classes, modules          | — Not yet tested |
-| Java             | `.java`                                   | tree-sitter — methods, classes, interfaces, constructors, enums     | — Not yet tested |
-| PHP              | `.php`                                    | tree-sitter — functions, classes, interfaces, traits, methods       | — Not yet tested |
-| C / C++          | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | tree-sitter — function definitions, structs, enums, classes         | — Not yet tested |
-| Markdown / MDX   | `.md`, `.mdx`                             | Heading-based — each `#` / `##` / `###` section is one chunk        | — Not yet tested |
-| YAML             | `.yaml`, `.yml`                           | Key-based — each top-level key and its value block is one chunk     | — Not yet tested |
-| JSON             | `.json`                                   | Key-based — each top-level key and its value block is one chunk     | — Not yet tested |
+| Language         | Parser      | Extensions                                | Status                              |
+| ---------------- | ----------- | ----------------------------------------- |-------------------------------------|
+| Go               | Native AST  | `.go`                                     | Optimized: 3.8× faster, 90% cheaper |
+| Python           | tree-sitter | `.py`                                     | Tested: 1.8× faster, 72% cheaper    |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4× faster, 48% cheaper    |
+| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Supported                           |
+| Rust             | tree-sitter | `.rs`                                     | Supported                           |
+| Ruby             | tree-sitter | `.rb`                                     | Supported                           |
+| Java             | tree-sitter | `.java`                                   | Supported                           |
+| PHP              | tree-sitter | `.php`                                    | Supported                           |
+| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                           |
+| Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                           |
+| YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                           |
+| JSON             | tree-sitter | `.json`                                   | Supported                           |
+
+Go uses the native Go AST parser for the most precise chunks. All other
+languages use tree-sitter grammars.
+
+_Note: Golang is the best-supported language. Other languages work via
+tree-sitter but may benefit from improved chunking strategies and require work to improve chunking algorithms._
 
 ## Why
 
-Claude Code is good at writing code but wasteful and slow at navigating large
-codebases. It wastes context window tokens reading entire files when it only
-needs one function. Semantic search fixes this: the code agent describes what
-it's looking for in natural language and gets back precise file paths and line
-ranges.
+Claude Code wastes context window tokens reading entire files when it only needs
+one function. Semantic search fixes this: the agent describes what it's looking
+for in natural language and gets back precise file paths and line ranges.
 
-Cloud-hosted vector databases solve this, but they're expensive, intransparent,
-and require sending your code to a third party. agent-index gives you the same
-capability with everything running locally for free:
-
-- **Local embeddings** via Ollama (no API keys, no network calls to external
-  services) or LM Studio
+- **Local embeddings** via Ollama or LM Studio (no API keys, no network calls)
 - **Local storage** via SQLite + sqlite-vec (no external database)
 - **Incremental indexing** via Merkle tree change detection (only re-embeds
   changed files)
@@ -149,8 +139,6 @@ claude mcp add --scope user \
 ## CLI
 
 The `agent-index index` command lets you pre-index a project from the terminal.
-This is useful for large codebases where you want indexing to happen in the
-background before the first MCP search.
 
 ```bash
 agent-index index <project-path>
@@ -173,21 +161,6 @@ agent-index index --force ~/workspace/myproject
 # Use a specific model
 agent-index index -m nomic-embed-text ~/workspace/myproject
 ```
-
-Progress is printed to stderr. When done, the command outputs:
-
-```
-Done. Indexed 42 files, 318 chunks in 4.231s.
-```
-
-If the index is already up to date and `--force` is not set:
-
-```
-Index is already up to date.
-```
-
-> `agent-index stdio` starts the MCP server on stdin/stdout. This is invoked
-> automatically by Claude Code — you don't need to run it manually.
 
 ## MCP Tools
 
@@ -217,49 +190,32 @@ Check indexing status without triggering a reindex.
 
 All configuration is via environment variables:
 
-| Variable                       | Default                                                                                      | Description                                |
-| ------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `AGENT_INDEX_EMBED_MODEL`      | `ordis/jina-embeddings-v2-base-code` (Ollama) / `nomic-ai/nomic-embed-code-GGUF` (LM Studio) | Embedding model (must be in registry)      |
-| `AGENT_INDEX_BACKEND`          | `ollama`                                                                                     | Embedding backend (`ollama` or `lmstudio`) |
-| `OLLAMA_HOST`                  | `http://localhost:11434`                                                                     | Ollama server URL                          |
-| `LM_STUDIO_HOST`               | `http://localhost:1234`                                                                      | LM Studio server URL                       |
-| `AGENT_INDEX_MAX_CHUNK_TOKENS` | `512`                                                                                        | Max tokens per chunk before splitting      |
+| Variable                       | Default              | Description                                |
+| ------------------------------ | -------------------- | ------------------------------------------ |
+| `AGENT_INDEX_EMBED_MODEL`      | see note ¹           | Embedding model (must be in registry)      |
+| `AGENT_INDEX_BACKEND`          | `ollama`             | Embedding backend (`ollama` or `lmstudio`) |
+| `OLLAMA_HOST`                  | `localhost:11434`    | Ollama server URL                          |
+| `LM_STUDIO_HOST`               | `localhost:1234`     | LM Studio server URL                       |
+| `AGENT_INDEX_MAX_CHUNK_TOKENS` | `512`                | Max tokens per chunk before splitting      |
+
+¹ `ordis/jina-embeddings-v2-base-code` (Ollama), `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
 
 ### Supported embedding models
 
 Dimensions and context length are configured automatically per model:
 
-| Model                                | Backend   | Dims | Context | Size   | Notes                                        | Recommended                                                               |
-| ------------------------------------ | --------- | ---- | ------- | ------ | -------------------------------------------- | ------------------------------------------------------------------------- |
-| `ordis/jina-embeddings-v2-base-code` | Ollama    | 768  | 8192    | ~323MB | Default. Code-optimized, fast, balanced      | **Best default** — lowest MCP cost, no over-retrieval                     |
-| `qwen3-embedding:8b`                 | Ollama    | 4096 | 40960   | ~4.7GB | Highest retrieval quality, very slow to load | **Best quality** — strongest MCP dominance (7/9 wins), requires 4.7 GB    |
-| `nomic-ai/nomic-embed-code-GGUF`     | LM Studio | 3584 | 8192    | ~274MB | Code-optimized, high-dim, slow               | **Usable** — good quality, but TypeScript over-retrieval raises costs     |
-| `qwen3-embedding:4b`                 | Ollama    | 2560 | 40960   | ~2.6GB | High-dim, moderate quality                   | **Not recommended** — highest MCP costs, severe TypeScript over-retrieval |
-| `nomic-embed-text`                   | Ollama    | 768  | 8192    | ~274MB | Fast, good general quality                   | Untested                                                                  |
-| `qwen3-embedding:0.6b`               | Ollama    | 1024 | 32768   | ~522MB | Lightweight                                  | Untested                                                                  |
-| `all-minilm`                         | Ollama    | 384  | 512     | ~33MB  | Tiny, CI use, fast                           | Untested                                                                  |
+| Model                                | Backend   | Dims | Context | Recommended                                                           |
+| ------------------------------------ | --------- | ---- | ------- |-----------------------------------------------------------------------|
+| `ordis/jina-embeddings-v2-base-code` | Ollama    | 768  | 8192    | **Best default** — lowest cost, no over-retrieval                     |
+| `qwen3-embedding:8b`                 | Ollama    | 4096 | 40960   | **Best quality** — strongest dominance (7/9 wins), very slow indexing |
+| `nomic-ai/nomic-embed-code-GGUF`     | LM Studio | 3584 | 8192    | **Usable** — good quality, but TypeScript over-retrieval raises costs |
+| `qwen3-embedding:4b`                 | Ollama    | 2560 | 40960   | **Not recommended** — highest costs, severe TypeScript over-retrieval |
+| `nomic-embed-text`                   | Ollama    | 768  | 8192    | Untested                                                              |
+| `qwen3-embedding:0.6b`              | Ollama    | 1024 | 32768   | Untested                                                              |
+| `all-minilm`                         | Ollama    | 384  | 512     | Untested                                                              |
 
 Switching models creates a separate index automatically. The model name is part
-of the database path hash, so different models never collide. Models perform
-differently across languages.
-
-## Supported Languages
-
-| Language         | Parser          | Status            |
-| ---------------- | --------------- | ----------------- |
-| Go               | Native `go/ast` | Thoroughly tested |
-| TypeScript / TSX | tree-sitter     | Supported         |
-| JavaScript / JSX | tree-sitter     | Supported         |
-| Python           | tree-sitter     | Supported         |
-| Rust             | tree-sitter     | Supported         |
-| Ruby             | tree-sitter     | Supported         |
-| Java             | tree-sitter     | Supported         |
-| C                | tree-sitter     | Supported         |
-| C++              | tree-sitter     | Supported         |
-
-Go uses the native Go AST parser, which produces the most precise chunks and has
-comprehensive test coverage. All other languages use tree-sitter grammars — they
-work but have less test coverage and may miss some language-specific constructs.
+of the database path hash, so different models never collide.
 
 ## How It Works
 
@@ -291,173 +247,26 @@ name. No files are added to your repo, no `.gitignore` modifications needed.
 You can safely delete the entire `agent-index` directory to clear all indexes,
 or delete specific subdirectories to clear indexes for specific projects/models.
 
-## It's A Game Changer: Benchmarks
-
-`bench-mcp.sh` runs 5 questions of increasing difficulty against
-[Prometheus/TSDB Go fixtures](testdata/fixtures/go), across 2 models (Sonnet
-4.6, Opus 4.6) and 3 scenarios:
-
-- **baseline** — default tools only (grep, file reads), no MCP
-- **mcp-only** — `semantic_search` only, no file reads
-- **mcp-full** — all tools + `semantic_search`
-
-Answers are ranked blind by an LLM judge (Opus 4.6). Benchmarks are transparent
-(check bench-results) and reproducible. Please note that **mcp-only** disables
-built-in tools from Claude Code which could impact tool performance, even though
-benchmarks show no sign of it.
-
-## Results
+## Benchmarks
 
 Using Agent Index is a clear win in speed, cost, and answer quality across both
-embedding backends. The semantic search tool lets the agent find relevant code a
-fraction of the cost of the baseline, significantly faster, and produces better
-answers that win blind comparisons, confirmed independently with Ollama and LM
-Studio.
+embedding backends. The semantic search tool lets the agent find relevant code at
+a fraction of the cost, significantly faster, and produces better answers that
+win blind comparisons.
 
-### Speed & cost — Ollama (jina-embeddings-v2-base-code, 768-dim)
+Key results (Ollama, jina-embeddings-v2-base-code):
 
-Totals across all 5 questions × 2 models:
+| Model      | Speedup          | Cost Savings       | Quality       |
+| ---------- | ---------------- | ------------------ | ------------- |
+| Sonnet 4.6 | **2.2× faster**  | **63% cheaper**    | 5/5 MCP wins  |
+| Opus 4.6   | **2.1× faster**  | **81% cheaper**    | 5/5 MCP wins  |
 
-| Model      | Scenario | Total Time               | Total Cost              |
-| ---------- | -------- | ------------------------ | ----------------------- |
-| Sonnet 4.6 | baseline | 496.8s                   | $5.97                   |
-| Sonnet 4.6 | mcp-only | 228.9s (**2.2× faster**) | $2.20 (**63% cheaper**) |
-| Opus 4.6   | baseline | 478.0s                   | $9.66                   |
-| Opus 4.6   | mcp-only | 229.9s (**2.1× faster**) | $1.79 (**81% cheaper**) |
+Results hold across LM Studio (nomic-embed-code) and across Go, Python, and
+TypeScript in extended multi-model benchmarks.
 
-### Answer quality — Ollama
-
-Baseline never wins. `mcp-only` wins all medium/hard/very-hard questions at a
-fraction of the cost.
-
-| Question        | Difficulty | Winner          | Judge summary                                                                                                                           |
-| --------------- | ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| label-matcher   | easy       | opus / mcp-full | Correct, complete; full type definitions and constructor source with accurate line references                                           |
-| histogram       | medium     | opus / mcp-only | Good coverage of both bucket systems (classic + native), hot/cold swap, and iteration; 7–20× cheaper than baseline                      |
-| tsdb-compaction | hard       | opus / mcp-only | Uniquely covers all three trigger paths, compactor initialization, and planning strategies; 5–6× cheaper than baseline                  |
-| promql-engine   | very-hard  | opus / mcp-only | Thorough coverage of all four topics (engine, functions, AST, rules) with accurate file:line references; half the cost of opus/baseline |
-| scrape-pipeline | very-hard  | opus / mcp-only | Best Registry coverage; unique dual data-flow summary for scraping and exposition paths                                                 |
-
-`mcp-only` wins 4/5, `mcp-full` wins 1/5, `baseline` wins 0/5.
-
-### Speed & cost — LM Studio (nomic-embed-code, 3584-dim)
-
-Totals across all 5 questions × 2 models. Opus shows even stronger gains with
-this backend: 2.8× speedup and 86% cost reduction. Sonnet's benefits are more
-modest due to embedding model quality differences (see note below):
-
-| Model      | Scenario | Total Time               | Total Cost              |
-| ---------- | -------- | ------------------------ | ----------------------- |
-| Sonnet 4.6 | baseline | 478.4s                   | $5.04                   |
-| Sonnet 4.6 | mcp-only | 326.4s (**1.5× faster**) | $4.45 (**12% cheaper**) |
-| Opus 4.6   | baseline | 675.3s                   | $13.31                  |
-| Opus 4.6   | mcp-only | 238.5s (**2.8× faster**) | $1.93 (**86% cheaper**) |
-
-**Why Sonnet shows smaller gains with nomic-embed-code:** Nomic's embeddings
-score below the default `min_score=0.5` threshold on several Go code queries
-(e.g. "RecordingRule eval", "PromQL AST eval switch"). Sonnet receives "No
-results found" and retries with alternative query phrasings — each attempt
-consuming tokens without payoff. Opus makes fewer, better-targeted searches and
-is largely unaffected. The underlying issue is retrieval quality:
-`jina-embeddings-v2-base-code` (Ollama default) is simply performing better in
-this scenario then `nomic-embed-code`. If you use LM Studio, Opus is the better
-choice.
-
-### Answer quality — LM Studio
-
-The higher-dimensional embeddings produce quality results that match or exceed
-the Ollama run:
-
-| Question        | Difficulty | Winner          | Judge summary                                                                                        |
-| --------------- | ---------- | --------------- | ---------------------------------------------------------------------------------------------------- |
-| label-matcher   | easy       | opus / mcp-only | All answers correct; mcp-only fastest (10.4s) and cheapest ($0.10) at equal quality                  |
-| histogram       | medium     | opus / mcp-full | Full observation flow, function signatures, schema-based key computation; ~15× cheaper than baseline |
-| tsdb-compaction | hard       | opus / mcp-only | Covers all 3 trigger paths, planning priority order, early-abort logic; 6× cheaper at $0.42          |
-| promql-engine   | very-hard  | opus / mcp-only | Function safety sets, storage interfaces, full eval pipeline; $0.67 vs $7.16 baseline                |
-| scrape-pipeline | very-hard  | opus / mcp-only | Best registry coverage; Register 5-step validation, Gatherers merging, ApplyConfig hot-reload        |
-
-`mcp-only` wins 4/5, `mcp-full` wins 1/5, `baseline` wins 0/5.
-
-### Extended benchmarks: Results by Language
-
-A comprehensive benchmark comparing 4 embedding models across 9 questions of
-varying difficulty in Go, Python, and TypeScript (36 question/model
-combinations, 216 total runs). **Embedding model performance varies
-significantly by programming language.** Python shows uniform MCP-only
-dominance, Go shows strong MCP performance, and TypeScript reveals
-over-retrieval issues with larger-dimension models.
-
-**Why language matters:** Larger-dimension models (qwen3-8b, qwen3-4b, nomic)
-embed more semantic detail but retrieve redundant chunks for simple TypeScript
-questions. This drives up token costs without improving answer quality. Jina's
-768-dim embeddings avoid over-retrieval entirely while maintaining strong
-quality across all languages.
-
-#### Go Results
-
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
-| -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
-| jina-v2  | $10.64            | 536s              | $1.03             | 142s              | 3.8x                 | 90%                  | $1.63             | 149s              | 0/3 / 1/3 / 2/3             |
-| qwen3-8b | $4.59             | 421s              | $1.05             | 165s              | 2.6x                 | 77%                  | $1.84             | 168s              | 0/3 / 2/3 / 1/3             |
-| qwen3-4b | $8.35             | 433s              | $2.19             | 186s              | 2.3x                 | 74%                  | $2.52             | 179s              | 0/3 / 3/3 / 0/3             |
-| nomic    | $5.46             | 469s              | $1.55             | 280s              | 1.7x                 | 72%                  | $1.96             | 229s              | 0/3 / 1/3 / 2/3             |
-
-**Insight:** Qwen3-4b wins the most scenarios (3/3 mcp-only), but **jina
-achieves 90% cost savings and 3.8× speedup**—by far the most efficient. No
-baseline wins on Go questions across any model.
-
-#### Python Results
-
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
-| -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
-| jina-v2  | $5.41             | 406s              | $1.53             | 226s              | 1.8x                 | 72%                  | $1.75             | 206s              | 0/3 / 2/3 / 1/3             |
-| qwen3-8b | $3.78             | 373s              | $1.69             | 235s              | 1.6x                 | 55%                  | $2.59             | 224s              | 0/3 / 3/3 / 0/3             |
-| qwen3-4b | $3.97             | 342s              | $1.80             | 237s              | 1.4x                 | 55%                  | $2.37             | 219s              | 0/3 / 3/3 / 0/3             |
-| nomic    | $5.82             | 483s              | $1.99             | 238s              | 2.0x                 | 66%                  | $3.20             | 278s              | 0/3 / 3/3 / 0/3             |
-
-**Insight:** MCP-only dominates universally (all models 2-3/3 wins). Qwen3-8b,
-qwen3-4b, and nomic achieve 3/3 mcp-only wins. However, **jina remains
-cost-optimal at 72% savings** and lowest baseline cost ($5.41).
-
-#### TypeScript Results
-
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
-| -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
-| jina-v2  | $4.86             | 478s              | $2.53             | 332s              | 1.4x                 | 48%                  | $3.88             | 373s              | 1/3 / 1/3 / 1/3             |
-| qwen3-8b | $4.12             | 468s              | $2.98             | 359s              | 1.3x                 | 28%                  | $3.81             | 378s              | 1/3 / 2/3 / 0/3             |
-| qwen3-4b | $5.44             | 600s              | $4.42             | 399s              | 1.5x                 | 19%                  | $3.76             | 409s              | 2/3 / 1/3 / 0/3             |
-| nomic    | $4.84             | 519s              | $3.89             | 411s              | 1.3x                 | 20%                  | $3.84             | 386s              | 0/3 / 2/3 / 1/3             |
-
-**Insight:** The TypeScript chunker is not properly optimized yet and returns
-reduntant chunks or misses important ones.
-
-#### Summary: Why Jina Remains the Default
-
-| Metric                          | jina-v2                        | qwen3-8b             | qwen3-4b        | nomic         |
-| ------------------------------- | ------------------------------ | -------------------- | --------------- | ------------- |
-| **Best Go cost**                | ✓ 90%                          | 77%                  | 74%             | 72%           |
-| **Best Python cost**            | ✓ 72%                          | 55%                  | 55%             | 66%           |
-| **Best TypeScript cost**        | ✓ 48%                          | 28%                  | 19%             | 20%           |
-| **Consistent across languages** | ✓                              | —                    | —               | —             |
-| **No over-retrieval**           | ✓                              | Limited              | Severe          | Moderate      |
-| **Verdict**                     | **State of the Art (Default)** | Best quality (Go/Py) | Not recommended | Usable (Opus) |
-
-Full question-level analysis available in
-[`detail-report.md` per benchmark](bench-results/)
-
-### Reproduce
-
-Requires Ollama, the `claude` CLI, `jq`, and `bc`.
-
-```bash
-./bench-mcp.sh                                          # all questions, all models
-./bench-mcp.sh --model sonnet                           # filter by model
-./bench-mcp.sh --question tsdb-compaction               # filter by question
-./bench-mcp.sh --model opus --question label-matcher    # combine
-```
-
-Results land in `bench-results/<timestamp>/`. The script runs an LLM judge at
-the end to rank answers.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for full speed/cost tables, answer
+quality breakdowns, per-language results across 4 embedding models, and
+reproduce instructions.
 
 ## Building from source
 
