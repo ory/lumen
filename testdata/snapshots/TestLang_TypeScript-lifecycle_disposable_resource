@@ -1,4 +1,5 @@
 results: 30
+lifecycle.ts:526-557  Disposable (type)
 lifecycle.ts:26-47  IDisposableTracker (interface)
 lifecycle.ts:488-519  DisposableStore[3/3] (type)
 lifecycle.ts:416-452  DisposableStore[1/3] (type)
@@ -28,5 +29,4 @@ lifecycle.ts:899-906  add (method)
 lifecycle.ts:644-646  value (method)
 lifecycle.ts:267-267  markAsSingleton (method)
 lifecycle.ts:542-546  dispose (method)
-lifecycle.ts:77-83  DisposableInfo (interface)
 
