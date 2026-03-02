@@ -1,4 +1,4 @@
-BINARY   := agent-index
+BINARY   := lumen
 GO       := go
 GOTAGS   := fts5
 GOFLAGS  := -tags=$(GOTAGS)
