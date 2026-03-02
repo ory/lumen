@@ -35,10 +35,8 @@ import (
 )
 
 func init() {
-	defaultName := filepath.Base(os.Args[0])
-	installCmd.Flags().StringP("mcp-name", "n", defaultName, "name to register with claude mcp add")
 	installCmd.Flags().StringP("model", "m", "", "skip interactive model selection, use this model")
-installCmd.Flags().Bool("dry-run", false, "print actions without executing them")
+	installCmd.Flags().Bool("dry-run", false, "print actions without executing them")
 	installCmd.Flags().Bool("no-mcp", false, "skip MCP registration, only write the rules file")
 	installCmd.Flags().Bool("no-rules", false, "skip rules file update, only register MCP")
 	installCmd.Flags().Bool("no-hooks", false, "skip SessionStart hook registration")
@@ -53,9 +51,9 @@ var installCmd = &cobra.Command{
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
-	mcpName, _ := cmd.Flags().GetString("mcp-name")
+	mcpName := filepath.Base(os.Args[0])
 	modelFlag, _ := cmd.Flags().GetString("model")
-dryRun, _ := cmd.Flags().GetBool("dry-run")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	noMCP, _ := cmd.Flags().GetBool("no-mcp")
 	noRules, _ := cmd.Flags().GetBool("no-rules")
 	noHooks, _ := cmd.Flags().GetBool("no-hooks")

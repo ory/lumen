@@ -26,9 +26,7 @@ import (
 )
 
 func init() {
-	defaultName := filepath.Base(os.Args[0])
-	uninstallCmd.Flags().StringP("mcp-name", "n", defaultName, "MCP server name to remove")
-uninstallCmd.Flags().Bool("dry-run", false, "print actions without executing them")
+	uninstallCmd.Flags().Bool("dry-run", false, "print actions without executing them")
 	uninstallCmd.Flags().Bool("no-mcp", false, "skip MCP removal")
 	uninstallCmd.Flags().Bool("no-rules", false, "skip rules file removal")
 	uninstallCmd.Flags().Bool("no-hooks", false, "skip SessionStart hook removal")
@@ -44,8 +42,8 @@ var uninstallCmd = &cobra.Command{
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
-	mcpName, _ := cmd.Flags().GetString("mcp-name")
-dryRun, _ := cmd.Flags().GetBool("dry-run")
+	mcpName := filepath.Base(os.Args[0])
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	noMCP, _ := cmd.Flags().GetBool("no-mcp")
 	noRules, _ := cmd.Flags().GetBool("no-rules")
 	noHooks, _ := cmd.Flags().GetBool("no-hooks")

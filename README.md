@@ -68,87 +68,44 @@ for in natural language and gets back precise file paths and line ranges.
 ```bash
 # Install the binary
 CGO_ENABLED=1 go install github.com/aeneasr/lumen@latest
+
+# Pull the default embedding model (recommended)
+ollama pull ordis/jina-embeddings-v2-base-code
+
+# Interactive setup — detects services, picks a model, registers MCP, and
+# configures Claude Code for optimal semantic search usage
+lumen install
 ```
 
 > `CGO_ENABLED=1` is required — sqlite-vec compiles from C source.
 
-## Setup with Claude Code
+That's it. `lumen install` handles everything:
 
-### Best practice configuration
+1. **Service detection** — finds running Ollama / LM Studio instances
+2. **Model selection** — interactive picker with recommended defaults
+3. **MCP registration** — registers with Claude Code (and Codex, if available)
+4. **Rules file** — writes a code search directive to `~/.claude/rules/`
+5. **SessionStart hook** — injects a high-priority directive into every
+   conversation so the agent consistently uses semantic search first
 
-The default configuration yielded 2.15x faster indexing and 72% less cost in
-benchmarks. This configuration uses Ollama +
-`ordis/jina-embeddings-v2-base-code` for fast, efficient indexing. It's the
-default configuration and works out of the box with Claude Code if you have
-Ollama installed.
+Claude Code will now have access to `semantic_search` and `index_status` tools.
+On the first search against a project, it auto-indexes the codebase.
 
-```bash
-# Pull the default embedding model
-ollama pull ordis/jina-embeddings-v2-base-code
+### Install flags
 
-# Add as an MCP server (defaults work out of the box)
-claude mcp add --scope user \
-  lumen "$(go env GOPATH)/bin/lumen" -- stdio
-```
+| Flag           | Description                                  |
+| -------------- | -------------------------------------------- |
+| `--model`      | Skip interactive model selection             |
+| `--dry-run`    | Print actions without executing them         |
+| `--no-mcp`     | Skip MCP registration                       |
+| `--no-rules`   | Skip rules file                              |
+| `--no-hooks`   | Skip SessionStart hook registration          |
 
-That's it. Claude Code will now have access to `semantic_search` and
-`index_status` tools. On the first search against a project, it auto-indexes the
-codebase.
-
-### Recommended CLAUDE.md
-
-Add this to your project's `CLAUDE.md` (or `~/.claude/CLAUDE.md` for all projects):
-
-```markdown
-# Code Search
-
-ALWAYS use `mcp__lumen__semantic_search` as the FIRST tool for code discovery and exploration.
-Do NOT default to Grep, Glob, or Read for search tasks — only use them for exact literal string lookups.
-
-Before using Grep, Glob, Find, or Read for any search, stop and ask: "Do I already know the exact
-literal string I'm searching for?" If not, use `mcp__lumen__semantic_search`. If semantic
-search is unavailable, Grep/Glob are acceptable fallbacks.
-```
-
-### Alternative: LM Studio + nomic-embed-code
-
-An experimental configuration with higher-quality 3584-dim embeddings via LM
-Studio. Expect significantly slower indexing times, especially on large
-codebases. This configuration excels when using Opus 4.6 but is not as good as
-the default configuration for Sonnet 4.6 in benchmarks.
-
-[LM Studio](https://lmstudio.ai/) exposes an OpenAI-compatible `/v1/embeddings`
-endpoint at `http://localhost:1234` by default. `nomic-embed-code` is a
-code-optimized model with 3584 dimensions.
-
-> [!WARNING]
-> `nomic-ai/nomic-embed-code-GGUF` is significantly more resource intense than
-> the default Ollama model. Expect higher CPU usage and longer indexing times,
-> especially on large codebases. Consider using
-> `lumen index path/to/source` to pre-index your codebase.
+### Uninstall
 
 ```bash
-# Download and load the model via lms CLI
-lms get nomic-ai/nomic-embed-code-GGUF
-lms load nomic-ai/nomic-embed-code-GGUF
-
-# Add as MCP server using the lmstudio backend
-claude mcp add --scope user \
-  -eLUMEN_BACKEND=lmstudio \
-  -eLUMEN_EMBED_MODEL=nomic-ai/nomic-embed-code-GGUF \
-  lumen "$(go env GOPATH)/bin/lumen" -- stdio
-```
-
-### Switching models (Ollama)
-
-To use a different Ollama model, set `LUMEN_EMBED_MODEL` — dims and
-context are looked up automatically:
-
-```bash
-claude mcp remove --scope user lumen
-claude mcp add --scope user \
-  -eLUMEN_EMBED_MODEL=nomic-embed-text \
-  lumen "$(go env GOPATH)/bin/lumen" -- stdio
+lumen uninstall              # removes MCP, rules, and hook
+lumen uninstall --purge-data # also removes all index data
 ```
 
 ## CLI
