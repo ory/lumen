@@ -111,58 +111,50 @@ func (t *IgnoreTree) loadDir(dirRel string) *dirIgnore {
 // shouldSkip implements SkipFunc. It checks the five filtering layers:
 // 1. SkipDirs, 2. .gitignore, 3. .agentindexignore, 4. .gitattributes, 5. extension.
 func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
-	base := filepath.Base(relPath)
-	if isDir {
-		if SkipDirs[base] {
-			return true
-		}
-	}
-
-	// Walk ancestor chain from root to the file's parent directory.
-	parentDir := filepath.Dir(relPath)
-	if !isDir {
-		// parentDir is correct for files
-	} else {
-		// For directories, check up to and including the parent of relPath.
-		parentDir = filepath.Dir(relPath)
+	if isDir && SkipDirs[filepath.Base(relPath)] {
+		return true
 	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	parentDir := filepath.Dir(relPath)
 	ancestors := ancestorDirs(parentDir)
 	for _, anc := range ancestors {
-		d := t.loadDir(anc)
-		// Path relative to this ancestor directory
-		var pathFromAnc string
-		if anc == "" {
-			pathFromAnc = relPath
-		} else {
-			pathFromAnc, _ = filepath.Rel(anc, relPath)
-		}
-
-		// For directories, append "/" for gitignore matching
-		matchPath := pathFromAnc
-		if isDir {
-			matchPath = pathFromAnc + "/"
-		}
-
-		if d.gitignore != nil && d.gitignore.MatchesPath(matchPath) {
-			return true
-		}
-		if d.agentIndexIgnore != nil && d.agentIndexIgnore.MatchesPath(matchPath) {
-			return true
-		}
-		if !isDir && d.gitattributes != nil && d.gitattributes.MatchesPath(pathFromAnc) {
+		if t.checkIgnoreRules(relPath, anc, isDir) {
 			return true
 		}
 	}
 
-	// Extension filter (files only)
-	if !isDir {
-		return !t.extSet[filepath.Ext(relPath)]
+	return !isDir && !t.extSet[filepath.Ext(relPath)]
+}
+
+func (t *IgnoreTree) checkIgnoreRules(relPath, anc string, isDir bool) bool {
+	d := t.loadDir(anc)
+	pathFromAnc := getPathFromAncestor(relPath, anc)
+	matchPath := pathFromAnc
+	if isDir {
+		matchPath = pathFromAnc + "/"
+	}
+
+	if d.gitignore != nil && d.gitignore.MatchesPath(matchPath) {
+		return true
+	}
+	if d.agentIndexIgnore != nil && d.agentIndexIgnore.MatchesPath(matchPath) {
+		return true
+	}
+	if !isDir && d.gitattributes != nil && d.gitattributes.MatchesPath(pathFromAnc) {
+		return true
 	}
 	return false
+}
+
+func getPathFromAncestor(relPath, anc string) string {
+	if anc == "" {
+		return relPath
+	}
+	pathFromAnc, _ := filepath.Rel(anc, relPath)
+	return pathFromAnc
 }
 
 // ancestorDirs returns the directory hierarchy from root ("") to dirRel.

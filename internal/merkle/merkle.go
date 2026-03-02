@@ -69,7 +69,21 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		skip = DefaultSkip
 	}
 
-	// Phase 1: collect file paths (sequential walk, cheap).
+	relPaths, err := collectFilePaths(rootDir, skip)
+	if err != nil {
+		return nil, err
+	}
+
+	tree, err := hashFilesInParallel(rootDir, relPaths)
+	if err != nil {
+		return nil, err
+	}
+
+	tree.RootHash = buildDirHash(tree.Files)
+	return tree, nil
+}
+
+func collectFilePaths(rootDir string, skip SkipFunc) ([]string, error) {
 	var relPaths []string
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -90,11 +104,10 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+	return relPaths, err
+}
 
-	// Phase 2: hash files concurrently with a bounded worker pool.
+func hashFilesInParallel(rootDir string, relPaths []string) (*Tree, error) {
 	type result struct {
 		rel  string
 		hash string
@@ -143,7 +156,6 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		tree.Files[r.rel] = r.hash
 	}
 
-	tree.RootHash = buildDirHash(tree.Files)
 	return tree, nil
 }
 

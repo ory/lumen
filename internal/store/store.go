@@ -126,42 +126,61 @@ func createSchema(db *sql.DB, dimensions int) error {
 // ensureVecDimensions creates the vec_chunks virtual table, or recreates it
 // if the existing table has a different number of dimensions.
 func ensureVecDimensions(db *sql.DB, dimensions int) error {
+	tableExists, err := checkTableExists(db, "vec_chunks")
+	if err != nil {
+		return err
+	}
+
+	if !tableExists {
+		return createVecTable(db, dimensions)
+	}
+
+	storedDims, err := getStoredDimensions(db)
+	if err == nil && storedDims == dimensions {
+		return nil
+	}
+
+	return resetAndRecreateVecTable(db, dimensions)
+}
+
+func checkTableExists(db *sql.DB, tableName string) (bool, error) {
+	var exists bool
+	err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&exists)
+	return exists, err
+}
+
+func createVecTable(db *sql.DB, dimensions int) error {
 	createVec := fmt.Sprintf(
 		`CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
 			id TEXT PRIMARY KEY,
 			embedding float[%d] distance_metric=cosine
 		)`, dimensions)
 
-	// Try inserting a zero vector to detect dimension mismatch.
-	// If vec_chunks doesn't exist yet, create it and return.
-	var tableExists bool
-	err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='vec_chunks'").Scan(&tableExists)
+	if _, err := db.Exec(createVec); err != nil {
+		return fmt.Errorf("create vec_chunks: %w", err)
+	}
+	return storeDimensions(db, dimensions)
+}
+
+func getStoredDimensions(db *sql.DB) (int, error) {
+	var dims int
+	err := db.QueryRow("SELECT value FROM project_meta WHERE key = 'vec_dimensions'").Scan(&dims)
+	return dims, err
+}
+
+func storeDimensions(db *sql.DB, dimensions int) error {
+	_, err := db.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('vec_dimensions', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		fmt.Sprintf("%d", dimensions),
+	)
 	if err != nil {
-		return fmt.Errorf("check vec_chunks existence: %w", err)
+		return fmt.Errorf("store vec_dimensions: %w", err)
 	}
+	return nil
+}
 
-	if !tableExists {
-		if _, err := db.Exec(createVec); err != nil {
-			return fmt.Errorf("create vec_chunks: %w", err)
-		}
-		if _, err := db.Exec(
-			`INSERT INTO project_meta (key, value) VALUES ('vec_dimensions', ?)
-			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-			fmt.Sprintf("%d", dimensions),
-		); err != nil {
-			return fmt.Errorf("store vec_dimensions: %w", err)
-		}
-		return nil
-	}
-
-	// Table exists — check stored dimensions via a metadata key we set.
-	var storedDims int
-	err = db.QueryRow("SELECT value FROM project_meta WHERE key = 'vec_dimensions'").Scan(&storedDims)
-	if err == nil && storedDims == dimensions {
-		return nil // dimensions match
-	}
-
-	// Mismatch or no record — drop and recreate everything.
+func resetAndRecreateVecTable(db *sql.DB, dimensions int) error {
 	stmts := []string{
 		"DROP TABLE IF EXISTS vec_chunks",
 		"DELETE FROM chunks",
@@ -174,20 +193,17 @@ func ensureVecDimensions(db *sql.DB, dimensions int) error {
 		}
 	}
 
+	createVec := fmt.Sprintf(
+		`CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
+			id TEXT PRIMARY KEY,
+			embedding float[%d] distance_metric=cosine
+		)`, dimensions)
+
 	if _, err := db.Exec(createVec); err != nil {
 		return fmt.Errorf("recreate vec_chunks: %w", err)
 	}
 
-	// Store the dimensions so we can detect mismatches next time.
-	if _, err := db.Exec(
-		`INSERT INTO project_meta (key, value) VALUES ('vec_dimensions', ?)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		fmt.Sprintf("%d", dimensions),
-	); err != nil {
-		return fmt.Errorf("store vec_dimensions: %w", err)
-	}
-
-	return nil
+	return storeDimensions(db, dimensions)
 }
 
 // SetMeta upserts a key-value pair in the project_meta table.
@@ -265,7 +281,11 @@ func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error 
 		return fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
 
-	// Deduplicate by ID within the batch (identical content → identical ID).
+	chunks, vectors = deduplicateChunks(chunks, vectors)
+	return s.insertChunksInTransaction(chunks, vectors)
+}
+
+func deduplicateChunks(chunks []chunker.Chunk, vectors [][]float32) ([]chunker.Chunk, [][]float32) {
 	seen := make(map[string]bool, len(chunks))
 	deduped := make([]chunker.Chunk, 0, len(chunks))
 	dedupedVecs := make([][]float32, 0, len(vectors))
@@ -276,8 +296,10 @@ func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error 
 			dedupedVecs = append(dedupedVecs, vectors[i])
 		}
 	}
-	chunks, vectors = deduped, dedupedVecs
+	return deduped, dedupedVecs
+}
 
+func (s *Store) insertChunksInTransaction(chunks []chunker.Chunk, vectors [][]float32) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -302,19 +324,26 @@ func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error 
 	defer func() { _ = vecStmt.Close() }()
 
 	for i, c := range chunks {
-		if _, err := chunkStmt.Exec(c.ID, c.FilePath, c.Symbol, c.Kind, c.StartLine, c.EndLine); err != nil {
-			return fmt.Errorf("insert chunk %s: %w", c.ID, err)
-		}
-		blob, err := sqlite_vec.SerializeFloat32(vectors[i])
-		if err != nil {
-			return fmt.Errorf("serialize vector %d: %w", i, err)
-		}
-		if _, err := vecStmt.Exec(c.ID, blob); err != nil {
-			return fmt.Errorf("insert vec %s: %w", c.ID, err)
+		if err := insertChunkAndVector(chunkStmt, vecStmt, c, vectors[i], i); err != nil {
+			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func insertChunkAndVector(chunkStmt, vecStmt interface{ Exec(...interface{}) (sql.Result, error) }, c chunker.Chunk, vec []float32, idx int) error {
+	if _, err := chunkStmt.Exec(c.ID, c.FilePath, c.Symbol, c.Kind, c.StartLine, c.EndLine); err != nil {
+		return fmt.Errorf("insert chunk %s: %w", c.ID, err)
+	}
+	blob, err := sqlite_vec.SerializeFloat32(vec)
+	if err != nil {
+		return fmt.Errorf("serialize vector %d: %w", idx, err)
+	}
+	if _, err := vecStmt.Exec(c.ID, blob); err != nil {
+		return fmt.Errorf("insert vec %s: %w", c.ID, err)
+	}
+	return nil
 }
 
 // DeleteFileChunks removes all chunks (and their vectors) associated with the
