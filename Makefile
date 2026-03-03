@@ -2,13 +2,12 @@ GO       := go
 GOTAGS   := fts5
 GOFLAGS  := -tags=$(GOTAGS)
 
-XGORELEASER_IMAGE := oryd/xgoreleaser:1.25.2-2.12.5
+XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
 .PHONY: build build-local test e2e lint vet tidy clean format plugin-dev
 
 build:
-	docker run --mount type=bind,source="$$(pwd)",target=/project \
-		--platform linux/amd64 \
+	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
 		$(XGORELEASER_IMAGE) --snapshot --clean
 
 build-local:

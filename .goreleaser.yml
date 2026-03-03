@@ -1,6 +1,12 @@
 version: 2
 project_name: lumen
 
+before:
+  hooks:
+    - apt-get update -qq
+    - apt-get install -y libsqlite3-dev
+    - cp /usr/include/sqlite3.h /usr/x86_64-w64-mingw32/include/sqlite3.h
+
 builds:
   - id: macos
     main: .
