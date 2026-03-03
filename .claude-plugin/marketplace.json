@@ -1,0 +1,29 @@
+{
+  "name": "lumen",
+  "owner": {
+    "name": "Aeneas Rekkas",
+    "email": "aeneas@ory.sh"
+  },
+  "metadata": {
+    "description": "Lumen — local semantic code search for AI coding agents",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "lumen",
+      "source": ".",
+      "description": "Precise local semantic code search via MCP. Indexes your codebase with Go AST parsing, embeds with Ollama or LM Studio, and exposes vector search to Claude through an MCP server — no cloud, no npm.",
+      "version": "0.2.0",
+      "author": {
+        "name": "Aeneas Rekkas",
+        "url": "https://github.com/aeneasr"
+      },
+      "homepage": "https://github.com/aeneasr/lumen",
+      "repository": "https://github.com/aeneasr/lumen",
+      "license": "Apache-2.0",
+      "keywords": ["semantic-search", "code-index", "mcp", "embeddings", "ollama", "rag"],
+      "category": "developer-tools",
+      "tags": ["code-search", "mcp", "ai", "local"]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "lumen",
+  "version": "0.2.0",
+  "description": "Local semantic code search for AI coding agents",
+  "author": {
+    "name": "Aeneas Rekkas",
+    "url": "https://github.com/aeneasr"
+  },
+  "homepage": "https://github.com/aeneasr/lumen",
+  "repository": "https://github.com/aeneasr/lumen",
+  "license": "Apache-2.0",
+  "keywords": ["semantic-search", "code-index", "mcp", "embeddings", "ollama", "rag"],
+  "category": "developer-tools",
+  "tags": ["code-search", "mcp", "ai", "local"],
+  "mcpServers": "./.claude-plugin/mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills/"
+}

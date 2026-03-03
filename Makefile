@@ -1,18 +1,21 @@
-BINARY   := lumen
 GO       := go
 GOTAGS   := fts5
 GOFLAGS  := -tags=$(GOTAGS)
 
-.PHONY: build test e2e lint vet tidy clean format
+XGORELEASER_IMAGE := oryd/xgoreleaser:1.25.2-2.12.5
+
+.PHONY: build build-local test e2e lint vet tidy clean format plugin-dev
 
 build:
-	CGO_ENABLED=1 $(GO) build $(GOFLAGS) -o $(BINARY) .
+	docker run --mount type=bind,source="$$(pwd)",target=/project \
+		--platform linux/amd64 \
+		$(XGORELEASER_IMAGE) --snapshot --clean
+
+build-local:
+	CGO_ENABLED=1 $(GO) build $(GOFLAGS) -o bin/lumen .
 
 test:
 	CGO_ENABLED=1 $(GO) test $(GOFLAGS) ./...
-
-install:
-	CGO_ENABLED=1 $(GO) install $(GOFLAGS) ./...
 
 e2e:
 	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=20m -v -count=1 ./...
@@ -27,8 +30,11 @@ tidy:
 	$(GO) mod tidy
 
 clean:
-	rm -f $(BINARY)
+	rm -rf bin/ dist/
 
 format:
 	goimports -w .
 	npx --yes prettier --write "**/*.{json,md,mdx,yaml,yml}"
+
+plugin-dev: build-local
+	@echo "Run: claude --plugin-dir ."

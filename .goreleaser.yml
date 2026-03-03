@@ -1,0 +1,83 @@
+version: 2
+project_name: lumen
+
+builds:
+  - id: macos
+    main: .
+    binary: lumen
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+      - CXX=o64-clang++
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: linux-amd64
+    main: .
+    binary: lumen
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+  - id: linux-arm64
+    main: .
+    binary: lumen
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+    goos:
+      - linux
+    goarch:
+      - arm64
+
+  - id: windows
+    main: .
+    binary: lumen
+    flags:
+      - -tags=fts5
+    ldflags:
+      - -s -w
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - amd64
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: aeneasr
+    name: lumen

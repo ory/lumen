@@ -1,4 +1,4 @@
-# Lumen — semantic search for code agents
+# Lumen: semantic search for code agents
 
 [![CI](https://github.com/aeneasr/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/aeneasr/lumen/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/aeneasr/lumen)](https://goreportcard.com/report/github.com/aeneasr/lumen)
@@ -10,14 +10,14 @@ cloud, no external database. Just open-source embedding models (Ollama or LM
 Studio), SQLite + sqlite-vec, and your CPU. Works on any developer machine
 because of Golang.
 
-Lumen makes Claude Code **2.1–2.3× faster** and **63–81% cheaper**,
+Lumen lights up complex code bases and makes Claude Code **2.1-2.3x faster** and **63-81% cheaper**,
 with reproducible [benchmarks](docs/BENCHMARKS.md) while **always** retaining
 or exceeding answer quality over the baseline.
 
 |                              | With lumen                  | Baseline (no MCP)           |
 | ---------------------------- | --------------------------- | --------------------------- |
-| Task completion              | **2.1–2.3× faster**        | baseline                    |
-| API cost                     | **63–81% cheaper**          | baseline                    |
+| Task completion              | **2.1-2.3x faster**        | baseline                    |
+| API cost                     | **63-81% cheaper**          | baseline                    |
 | Answer quality (blind judge) | **5/5 wins**                | 0/5 wins                    |
 
 ## Supported Languages
@@ -26,9 +26,9 @@ Supports **12 language families** with semantic chunking:
 
 | Language         | Parser      | Extensions                                | Status                              |
 | ---------------- | ----------- | ----------------------------------------- |-------------------------------------|
-| Go               | Native AST  | `.go`                                     | Optimized: 3.8× faster, 90% cheaper |
-| Python           | tree-sitter | `.py`                                     | Tested: 1.8× faster, 72% cheaper    |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4× faster, 48% cheaper    |
+| Go               | Native AST  | `.go`                                     | Optimized: 3.8x faster, 90% cheaper |
+| Python           | tree-sitter | `.py`                                     | Tested: 1.8x faster, 72% cheaper    |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4x faster, 48% cheaper    |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Supported                           |
 | Rust             | tree-sitter | `.rs`                                     | Supported                           |
 | Ruby             | tree-sitter | `.rb`                                     | Supported                           |
@@ -63,50 +63,49 @@ for in natural language and gets back precise file paths and line ranges.
 
 1. [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/download)
    installed and running
-2. [Go](https://go.dev/) 1.26+
+2. Pull the default embedding model: `ollama pull ordis/jina-embeddings-v2-base-code`
+
+### As a Claude Code plugin
 
 ```bash
-# Install the binary
-CGO_ENABLED=1 go install github.com/aeneasr/lumen@latest
+# Install via the Claude Code marketplace
+claude marketplace add github:aeneasr/lumen
 
-# Pull the default embedding model (recommended)
-ollama pull ordis/jina-embeddings-v2-base-code
-
-# Interactive setup — detects services, picks a model, registers MCP, and
-# configures Claude Code for optimal semantic search usage
-lumen install
+# From source (development)
+git clone https://github.com/aeneasr/lumen.git
+cd lumen
+make build
+claude --plugin-dir .
 ```
 
-> `CGO_ENABLED=1` is required — sqlite-vec compiles from C source.
+The binary is downloaded automatically from the [latest GitHub release](https://github.com/aeneasr/lumen/releases)
+on first use — no npm, no manual install step.
 
-That's it. `lumen install` handles everything:
+The plugin system handles everything automatically:
+- **MCP server** registration (`.mcp.json`)
+- **SessionStart hook** that directs the agent to prefer semantic search
+- **PreToolUse hook** that intercepts natural language Grep/Glob patterns
+- **Skills**: `/lumen:doctor` for health checks, `/lumen:reindex` for forced re-indexing
 
-1. **Service detection** — finds running Ollama / LM Studio instances
-2. **Model selection** — interactive picker with recommended defaults
-3. **MCP registration** — registers with Claude Code (and Codex, if available)
-4. **Rules file** — writes a code search directive to `~/.claude/rules/`
-5. **SessionStart hook** — injects a high-priority directive into every
-   conversation so the agent consistently uses semantic search first
+### Environment variables
 
-Claude Code will now have access to `semantic_search` and `index_status` tools.
-On the first search against a project, it auto-indexes the codebase.
+| Variable            | Default                                | Description                        |
+| ------------------- | -------------------------------------- | ---------------------------------- |
+| `LUMEN_BACKEND`     | `ollama`                               | Backend: `ollama` or `lmstudio`    |
+| `LUMEN_EMBED_MODEL` | `ordis/jina-embeddings-v2-base-code`   | Embedding model                    |
+| `OLLAMA_HOST`       | `http://localhost:11434`               | Ollama server URL                  |
+| `LM_STUDIO_HOST`    | `http://localhost:1234`                | LM Studio server URL               |
 
-### Install flags
+### Purge index data
 
-| Flag           | Description                                  |
-| -------------- | -------------------------------------------- |
-| `--model`      | Skip interactive model selection             |
-| `--dry-run`    | Print actions without executing them         |
-| `--no-mcp`     | Skip MCP registration                       |
-| `--no-rules`   | Skip rules file                              |
-| `--no-hooks`   | Skip SessionStart hook registration          |
-
-### Uninstall
+To remove all lumen index databases:
 
 ```bash
-lumen uninstall              # removes MCP, rules, and hook
-lumen uninstall --purge-data # also removes all index data
+lumen purge
 ```
+
+This deletes `~/.local/share/lumen/`. Indexes are rebuilt automatically on the
+next search.
 
 ## CLI
 
@@ -148,7 +147,7 @@ Search indexed code using natural language. Auto-indexes if the index is stale.
 | `min_score`     | float   | no       | Minimum score threshold (-1 to 1). Default 0.5. Use -1 to return all results. |
 | `force_reindex` | boolean | no       | Force full re-index before searching                                          |
 
-Returns file paths, symbol names, line ranges, and similarity scores (0–1).
+Returns file paths, symbol names, line ranges, and similarity scores (0-1).
 
 ### `index_status`
 
@@ -217,7 +216,7 @@ Where `<hash>` is derived from the absolute project path and embedding model
 name. No files are added to your repo, no `.gitignore` modifications needed.
 
 You can safely delete the entire `lumen` directory to clear all indexes,
-or delete specific subdirectories to clear indexes for specific projects/models.
+or use `lumen purge` to do it automatically.
 
 ## Benchmarks
 
@@ -230,8 +229,8 @@ Key results (Ollama, jina-embeddings-v2-base-code):
 
 | Model      | Speedup          | Cost Savings       | Quality       |
 | ---------- | ---------------- | ------------------ | ------------- |
-| Sonnet 4.6 | **2.2× faster**  | **63% cheaper**    | 5/5 MCP wins  |
-| Opus 4.6   | **2.1× faster**  | **81% cheaper**    | 5/5 MCP wins  |
+| Sonnet 4.6 | **2.2x faster**  | **63% cheaper**    | 5/5 MCP wins  |
+| Opus 4.6   | **2.1x faster**  | **81% cheaper**    | 5/5 MCP wins  |
 
 Results hold across LM Studio (nomic-embed-code) and across Go, Python, and
 TypeScript in extended multi-model benchmarks.
@@ -243,7 +242,7 @@ reproduce instructions.
 ## Building from source
 
 ```bash
-CGO_ENABLED=1 go build -o lumen .
+make build    # outputs bin/lumen-<os>-<arch>
 ```
 
 ## Contributing

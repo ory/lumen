@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, master]
+    tags: ['v*']
   pull_request:
     branches: [main, master]
 
@@ -74,3 +75,21 @@ jobs:
           OLLAMA_HOST: http://localhost:11434
           LUMEN_EMBED_MODEL: all-minilm
           LUMEN_EMBED_DIMS: '384'
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, lint]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Release
+        run: |
+          docker run --mount type=bind,source="$(pwd)",target=/project \
+            --platform linux/amd64 \
+            -e GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+            oryd/xgoreleaser:1.25.2-2.12.5 release --clean
+

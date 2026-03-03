@@ -1,5 +1,7 @@
-# Binary
-lumen
+# Build output
+bin/
+dist/
+./lumen
 
 # IDE
 .idea/

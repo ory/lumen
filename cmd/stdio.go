@@ -19,11 +19,13 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aeneasr/lumen/internal/config"
 	"github.com/aeneasr/lumen/internal/embedder"
@@ -52,6 +54,8 @@ type SemanticSearchInput struct {
 	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 20"`
 	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default 0.5. Use -1 to return all results."`
 	ForceReindex bool     `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
+	Summary      bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
+	MaxLines     int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
 }
 
 // SearchResultItem represents a single search result returned to the caller.
@@ -86,6 +90,18 @@ type IndexStatusOutput struct {
 	LastIndexedAt  string `json:"last_indexed_at"`
 	EmbeddingModel string `json:"embedding_model"`
 	Stale          bool   `json:"stale"`
+}
+
+// HealthCheckInput defines the parameters for the health_check tool.
+type HealthCheckInput struct{}
+
+// HealthCheckOutput is the structured output of the health_check tool.
+type HealthCheckOutput struct {
+	Backend   string `json:"backend"`
+	Host      string `json:"host"`
+	Model     string `json:"model"`
+	Reachable bool   `json:"reachable"`
+	Message   string `json:"message"`
 }
 
 // --- indexerCache ---
@@ -172,8 +188,18 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	}
 
 	out.Results = make([]SearchResultItem, len(results))
-	snippets := extractSnippets(input.Path, results)
+	var snippets []string
+	if !input.Summary {
+		snippets = extractSnippets(input.Path, results)
+	}
 	for i, r := range results {
+		var content string
+		if snippets != nil {
+			content = snippets[i]
+			if input.MaxLines > 0 && content != "" {
+				content = truncateLines(content, input.MaxLines)
+			}
+		}
 		out.Results[i] = SearchResultItem{
 			FilePath:  r.FilePath,
 			Symbol:    r.Symbol,
@@ -181,7 +207,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
 			Score:     float32(1.0 - r.Distance),
-			Content:   snippets[i],
+			Content:   content,
 		}
 	}
 
@@ -301,6 +327,52 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 	}, nil, nil
 }
 
+// handleHealthCheck pings the configured embedding service and reports status.
+func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRequest, _ HealthCheckInput) (*mcp.CallToolResult, any, error) {
+	host := ic.cfg.OllamaHost
+	probeURL := host + "/api/tags"
+	if ic.cfg.Backend == config.BackendLMStudio {
+		host = ic.cfg.LMStudioHost
+		probeURL = host + "/v1/models"
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
+			fmt.Sprintf("failed to create request: %v", err)), nil, nil
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
+			fmt.Sprintf("service unreachable: %v", err)), nil, nil
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
+			fmt.Sprintf("service returned HTTP %d", resp.StatusCode)), nil, nil
+	}
+
+	return healthResult(ic.cfg.Backend, host, ic.cfg.Model, true, "service is healthy"), nil, nil
+}
+
+func healthResult(backend, host, model string, reachable bool, message string) *mcp.CallToolResult {
+	status := "OK"
+	if !reachable {
+		status = "ERROR"
+	}
+	text := fmt.Sprintf("Backend: %s\nHost: %s\nModel: %s\nStatus: %s\nMessage: %s",
+		backend, host, model, status, message)
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		IsError: !reachable,
+	}
+}
+
 func extractSnippets(projectPath string, results []store.SearchResult) []string {
 	snippets := make([]string, len(results))
 	filesByPath := groupResultsByFile(results)
@@ -351,6 +423,15 @@ func extractForFile(snippets []string, lines []string, refs []resultRef) {
 		}
 		snippets[ref.idx] = strings.Join(lines[start:end], "\n")
 	}
+}
+
+// truncateLines returns at most maxLines lines from a string.
+func truncateLines(s string, maxLines int) string {
+	lines := strings.SplitN(s, "\n", maxLines+1)
+	if len(lines) <= maxLines {
+		return s
+	}
+	return strings.Join(lines[:maxLines], "\n")
 }
 
 func normalizeLineRange(startLine, endLine, totalLines int) (int, int) {
@@ -506,6 +587,17 @@ Auto-indexes if the index is stale or empty.
 
 Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query.`,
 	}, indexers.handleSemanticSearch)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "health_check",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint: true,
+			Title:        "Embedding Service Health Check",
+		},
+		Description: `Check if the configured embedding service (Ollama or LM Studio) is reachable and healthy.
+
+Reports backend type, host, model name, and connection status. Use this to diagnose embedding failures or verify service availability.`,
+	}, indexers.handleHealthCheck)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "index_status",
