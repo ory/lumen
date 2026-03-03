@@ -1,10 +1,12 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -41,37 +43,18 @@ jobs:
           version: latest
           args: --build-tags=fts5
 
-  e2e:
-    name: E2E
+  release:
+    name: Release
     runs-on: ubuntu-latest
-    services:
-      ollama:
-        image: ollama/ollama:latest
-        ports:
-          - 11434:11434
+    container:
+      image: oryd/xgoreleaser:1.26.0-2.14.1
+    needs: [test, lint]
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
-          cache: true
+          fetch-depth: 0
 
-      - name: Wait for Ollama
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:11434/ && break
-            sleep 1
-          done
-
-      - name: Pull embedding model
-        run:
-          'curl -sf http://localhost:11434/api/pull -d ''{"name":"all-minilm"}'''
-
-      - name: E2E tests
-        run: make e2e
+      - name: Release
+        run: goreleaser release --clean
         env:
-          OLLAMA_HOST: http://localhost:11434
-          LUMEN_EMBED_MODEL: all-minilm
-          LUMEN_EMBED_DIMS: '384'
-
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
