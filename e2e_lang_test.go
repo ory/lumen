@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,6 +84,17 @@ func langSearch(t *testing.T, session *mcp.ClientSession, lang, query string) st
 		"limit":     30,
 		"min_score": -1.0,
 	})
+	// Sort by (filePath, startLine) for deterministic snapshots across environments.
+	slices.SortFunc(out.Results, func(a, b searchResultItem) int {
+		if a.FilePath != b.FilePath {
+			if a.FilePath < b.FilePath {
+				return -1
+			}
+			return 1
+		}
+		return a.StartLine - b.StartLine
+	})
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "results: %d\n", len(out.Results))
 	for _, r := range out.Results {
