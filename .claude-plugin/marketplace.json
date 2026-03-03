@@ -2,7 +2,7 @@
   "name": "lumen",
   "owner": {
     "name": "Aeneas Rekkas",
-    "email": "aeneas@ory.sh"
+    "email": "aeneas@ory.com"
   },
   "metadata": {
     "description": "Lumen — local semantic code search for AI coding agents",
@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "lumen",
-      "source": ".",
+      "source": "./",
       "description": "Precise local semantic code search via MCP. Indexes your codebase with Go AST parsing, embeds with Ollama or LM Studio, and exposes vector search to Claude through an MCP server — no cloud, no npm.",
       "version": "0.2.0",
       "author": {
