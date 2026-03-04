@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.9](https://github.com/ory/lumen/compare/v0.0.8...v0.0.9) (2026-03-04)
+
+
+### Bug Fixes
+
+* **plugin:** remove invalid manifest fields and bump version to 0.0.8 ([34ddfba](https://github.com/ory/lumen/commit/34ddfba22693b4fe20e4107a6eee5b64259a9c69))
+
 ## [0.0.8](https://github.com/ory/lumen/compare/v0.0.7...v0.0.8) (2026-03-04)
 
 
