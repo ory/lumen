@@ -135,6 +135,31 @@ assert_eq "prefers bin/lumen (dev build) over downloaded binary" \
   "${BIN_DIR}/lumen" "$FOUND"
 
 echo ""
+echo "=== version resolution tests ==="
+TMP_MANIFEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_MANIFEST_DIR" "$TMP_DIR"' EXIT
+
+MANIFEST="${TMP_MANIFEST_DIR}/.release-please-manifest.json"
+printf '{\n  ".": "1.2.3"\n}\n' > "$MANIFEST"
+
+resolved_version_from_manifest() {
+  local manifest="$1"
+  local ver=""
+  if [ -f "$manifest" ]; then
+    ver="v$(grep '"[.]"' "$manifest" | sed 's/.*"[^"]*"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  fi
+  echo "$ver"
+}
+
+assert_eq "manifest version resolution" \
+  "v1.2.3" \
+  "$(resolved_version_from_manifest "$MANIFEST")"
+
+assert_eq "missing manifest returns empty" \
+  "" \
+  "$(resolved_version_from_manifest "/nonexistent/.release-please-manifest.json")"
+
+echo ""
 echo "=== summary ==="
 echo "  passed: $PASS"
 echo "  failed: $FAIL"

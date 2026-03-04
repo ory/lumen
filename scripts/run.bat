@@ -38,6 +38,20 @@ if not exist "%BINARY%" (
   )
 
   if "!VERSION!"=="" (
+    set "MANIFEST=%PLUGIN_ROOT%\.release-please-manifest.json"
+    if exist "!MANIFEST!" (
+      for /f "tokens=*" %%i in ('findstr /r "\"[.]\"" "!MANIFEST!"') do (
+        for /f "tokens=2 delims=:" %%j in ("%%i") do (
+          set "VERSION=v%%~j"
+          set "VERSION=!VERSION: =!"
+          set "VERSION=!VERSION:,=!"
+          set "VERSION=!VERSION:"=!"
+        )
+      )
+    )
+  )
+
+  if "!VERSION!"=="" (
     echo Error: could not determine latest lumen version >&2
     exit /b 1
   )
