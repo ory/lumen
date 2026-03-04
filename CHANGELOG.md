@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/ory/lumen/compare/v0.0.6...v0.0.7) (2026-03-04)
+
+
+### Bug Fixes
+
+* **ci:** remove redundant test/vet/lint steps from release job ([2f33014](https://github.com/ory/lumen/commit/2f33014cf94e32bf3c118821f3d5db8428327fd1))
+
 ## [0.0.6](https://github.com/ory/lumen/compare/v0.0.5...v0.0.6) (2026-03-04)
 
 
