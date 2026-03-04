@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.8](https://github.com/ory/lumen/compare/v0.0.7...v0.0.8) (2026-03-04)
+
+
+### Features
+
+* add cwd parameter to MCP tools for reliable index root detection ([b622e62](https://github.com/ory/lumen/commit/b622e62cd4724bee02cbf48a9975809ec6426a7e))
+
 ## [0.0.7](https://github.com/ory/lumen/compare/v0.0.6...v0.0.7) (2026-03-04)
 
 
