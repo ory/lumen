@@ -116,15 +116,37 @@ type indexerCache struct {
 	cfg      config.Config
 }
 
-// getOrCreate returns an existing Indexer for the given project path, or
-// creates a new one backed by a SQLite database in the XDG data directory.
-func (ic *indexerCache) getOrCreate(projectPath string) (*index.Indexer, error) {
+// findEffectiveRoot walks up the directory tree from path's parent to find an
+// existing parent index (either in cache or on disk). Returns path unchanged
+// if no parent index is found. Must be called under ic.mu write lock.
+func (ic *indexerCache) findEffectiveRoot(path string) string {
+	candidate := filepath.Dir(path)
+	for {
+		if _, ok := ic.cache[candidate]; ok {
+			return candidate
+		}
+		if _, err := os.Stat(config.DBPathForProject(candidate, ic.model)); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			break
+		}
+		candidate = parent
+	}
+	return path
+}
+
+// getOrCreate returns an existing Indexer for the given project path (or a
+// parent index if one exists), along with the effective root directory used by
+// the indexer. Creates a new indexer if none exists.
+func (ic *indexerCache) getOrCreate(projectPath string) (*index.Indexer, string, error) {
 	// Fast path: read lock for already-cached indexers.
 	ic.mu.RLock()
 	if ic.cache != nil {
 		if idx, ok := ic.cache[projectPath]; ok {
 			ic.mu.RUnlock()
-			return idx, nil
+			return idx, projectPath, nil
 		}
 	}
 	ic.mu.RUnlock()
@@ -138,21 +160,35 @@ func (ic *indexerCache) getOrCreate(projectPath string) (*index.Indexer, error) 
 	}
 	// Double-check: another goroutine may have created it while we waited.
 	if idx, ok := ic.cache[projectPath]; ok {
-		return idx, nil
+		return idx, projectPath, nil
 	}
 
-	dbPath := config.DBPathForProject(projectPath, ic.model)
+	// Walk up to find an existing parent index.
+	effectiveRoot := ic.findEffectiveRoot(projectPath)
+
+	// If a parent index is already cached, alias and return.
+	if effectiveRoot != projectPath {
+		if idx, ok := ic.cache[effectiveRoot]; ok {
+			ic.cache[projectPath] = idx
+			return idx, effectiveRoot, nil
+		}
+	}
+
+	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return nil, fmt.Errorf("create db directory: %w", err)
+		return nil, "", fmt.Errorf("create db directory: %w", err)
 	}
 
 	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens)
 	if err != nil {
-		return nil, fmt.Errorf("create indexer: %w", err)
+		return nil, "", fmt.Errorf("create indexer: %w", err)
 	}
 
-	ic.cache[projectPath] = idx
-	return idx, nil
+	ic.cache[effectiveRoot] = idx
+	if effectiveRoot != projectPath {
+		ic.cache[projectPath] = idx
+	}
+	return idx, effectiveRoot, nil
 }
 
 // handleSemanticSearch is the tool handler for the semantic_search tool.
@@ -163,14 +199,14 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return nil, nil, err
 	}
 
-	idx, err := ic.getOrCreate(input.Path)
+	idx, effectiveRoot, err := ic.getOrCreate(input.Path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get indexer: %w", err)
 	}
 
 	progress := buildProgressFunc(ctx, req)
 
-	out, err := ic.ensureIndexed(ctx, idx, input, progress)
+	out, err := ic.ensureIndexed(ctx, idx, input, effectiveRoot, progress)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -182,7 +218,15 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 
 	maxDistance := computeMaxDistance(input.MinScore)
 
-	results, err := idx.Search(ctx, input.Path, queryVec, input.Limit, maxDistance)
+	// When searching a subdirectory, filter results to that prefix only.
+	var pathPrefix string
+	if input.Path != effectiveRoot {
+		if rel, relErr := filepath.Rel(effectiveRoot, input.Path); relErr == nil && rel != "." {
+			pathPrefix = rel
+		}
+	}
+
+	results, err := idx.Search(ctx, effectiveRoot, queryVec, input.Limit, maxDistance, pathPrefix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search: %w", err)
 	}
@@ -190,7 +234,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	out.Results = make([]SearchResultItem, len(results))
 	var snippets []string
 	if !input.Summary {
-		snippets = extractSnippets(input.Path, results)
+		snippets = extractSnippets(effectiveRoot, results)
 	}
 	for i, r := range results {
 		var content string
@@ -245,10 +289,10 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 	}
 }
 
-func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
 	out := SemanticSearchOutput{}
 	if input.ForceReindex {
-		stats, err := idx.Index(ctx, input.Path, true, progress)
+		stats, err := idx.Index(ctx, projectDir, true, progress)
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
 		}
@@ -257,7 +301,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		return out, nil
 	}
 
-	reindexed, stats, err := idx.EnsureFresh(ctx, input.Path, progress)
+	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
@@ -296,12 +340,12 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("path is required")
 	}
 
-	idx, err := ic.getOrCreate(input.Path)
+	idx, effectiveRoot, err := ic.getOrCreate(input.Path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get indexer: %w", err)
 	}
 
-	info, err := idx.Status(input.Path)
+	info, err := idx.Status(effectiveRoot)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get status: %w", err)
 	}
@@ -315,7 +359,7 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 		EmbeddingModel: info.EmbeddingModel,
 	}
 
-	fresh, err := idx.IsFresh(input.Path)
+	fresh, err := idx.IsFresh(effectiveRoot)
 	if err != nil {
 		return nil, nil, fmt.Errorf("check freshness: %w", err)
 	}

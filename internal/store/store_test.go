@@ -87,7 +87,7 @@ func TestStore_UpsertAndSearchVectors(t *testing.T) {
 	}
 
 	query := []float32{0.1, 0.2, 0.3, 0.4}
-	results, err := s.Search(query, 2, 0)
+	results, err := s.Search(query, 2, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestStore_DeleteFileChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results, err := s.Search([]float32{0.1, 0.2, 0.3, 0.4}, 10, 0)
+	results, err := s.Search([]float32{0.1, 0.2, 0.3, 0.4}, 10, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,11 +302,107 @@ func TestStore_DimensionMismatchRecreatesTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results, err := s2.Search([]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}, 10, 0)
+	results, err := s2.Search([]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}, 10, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 || results[0].Symbol != "Bar" {
 		t.Fatalf("expected 1 result with symbol Bar, got %v", results)
+	}
+}
+
+func TestStore_SearchWithPathPrefix(t *testing.T) {
+	s, err := New(":memory:", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// Insert files in two different directories.
+	if err := s.UpsertFile("src/main.go", "hash1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertFile("tests/foo_test.go", "hash2"); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := []chunker.Chunk{
+		{ID: "c1", FilePath: "src/main.go", Symbol: "Main", Kind: "function", StartLine: 1, EndLine: 5},
+		{ID: "c2", FilePath: "tests/foo_test.go", Symbol: "TestFoo", Kind: "function", StartLine: 1, EndLine: 5},
+	}
+	// Use identical vectors so distance doesn't filter anything.
+	vec := []float32{0.1, 0.2, 0.3, 0.4}
+	vectors := [][]float32{vec, vec}
+
+	if err := s.InsertChunks(chunks, vectors); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without prefix: both results returned.
+	all, err := s.Search(vec, 10, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 results without prefix, got %d", len(all))
+	}
+
+	// With prefix "src": only src/main.go result.
+	srcResults, err := s.Search(vec, 10, 0, "src")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(srcResults) != 1 {
+		t.Fatalf("expected 1 result with prefix 'src', got %d", len(srcResults))
+	}
+	if srcResults[0].FilePath != "src/main.go" {
+		t.Fatalf("expected src/main.go, got %s", srcResults[0].FilePath)
+	}
+
+	// With prefix "tests": only tests/foo_test.go result.
+	testResults, err := s.Search(vec, 10, 0, "tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(testResults) != 1 {
+		t.Fatalf("expected 1 result with prefix 'tests', got %d", len(testResults))
+	}
+	if testResults[0].FilePath != "tests/foo_test.go" {
+		t.Fatalf("expected tests/foo_test.go, got %s", testResults[0].FilePath)
+	}
+}
+
+func TestStore_SearchPathPrefixNoFalsePositives(t *testing.T) {
+	s, err := New(":memory:", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	// "internal/store" and "internal/storefront" share a common prefix string —
+	// the LIKE pattern must not match the latter when filtering by the former.
+	for _, path := range []string{"internal/store/store.go", "internal/storefront/main.go"} {
+		if err := s.UpsertFile(path, "hash"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	chunks := []chunker.Chunk{
+		{ID: "c1", FilePath: "internal/store/store.go", Symbol: "New", Kind: "function", StartLine: 1, EndLine: 5},
+		{ID: "c2", FilePath: "internal/storefront/main.go", Symbol: "Handler", Kind: "function", StartLine: 1, EndLine: 5},
+	}
+	vec := []float32{0.1, 0.2, 0.3, 0.4}
+	if err := s.InsertChunks(chunks, [][]float32{vec, vec}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := s.Search(vec, 10, 0, "internal/store")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d: %v", len(results), results)
+	}
+	if results[0].FilePath != "internal/store/store.go" {
+		t.Fatalf("expected internal/store/store.go, got %s", results[0].FilePath)
 	}
 }

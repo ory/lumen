@@ -276,8 +276,9 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 
 // Search performs a vector similarity search against the index.
 // If maxDistance > 0, results with distance >= maxDistance are excluded.
-func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limit int, maxDistance float64) ([]store.SearchResult, error) {
-	return idx.store.Search(queryVec, limit, maxDistance)
+// If pathPrefix != "", only chunks under that relative path are returned.
+func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+	return idx.store.Search(queryVec, limit, maxDistance, pathPrefix)
 }
 
 // Status returns information about the current index state for a project.

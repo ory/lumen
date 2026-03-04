@@ -16,10 +16,13 @@ package cmd
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/aeneasr/lumen/internal/config"
+	"github.com/aeneasr/lumen/internal/index"
 )
 
 // stubEmbedder satisfies embedder.Embedder for tests.
@@ -47,10 +50,110 @@ func TestIndexerCache_ConcurrentReads(_ *testing.T) {
 		wg.Go(func() {
 			// Path doesn't exist on disk — getOrCreate will error, that's fine.
 			// We're testing there's no data race on the cache map/mutex.
-			_, _ = ic.getOrCreate("/nonexistent/path/for/race/test")
+			_, _, _ = ic.getOrCreate("/nonexistent/path/for/race/test")
 		})
 	}
 	wg.Wait()
+}
+
+func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
+	const model = "test-model"
+
+	t.Run("returns path when no parent exists", func(t *testing.T) {
+		ic := &indexerCache{
+			cache: make(map[string]*index.Indexer),
+			model: model,
+		}
+		root := ic.findEffectiveRoot("/project/src/pkg")
+		if root != "/project/src/pkg" {
+			t.Fatalf("expected original path, got %s", root)
+		}
+	})
+
+	t.Run("returns cached parent", func(t *testing.T) {
+		// A nil *Indexer value still satisfies the map presence check.
+		ic := &indexerCache{
+			cache: map[string]*index.Indexer{"/project": nil},
+			model: model,
+		}
+		root := ic.findEffectiveRoot("/project/src/pkg")
+		if root != "/project" {
+			t.Fatalf("expected /project (cached parent), got %s", root)
+		}
+	})
+
+	t.Run("returns parent with existing db on disk", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("XDG_DATA_HOME", tmpDir)
+
+		// Create the DB file that would exist for /project with our model.
+		parentDBPath := config.DBPathForProject("/project", model)
+		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(parentDBPath, []byte{}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		ic := &indexerCache{
+			cache: make(map[string]*index.Indexer),
+			model: model,
+		}
+		root := ic.findEffectiveRoot("/project/src/pkg")
+		if root != "/project" {
+			t.Fatalf("expected /project (db on disk), got %s", root)
+		}
+	})
+}
+
+func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	const model = "stub"
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		model:    model,
+		cfg:      config.Config{MaxChunkTokens: 512},
+	}
+
+	// First call: index the parent directory — creates an indexer and DB on disk.
+	parentDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(parentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	parentIdx, parentRoot, err := ic.getOrCreate(parentDir)
+	if err != nil {
+		t.Fatalf("getOrCreate(parent): %v", err)
+	}
+	if parentRoot != parentDir {
+		t.Fatalf("expected effectiveRoot=%s, got %s", parentDir, parentRoot)
+	}
+
+	// Second call: request a subdirectory — should reuse the parent indexer.
+	subDir := filepath.Join(parentDir, "src")
+	subIdx, subRoot, err := ic.getOrCreate(subDir)
+	if err != nil {
+		t.Fatalf("getOrCreate(subdir): %v", err)
+	}
+	if subRoot != parentDir {
+		t.Fatalf("expected effectiveRoot=%s for subdir, got %s", parentDir, subRoot)
+	}
+	if subIdx != parentIdx {
+		t.Fatal("expected subdir to reuse parent indexer, got a different instance")
+	}
+
+	// Both keys should be aliased in the cache.
+	ic.mu.RLock()
+	cachedParent := ic.cache[parentDir]
+	cachedSub := ic.cache[subDir]
+	ic.mu.RUnlock()
+	if cachedParent != parentIdx {
+		t.Fatal("parent key not in cache")
+	}
+	if cachedSub != parentIdx {
+		t.Fatal("subdir key not aliased to parent indexer in cache")
+	}
 }
 
 func TestScoreIsNotDistance(t *testing.T) {

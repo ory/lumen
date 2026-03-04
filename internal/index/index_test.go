@@ -88,7 +88,7 @@ func Goodbye(name string) {
 		t.Fatal("expected at least 1 chunk created")
 	}
 
-	results, err := idx.Search(context.Background(), projectDir, []float32{0.1, 0.1, 0.1, 0.1}, 5, 0)
+	results, err := idx.Search(context.Background(), projectDir, []float32{0.1, 0.1, 0.1, 0.1}, 5, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -381,38 +381,44 @@ func (s *Store) DeleteFileChunks(filePath string) error {
 
 // Search performs a KNN vector search and returns the closest chunks.
 // If maxDistance > 0, results with distance >= maxDistance are excluded.
-func (s *Store) Search(queryVec []float32, limit int, maxDistance float64) ([]SearchResult, error) {
+// If pathPrefix != "", only chunks whose file_path equals pathPrefix or
+// starts with pathPrefix+"/" are returned; the KNN candidate count is
+// inflated to compensate for the post-JOIN filter.
+func (s *Store) Search(queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]SearchResult, error) {
 	blob, err := sqlite_vec.SerializeFloat32(queryVec)
 	if err != nil {
 		return nil, fmt.Errorf("serialize query: %w", err)
 	}
 
-	var query string
-	var args []any
-	if maxDistance > 0 {
-		query = `
-			SELECT c.file_path, c.symbol, c.kind, c.start_line, c.end_line, v.distance
-			FROM vec_chunks v
-			JOIN chunks c ON v.id = c.id
-			WHERE v.embedding MATCH ?
-			AND v.k = ?
-			AND v.distance < ?
-			ORDER BY v.distance
-			LIMIT ?
-		`
-		args = []any{blob, limit, maxDistance, limit}
-	} else {
-		query = `
-			SELECT c.file_path, c.symbol, c.kind, c.start_line, c.end_line, v.distance
-			FROM vec_chunks v
-			JOIN chunks c ON v.id = c.id
-			WHERE v.embedding MATCH ?
-			AND v.k = ?
-			ORDER BY v.distance
-			LIMIT ?
-		`
-		args = []any{blob, limit, limit}
+	// When filtering by path prefix we fetch more KNN candidates so the
+	// post-JOIN filter still returns enough results.
+	knn := limit
+	if pathPrefix != "" {
+		knn = min(limit*3, 300)
 	}
+
+	// Build WHERE clauses dynamically.
+	whereClauses := []string{"v.embedding MATCH ?", "v.k = ?"}
+	args := []any{blob, knn}
+
+	if maxDistance > 0 {
+		whereClauses = append(whereClauses, "v.distance < ?")
+		args = append(args, maxDistance)
+	}
+	if pathPrefix != "" {
+		whereClauses = append(whereClauses, "(c.file_path = ? OR c.file_path LIKE ? || '/%')")
+		args = append(args, pathPrefix, pathPrefix)
+	}
+	args = append(args, limit)
+
+	query := fmt.Sprintf(`
+		SELECT c.file_path, c.symbol, c.kind, c.start_line, c.end_line, v.distance
+		FROM vec_chunks v
+		JOIN chunks c ON v.id = c.id
+		WHERE %s
+		ORDER BY v.distance
+		LIMIT ?
+	`, strings.Join(whereClauses, "\n\t\tAND "))
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
