@@ -149,7 +149,7 @@ system handles MCP registration, hooks, and skills declaratively via:
 - **Merkle tree for diffs**: Avoid re-indexing unchanged code
 - **Model name in DB path**: Different models → separate indexes (SHA-256 hash
   of path + model name)
-- **5-layer file filtering**: SkipDirs → .gitignore → .lumenignore →
+- **6-layer file filtering**: SkipDirs → SkipFiles → .gitignore → .lumenignore →
   .gitattributes → extension
 - **Chunk splitting at line boundaries**: Oversized chunks split at
   `LUMEN_MAX_CHUNK_TOKENS` (512 default)

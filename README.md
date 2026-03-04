@@ -66,8 +66,8 @@ Two skills are also available: `/lumen:doctor` (health check) and
   via Merkle tree diffing
 - **Incremental updates** — re-indexes only what changed; large codebases
   re-index in seconds after the first run
-- **12 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
-  Java, PHP, C/C++, Markdown, YAML, JSON
+- **14 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
+  Java, PHP, C/C++, Markdown, YAML, JSON, TOML, Go module
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
@@ -107,7 +107,7 @@ reproduce instructions.
 
 ## Supported Languages
 
-Supports **12 language families** with semantic chunking:
+Supports **14 language families** with semantic chunking:
 
 | Language | Parser | Extensions | Status |
 | ---------------- | ----------- | ----------------------------------------- |-------------------------------------|
@@ -122,7 +122,8 @@ Supports **12 language families** with semantic chunking:
 | C / C++ | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported |
 | Markdown / MDX | tree-sitter | `.md`, `.mdx` | Supported |
 | YAML | tree-sitter | `.yaml`, `.yml` | Supported |
-| JSON | tree-sitter | `.json` | Supported |
+| JSON / TOML | structured | `.json`, `.toml` | Supported |
+| Go module | structured | `.mod` | Supported |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars.
@@ -160,6 +161,31 @@ Dimensions and context length are configured automatically per model:
 
 Switching models creates a separate index automatically. The model name is part
 of the database path hash, so different models never collide.
+
+## Controlling What Gets Indexed
+
+Lumen filters files through six layers: built-in directory and lock file skips →
+`.gitignore` → `.lumenignore` → `.gitattributes` (`linguist-generated`) →
+supported file extension. Only files that pass all layers are indexed.
+
+**`.lumenignore`** uses `.gitignore` syntax. Place it in your project root (or
+any subdirectory) to exclude files that aren't in `.gitignore` but are noise for
+code search — generated protobuf files, test snapshots, vendored data, etc.
+
+<details>
+<summary>Built-in skips (always excluded)</summary>
+
+**Directories:** `.git`, `node_modules`, `vendor`, `dist`, `.cache`, `.venv`,
+`__pycache__`, `target`, `.gradle`, `_build`, `deps`, `.idea`, `.vscode`,
+`.next`, `.nuxt`, `.build`, `.output`, `bower_components`, `.bundle`, `.tox`,
+`.eggs`, `testdata`, `.hg`, `.svn`
+
+**Lock files:** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`,
+`bun.lockb`, `go.sum`, `composer.lock`, `poetry.lock`, `Pipfile.lock`,
+`Gemfile.lock`, `Cargo.lock`, `pubspec.lock`, `mix.lock`, `flake.lock`,
+`packages.lock.json`
+
+</details>
 
 ## Database Location
 

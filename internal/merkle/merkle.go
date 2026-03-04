@@ -52,10 +52,11 @@ func MakeExtSkip(exts []string) SkipFunc {
 		extSet[ext] = true
 	}
 	return func(relPath string, isDir bool) bool {
+		base := filepath.Base(relPath)
 		if isDir {
-			return SkipDirs[filepath.Base(relPath)]
+			return SkipDirs[base]
 		}
-		return !extSet[filepath.Ext(relPath)]
+		return SkipFiles[base] || !extSet[filepath.Ext(relPath)]
 	}
 }
 

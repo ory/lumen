@@ -82,6 +82,25 @@ func TestMakeSkip_NegationPattern(t *testing.T) {
 	}
 }
 
+func TestMakeSkip_HardcodedFiles(t *testing.T) {
+	dir := t.TempDir()
+	skip := MakeSkip(dir, []string{".go", ".json", ".yaml"})
+
+	for name := range SkipFiles {
+		if !skip(name, false) {
+			t.Errorf("expected hardcoded file %q to be skipped", name)
+		}
+	}
+
+	// Regular files with same extensions should pass
+	if skip("package.json", false) {
+		t.Error("expected package.json to pass")
+	}
+	if skip("main.go", false) {
+		t.Error("expected main.go to pass")
+	}
+}
+
 func TestMakeSkip_HardcodedDirs(t *testing.T) {
 	dir := t.TempDir()
 	skip := MakeSkip(dir, []string{".go"})

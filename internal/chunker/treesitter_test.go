@@ -568,6 +568,8 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".yaml": []byte("foo: bar\n"),
 		".yml":  []byte("foo: bar\n"),
 		".json": []byte(`{"foo": "bar"}`),
+		".toml": []byte("[package]\nname = \"mymod\"\n"),
+		".mod":  []byte("module example.com/mymod\n\ngo 1.26\n"),
 	}
 
 	langs := chunker.DefaultLanguages(512)

@@ -24,6 +24,35 @@ import (
 	ignore "github.com/sabhiram/go-gitignore"
 )
 
+// SkipFiles is the canonical set of file basenames that are always skipped
+// during tree building. These are typically large generated or binary lock files
+// that add noise without indexing value.
+var SkipFiles = map[string]bool{
+	// JS/Node package managers
+	"package-lock.json": true,
+	"yarn.lock":         true,
+	"pnpm-lock.yaml":    true,
+	"bun.lock":          true, "bun.lockb": true,
+	// Go
+	"go.sum": true,
+	// PHP
+	"composer.lock": true,
+	// Python
+	"poetry.lock": true, "Pipfile.lock": true,
+	// Ruby
+	"Gemfile.lock": true,
+	// Rust
+	"Cargo.lock": true,
+	// Dart/Flutter
+	"pubspec.lock": true,
+	// Elixir
+	"mix.lock": true,
+	// Nix
+	"flake.lock": true,
+	// .NET/NuGet
+	"packages.lock.json": true,
+}
+
 // SkipDirs is the canonical set of directory basenames that are always skipped
 // during tree building, regardless of .gitignore rules.
 var SkipDirs = map[string]bool{
@@ -108,10 +137,14 @@ func (t *IgnoreTree) loadDir(dirRel string) *dirIgnore {
 	return d
 }
 
-// shouldSkip implements SkipFunc. It checks the five filtering layers:
-// 1. SkipDirs, 2. .gitignore, 3. .lumenignore, 4. .gitattributes, 5. extension.
+// shouldSkip implements SkipFunc. It checks the six filtering layers:
+// 1. SkipDirs, 2. SkipFiles, 3. .gitignore, 4. .lumenignore, 5. .gitattributes, 6. extension.
 func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
-	if isDir && SkipDirs[filepath.Base(relPath)] {
+	base := filepath.Base(relPath)
+	if isDir && SkipDirs[base] {
+		return true
+	}
+	if !isDir && SkipFiles[base] {
 		return true
 	}
 
@@ -213,12 +246,13 @@ func parseLinguistGenerated(path string) *ignore.GitIgnore {
 	return ignore.CompileIgnoreLines(patterns...)
 }
 
-// MakeSkip returns a SkipFunc that layers five filters:
+// MakeSkip returns a SkipFunc that layers six filters:
 //  1. SkipDirs — map lookup on directory basename (cheapest check)
-//  2. .gitignore — root + nested, hierarchical matching
-//  3. .lumenignore — root + nested, hierarchical matching
-//  4. .gitattributes — linguist-generated patterns, root + nested
-//  5. Extension filter — only index files whose extension is in exts
+//  2. SkipFiles — map lookup on file basename (lock files and other noise)
+//  3. .gitignore — root + nested, hierarchical matching
+//  4. .lumenignore — root + nested, hierarchical matching
+//  5. .gitattributes — linguist-generated patterns, root + nested
+//  6. Extension filter — only index files whose extension is in exts
 //
 // Ignore files are discovered lazily as the walk proceeds.
 func MakeSkip(rootDir string, exts []string) SkipFunc {

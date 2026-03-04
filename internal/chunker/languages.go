@@ -40,7 +40,8 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".md", ".mdx",
-	".yaml", ".yml", ".json",
+	".yaml", ".yml", ".json", ".toml",
+	".mod",
 }
 
 // SupportedExtensions returns the file extensions indexed by DefaultLanguages.
@@ -184,5 +185,7 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".yaml": structured,
 		".yml":  structured,
 		".json": structured,
+		".toml": structured,
+		".mod":  structured,
 	}
 }
