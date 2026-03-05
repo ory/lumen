@@ -4,7 +4,7 @@ GOFLAGS  := -tags=$(GOTAGS)
 
 XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
-.PHONY: build build-local test e2e lint vet tidy clean format plugin-dev
+.PHONY: build build-local test e2e lint vet tidy clean format plugin-dev verify-ground-truth
 
 build:
 	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
@@ -38,6 +38,9 @@ format:
 
 plugin-dev: build-local
 	@echo "Run: claude --plugin-dir ."
+
+verify-ground-truth:
+	bash scripts/verify-ground-truth.sh
 
 vhs:
 	export CLAUDE_PLUGIN_ROOT=$(pwd) && cd testdata/fixtures/go && vhs ../../../docs/demo/demo.tape

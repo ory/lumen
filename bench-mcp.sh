@@ -20,7 +20,7 @@ QUESTIONS=(
   # Python (Django fixtures)
   "How does the Django QuerySet evaluation and filtering pipeline work? Explain QuerySet chaining, lazy evaluation, the Query class, how lookups and filters are compiled into SQL, and how the Manager ties it all together. Show key classes and method signatures."
   # TypeScript (VSCode base library fixtures)
-  "How do Disposable and IDisposable work together with the EventEmitter system? Explain the lifecycle management pattern, how listeners are registered and cleaned up, and how events are typed and fired. Show key interfaces and class relationships."
+  "How do Disposable and IDisposable work together with the event Emitter system? Explain the lifecycle management pattern, how listeners are registered and cleaned up, and how events are typed and fired. Show key interfaces and class relationships."
   # Java (Spring PetClinic fixtures)
   "How is the PetClinic domain model structured? Explain the entity hierarchy (Owner, Pet, Visit, Vet), how JPA/Hibernate maps the relationships, and how the repository layer exposes data access. Show key classes, annotations, and method signatures."
   # JavaScript (Express fixtures)
@@ -28,7 +28,7 @@ QUESTIONS=(
   # Ruby (Rails fixtures)
   "How does the Rails middleware stack work? Explain how Rack middleware is assembled, how ActionDispatch integrates, how requests flow through the stack, and how custom middleware is added. Show key classes, modules, and call signatures."
   # Rust (ripgrep fixtures)
-  "How does ripgrep's search pipeline work end-to-end? Explain the searcher/matcher/sink architecture, how file walking is parallelized, how the Grep and Searcher types interact, and how results flow to the output layer. Show key traits, structs, and method signatures."
+  "How does ripgrep's search pipeline work end-to-end? Explain the searcher/matcher/sink architecture, how the Searcher and Printer interact, and how results flow to the output layer. Show key traits, structs, and method signatures."
   # PHP (Laravel fixtures)
   "How does the Laravel service container resolve dependencies? Explain binding, contextual binding, automatic injection, how the container builds concrete classes, and how service providers register bindings. Show key classes, interfaces, and method signatures."
 )
@@ -122,6 +122,27 @@ done
 echo "Building lumen..."
 make build-local
 
+# ── Isolate fixtures ─────────────────────────────────────────────────────────
+# Copy fixtures to a temp directory so the evaluated model cannot read ground
+# truth files (which live in testdata/ground-truth/ inside the repo).
+BENCH_TMPDIR=$(mktemp -d)
+echo "Isolating fixtures to $BENCH_TMPDIR ..."
+for lang in go python ts java js ruby rust php; do
+  cp -r "$REPO/testdata/fixtures/$lang" "$BENCH_TMPDIR/$lang"
+done
+FIXTURES_GO="$BENCH_TMPDIR/go"
+FIXTURES_PY="$BENCH_TMPDIR/python"
+FIXTURES_TS="$BENCH_TMPDIR/ts"
+FIXTURES_JAVA="$BENCH_TMPDIR/java"
+FIXTURES_JS="$BENCH_TMPDIR/js"
+FIXTURES_RUBY="$BENCH_TMPDIR/ruby"
+FIXTURES_RUST="$BENCH_TMPDIR/rust"
+FIXTURES_PHP="$BENCH_TMPDIR/php"
+Q_FIXTURES=(
+  "$FIXTURES_GO" "$FIXTURES_PY" "$FIXTURES_TS" "$FIXTURES_JAVA"
+  "$FIXTURES_JS" "$FIXTURES_RUBY" "$FIXTURES_RUST" "$FIXTURES_PHP"
+)
+
 # ── Index ─────────────────────────────────────────────────────────────────────
 echo "Indexing fixtures..."
 for fx_dir in "$FIXTURES_GO" "$FIXTURES_PY" "$FIXTURES_TS" "$FIXTURES_JAVA" "$FIXTURES_JS" "$FIXTURES_RUBY" "$FIXTURES_RUST" "$FIXTURES_PHP"; do
@@ -132,7 +153,7 @@ done
 # ── MCP configs ───────────────────────────────────────────────────────────────
 MCP_ENABLED=$(mktemp /tmp/bench-mcp-enabled-XXXXXX).json
 MCP_EMPTY=$(mktemp /tmp/bench-mcp-empty-XXXXXX).json
-trap 'rm -f "$MCP_ENABLED" "$MCP_EMPTY"' EXIT
+trap 'rm -f "$MCP_ENABLED" "$MCP_EMPTY"; rm -rf "$BENCH_TMPDIR"' EXIT
 
 cat > "$MCP_ENABLED" <<EOF
 {"mcpServers":{"lumen":{"command":"$BINARY","args":["stdio"],"env":{"LUMEN_BACKEND":"$EMBED_BACKEND","LUMEN_EMBED_MODEL":"$EMBED_MODEL"}}}}
@@ -293,7 +314,13 @@ $ground_truth
 Evaluate in three sections:
 
 ## Content Quality
-Rank the answers [model/scenario] from best to worst. One sentence per answer covering correctness, completeness, and use of specific file/line references. Verify claims against the ground truth and source file listing — flag any fabricated code or incorrect type/signature claims.
+For each answer [model/scenario], evaluate against the ground truth and source file listing:
+1. **Fact coverage**: How many Required Facts from the ground truth does the answer address? Report as (X/Y).
+2. **Accuracy**: Does the answer claim any types, functions, or signatures NOT listed in Key Types? List each fabrication.
+3. **Hallucination traps**: Does the answer assert anything listed under Hallucination Traps in the ground truth? List each.
+4. **Relationships**: Does the answer correctly identify cross-file architectural connections?
+Rank answers from best to worst. One sentence summary per answer. Penalize fabrications heavily.
+If no ground truth is provided, rank by correctness, completeness, and use of specific file/line references.
 
 ## Efficiency
 One or two sentences comparing runtime, token usage, and cost across scenarios. Note which scenario offers the best quality-to-cost tradeoff.
@@ -325,7 +352,15 @@ $ground_truth
 Evaluate in two sections:
 
 ## Content Quality
-Rank the answers from best to worst. For each, write a paragraph covering: (1) correctness verified against the ground truth facts, (2) completeness, (3) precision of file/line references, (4) whether it used the right tools/approach to find information. Flag any fabricated code or incorrect type/signature claims — cross-check against the ground truth and available source files.
+Rank the answers from best to worst. For each, write a paragraph covering:
+1. **Fact coverage**: How many Required Facts from the ground truth does the answer address? Report as (X/Y).
+2. **Accuracy**: Does the answer claim any types, functions, or signatures NOT listed in Key Types? List each fabrication explicitly.
+3. **Hallucination traps**: Does the answer assert anything listed under Hallucination Traps in the ground truth? List each instance.
+4. **Relationships**: Does the answer correctly identify the cross-file architectural connections described in the ground truth?
+5. **File references**: Are file/line references precise and correct?
+6. **Approach**: Did it use the right tools/strategy to find information?
+Flag any fabricated code or incorrect type/signature claims — cross-check against the ground truth and available source files.
+If no ground truth is provided, evaluate by correctness, completeness, and precision of references.
 
 ## Efficiency Analysis
 Compare runtime, token usage, and cost across all scenarios. Identify which scenarios were most efficient, note any surprising differences, and recommend the best quality-to-cost tradeoff." \
