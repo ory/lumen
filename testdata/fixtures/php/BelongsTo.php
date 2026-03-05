@@ -59,7 +59,6 @@ class BelongsTo extends Relation
      * @param  string  $foreignKey
      * @param  string  $ownerKey
      * @param  string  $relationName
-     * @return void
      */
     public function __construct(Builder $query, Model $child, $foreignKey, $ownerKey, $relationName)
     {
@@ -169,8 +168,8 @@ class BelongsTo extends Relation
         foreach ($models as $model) {
             $attribute = $this->getDictionaryKey($this->getForeignKeyFrom($model));
 
-            if (isset($dictionary[$attribute])) {
-                $model->setRelation($relation, $dictionary[$attribute]);
+            if (isset($dictionary[$attribute ?? ''])) {
+                $model->setRelation($relation, $dictionary[$attribute ?? '']);
             }
         }
 
@@ -249,7 +248,7 @@ class BelongsTo extends Relation
      *
      * @param  \Illuminate\Database\Eloquent\Builder<TRelatedModel>  $query
      * @param  \Illuminate\Database\Eloquent\Builder<TDeclaringModel>  $parentQuery
-     * @param  array|mixed  $columns
+     * @param  mixed  $columns
      * @return \Illuminate\Database\Eloquent\Builder<TRelatedModel>
      */
     public function getRelationExistenceQueryForSelfRelation(Builder $query, Builder $parentQuery, $columns = ['*'])
@@ -308,7 +307,7 @@ class BelongsTo extends Relation
     }
 
     /**
-     * Get the fully qualified foreign key of the relationship.
+     * Get the fully-qualified foreign key of the relationship.
      *
      * @return string
      */
@@ -338,7 +337,7 @@ class BelongsTo extends Relation
     }
 
     /**
-     * Get the fully qualified associated key of the relationship.
+     * Get the fully-qualified associated key of the relationship.
      *
      * @return string
      */
