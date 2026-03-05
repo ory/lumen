@@ -10,19 +10,19 @@ class ContextualBindingBuilder implements ContextualBindingBuilderContract
     /**
      * The underlying container instance.
      *
-     * @var Container
+     * @var \Illuminate\Contracts\Container\Container
      */
     protected $container;
 
     /**
-     * The concrete instance(s) that the contextual binding applies to.
+     * The concrete instance.
      *
      * @var string|array
      */
     protected $concrete;
 
     /**
-     * The abstract target that the contextual binding should resolve.
+     * The abstract target.
      *
      * @var string
      */
@@ -30,20 +30,23 @@ class ContextualBindingBuilder implements ContextualBindingBuilderContract
 
     /**
      * Create a new contextual binding builder.
+     *
+     * @param  \Illuminate\Contracts\Container\Container  $container
+     * @param  string|array  $concrete
      */
     public function __construct(Container $container, $concrete)
     {
-        $this->container = $container;
         $this->concrete = $concrete;
+        $this->container = $container;
     }
 
     /**
-     * Define the abstract target that the contextual binding should resolve.
+     * Define the abstract target that depends on the context.
      *
      * @param  string  $abstract
      * @return $this
      */
-    public function needs(string $abstract): self
+    public function needs($abstract)
     {
         $this->needs = $abstract;
 
@@ -54,28 +57,26 @@ class ContextualBindingBuilder implements ContextualBindingBuilderContract
      * Define the implementation for the contextual binding.
      *
      * @param  \Closure|string|array  $implementation
-     * @return void
+     * @return $this
      */
-    public function give($implementation): void
+    public function give($implementation)
     {
-        foreach ($this->normalizeConcrete() as $concrete) {
-            $this->container->addContextualBinding(
-                $concrete,
-                $this->needs,
-                $implementation
-            );
+        foreach (Util::arrayWrap($this->concrete) as $concrete) {
+            $this->container->addContextualBinding($concrete, $this->needs, $implementation);
         }
+
+        return $this;
     }
 
     /**
      * Define tagged services to be used as the implementation for the contextual binding.
      *
      * @param  string  $tag
-     * @return void
+     * @return $this
      */
-    public function giveTagged(string $tag): void
+    public function giveTagged($tag)
     {
-        $this->give(function ($container) use ($tag) {
+        return $this->give(function ($container) use ($tag) {
             $taggedServices = $container->tagged($tag);
 
             return is_array($taggedServices) ? $taggedServices : iterator_to_array($taggedServices);
@@ -87,22 +88,10 @@ class ContextualBindingBuilder implements ContextualBindingBuilderContract
      *
      * @param  string  $key
      * @param  mixed  $default
-     * @return void
+     * @return $this
      */
-    public function giveConfig(string $key, $default = null): void
+    public function giveConfig($key, $default = null)
     {
-        $this->give(function ($container) use ($key, $default) {
-            return $container->make('config')->get($key, $default);
-        });
-    }
-
-    /**
-     * Normalize the concrete bindings into an array.
-     *
-     * @return array
-     */
-    protected function normalizeConcrete(): array
-    {
-        return is_array($this->concrete) ? $this->concrete : [$this->concrete];
+        return $this->give(fn ($container) => $container->get('config')->get($key, $default));
     }
 }

@@ -53,6 +53,16 @@ marketplace.
   - `docs: update README with new API examples`
   - `refactor: simplify merkle tree comparison`
 
+### Benchmark Fixtures
+
+- **Never modify fixture files** in `testdata/fixtures/` when working on
+  benchmarks, chunker, or indexing code
+- Fixtures are vendored from upstream open-source projects and must remain
+  exact copies (see `testdata/fixtures/SOURCES.md`)
+- If a fixture needs updating, re-vendor from upstream — do not hand-edit
+- New fixtures require the exact upstream source, commit SHA, and file path
+  documented in `SOURCES.md`
+
 ### Idiomatic Go Patterns
 
 - **Interface satisfaction**: Implicit, verified by compilation (no "implements"

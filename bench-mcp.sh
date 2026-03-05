@@ -33,7 +33,7 @@ QUESTIONS=(
   "How does the Laravel service container resolve dependencies? Explain binding, contextual binding, automatic injection, how the container builds concrete classes, and how service providers register bindings. Show key classes, interfaces, and method signatures."
 )
 Q_SLUGS=(
-  "go-registry-concurrency"
+  "go-tsdb-compaction"
   "py-django-queryset"
   "ts-disposable-events"
   "java-petclinic-domain"
@@ -63,14 +63,14 @@ Q_FIXTURES=(
   "$FIXTURES_PHP"
 )
 Q_DIFFICULTY=(
-  "hard"
-  "hard"
-  "hard"
-  "hard"
-  "hard"
-  "hard"
-  "hard"
-  "hard"
+  "hard"       # Go: 32 files, 32K lines, deep cross-file TSDB architecture
+  "hard"       # Python: 24 files, 17K lines, complex ORM query pipeline
+  "medium"     # TypeScript: 24 files, 18K lines, focused event/disposable pattern
+  "easy"       # Java: 20 files, 1.5K lines, small PetClinic domain model
+  "medium"     # JavaScript: 20 files, 16K lines, Express middleware lifecycle
+  "medium"     # Ruby: 13 files, 10K lines, Rails middleware stack
+  "hard"       # Rust: 17 files, 15K lines, complex search pipeline architecture
+  "medium"     # PHP: 23 files, 22K lines, well-scoped container pattern
 )
 
 # ── Models ────────────────────────────────────────────────────────────────────
