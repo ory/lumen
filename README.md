@@ -66,8 +66,8 @@ Two skills are also available: `/lumen:doctor` (health check) and
   via Merkle tree diffing
 - **Incremental updates** — re-indexes only what changed; large codebases
   re-index in seconds after the first run
-- **14 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
-  Java, PHP, C/C++, Markdown, YAML, JSON, TOML, Go module
+- **15 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
+  Java, PHP, C/C++, C#, Markdown, YAML, JSON, TOML, Go module
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
@@ -107,7 +107,7 @@ reproduce instructions.
 
 ## Supported Languages
 
-Supports **14 language families** with semantic chunking:
+Supports **15 language families** with semantic chunking:
 
 | Language | Parser | Extensions | Status |
 | ---------------- | ----------- | ----------------------------------------- |-------------------------------------|
@@ -119,6 +119,7 @@ Supports **14 language families** with semantic chunking:
 | Ruby | tree-sitter | `.rb` | Supported |
 | Java | tree-sitter | `.java` | Supported |
 | PHP | tree-sitter | `.php` | Supported |
+| C# | tree-sitter | `.cs` | Supported |
 | C / C++ | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported |
 | Markdown / MDX | tree-sitter | `.md`, `.mdx` | Supported |
 | YAML | tree-sitter | `.yaml`, `.yml` | Supported |
