@@ -17,6 +17,7 @@ package chunker
 import (
 	sitter_c "github.com/smacker/go-tree-sitter/c"
 	sitter_cpp "github.com/smacker/go-tree-sitter/cpp"
+	sitter_cs "github.com/smacker/go-tree-sitter/csharp"
 	sitter_java "github.com/smacker/go-tree-sitter/java"
 	sitter_js "github.com/smacker/go-tree-sitter/javascript"
 	sitter_php "github.com/smacker/go-tree-sitter/php"
@@ -39,6 +40,7 @@ var supportedExtensions = []string{
 	".c", ".h",
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
+	".cs",
 	".md", ".mdx",
 	".yaml", ".yml", ".json", ".toml",
 	".mod",
@@ -156,6 +158,23 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		},
 	})
 
+	cs := mustTreeSitterChunker(LanguageDef{
+		Language: sitter_cs.GetLanguage(),
+		Queries: []QueryDef{
+			{Pattern: `(method_declaration name: (identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(class_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(interface_declaration name: (identifier) @name) @decl`, Kind: "interface"},
+			{Pattern: `(struct_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(property_declaration name: (identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(constructor_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(destructor_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(delegate_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(record_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(event_field_declaration (variable_declaration (variable_declarator (identifier) @name))) @decl`, Kind: "var"},
+		},
+	})
+
 	goChunker := NewGoAST()
 
 	md := NewMarkdownChunker()
@@ -180,6 +199,7 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".cxx":  cpp,
 		".hpp":  cpp,
 		".php":  php,
+		".cs":   cs,
 		".md":   md,
 		".mdx":  md,
 		".yaml": structured,

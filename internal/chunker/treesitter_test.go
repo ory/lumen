@@ -509,6 +509,86 @@ func TestTreeSitterChunker_CPP(t *testing.T) {
 	check("add", "function")
 }
 
+var sampleCSharp = []byte(`using System;
+
+namespace MyApp
+{
+    public delegate void StatusChanged(string status);
+
+    public enum Direction { North, South, East, West }
+
+    public interface IShape
+    {
+        double Area();
+    }
+
+    public record Point(double X, double Y);
+
+    public struct Vector2
+    {
+        public double X;
+        public double Y;
+    }
+
+    public class Calculator : IShape
+    {
+        private int _value;
+
+        public event StatusChanged OnStatusChanged;
+
+        public int Value { get => _value; set => _value = value; }
+
+        public Calculator(int initial) { _value = initial; }
+
+        ~Calculator() { }
+
+        public int Add(int a, int b) => a + b;
+
+        public double Area() => _value;
+    }
+}
+`)
+
+func TestTreeSitterChunker_CSharp(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c, ok := langs[".cs"]
+	if !ok {
+		t.Fatal("DefaultLanguages() missing .cs")
+	}
+
+	chunks, err := c.Chunk("sample.cs", sampleCSharp)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("Calculator", "type")     // class_declaration
+	check("IShape", "interface")    // interface_declaration
+	check("Vector2", "type")        // struct_declaration
+	check("Direction", "type")      // enum_declaration
+	check("Point", "type")          // record_declaration
+	check("StatusChanged", "type")  // delegate_declaration
+	check("Add", "method")          // method_declaration
+	check("Value", "method")        // property_declaration
+	check("Calculator", "function") // constructor_declaration
+	check("OnStatusChanged", "var")  // event_field_declaration
+}
+
 func symbolNames(chunks []chunker.Chunk) []string {
 	names := make([]string, len(chunks))
 	for i, c := range chunks {
@@ -563,6 +643,7 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".cxx":  []byte("void foo() {}"),
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
+		".cs":   []byte("class Foo {}"),
 		".md":   []byte("# Foo\nSome content."),
 		".mdx":  []byte("# Foo\nSome content."),
 		".yaml": []byte("foo: bar\n"),
