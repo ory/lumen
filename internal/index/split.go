@@ -68,9 +68,21 @@ func partitionLines(lines []string, maxChars int) [][]string {
 	currentLen := 0
 	for _, line := range lines {
 		if currentLen+len(line) > maxChars && len(current) > 0 {
-			parts = append(parts, current)
-			current = nil
-			currentLen = 0
+			splitAt := findSplitPoint(current)
+			if splitAt > 0 && splitAt < len(current) {
+				parts = append(parts, current[:splitAt])
+				remaining := make([]string, len(current)-splitAt)
+				copy(remaining, current[splitAt:])
+				current = remaining
+				currentLen = 0
+				for _, l := range current {
+					currentLen += len(l)
+				}
+			} else {
+				parts = append(parts, current)
+				current = nil
+				currentLen = 0
+			}
 		}
 		current = append(current, line)
 		currentLen += len(line)
@@ -81,15 +93,82 @@ func partitionLines(lines []string, maxChars int) [][]string {
 	return parts
 }
 
+// findSplitPoint scans backward through lines looking for a natural split
+// boundary. It recognizes blank lines and block-ending patterns across
+// language families:
+//   - C-family: }, },  });  };
+//   - Ruby/Elixir: end
+//   - Python: lines with reduced indentation after a block (dedent heuristic)
+//
+// Returns the index at which to begin the next partition (i.e. the first part
+// is lines[:idx]). Returns 0 if no suitable boundary is found within the
+// lookback window.
+func findSplitPoint(lines []string) int {
+	const lookback = 20
+	start := max(1, len(lines)-lookback)
+	for i := len(lines) - 1; i >= start; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if isSplitBoundary(trimmed) {
+			return i + 1
+		}
+		// Dedent heuristic: if this line is less indented than the next,
+		// it likely starts a new block (works for Python, YAML, etc.).
+		// Split before this line so it becomes the start of the next partition.
+		if i+1 < len(lines) && trimmed != "" {
+			thisIndent := countLeadingWhitespace(lines[i])
+			nextIndent := countLeadingWhitespace(lines[i+1])
+			if nextIndent > 0 && thisIndent < nextIndent {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+func isSplitBoundary(trimmed string) bool {
+	switch trimmed {
+	case "", "}", "},", "});", "};", "end":
+		return true
+	}
+	return false
+}
+
+func countLeadingWhitespace(s string) int {
+	for i, c := range s {
+		if c != ' ' && c != '\t' {
+			return i
+		}
+	}
+	return len(s)
+}
+
+// overlapLines is the number of lines from the end of the previous partition
+// prepended to the next partition. This improves search recall for queries
+// that match concepts spanning a split boundary.
+const overlapLines = 5
+
 func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 	totalParts := len(parts)
 	var result []chunker.Chunk
 	lineOffset := 0
 
 	for i, part := range parts {
-		content := strings.Join(part, "")
-		startLine := c.StartLine + lineOffset
-		endLine := startLine + len(part) - 1
+		// Prepend overlap from the previous partition (except for the first).
+		effective := part
+		overlapCount := 0
+		if i > 0 {
+			prev := parts[i-1]
+			n := min(overlapLines, len(prev))
+			overlap := prev[len(prev)-n:]
+			effective = make([]string, 0, n+len(part))
+			effective = append(effective, overlap...)
+			effective = append(effective, part...)
+			overlapCount = n
+		}
+
+		content := strings.Join(effective, "")
+		startLine := c.StartLine + lineOffset - overlapCount
+		endLine := c.StartLine + lineOffset + len(part) - 1
 		symbol := fmt.Sprintf("%s[%d/%d]", c.Symbol, i+1, totalParts)
 
 		h := sha256.New()

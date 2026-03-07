@@ -49,7 +49,7 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 	// Create a chunk with 100 lines, each ~40 chars = ~4000 chars total
 	// With maxTokens=200 (800 chars), this should split into ~5 parts
 	var lines []string
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		lines = append(lines, fmt.Sprintf("    line %d: some code content here\n", i))
 	}
 	content := strings.Join(lines, "")
@@ -74,7 +74,8 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 		}
 	}
 
-	// Line ranges are contiguous and cover original range
+	// Line ranges: first chunk starts at original start, last covers original end.
+	// Adjacent chunks overlap by up to overlapLines.
 	if result[0].StartLine != 10 {
 		t.Errorf("first chunk should start at line 10, got %d", result[0].StartLine)
 	}
@@ -82,9 +83,14 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 		t.Errorf("last chunk should end at line 109, got %d", result[len(result)-1].EndLine)
 	}
 	for i := 1; i < len(result); i++ {
-		if result[i].StartLine != result[i-1].EndLine+1 {
+		gap := result[i].StartLine - result[i-1].EndLine
+		if gap > 1 {
 			t.Errorf("gap between chunk %d (end %d) and %d (start %d)",
 				i-1, result[i-1].EndLine, i, result[i].StartLine)
+		}
+		// Overlap means StartLine <= previous EndLine
+		if gap > 0 {
+			t.Logf("chunk %d-%d: no overlap (gap=%d)", i-1, i, gap)
 		}
 	}
 
@@ -97,13 +103,18 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 		seen[r.ID] = true
 	}
 
-	// Content reconstructs to original
-	var reconstructed string
-	for _, r := range result {
-		reconstructed += r.Content
-	}
-	if reconstructed != content {
-		t.Error("reconstructed content does not match original")
+	// All original content is present (each original line appears in at least one chunk)
+	for _, origLine := range lines {
+		found := false
+		for _, r := range result {
+			if strings.Contains(r.Content, origLine) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("original line missing from all chunks: %q", origLine[:20])
+		}
 	}
 }
 
@@ -126,10 +137,66 @@ func TestSplitOversizedChunks_ZeroMaxTokens(t *testing.T) {
 	}
 }
 
+func TestPartitionLines_SplitsAtBlankLine(t *testing.T) {
+	// Build content where a blank line falls near the split boundary.
+	// 20 lines of ~40 chars = ~800 chars; maxChars=500 forces one split.
+	// The blank line at index 10 should be the preferred split point.
+	var lines []string
+	for i := range 20 {
+		if i == 10 {
+			lines = append(lines, "\n")
+		} else {
+			lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+		}
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	// The blank line (index 10) should be the last line of part[0].
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "" {
+		t.Errorf("expected part[0] to end at blank line, last line content: %q", last)
+	}
+}
+
+func TestPartitionLines_SplitsAtClosingBrace(t *testing.T) {
+	// Build content where a closing brace falls near the split boundary.
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	lines = append(lines, "}\n") // closing brace at index 10
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i+11))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	// The closing brace should be the last line of part[0].
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "}" {
+		t.Errorf("expected part[0] to end at '}', last line content: %q", last)
+	}
+}
+
+func TestPartitionLines_FallsBackWhenNoBoundary(t *testing.T) {
+	// Content with no blank lines or closing braces — should still split.
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected fallback split into at least 2 parts, got %d", len(parts))
+	}
+}
+
 func TestSplitOversizedChunks_MixedSizes(t *testing.T) {
 	small := makeTestChunk("Small", 1, 3, "small\n")
 	var bigLines []string
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		bigLines = append(bigLines, fmt.Sprintf("line %d content here\n", i))
 	}
 	big := makeTestChunk("Big", 10, 59, strings.Join(bigLines, ""))
@@ -142,5 +209,265 @@ func TestSplitOversizedChunks_MixedSizes(t *testing.T) {
 	// Remaining chunks should be splits of Big
 	if len(result) < 3 {
 		t.Fatalf("expected at least 3 chunks (1 small + 2+ splits), got %d", len(result))
+	}
+}
+
+func TestPartitionLines_SplitsAtClosingBraceComma(t *testing.T) {
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	lines = append(lines, "},\n") // trailing comma variant
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i+11))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "}," {
+		t.Errorf("expected part[0] to end at '},', got %q", last)
+	}
+}
+
+func TestPartitionLines_SplitsAtJSClosingBrace(t *testing.T) {
+	// JavaScript/TypeScript pattern: });
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	lines = append(lines, "});\n")
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i+11))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "});" {
+		t.Errorf("expected part[0] to end at '});', got %q", last)
+	}
+}
+
+func TestPartitionLines_SplitsAtCppClosingBrace(t *testing.T) {
+	// C++ pattern: };
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	lines = append(lines, "};\n")
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i+11))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "};" {
+		t.Errorf("expected part[0] to end at '};', got %q", last)
+	}
+}
+
+func TestPartitionLines_SplitsAtRubyEnd(t *testing.T) {
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+	}
+	lines = append(lines, "end\n")
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i+11))
+	}
+	parts := partitionLines(lines, 500)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "end" {
+		t.Errorf("expected part[0] to end at 'end', got %q", last)
+	}
+}
+
+func TestPartitionLines_SplitsAtDedent(t *testing.T) {
+	// Python-style: indented block followed by less-indented line
+	var lines []string
+	for i := range 10 {
+		lines = append(lines, fmt.Sprintf("        line %02d: indented block\n", i))
+	}
+	// Dedent: new top-level definition
+	lines = append(lines, "def next_function():\n")
+	for i := range 9 {
+		lines = append(lines, fmt.Sprintf("        line %02d: indented block\n", i+11))
+	}
+	parts := partitionLines(lines, 600)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	// The dedent line should be the first line of part[1] (split before it)
+	first := strings.TrimSpace(parts[1][0])
+	if first != "def next_function():" {
+		t.Errorf("expected part[1] to start at dedented line, got %q", first)
+	}
+}
+
+func TestPartitionLines_BoundaryAtLookbackEdge(t *testing.T) {
+	// Place a blank line exactly at the start of the lookback window.
+	// 30 lines total, maxChars forces split around line 25.
+	// Blank at line 5 (outside window) should NOT be used;
+	// blank at line 10 (at edge of 20-line lookback from ~25) should be used.
+	var lines []string
+	for i := range 30 {
+		if i == 10 {
+			lines = append(lines, "\n") // at lookback edge
+		} else {
+			lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+		}
+	}
+	parts := partitionLines(lines, 800)
+	if len(parts) < 2 {
+		t.Fatalf("expected at least 2 parts, got %d", len(parts))
+	}
+	last := strings.TrimSpace(parts[0][len(parts[0])-1])
+	if last != "" {
+		t.Errorf("expected part[0] to end at blank line (lookback edge), got %q", last)
+	}
+}
+
+func TestPartitionLines_MultipleSplits(t *testing.T) {
+	// Content requiring 3+ splits with unevenly distributed boundaries.
+	var lines []string
+	for i := range 60 {
+		if i == 8 || i == 35 || i == 50 {
+			lines = append(lines, "}\n") // uneven boundary placement
+		} else {
+			lines = append(lines, fmt.Sprintf("    line %02d: some code content here\n", i))
+		}
+	}
+	parts := partitionLines(lines, 600)
+	if len(parts) < 3 {
+		t.Fatalf("expected at least 3 parts, got %d", len(parts))
+	}
+	// Verify all original lines present
+	allLines := make([]string, 0)
+	for _, p := range parts {
+		allLines = append(allLines, p...)
+	}
+	for _, orig := range lines {
+		found := false
+		for _, l := range allLines {
+			if l == orig {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing line: %q", strings.TrimSpace(orig))
+		}
+	}
+}
+
+func TestCreateSubChunks_OverlapIncluded(t *testing.T) {
+	// Verify that sub-chunks after the first include overlap lines from the previous partition.
+	parts := [][]string{
+		{"line1\n", "line2\n", "line3\n", "line4\n", "line5\n", "line6\n", "line7\n", "line8\n"},
+		{"line9\n", "line10\n", "line11\n"},
+	}
+	c := makeTestChunk("Func", 1, 11, "")
+	result := createSubChunks(c, parts)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(result))
+	}
+	// Second chunk should contain overlap from first partition's last N lines
+	second := result[1].Content
+	if !strings.Contains(second, "line4\n") {
+		t.Error("expected second chunk to contain overlap line 'line4'")
+	}
+	if !strings.Contains(second, "line9\n") {
+		t.Error("expected second chunk to contain 'line9'")
+	}
+	// First chunk should NOT have overlap
+	first := result[0].Content
+	if strings.Contains(first, "line9\n") {
+		t.Error("first chunk should not contain lines from second partition")
+	}
+}
+
+func TestCreateSubChunks_OverlapLineNumbers(t *testing.T) {
+	// Verify line numbers account for overlap correctly.
+	parts := [][]string{
+		{"a\n", "b\n", "c\n", "d\n", "e\n", "f\n", "g\n", "h\n", "i\n", "j\n"},
+		{"k\n", "l\n"},
+	}
+	c := makeTestChunk("Func", 10, 21, "")
+	result := createSubChunks(c, parts)
+	// First chunk: lines 10-19
+	if result[0].StartLine != 10 || result[0].EndLine != 19 {
+		t.Errorf("first chunk lines: got %d-%d, want 10-19", result[0].StartLine, result[0].EndLine)
+	}
+	// Second chunk with overlap: starts 5 lines before partition boundary
+	if result[1].StartLine != 15 {
+		t.Errorf("second chunk start: got %d, want 15 (overlap of 5)", result[1].StartLine)
+	}
+	if result[1].EndLine != 21 {
+		t.Errorf("second chunk end: got %d, want 21", result[1].EndLine)
+	}
+}
+
+func TestFindSplitPoint_ExactBoundaries(t *testing.T) {
+	tests := []struct {
+		name     string
+		lines    []string
+		wantIdx  int
+	}{
+		{
+			name:    "closing brace",
+			lines:   []string{"a\n", "b\n", "}\n", "c\n"},
+			wantIdx: 3,
+		},
+		{
+			name:    "closing brace comma",
+			lines:   []string{"a\n", "b\n", "},\n", "c\n"},
+			wantIdx: 3,
+		},
+		{
+			name:    "JS callback close",
+			lines:   []string{"a\n", "b\n", "});\n", "c\n"},
+			wantIdx: 3,
+		},
+		{
+			name:    "C++ class close",
+			lines:   []string{"a\n", "b\n", "};\n", "c\n"},
+			wantIdx: 3,
+		},
+		{
+			name:    "Ruby end",
+			lines:   []string{"a\n", "b\n", "end\n", "c\n"},
+			wantIdx: 3,
+		},
+		{
+			name:    "blank line",
+			lines:   []string{"a\n", "\n", "b\n", "c\n"},
+			wantIdx: 2, // scans backward from 3, finds blank at idx 1, returns 2
+		},
+		{
+			name:    "no boundary",
+			lines:   []string{"a\n", "b\n", "c\n"},
+			wantIdx: 0,
+		},
+		{
+			name:    "single line",
+			lines:   []string{"a\n"},
+			wantIdx: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := findSplitPoint(tt.lines)
+			if got != tt.wantIdx {
+				t.Errorf("findSplitPoint() = %d, want %d", got, tt.wantIdx)
+			}
+		})
 	}
 }
