@@ -1,0 +1,18 @@
+=== RUN   TestCORSMethodMiddleware
+=== RUN   TestCORSMethodMiddleware/does_not_set_without_OPTIONS_matcher
+=== RUN   TestCORSMethodMiddleware/sets_on_non_OPTIONS
+=== RUN   TestCORSMethodMiddleware/sets_without_preflight_headers
+=== RUN   TestCORSMethodMiddleware/does_not_set_on_error
+=== RUN   TestCORSMethodMiddleware/sets_header_on_valid_preflight
+=== RUN   TestCORSMethodMiddleware/does_not_set_methods_from_unmatching_routes
+=== RUN   TestCORSMethodMiddleware/subrouter_does_not_set_methods_from_other_subroute_paths
+--- PASS: TestCORSMethodMiddleware (0.00s)
+    --- PASS: TestCORSMethodMiddleware/does_not_set_without_OPTIONS_matcher (0.00s)
+    --- PASS: TestCORSMethodMiddleware/sets_on_non_OPTIONS (0.00s)
+    --- PASS: TestCORSMethodMiddleware/sets_without_preflight_headers (0.00s)
+    --- PASS: TestCORSMethodMiddleware/does_not_set_on_error (0.00s)
+    --- PASS: TestCORSMethodMiddleware/sets_header_on_valid_preflight (0.00s)
+    --- PASS: TestCORSMethodMiddleware/does_not_set_methods_from_unmatching_routes (0.00s)
+    --- PASS: TestCORSMethodMiddleware/subrouter_does_not_set_methods_from_other_subroute_paths (0.00s)
+PASS
+ok  	github.com/gorilla/mux	0.609s
