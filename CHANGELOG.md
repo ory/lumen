@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.10](https://github.com/ory/lumen/compare/v0.0.9...v0.0.10) (2026-03-07)
+
+
+### Features
+
+* **chunker:** add C# language support ([915e917](https://github.com/ory/lumen/commit/915e917af528109e77be8a48195758c61b43be7e))
+
+
+### Bug Fixes
+
+* update guidance for reindexing the Lumen index ([f08c3b9](https://github.com/ory/lumen/commit/f08c3b959bb7a0ff9c74b364d522dbd476e84466))
+
 ## [0.0.9](https://github.com/ory/lumen/compare/v0.0.8...v0.0.9) (2026-03-04)
 
 
