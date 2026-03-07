@@ -1,3 +1,23 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [Demo](#demo)
+- [Quick Start](#quick-start)
+- [What You Get](#what-you-get)
+- [How It Works](#how-it-works)
+- [Benchmarks](#benchmarks)
+- [Supported Languages](#supported-languages)
+- [Configuration](#configuration)
+  - [Supported Embedding Models](#supported-embedding-models)
+- [Controlling What Gets Indexed](#controlling-what-gets-indexed)
+- [Database Location](#database-location)
+- [CLI Reference](#cli-reference)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ![Ory Lumen: Semantic code search for AI agents](.github/lumen-banner.png)
 
 [![CI](https://github.com/ory/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/ory/lumen/actions/workflows/ci.yml)
@@ -17,18 +37,19 @@ The payoff is measurable: **2.1–2.3× faster** task completion and **63–81%
 cheaper** API costs, with reproducible [benchmarks](docs/BENCHMARKS.md) and
 answer quality that wins every blind comparison.
 
-| | With lumen | Baseline (no MCP) |
-| ---------------------------- | --------------------------- | --------------------------- |
-| Task completion | **2.1-2.3x faster** | baseline |
-| API cost | **63-81% cheaper** | baseline |
-| Answer quality (blind judge) | **5/5 wins** | 0/5 wins |
+|                              | With lumen          | Baseline (no MCP) |
+| ---------------------------- | ------------------- | ----------------- |
+| Task completion              | **2.1-2.3x faster** | baseline          |
+| API cost                     | **63-81% cheaper**  | baseline          |
+| Answer quality (blind judge) | **5/5 wins**        | 0/5 wins          |
 
 ## Demo
 
 <img src="docs/demo/demo.gif" alt="Lumen demo" width="600"/>
 
-_Claude Code asking about the [Prometheus](https://github.com/prometheus/prometheus)
-codebase. Lumen's `semantic_search` finds the relevant code without reading entire files._
+_Claude Code asking about the
+[Prometheus](https://github.com/prometheus/prometheus) codebase. Lumen's
+`semantic_search` finds the relevant code without reading entire files._
 
 ## Quick Start
 
@@ -76,9 +97,9 @@ Two skills are also available: `/lumen:doctor` (health check) and
 Lumen sits between your codebase and Claude as an MCP server. When a session
 starts, it walks your project and builds a **Merkle tree** over file hashes:
 only changed files get re-chunked and re-embedded. Each file is split into
-semantic chunks (functions, types, methods) using Go's native AST or
-tree-sitter grammars for other languages. Chunks are embedded and stored in
-**SQLite + sqlite-vec** using cosine-distance KNN for retrieval.
+semantic chunks (functions, types, methods) using Go's native AST or tree-sitter
+grammars for other languages. Chunks are embedded and stored in **SQLite +
+sqlite-vec** using cosine-distance KNN for retrieval.
 
 ```
 Files → semantic chunks → vector embeddings → SQLite/sqlite-vec → KNN search
@@ -86,17 +107,17 @@ Files → semantic chunks → vector embeddings → SQLite/sqlite-vec → KNN se
 
 When Claude needs to understand code, it calls `semantic_search` instead of
 reading entire files. The index is stored outside your repo
-(`~/.local/share/lumen/<hash>/index.db`), keyed by project path and model name
-— different models never share an index.
+(`~/.local/share/lumen/<hash>/index.db`), keyed by project path and model name —
+different models never share an index.
 
 ## Benchmarks
 
 Key results (Ollama, `jina-embeddings-v2-base-code`, Golang fixture):
 
-| Model | Speedup | Cost Savings | Quality |
+| Model      | Speedup         | Cost Savings    | Quality      |
 | ---------- | --------------- | --------------- | ------------ |
 | Sonnet 4.6 | **2.2x faster** | **63% cheaper** | 5/5 MCP wins |
-| Opus 4.6 | **2.1x faster** | **81% cheaper** | 5/5 MCP wins |
+| Opus 4.6   | **2.1x faster** | **81% cheaper** | 5/5 MCP wins |
 
 Results hold across LM Studio (nomic-embed-code) and across Go, Python, and
 TypeScript in extended multi-model benchmarks.
@@ -109,22 +130,22 @@ reproduce instructions.
 
 Supports **15 language families** with semantic chunking:
 
-| Language | Parser | Extensions | Status |
-| ---------------- | ----------- | ----------------------------------------- |-------------------------------------|
-| Go | Native AST | `.go` | Optimized: 3.8x faster, 90% cheaper |
-| Python | tree-sitter | `.py` | Tested: 1.8x faster, 72% cheaper |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx` | Tested: 1.4x faster, 48% cheaper |
-| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs` | Supported |
-| Rust | tree-sitter | `.rs` | Supported |
-| Ruby | tree-sitter | `.rb` | Supported |
-| Java | tree-sitter | `.java` | Supported |
-| PHP | tree-sitter | `.php` | Supported |
-| C# | tree-sitter | `.cs` | Supported |
-| C / C++ | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported |
-| Markdown / MDX | tree-sitter | `.md`, `.mdx` | Supported |
-| YAML | tree-sitter | `.yaml`, `.yml` | Supported |
-| JSON / TOML | structured | `.json`, `.toml` | Supported |
-| Go module | structured | `.mod` | Supported |
+| Language         | Parser      | Extensions                                | Status                               |
+| ---------------- | ----------- | ----------------------------------------- | ------------------------------------ |
+| Go               | Native AST  | `.go`                                     | Optimized: 3.8x faster, 90% cheaper |
+| Python           | tree-sitter | `.py`                                     | Tested: 1.8x faster, 72% cheaper    |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4x faster, 48% cheaper    |
+| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Supported                            |
+| Rust             | tree-sitter | `.rs`                                     | Supported                            |
+| Ruby             | tree-sitter | `.rb`                                     | Supported                            |
+| Java             | tree-sitter | `.java`                                   | Supported                            |
+| PHP              | tree-sitter | `.php`                                    | Supported                            |
+| C#               | tree-sitter | `.cs`                                     | Supported                            |
+| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                            |
+| Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                            |
+| YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                            |
+| JSON / TOML      | structured  | `.json`, `.toml`                          | Supported                            |
+| Go module        | structured  | `.mod`                                    | Supported                            |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars.
@@ -136,29 +157,30 @@ tree-sitter but may benefit from improved chunking strategies._
 
 All configuration is via environment variables:
 
-| Variable | Default | Description |
-| ------------------------- | -------------------- | ------------------------------------------ |
-| `LUMEN_EMBED_MODEL` | see note ¹ | Embedding model (must be in registry) |
-| `LUMEN_BACKEND` | `ollama` | Embedding backend (`ollama` or `lmstudio`) |
-| `OLLAMA_HOST` | `localhost:11434` | Ollama server URL |
-| `LM_STUDIO_HOST` | `localhost:1234` | LM Studio server URL |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512` | Max tokens per chunk before splitting |
+| Variable                 | Default           | Description                                |
+| ------------------------ | ----------------- | ------------------------------------------ |
+| `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
+| `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
+| `OLLAMA_HOST`            | `localhost:11434` | Ollama server URL                          |
+| `LM_STUDIO_HOST`         | `localhost:1234`  | LM Studio server URL                       |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
 
-¹ `ordis/jina-embeddings-v2-base-code` (Ollama), `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
+¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
+`nomic-ai/nomic-embed-code-GGUF` (LM Studio)
 
 ### Supported Embedding Models
 
 Dimensions and context length are configured automatically per model:
 
-| Model | Backend | Dims | Context | Recommended |
-| ------------------------------------ | --------- | ---- | ------- |-----------------------------------------------------------------------|
-| `ordis/jina-embeddings-v2-base-code` | Ollama | 768 | 8192 | **Best default** — lowest cost, no over-retrieval |
-| `qwen3-embedding:8b` | Ollama | 4096 | 40960 | **Best quality** — strongest dominance (7/9 wins), very slow indexing |
-| `nomic-ai/nomic-embed-code-GGUF` | LM Studio | 3584 | 8192 | **Usable** — good quality, but TypeScript over-retrieval raises costs |
-| `qwen3-embedding:4b` | Ollama | 2560 | 40960 | **Not recommended** — highest costs, severe TypeScript over-retrieval |
-| `nomic-embed-text` | Ollama | 768 | 8192 | Untested |
-| `qwen3-embedding:0.6b` | Ollama | 1024 | 32768 | Untested |
-| `all-minilm` | Ollama | 384 | 512 | Untested |
+| Model                                | Backend   | Dims | Context | Recommended                                                           |
+| ------------------------------------ | --------- | ---- | ------- | --------------------------------------------------------------------- |
+| `ordis/jina-embeddings-v2-base-code` | Ollama    | 768  | 8192    | **Best default** — lowest cost, no over-retrieval                     |
+| `qwen3-embedding:8b`                 | Ollama    | 4096 | 40960   | **Best quality** — strongest dominance (7/9 wins), very slow indexing |
+| `nomic-ai/nomic-embed-code-GGUF`     | LM Studio | 3584 | 8192    | **Usable** — good quality, but TypeScript over-retrieval raises costs |
+| `qwen3-embedding:4b`                 | Ollama    | 2560 | 40960   | **Not recommended** — highest costs, severe TypeScript over-retrieval |
+| `nomic-embed-text`                   | Ollama    | 768  | 8192    | Untested                                                              |
+| `qwen3-embedding:0.6b`               | Ollama    | 1024 | 32768   | Untested                                                              |
+| `all-minilm`                         | Ollama    | 384  | 512     | Untested                                                              |
 
 Switching models creates a separate index automatically. The model name is part
 of the database path hash, so different models never collide.
@@ -199,8 +221,8 @@ Index databases are stored outside your project:
 Where `<hash>` is derived from the absolute project path and embedding model
 name. No files are added to your repo, no `.gitignore` modifications needed.
 
-You can safely delete the entire `lumen` directory to clear all indexes,
-or use `lumen purge` to do it automatically.
+You can safely delete the entire `lumen` directory to clear all indexes, or use
+`lumen purge` to do it automatically.
 
 ## CLI Reference
 

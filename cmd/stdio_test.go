@@ -271,9 +271,9 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 
 func TestValidateSearchInput_CwdPathInteraction(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   SemanticSearchInput
-		wantErr string
+		name     string
+		input    SemanticSearchInput
+		wantErr  string
 		wantPath string
 	}{
 		{
