@@ -1,0 +1,18 @@
+{
+  "id": "rust-easy",
+  "language": "rust",
+  "difficulty": "easy",
+  "repo": "https://github.com/BurntSushi/ripgrep",
+  "base_commit": "916415857f084e63efda03cf25a67fe7f6d24244",
+  "fix_commit": "de2567a4c76fa671005538d6cd841abc44932b9a",
+  "issue_url": "https://github.com/BurntSushi/ripgrep/issues/3180",
+  "issue_title": "rg panic caused by --replace, --multiline, a particular pattern, and search text containing repeats and newlines",
+  "issue_body": "When using the --replace and --multiline flags with certain search patterns, ripgrep panics when it searches text containing certain sequences of repeated text and newlines. The panic message is \"slice index starts at x but ends at y\", where x and y are integers and y < x.\n\nEach minimal search pattern is extremely specific. Removing almost any element will prevent the bug from appearing.\n\nReproduction test case 1:\n```\nlines2=$(printf \" b b b b b b b b\\nc\")\necho \"$lines2\" > lines2.txt\nrg \"(^|[^a-z])((([a-z]+)?)\\s)?b(\\s([a-z]+)?)($|[^a-z])\" --replace=x --multiline lines2.txt\n```\n\nReproduction test case 2:\n```\nlines5=$(printf \" b\\nb\\nb\\nb\\nc\")\necho \"$lines5\" > lines5.txt\nrg \"(^|[^a-z])((([a-z]+)?)\\s)?b(\\s([a-z]+)?)($|[^a-z])\" --replace=x --multiline lines5.txt\n```\n\nActual behavior: ripgrep panics with backtrace:\n```\nthread 'main' panicked at crates/printer/src/util.rs:568:22:\nslice index starts at 18 but ends at 17\n```\nThe panic occurs in `grep_printer::util::replace_with_captures_in_context` because the invariant that the match would never exceed the range given is not always true when look-around is involved.\n\nExpected behavior: ripgrep should return matching text with replacements applied, without panicking.",
+  "gold_patch_file": "patches/rust-easy.patch",
+  "expected_files": [
+    "crates/printer/src/util.rs"
+  ],
+  "setup_commands": [],
+  "test_command": "cargo test r3180_look_around_panic",
+  "timeout_s": 900
+}

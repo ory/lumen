@@ -1,0 +1,6 @@
+testing: warning: no tests to run
+PASS
+ok  	github.com/labstack/echo/v4	0.291s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/labstack/echo/v4/middleware	0.557s [no tests to run]

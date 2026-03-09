@@ -1,0 +1,21 @@
+{
+  "id": "c-hard",
+  "language": "c",
+  "difficulty": "hard",
+  "repo": "https://github.com/redis/redis",
+  "base_commit": "b6ea0dd2a312dc7d2170324559df7d8ddeebcb81",
+  "fix_commit": "dd81afa2c8ae2040b51331db5870c06f0a69bb38",
+  "issue_url": "https://github.com/redis/redis/pull/14784",
+  "issue_title": "Do not add a key into db if it has a past expiration time",
+  "issue_body": "When using the SET command with an expiration time that is already in the past (e.g. SET key value PXAT <past_timestamp>), Redis currently inserts the key into the database even though it has already expired. The key then lingers until the expiry system lazily cleans it up. This is inconsistent with the behavior of EXPIREAT with a TTL in the past, which immediately deletes the key and returns success.\n\nThe same problem exists in the RESTORE command with the ABSTTL flag: if the absolute TTL is in the past, the key is still restored into the database.\n\nExpected behavior:\n- SET with an already-elapsed expiration should not insert the key into the database. If a key with the same name already exists, it should be deleted (and the deletion should be propagated to replicas). The expired_keys stat counter should be incremented to reflect the expiration.\n- RESTORE with ABSTTL where the TTL is in the past should similarly not add the key to the database, and should increment the expired_keys stat counter.\n- Both commands should still return success (OK) to the caller, consistent with how EXPIREAT handles past TTLs.\n- The GET variant of SET (SET key value GET PXAT <past>) should return the old value of the key (if any) before performing the expiration logic.",
+  "gold_patch_file": "patches/c-hard.patch",
+  "expected_files": [
+    "src/cluster.c",
+    "src/t_string.c",
+    "tests/unit/dump.tcl",
+    "tests/unit/type/string.tcl"
+  ],
+  "setup_commands": [],
+  "test_command": "make test TEST=unit/type/string TEST=unit/dump",
+  "timeout_s": 900
+}

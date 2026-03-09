@@ -1,0 +1,77 @@
+diff --git a/CHANGES.rst b/CHANGES.rst
+index 686ff02f..fc3ef437 100644
+--- a/CHANGES.rst
++++ b/CHANGES.rst
+@@ -14,6 +14,8 @@ Unreleased
+     If subclasses were overriding these methods, the old signature is detected,
+     shows a deprecation warning, and will continue to work during the
+     deprecation period. :issue:`5815`
++-   The ``should_ignore_error`` is deprecated. Handle errors as needed in
++    teardown handlers instead. :issue:`5816`
+ -   ``template_filter``, ``template_test``, and ``template_global`` decorators
+     can be used without parentheses. :issue:`5729`
+ -   ``redirect`` returns a ``303`` status code by default instead of ``302``.
+diff --git a/src/flask/app.py b/src/flask/app.py
+index 0fc92728..c17da4b4 100644
+--- a/src/flask/app.py
++++ b/src/flask/app.py
+@@ -995,6 +995,17 @@ class Flask(App):
+ 
+         .. versionadded:: 0.7
+         """
++        if not self._got_first_request and self.should_ignore_error is not None:
++            import warnings
++
++            warnings.warn(
++                "The 'should_ignore_error' method is deprecated and will"
++                " be removed in Flask 3.3. Handle errors as needed in"
++                " teardown handlers instead.",
++                DeprecationWarning,
++                stacklevel=1,
++            )
++
+         self._got_first_request = True
+ 
+         try:
+@@ -1576,7 +1587,11 @@ class Flask(App):
+             if "werkzeug.debug.preserve_context" in environ:
+                 environ["werkzeug.debug.preserve_context"](ctx)
+ 
+-            if error is not None and self.should_ignore_error(error):
++            if (
++                error is not None
++                and self.should_ignore_error is not None
++                and self.should_ignore_error(error)
++            ):
+                 error = None
+ 
+             ctx.pop(error)
+diff --git a/src/flask/sansio/app.py b/src/flask/sansio/app.py
+index 0195b16c..e069b908 100644
+--- a/src/flask/sansio/app.py
++++ b/src/flask/sansio/app.py
+@@ -922,15 +922,16 @@ class App(Scaffold):
+ 
+         return False
+ 
+-    def should_ignore_error(self, error: BaseException | None) -> bool:
+-        """This is called to figure out if an error should be ignored
+-        or not as far as the teardown system is concerned.  If this
+-        function returns ``True`` then the teardown handlers will not be
+-        passed the error.
++    should_ignore_error: None = None
++    """If this method returns ``True``, the error will not be passed to
++    teardown handlers, and the context will not be preserved for
++    debugging.
+ 
+-        .. versionadded:: 0.10
+-        """
+-        return False
++    .. deprecated:: 3.2
++        Handle errors as needed in teardown handlers instead.
++
++    .. versionadded:: 0.10
++    """
+ 
+     def redirect(self, location: str, code: int = 303) -> BaseResponse:
+         """Create a redirect response object.

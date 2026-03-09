@@ -1,0 +1,23 @@
+{
+  "id": "php-hard",
+  "language": "php",
+  "difficulty": "hard",
+  "repo": "https://github.com/nikic/PHP-Parser",
+  "base_commit": "14f9c9df7fab294d33cc4eb02207076cf2eb23ed",
+  "fix_commit": "c9d0b6c9f2c2c323661d31f7c81a26bf479ae3ff",
+  "issue_url": "https://github.com/nikic/PHP-Parser/issues/1055",
+  "issue_title": "Inefficient GC behavior when using AST node-connecting visitors",
+  "issue_body": "When using the AST visitors that attach parent, previous sibling, and next sibling information to parsed PHP nodes, the resulting data structure creates circular reference cycles between parent and child nodes. These cycles defeat PHP's reference-counting garbage collector, causing it to fall back to the much slower cycle-collecting GC.\n\nThis leads to significant memory overhead and degraded performance in long-running PHP processes that parse many files, such as static analysis tools. Profiling shows that a large portion of execution time is spent in garbage collection when these visitors are enabled.\n\nThe core problem is that the visitor stores direct object references from child nodes back to their parent and sibling nodes via node attributes. Since the parent node already holds references to its children through the AST structure, this creates bidirectional strong reference cycles that the reference-counting GC cannot reclaim.\n\nThe implementation needs to be changed so that backward references (from child to parent, and between siblings) do not prevent garbage collection of unreachable AST subtrees. The public API for retrieving these connected nodes should remain the same, but the internal storage mechanism must avoid creating strong reference cycles.\n\nAdditionally, the documentation should be updated to explain the corrected behavior and any changes in how the connected node attributes are accessed.",
+  "gold_patch_file": "patches/php-hard.patch",
+  "expected_files": [
+    "Makefile",
+    "doc/component/FAQ.markdown",
+    "lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php",
+    "lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php"
+  ],
+  "setup_commands": [
+    "composer install --no-interaction --prefer-dist"
+  ],
+  "test_command": "vendor/bin/phpunit",
+  "timeout_s": 900
+}

@@ -1,0 +1,18 @@
+{
+  "id": "java-easy",
+  "language": "java",
+  "difficulty": "easy",
+  "repo": "https://github.com/FasterXML/jackson-core",
+  "base_commit": "7dcd463109918e12494a9085b2f20f0ee8d93f70",
+  "fix_commit": "3bb54ca180d95069cfbc530c859f482d70df5bee",
+  "issue_url": "https://github.com/FasterXML/jackson-core/pull/1512",
+  "issue_title": "Number-parsing fix for UTF8DataInputJsonParser",
+  "issue_body": "When using `UTF8DataInputJsonParser` with the `ALLOW_LEADING_DECIMAL_POINT_FOR_NUMBERS` feature enabled, parsing a JSON float value that starts with a period character (e.g. `.123`) produces incorrect results. The parser does not return the expected numeric value.\n\nSteps to reproduce:\n1. Enable `JsonReadFeature.ALLOW_LEADING_DECIMAL_POINT_FOR_NUMBERS`.\n2. Feed `.5` or `.123` as input to `UTF8DataInputJsonParser`.\n3. Observe that the parsed number token is wrong \u2014 the value is mangled or an unexpected token type is returned.\n\nExpected behavior: `.123` should parse as the float value `0.123`, consistent with how `UTF8StreamJsonParser` already handles leading-decimal floats.\n\nActual behavior: The parsed result is incorrect. The bug appears to be in the `_nextTokenNotInObject` and `nextToken` methods of `UTF8DataInputJsonParser`. The `UTF8StreamJsonParser` equivalent works correctly for the same input.",
+  "gold_patch_file": "patches/java-easy.patch",
+  "expected_files": [
+    "src/main/java/com/fasterxml/jackson/core/json/UTF8DataInputJsonParser.java"
+  ],
+  "setup_commands": [],
+  "test_command": "mvn test -pl . -Dtest=NonStandardNumberParsingTest -DfailIfNoTests=false -q",
+  "timeout_s": 900
+}

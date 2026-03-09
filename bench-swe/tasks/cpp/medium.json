@@ -1,0 +1,20 @@
+{
+  "id": "cpp-medium",
+  "language": "cpp",
+  "difficulty": "medium",
+  "repo": "https://github.com/nlohmann/json",
+  "base_commit": "6057b31df7fe0b958d1795defc108d1f26e26441",
+  "fix_commit": "2134cb947a9b589da0835c69243f99d8ae0ac370",
+  "issue_url": "https://github.com/nlohmann/json/issues/4507",
+  "issue_title": "NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT throw an exception with an empty json",
+  "issue_body": "NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT throws an exception when the JSON instance is empty (`nlohmann::json json{};`) instead of using the default values of the member fields.\n\nWhen using the macro with a class that has default member values, constructing an object from an empty JSON should populate the fields with their defaults rather than throwing.\n\nReproduction:\n\n```cpp\nclass Foo {\n public:\n  NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Foo, a, b)\n\n  Foo() = default;\n\n  int a{10};\n  std::string b{\"bar\"};\n\n  void log() {\n    std::cout << \"a: \" << a << std::endl;\n    std::cout << \"b: \" << b << std::endl;\n  }\n};\n\nstatic void JsonTest_empty_json() {\n  nlohmann::json json{};\n  auto foo = Foo(json);  // throws exception instead of using defaults\n  foo.log();\n}\n```\n\nExpected: `a` is 10 and `b` is \"bar\" (the default values).\nActual: An exception is thrown.\n\nThe same issue affects NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT.\n\nCompiler: clang++ / C++17 / Windows OS\nLibrary version: v3.11.2",
+  "gold_patch_file": "patches/cpp-medium.patch",
+  "expected_files": [
+    "include/nlohmann/detail/macro_scope.hpp",
+    "single_include/nlohmann/json.hpp",
+    "tests/src/unit-udt_macro.cpp"
+  ],
+  "setup_commands": [],
+  "test_command": "cd build && cmake .. -DJSON_BuildTests=ON && cmake --build . --target test-udt_macro && ctest -R test-udt_macro -V",
+  "timeout_s": 900
+}

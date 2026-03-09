@@ -1,0 +1,19 @@
+{
+  "id": "java-medium",
+  "language": "java",
+  "difficulty": "medium",
+  "repo": "https://github.com/apache/commons-lang",
+  "base_commit": "b56c6882fb2d1bb3eb21adea3ae95c3856ea4b5c",
+  "fix_commit": "a9a0dd8a72c51b14f0e5ea4bddfbf228685ff977",
+  "issue_url": "https://issues.apache.org/jira/browse/LANG-771",
+  "issue_title": "DateUtils.ceiling() incorrectly increments field on exact boundary values",
+  "issue_body": "DateUtils.ceiling() produces incorrect results when the input date is already exactly aligned to the specified field boundary.\n\nFor example, if you have a Date representing exactly \"March 30, 2003 01:10:00.000\" and call DateUtils.ceiling(date, Calendar.MINUTE), the expected result should be the same date unchanged (since it is already at the minute boundary). However, the current implementation advances the minute field by one, returning \"March 30, 2003 01:11:00.000\" instead.\n\nThe mathematical definition of ceiling is: ceiling(x) returns the smallest value >= x that is aligned to the boundary. When x is already on the boundary, ceiling(x) should equal x. The current behavior violates this contract by always incrementing, even when truncation does not modify the value.\n\nThis causes subtle errors especially around DST (Daylight Saving Time) boundaries, where the incorrect increment can push the date into an invalid or ambiguous time zone transition.\n\nSimilarly, calling ceiling on epoch (new Date(0)) with Calendar.MINUTE should return epoch unchanged, since epoch is already aligned to the minute boundary.\n\nSteps to reproduce:\n1. Create a Date at an exact minute boundary, e.g. \"March 30, 2003 01:10:00.000\"\n2. Call DateUtils.ceiling(date, Calendar.MINUTE)\n3. Observe the result is incorrectly advanced to 01:11:00.000 instead of remaining at 01:10:00.000\n\nExpected behavior: ceiling() should return the input date unchanged when it is already aligned to the specified field boundary.\n\nActual behavior: ceiling() always increments the field, even when the input is already on the boundary.",
+  "gold_patch_file": "patches/java-medium.patch",
+  "expected_files": [
+    "src/main/java/org/apache/commons/lang3/time/DateUtils.java",
+    "src/test/java/org/apache/commons/lang3/time/DateUtilsTest.java"
+  ],
+  "setup_commands": [],
+  "test_command": "mvn test -Dtest=org.apache.commons.lang3.time.DateUtilsTest#testCeiling -pl .",
+  "timeout_s": 900
+}

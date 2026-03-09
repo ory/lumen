@@ -131,8 +131,8 @@ reproduce instructions.
 Supports **15 language families** with semantic chunking:
 
 | Language         | Parser      | Extensions                                | Status                               |
-| ---------------- | ----------- | ----------------------------------------- | ------------------------------------ |
-| Go               | Native AST  | `.go`                                     | Optimized: 3.8x faster, 90% cheaper |
+| ---------------- | ----------- |-------------------------------------------| ------------------------------------ |
+| Go               | Native AST  | `.go`, `.mod`                             | Optimized: 3.8x faster, 90% cheaper |
 | Python           | tree-sitter | `.py`                                     | Tested: 1.8x faster, 72% cheaper    |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4x faster, 48% cheaper    |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Supported                            |
@@ -145,7 +145,6 @@ Supports **15 language families** with semantic chunking:
 | Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                            |
 | YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                            |
 | JSON / TOML      | structured  | `.json`, `.toml`                          | Supported                            |
-| Go module        | structured  | `.mod`                                    | Supported                            |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars.

@@ -1,0 +1,22 @@
+{
+  "id": "python-hard",
+  "language": "python",
+  "difficulty": "hard",
+  "repo": "https://github.com/django/django",
+  "base_commit": "f8665b1a7ff5e98d84f66ad0e958c3f175aa5d8b",
+  "fix_commit": "864850b20f7ef89ed2f6bd8baf1a45acc9245a6c",
+  "issue_url": "https://code.djangoproject.com/ticket/36968",
+  "issue_title": "Provide better error messages when collectstatic can't find a file referenced in another file",
+  "issue_body": "When `ManifestStaticFilesStorage` finds a reference within a file to another file that does not exist in the static files, it throws a `ValueError` with a message that lacks context and causes confusion.\n\nFor example, if `faulty.css` contains `url(missing.css)` where `missing.css` does not exist, running `collectstatic` produces a traceback ending with a `ValueError` that does not indicate:\n- Which source file contains the broken reference\n- What the broken reference URL text is\n- Which line in the source file the reference appears on\n\nThis makes it difficult for users to locate and fix the problem, especially in large projects with many static files.\n\nThe expected behavior is that the error message should include:\n1. The name of the file containing the problematic reference\n2. The matched URL text that could not be resolved\n3. The line number (and ideally line content) where the reference was found\n\nAdditionally, the raw `ValueError` traceback is shown by default, which is noisy for end users. The error should be wrapped in a `CommandError` so that `collectstatic` hides the traceback by default (users can still access it via `--traceback`).\n\nWhiteNoise's storage backend provides a similar improved error pattern as a reference for the kind of developer experience expected here.",
+  "gold_patch_file": "patches/python-hard.patch",
+  "expected_files": [
+    "django/contrib/staticfiles/management/commands/collectstatic.py",
+    "django/contrib/staticfiles/storage.py",
+    "tests/staticfiles_tests/test_storage.py"
+  ],
+  "setup_commands": [
+    "pip install -e ."
+  ],
+  "test_command": "python -m pytest tests/staticfiles_tests/test_storage.py -v",
+  "timeout_s": 900
+}

@@ -1,0 +1,48 @@
+diff --git a/mux_test.go b/mux_test.go
+index 2d8d2b3..a81cc15 100644
+--- a/mux_test.go
++++ b/mux_test.go
+@@ -216,6 +216,26 @@ func TestHost(t *testing.T) {
+ 			hostTemplate: `{v-1:[a-z]{3}}.{v-2:[a-z]{3}}.{v-3:[a-z]{3}}`,
+ 			shouldMatch:  true,
+ 		},
++		{
++			title:        "Host route with wildcard pattern, match request with port",
++			route:        new(Route).Host("{subdomain:.+}.localhost"),
++			request:      newRequestHost("GET", "/", "test.localhost:8080"),
++			vars:         map[string]string{"subdomain": "test"},
++			host:         "test.localhost",
++			path:         "",
++			hostTemplate: `{subdomain:.+}.localhost`,
++			shouldMatch:  true,
++		},
++		{
++			title:        "Host route with wildcard pattern and port, match request with port",
++			route:        new(Route).Host("{subdomain:.+}.localhost:{port:.*}"),
++			request:      newRequestHost("GET", "/", "test.localhost:8080"),
++			vars:         map[string]string{"subdomain": "test", "port": "8080"},
++			host:         "test.localhost:8080",
++			path:         "",
++			hostTemplate: `{subdomain:.+}.localhost:{port:.*}`,
++			shouldMatch:  true,
++		},
+ 	}
+ 	for _, test := range tests {
+ 		t.Run(test.title, func(t *testing.T) {
+diff --git a/regexp.go b/regexp.go
+index 96dd94a..0144842 100644
+--- a/regexp.go
++++ b/regexp.go
+@@ -325,6 +325,12 @@ func (v routeRegexpGroup) setMatch(req *http.Request, m *RouteMatch, r *Route) {
+ 	// Store host variables.
+ 	if v.host != nil {
+ 		host := getHost(req)
++		if v.host.wildcardHostPort {
++			// Don't be strict on the port match
++			if i := strings.Index(host, ":"); i != -1 {
++				host = host[:i]
++			}
++		}
+ 		matches := v.host.regexp.FindStringSubmatchIndex(host)
+ 		if len(matches) > 0 {
+ 			extractVars(host, matches, v.host.varsN, m.Vars)

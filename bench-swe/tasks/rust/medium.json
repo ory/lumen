@@ -1,0 +1,20 @@
+{
+  "id": "rust-medium",
+  "language": "rust",
+  "difficulty": "medium",
+  "repo": "https://github.com/BurntSushi/ripgrep",
+  "base_commit": "38d630261aded3a8e535fe85761e68af35bc462d",
+  "fix_commit": "d47663b1b4548e4fa02d6e4b575718d0f5f5e7d6",
+  "issue_url": "https://github.com/BurntSushi/ripgrep/issues/3194",
+  "issue_title": "Line buffering appears broken in 15.0.0",
+  "issue_body": "## Summary\n\nThe `--line-buffered` option in ripgrep 15.0.0 no longer works correctly when reading from stdin via a pipe.\n\n## Version\n\nripgrep 15.0.0 (also reproducible when built locally with Cargo)\n\n## Operating System\n\nArch Linux (kernel 6.17.3)\n\n## Description\n\nI've been using ripgrep to filter `journalctl` output in follow mode for years and need the `--line-buffered` option so that matched lines are output immediately rather than waiting for stdin to close. With the 15.0.0 release, that flag doesn't appear to be having any effect. Output hangs indefinitely when piping a slow stream, but worked fine in all prior versions.\n\n## Steps to Reproduce\n\nNo output (hangs indefinitely):\n\n```\njournalctl -n5 -f | rg --no-config --line-buffered 'Oct'\n```\n\nDoes produce some output (presumably because the large volume eventually fills some internal buffer):\n\n```\njournalctl -n5000 -f | rg --no-config --line-buffered 'Oct'\n```\n\nWhen run with versions prior to 15.0.0, each matched line is output as soon as it's printed by `journalctl`.\n\n## Expected Behavior\n\nMatched lines should be output as soon as they arrive from the pipe, just like in versions prior to 15.0.0.",
+  "gold_patch_file": "patches/rust-medium.patch",
+  "expected_files": [
+    "CHANGELOG.md",
+    "crates/searcher/src/line_buffer.rs",
+    "crates/searcher/src/searcher/glue.rs"
+  ],
+  "setup_commands": [],
+  "test_command": "cargo test --manifest-path crates/searcher/Cargo.toml",
+  "timeout_s": 900
+}

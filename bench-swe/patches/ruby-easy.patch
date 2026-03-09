@@ -1,0 +1,39 @@
+diff --git a/lib/liquid/context.rb b/lib/liquid/context.rb
+index 0663bc54..dac1010e 100644
+--- a/lib/liquid/context.rb
++++ b/lib/liquid/context.rb
+@@ -194,7 +194,8 @@ module Liquid
+ 
+         if scope.nil?
+           @environments.each do |e|
+-            if variable = lookup_and_evaluate(e, key)
++            variable = lookup_and_evaluate(e, key)
++            unless variable.nil?
+               scope = e
+               break
+             end
+diff --git a/test/integration/context_test.rb b/test/integration/context_test.rb
+index aba8267a..83bb43e3 100644
+--- a/test/integration/context_test.rb
++++ b/test/integration/context_test.rb
+@@ -20,5 +20,4 @@ class ContextTest < Test::Unit::TestCase
+     assert_equal 'Global test', Template.parse("{{'test' | notice }}").render!
+     assert_equal 'Local test', Template.parse("{{'test' | notice }}").render!({}, :filters => [local])
+   end
+-
+ end
+diff --git a/test/integration/variable_test.rb b/test/integration/variable_test.rb
+index 0bcfb25e..4bc2ba9d 100644
+--- a/test/integration/variable_test.rb
++++ b/test/integration/variable_test.rb
+@@ -25,6 +25,10 @@ class VariableTest < Test::Unit::TestCase
+     assert_equal 'worked', template.render!('test' => {'test' => 'worked'})
+   end
+ 
++  def test_false_renders_as_false
++    assert_equal 'false', Template.parse("{{ foo }}").render!('foo' => false)
++  end
++
+   def test_preset_assigns
+     template = Template.parse(%|{{ test }}|)
+     template.assigns['test'] = 'worked'

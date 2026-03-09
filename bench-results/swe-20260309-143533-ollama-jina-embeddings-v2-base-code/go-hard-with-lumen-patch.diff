@@ -1,0 +1,63 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..197b01a 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,7 +990,14 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
+-		return reflect.Zero(typ), nil
++		newValue := d.createDecodableValue(typ)
++		for defaultVal.Kind() == reflect.Ptr {
++			defaultVal = defaultVal.Elem()
++		}
++		if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
++			newValue.Set(defaultVal)
++		}
++		return newValue, nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+ 	for defaultVal.Kind() == reflect.Ptr {
+diff --git a/test_issue.go b/test_issue.go
+new file mode 100644
+index 0000000..76f1d5f
+--- /dev/null
++++ b/test_issue.go
+@@ -0,0 +1,37 @@
++package yaml
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestDecoder_NullNestedStructDefaultValues(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	test := Test{Defaults: Default{Key: "My default Value"}}
++	yml := `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`
++	d := NewDecoder(strings.NewReader(yml))
++	err := d.Decode(&test)
++	if err != nil {
++		t.Fatalf("Decode failed: %v", err)
++	}
++
++	if test.First != "Test" {
++		t.Fatalf("test.First should be 'Test', got '%s'", test.First)
++	}
++
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("test.Defaults.Key should be 'My default Value', got '%s'", test.Defaults.Key)
++	}
++}

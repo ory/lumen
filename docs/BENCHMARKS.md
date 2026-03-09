@@ -6,7 +6,7 @@
 
 - **baseline** — default tools only (grep, file reads), no MCP
 - **mcp-only** — `semantic_search` only, no file reads
-- **mcp-full** — all tools + `semantic_search`
+- **with-lumen** — all tools + `semantic_search`
 
 Answers are ranked blind by an LLM judge (Opus 4.6). Benchmarks are transparent
 (check bench-results) and reproducible. Please note that **mcp-only** disables
@@ -31,13 +31,13 @@ fraction of the cost.
 
 | Question        | Difficulty | Winner          | Judge summary                                                                                                                           |
 | --------------- | ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| label-matcher   | easy       | opus / mcp-full | Correct, complete; full type definitions and constructor source with accurate line references                                           |
+| label-matcher   | easy       | opus / with-lumen | Correct, complete; full type definitions and constructor source with accurate line references                                           |
 | histogram       | medium     | opus / mcp-only | Good coverage of both bucket systems (classic + native), hot/cold swap, and iteration; 7–20× cheaper than baseline                      |
 | tsdb-compaction | hard       | opus / mcp-only | Uniquely covers all three trigger paths, compactor initialization, and planning strategies; 5–6× cheaper than baseline                  |
 | promql-engine   | very-hard  | opus / mcp-only | Thorough coverage of all four topics (engine, functions, AST, rules) with accurate file:line references; half the cost of opus/baseline |
 | scrape-pipeline | very-hard  | opus / mcp-only | Best Registry coverage; unique dual data-flow summary for scraping and exposition paths                                                 |
 
-`mcp-only` wins 4/5, `mcp-full` wins 1/5, `baseline` wins 0/5.
+`mcp-only` wins 4/5, `with-lumen` wins 1/5, `baseline` wins 0/5.
 
 ## Speed & cost — LM Studio (nomic-embed-code, 3584-dim)
 
@@ -70,12 +70,12 @@ the Ollama run:
 | Question        | Difficulty | Winner          | Judge summary                                                                                        |
 | --------------- | ---------- | --------------- | ---------------------------------------------------------------------------------------------------- |
 | label-matcher   | easy       | opus / mcp-only | All answers correct; mcp-only fastest (10.4s) and cheapest ($0.10) at equal quality                  |
-| histogram       | medium     | opus / mcp-full | Full observation flow, function signatures, schema-based key computation; ~15× cheaper than baseline |
+| histogram       | medium     | opus / with-lumen | Full observation flow, function signatures, schema-based key computation; ~15× cheaper than baseline |
 | tsdb-compaction | hard       | opus / mcp-only | Covers all 3 trigger paths, planning priority order, early-abort logic; 6× cheaper at $0.42          |
 | promql-engine   | very-hard  | opus / mcp-only | Function safety sets, storage interfaces, full eval pipeline; $0.67 vs $7.16 baseline                |
 | scrape-pipeline | very-hard  | opus / mcp-only | Best registry coverage; Register 5-step validation, Gatherers merging, ApplyConfig hot-reload        |
 
-`mcp-only` wins 4/5, `mcp-full` wins 1/5, `baseline` wins 0/5.
+`mcp-only` wins 4/5, `with-lumen` wins 1/5, `baseline` wins 0/5.
 
 ## Extended benchmarks: Results by Language
 
@@ -94,7 +94,7 @@ quality across all languages.
 
 ### Go Results
 
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | with-lumen<br/>Cost | with-lumen<br/>Time | Wins (base / mcp-o / mcp-f) |
 | -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
 | jina-v2  | $10.64            | 536s              | $1.03             | 142s              | 3.8x                 | 90%                  | $1.63             | 149s              | 0/3 / 1/3 / 2/3             |
 | qwen3-8b | $4.59             | 421s              | $1.05             | 165s              | 2.6x                 | 77%                  | $1.84             | 168s              | 0/3 / 2/3 / 1/3             |
@@ -107,7 +107,7 @@ baseline wins on Go questions across any model.
 
 ### Python Results
 
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | with-lumen<br/>Cost | with-lumen<br/>Time | Wins (base / mcp-o / mcp-f) |
 | -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
 | jina-v2  | $5.41             | 406s              | $1.53             | 226s              | 1.8x                 | 72%                  | $1.75             | 206s              | 0/3 / 2/3 / 1/3             |
 | qwen3-8b | $3.78             | 373s              | $1.69             | 235s              | 1.6x                 | 55%                  | $2.59             | 224s              | 0/3 / 3/3 / 0/3             |
@@ -120,7 +120,7 @@ cost-optimal at 72% savings** and lowest baseline cost ($5.41).
 
 ### TypeScript Results
 
-| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | mcp-full<br/>Cost | mcp-full<br/>Time | Wins (base / mcp-o / mcp-f) |
+| Model    | baseline<br/>Cost | baseline<br/>Time | mcp-only<br/>Cost | mcp-only<br/>Time | mcp-only<br/>Speedup | mcp-only<br/>Savings | with-lumen<br/>Cost | with-lumen<br/>Time | Wins (base / mcp-o / mcp-f) |
 | -------- | ----------------- | ----------------- | ----------------- | ----------------- | -------------------- | -------------------- | ----------------- | ----------------- | --------------------------- |
 | jina-v2  | $4.86             | 478s              | $2.53             | 332s              | 1.4x                 | 48%                  | $3.88             | 373s              | 1/3 / 1/3 / 1/3             |
 | qwen3-8b | $4.12             | 468s              | $2.98             | 359s              | 1.3x                 | 28%                  | $3.81             | 378s              | 1/3 / 2/3 / 0/3             |

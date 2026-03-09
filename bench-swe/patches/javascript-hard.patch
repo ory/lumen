@@ -1,0 +1,796 @@
+diff --git a/.changeset/wild-yaks-wave.md b/.changeset/wild-yaks-wave.md
+new file mode 100644
+index 000000000..3d1a98e52
+--- /dev/null
++++ b/.changeset/wild-yaks-wave.md
+@@ -0,0 +1,5 @@
++---
++"webpack": patch
++---
++
++Narrows export presence guard detection to explicit existence checks on namespace imports only, i.e. patterns like "x" in ns.
+diff --git a/lib/dependencies/HarmonyImportDependencyParserPlugin.js b/lib/dependencies/HarmonyImportDependencyParserPlugin.js
+index cf6eb8e22..1ea2bbc8e 100644
+--- a/lib/dependencies/HarmonyImportDependencyParserPlugin.js
++++ b/lib/dependencies/HarmonyImportDependencyParserPlugin.js
+@@ -27,6 +27,7 @@ const HarmonyImportSpecifierDependency = require("./HarmonyImportSpecifierDepend
+ const { ImportPhaseUtils, createGetImportPhase } = require("./ImportPhase");
+ 
+ /** @typedef {import("estree").Expression} Expression */
++/** @typedef {import("estree").PrivateIdentifier} PrivateIdentifier */
+ /** @typedef {import("estree").Identifier} Identifier */
+ /** @typedef {import("estree").MemberExpression} MemberExpression */
+ /** @typedef {import("../../declarations/WebpackOptions").JavascriptParserOptions} JavascriptParserOptions */
+@@ -66,17 +67,44 @@ const harmonySpecifierGuardTag = Symbol("harmony import guard");
+ 
+ const PLUGIN_NAME = "HarmonyImportDependencyParserPlugin";
+ 
+-/** @type {(members: Members) => string} */
+-const getMembersKey = (members) => members.join(".");
+-
+ /**
+- * Strip the root binding name if needed
+- * @param {HarmonySettings} settings settings
+- * @param {Ids} ids ids
+- * @returns {Ids} ids for presence check
++ * @param {JavascriptParser} parser the parser
++ * @param {PrivateIdentifier | Expression} left left expression
++ * @param {Expression} right right expression
++ * @returns {{ leftPart: string, members: Members, settings: HarmonySettings } | undefined} info
+  */
+-const getIdsForPresence = (settings, ids) =>
+-	settings.ids.length ? ids.slice(1) : ids;
++const getInOperatorHarmonyImportInfo = (parser, left, right) => {
++	const leftPartEvaluated = parser.evaluateExpression(left);
++	if (leftPartEvaluated.couldHaveSideEffects()) return;
++	/** @type {string | undefined} */
++	const leftPart = leftPartEvaluated.asString();
++	if (!leftPart) return;
++
++	const rightPart = parser.evaluateExpression(right);
++	if (!rightPart.isIdentifier()) return;
++
++	const rootInfo = rightPart.rootInfo;
++	const root =
++		typeof rootInfo === "string"
++			? rootInfo
++			: rootInfo instanceof VariableInfo
++				? rootInfo.name
++				: undefined;
++	if (!root) return;
++
++	const settings = /** @type {HarmonySettings | undefined} */ (
++		parser.getTagData(root, harmonySpecifierTag)
++	);
++	if (!settings) {
++		return;
++	}
++
++	return {
++		leftPart,
++		members: /** @type {(() => Members)} */ (rightPart.getMembers)(),
++		settings
++	};
++};
+ 
+ module.exports = class HarmonyImportDependencyParserPlugin {
+ 	/**
+@@ -94,10 +122,14 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 
+ 	/**
+ 	 * @param {JavascriptParser} parser the parser
++	 * @param {HarmonySettings} settings settings
+ 	 * @param {Ids} ids ids
+ 	 * @returns {ExportPresenceMode} exportPresenceMode
+ 	 */
+-	getExportPresenceMode(parser, ids) {
++	getExportPresenceMode(parser, settings, ids) {
++		// Guards only apply to namespace imports
++		if (settings.ids.length) return this.exportPresenceMode;
++
+ 		const harmonySettings = /** @type {HarmonySettings=} */ (
+ 			parser.currentTagData
+ 		);
+@@ -106,9 +138,12 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 		const data = /** @type {HarmonySpecifierGuards=} */ (
+ 			parser.getTagData(harmonySettings.name, harmonySpecifierGuardTag)
+ 		);
+-		return data && data.guards && data.guards.has(getMembersKey(ids))
+-			? ExportPresenceModes.NONE
+-			: this.exportPresenceMode;
++
++		if (data && data.guards && data.guards.has(ids[0])) {
++			return ExportPresenceModes.NONE;
++		}
++
++		return this.exportPresenceMode;
+ 	}
+ 
+ 	/**
+@@ -195,31 +230,14 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 		);
+ 		parser.hooks.binaryExpression.tap(PLUGIN_NAME, (expression) => {
+ 			if (expression.operator !== "in") return;
++			const info = getInOperatorHarmonyImportInfo(
++				parser,
++				expression.left,
++				expression.right
++			);
++			if (!info) return;
+ 
+-			const leftPartEvaluated = parser.evaluateExpression(expression.left);
+-			if (leftPartEvaluated.couldHaveSideEffects()) return;
+-			/** @type {string | undefined} */
+-			const leftPart = leftPartEvaluated.asString();
+-			if (!leftPart) return;
+-
+-			const rightPart = parser.evaluateExpression(expression.right);
+-			if (!rightPart.isIdentifier()) return;
+-
+-			const rootInfo = rightPart.rootInfo;
+-			if (
+-				typeof rootInfo === "string" ||
+-				!rootInfo ||
+-				!rootInfo.tagInfo ||
+-				rootInfo.tagInfo.tag !== harmonySpecifierTag
+-			) {
+-				return;
+-			}
+-			const settings =
+-				/** @type {HarmonySettings} */
+-				(rootInfo.tagInfo.data);
+-			const members =
+-				/** @type {(() => Members)} */
+-				(rightPart.getMembers)();
++			const { leftPart, members, settings } = info;
+ 			const dep = new HarmonyEvaluatedImportSpecifierDependency(
+ 				settings.source,
+ 				settings.sourceOrder,
+@@ -264,10 +282,7 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 					settings.name,
+ 					/** @type {Range} */
+ 					(expr.range),
+-					this.getExportPresenceMode(
+-						parser,
+-						getIdsForPresence(settings, settings.ids)
+-					),
++					this.exportPresenceMode,
+ 					settings.phase,
+ 					settings.attributes,
+ 					[]
+@@ -317,10 +332,7 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 						settings.name,
+ 						/** @type {Range} */
+ 						(expr.range),
+-						this.getExportPresenceMode(
+-							parser,
+-							getIdsForPresence(settings, ids)
+-						),
++						this.getExportPresenceMode(parser, settings, ids),
+ 						settings.phase,
+ 						settings.attributes,
+ 						ranges
+@@ -370,10 +382,7 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 						ids,
+ 						settings.name,
+ 						/** @type {Range} */ (expr.range),
+-						this.getExportPresenceMode(
+-							parser,
+-							getIdsForPresence(settings, ids)
+-						),
++						this.getExportPresenceMode(parser, settings, ids),
+ 						settings.phase,
+ 						settings.attributes,
+ 						ranges
+@@ -441,160 +450,6 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 			}
+ 		});
+ 
+-		/**
+-		 * @param {Expression} expression expression
+-		 * @returns {{ root: string, members: Members } | undefined} info
+-		 */
+-		const getHarmonyImportInfo = (expression) => {
+-			const nameInfo = parser.getNameForExpression(expression);
+-			if (!nameInfo) return;
+-
+-			const rootInfo = nameInfo.rootInfo;
+-			const root =
+-				typeof rootInfo === "string"
+-					? rootInfo
+-					: rootInfo instanceof VariableInfo
+-						? rootInfo.name
+-						: undefined;
+-			if (!root) return;
+-			if (!parser.getTagData(root, harmonySpecifierTag)) return;
+-			return { root, members: nameInfo.getMembers() };
+-		};
+-
+-		/**
+-		 * @param {Guards} guards guards
+-		 * @param {string} root root name
+-		 * @param {Members} members members
+-		 */
+-		const addToGuards = (guards, root, members) => {
+-			const membersKey = getMembersKey(members);
+-			const guardedMembers = guards.get(root);
+-			if (guardedMembers) {
+-				guardedMembers.add(membersKey);
+-				return;
+-			}
+-
+-			guards.set(
+-				root,
+-				// Adding `foo.bar` implies guarding `foo` as well
+-				membersKey === "" ? new Set([""]) : new Set([membersKey, ""])
+-			);
+-		};
+-
+-		/**
+-		 * @param {Expression} expression expression
+-		 * @param {Guards} guards guards
+-		 * @param {boolean} needTruthy need to be truthy
+-		 */
+-		const collect = (expression, guards, needTruthy) => {
+-			// !foo
+-			if (
+-				expression.type === "UnaryExpression" &&
+-				expression.operator === "!"
+-			) {
+-				collect(expression.argument, guards, !needTruthy);
+-				return;
+-			} else if (expression.type === "LogicalExpression" && needTruthy) {
+-				// foo && bar
+-				if (expression.operator === "&&") {
+-					collect(expression.left, guards, true);
+-					collect(expression.right, guards, true);
+-				}
+-				// falsy || foo
+-				else if (expression.operator === "||") {
+-					const leftEvaluation = parser.evaluateExpression(expression.left);
+-					const leftBool = leftEvaluation.asBool();
+-					if (leftBool === false) {
+-						collect(expression.right, guards, true);
+-					}
+-				}
+-				// nullish ?? foo
+-				else if (expression.operator === "??") {
+-					const leftEvaluation = parser.evaluateExpression(expression.left);
+-					const leftNullish = leftEvaluation.asNullish();
+-					if (leftNullish === true) {
+-						collect(expression.right, guards, true);
+-					}
+-				}
+-				return;
+-			}
+-			if (!needTruthy) return;
+-
+-			/**
+-			 * @param {Expression} targetExpression expression
+-			 * @returns {boolean} is added
+-			 */
+-			const addGuardForExpression = (targetExpression) => {
+-				const info = getHarmonyImportInfo(targetExpression);
+-				if (!info) return false;
+-				addToGuards(guards, info.root, info.members);
+-				return true;
+-			};
+-
+-			/**
+-			 * @param {Expression} left left expression
+-			 * @param {Expression} right right expression
+-			 * @param {(evaluation: ReturnType<JavascriptParser["evaluateExpression"]>) => boolean} matcher matcher
+-			 * @returns {boolean} is added
+-			 */
+-			const addGuardForNullishCompare = (left, right, matcher) => {
+-				const leftEval = parser.evaluateExpression(left);
+-				if (leftEval && matcher(leftEval)) {
+-					return addGuardForExpression(right);
+-				}
+-				const rightEval = parser.evaluateExpression(right);
+-				if (rightEval && matcher(rightEval)) {
+-					return addGuardForExpression(/** @type {Expression} */ (left));
+-				}
+-				return false;
+-			};
+-
+-			if (expression.type === "BinaryExpression") {
+-				// "bar" in foo
+-				if (expression.operator === "in") {
+-					const leftEvaluation = parser.evaluateExpression(expression.left);
+-					if (leftEvaluation.couldHaveSideEffects()) return;
+-					const propertyName = leftEvaluation.asString();
+-					if (!propertyName) return;
+-					parser.evaluateExpression(expression.right);
+-					const info = getHarmonyImportInfo(expression.right);
+-					if (!info) return;
+-
+-					if (info.members.length) {
+-						for (const member of info.members) {
+-							addToGuards(guards, info.root, [member]);
+-						}
+-					}
+-					addToGuards(guards, info.root, [...info.members, propertyName]);
+-					return;
+-				}
+-				// foo !== undefined
+-				else if (
+-					expression.operator === "!==" &&
+-					addGuardForNullishCompare(
+-						/** @type {Expression} */ (expression.left),
+-						expression.right,
+-						(evaluation) => evaluation.isUndefined()
+-					)
+-				) {
+-					return;
+-				}
+-				// foo != undefined
+-				// foo != null
+-				else if (
+-					expression.operator === "!=" &&
+-					addGuardForNullishCompare(
+-						/** @type {Expression} */ (expression.left),
+-						expression.right,
+-						(evaluation) => Boolean(evaluation.asNullish())
+-					)
+-				) {
+-					return;
+-				}
+-			}
+-			addGuardForExpression(expression);
+-		};
+-
+ 		/**
+ 		 * @param {Guards} guards guards
+ 		 * @param {() => void} walk walk callback
+@@ -645,7 +500,68 @@ module.exports = class HarmonyImportDependencyParserPlugin {
+ 				if (parser.scope.isAsmJs) return;
+ 				/** @type {Guards} */
+ 				const guards = new Map();
+-				collect(expression, guards, true);
++
++				/**
++				 * @param {Expression} expression expression
++				 * @param {boolean} needTruthy need to be truthy
++				 */
++				const collect = (expression, needTruthy) => {
++					if (
++						expression.type === "UnaryExpression" &&
++						expression.operator === "!"
++					) {
++						collect(expression.argument, !needTruthy);
++						return;
++					} else if (expression.type === "LogicalExpression" && needTruthy) {
++						if (expression.operator === "&&") {
++							collect(expression.left, true);
++							collect(expression.right, true);
++						} else if (expression.operator === "||") {
++							const leftEvaluation = parser.evaluateExpression(expression.left);
++							const leftBool = leftEvaluation.asBool();
++							if (leftBool === false) {
++								collect(expression.right, true);
++							}
++						} else if (expression.operator === "??") {
++							const leftEvaluation = parser.evaluateExpression(expression.left);
++							const leftNullish = leftEvaluation.asNullish();
++							if (leftNullish === true) {
++								collect(expression.right, true);
++							}
++						}
++						return;
++					}
++					if (!needTruthy) return;
++
++					// Direct `"x" in ns` guards
++					if (
++						expression.type === "BinaryExpression" &&
++						expression.operator === "in"
++					) {
++						if (expression.right.type !== "Identifier") {
++							return;
++						}
++						const info = getInOperatorHarmonyImportInfo(
++							parser,
++							expression.left,
++							expression.right
++						);
++						if (!info) return;
++
++						const { settings, leftPart, members } = info;
++						// Only direct namespace guards
++						if (members.length > 0) return;
++						const guarded = guards.get(settings.name);
++						if (guarded) {
++							guarded.add(leftPart);
++							return;
++						}
++
++						guards.set(settings.name, new Set([leftPart]));
++					}
++				};
++
++				collect(expression, true);
+ 
+ 				if (guards.size === 0) return;
+ 				return (walk) => {
+diff --git a/test/configCases/compiletime/exports-presence/index.js b/test/configCases/compiletime/exports-presence/index.js
+index ce114628a..aebbdc54a 100644
+--- a/test/configCases/compiletime/exports-presence/index.js
++++ b/test/configCases/compiletime/exports-presence/index.js
+@@ -1,141 +1,8 @@
+-import { NotHere as aaa, /* not here */ a } from "./aaa/index.js";
+-import { NotHere as bbb, /* not here */ b } from "./bbb/index.js";
+-import { NotHere as ccc, /* not here */ c } from "./ccc/index.js";
+-import { NotHere as ddd, /* not here */ d } from "./ddd/index.js";
+-import * as m from "./module";
+-
+-const val1 = Math.random();
+-
+-function throw_() {
+-	throw new Error();
+-}
+-function justFunction() {}
+-
+-describe("should not add additional warnings/errors", () => {
+-	it("simple cases", () => {
+-		if (b) {
+-			if (d) d();
+-			b();
+-			if (c) {
+-				b();
+-			}
+-		}
+-		false && d;
+-		d ? d() : throw_();
+-		// warning: 26:7(a), 27:3(a)
+-		if ((a && val1) || true) {
+-			a();
+-		}
+-		if (a && a.b && a.b.c) {
+-			a();
+-		}
+-		if (a.b.c) {
+-			a.b.c();
+-		}
+-
+-		if (a && a.b.c) {
+-		}
+-	});
+-
+-	it("some unsupported expressions", () => {
+-		// warning: 42:13(a)
+-		if ((() => a())()) {
+-		}
+-		// warning: 45:7(a)
+-		if (!a && b) {
+-		}
+-		// warning: 48:6(a)
+-		if (a & true) {
+-		}
+-
+-		function* foo() {
+-			// warning: 53:13(a)
+-			if (yield a && true) {
+-			}
+-		}
+-		async function foo1() {
+-			// warning: 58:14(a)
+-			if ((await a) && true) {
+-			}
+-		}
+-		let var1;
+-		// We don't support `AssignmentExpression` here
+-		// warning: 64:14(b)
+-		if ((var1 = b)) {
+-		}
+-		// We don't support `AssignmentExpression` here
+-		// warning: 68:14(b)
+-		if ((var1 = b) && c && c.a) {
+-		}
+-		// warning: 71:21(a)
+-		if (justFunction`${a}`) {
+-		}
+-		// warning: 74:9(a)
+-		if (`${a}`) {
+-		}
+-	});
+-
+-	it("ternary operator", () => {
+-		c && c.a ? c.a() : 0;
+-		const b1 = c ? c() : 0;
+-		c && c.a && d && d.a ? c.a(d.a) : 0;
+-		"a" in c ? c.a() : 0;
+-		"a" in c && "a" in b ? b.a(c.a) : 0;
+-		// warning: 85:6(d)
+-		c ? d() : (() => {})();
+-	});
+-
+-	it("in operator", () => {
+-		if ("a" in m) {
+-			justFunction(m.a);
+-		}
+-		if ("b" in m && "c" in m.b) {
+-			justFunction(m.b.c);
+-		}
+-		if ("c" in m) {
+-			justFunction(m.c);
+-		}
+-		if ("a" in d.c) {
+-			justFunction(d.c.a());
+-		}
+-	});
+-
+-	it("!= and !== operator", () => {
+-		// undefined != false
+-		// warning: 106:6(d)
+-		if (c != false) {
+-		}
+-
+-		// undefined !== false
+-		// warning: 111:6(d)
+-		if (c !== false) {
+-		}
+-
+-		// We don't support `??` here
+-		// warning: 116:6(c), 116:37(c)
+-		if (c != undefined ?? undefined != c) {
+-		}
+-	});
+-
+-	it("!identifier", () => {
+-		if (!!c) {
+-			console.log(c);
+-		}
+-
+-		// warning: 126:12(d), 127:15(d)
+-		if (0 || !d) {
+-			console.log(d);
+-		}
+-
+-		// warning: 131:7(d), 131:13(c), 132:15(c), 132:18(d)
+-		if (!d && !c) {
+-			console.log(c, d);
+-		}
+-
+-		// warning: 136:3(d), 136:7(d)
+-		!d ? d : 3;
+-	});
+-});
++import { NotHere as aaa } from "./aaa/index.js";
++import { NotHere as bbb } from "./bbb/index.js";
++import { NotHere as ccc } from "./ccc/index.js";
++import { NotHere as ddd } from "./ddd/index.js";
++import "./module";
+ 
+ it("should do nothing", () => {
+ 	expect(aaa).toBe(undefined);
+diff --git a/test/configCases/compiletime/exports-presence/module.js b/test/configCases/compiletime/exports-presence/module.js
+index e69de29bb..2a044c72d 100644
+--- a/test/configCases/compiletime/exports-presence/module.js
++++ b/test/configCases/compiletime/exports-presence/module.js
+@@ -0,0 +1,70 @@
++import * as ns from "./stub";
++
++function fn() {}
++
++describe("should not add additional warnings/errors", () => {
++	it("if statement", () => {
++		if ("a" in ns) {
++			fn(ns.a);
++			ns.a();
++		}
++		if ("b" in ns && "c" in ns) {
++			fn(ns.b, ns.c);
++			ns.b();
++			ns.c();
++		}
++		if (0 || "a" in ns) {
++			fn(ns.a);
++
++			if ("b" in ns && "c" in ns) {
++				fn(ns.a, ns.b, ns.c);
++			}
++
++			if (null ?? "d" in ns) {
++				fn(ns.a, ns.d);
++			}
++		}
++
++		// warning: 31:6-10(a)
++		if (!("a" in ns)) {
++			//↑_____ negation is not a guard
++			fn(ns.a);
++		}
++
++		if (!!("a" in ns)) {
++			fn(ns.a);
++		}
++	});
++
++	it("ternary operator", () => {
++		"a" in ns ? fn(ns.a) : 0;
++		"b" in ns && "c" in ns ? (fn(ns.b, ns.c), ns.b(), ns.c()) : 0;
++
++		0 || "a" in ns
++			? fn(ns.a)
++			: "b" in ns && "c" in ns
++				? "d" in ns
++					? fn(ns.b, ns.c, ns.d)
++					: (null ?? "e" in ns)
++						? fn(ns.b, ns.c, ns.e)
++						: fn(ns.b, ns.c)
++				: 0;
++
++		!!("a" in ns) ? ns.a() : 0;
++	});
++
++	it("unsupport experssions", () => {
++		// warning: 58:6-10(a)
++		if (ns.a) {
++			// ↑_____ `ns.a` is direct usage, not a guard
++			// warning: 61:15-19(a)
++			console.log(ns.a);
++		}
++		// warning: 64:6-10(a)
++		if (ns.a !== undefined) {
++			// ↑_____ `ns.a` is direct usage, not a guard
++			// warning: 67:15-19(a)
++			console.log(ns.a);
++		}
++	});
++});
+diff --git a/test/configCases/compiletime/exports-presence/warnings.js b/test/configCases/compiletime/exports-presence/warnings.js
+index 1c1d728b9..b5e011b22 100644
+--- a/test/configCases/compiletime/exports-presence/warnings.js
++++ b/test/configCases/compiletime/exports-presence/warnings.js
+@@ -14,123 +14,28 @@ module.exports = [
+ 		message: /NoNo.+not found/
+ 	},
+ 	{
+-		moduleName: /index/,
++		moduleName: /module/,
+ 		message: /a.+not found/,
+-		loc: /26:7/
++		loc: /31:6-10/
+ 	},
+ 	{
+-		moduleName: /index/,
++		moduleName: /module/,
+ 		message: /a.+not found/,
+-		loc: /27:3/
++		loc: /58:6-10/
+ 	},
+ 	{
+-		moduleName: /index/,
++		moduleName: /module/,
+ 		message: /a.+not found/,
+-		loc: /42:13/
++		loc: /61:15-19/
+ 	},
+ 	{
+-		moduleName: /index/,
++		moduleName: /module/,
+ 		message: /a.+not found/,
+-		loc: /45:7/
++		loc: /64:6-10/
+ 	},
+ 	{
+-		moduleName: /index/,
++		moduleName: /module/,
+ 		message: /a.+not found/,
+-		loc: /48:6/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /a.+not found/,
+-		loc: /53:13/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /a.+not found/,
+-		loc: /58:14/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /b.+not found/,
+-		loc: /64:14/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /b.+not found/,
+-		loc: /68:14/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /a.+not found/,
+-		loc: /71:21/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /a.+not found/,
+-		loc: /74:9/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /85:6/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /106:6/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /111:6/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /c.+not found/,
+-		loc: /116:6/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /c.+not found/,
+-		loc: /116:37/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /126:12/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /127:15/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /131:7/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /c.+not found/,
+-		loc: /131:13/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /c.+not found/,
+-		loc: /132:15/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /132:18/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /136:3/
+-	},
+-	{
+-		moduleName: /index/,
+-		message: /d.+not found/,
+-		loc: /136:7/
++		loc: /67:15-19/
+ 	}
+ ];
+diff --git a/test/configCases/compiletime/exports-presence/webpack.config.js b/test/configCases/compiletime/exports-presence/webpack.config.js
+index 307b36be0..2c2d7ac86 100644
+--- a/test/configCases/compiletime/exports-presence/webpack.config.js
++++ b/test/configCases/compiletime/exports-presence/webpack.config.js
+@@ -30,6 +30,12 @@ module.exports = {
+ 					importExportsPresence: "warn",
+ 					reexportExportsPresence: false
+ 				}
++			},
++			{
++				test: /module/,
++				parser: {
++					importExportsPresence: "warn"
++				}
+ 			}
+ 		]
+ 	}

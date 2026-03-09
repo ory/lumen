@@ -1,0 +1,29 @@
+{
+  "id": "typescript-hard",
+  "language": "typescript",
+  "difficulty": "hard",
+  "repo": "https://github.com/vitejs/vite",
+  "base_commit": "a704abc4e6f1528837030cf92cb7a2de65da54cc",
+  "fix_commit": "f7e1d0720e6b9f2ce5d358b6a23ebdb72c51be70",
+  "issue_url": "https://github.com/vitejs/rolldown-vite/issues/603",
+  "issue_title": "Unexpected Token from dependency CSS import",
+  "issue_body": "When a CJS dependency requires another package whose `main` field in `package.json` points to a `.css` file (e.g. font packages like `@fontsource/material-icons`), the Vite dependency optimizer crashes with a parse error during dev server startup.\n\nThe error looks like:\n\n```\nError: Build failed with errors:\n[PARSE_ERROR] Error: Unexpected token\n  node_modules/@fontsource/material-icons/index.css:2:6\n  @font-face {\n       ^--- unexpected token here\n```\n\nThe optimizer appears to be trying to parse the CSS file as JavaScript instead of treating it as a non-JS asset.\n\nReproduction steps:\n1. Create a package A with `\"main\": \"style.css\"` in its package.json\n2. Create a CJS package B that does `require('package-a')`\n3. Import package B in your Vite application\n4. Run the dev server - dependency optimization will fail with a parse error on the CSS file\n\nThis works correctly with Vite 7 but fails with the rolldown-vite version. No special Vite config is needed to trigger this \u2014 simply having a transitive CJS dependency whose entry is a CSS file is enough.\n\nExpected behavior: The CSS entrypoint should be handled correctly during dependency optimization rather than being fed to the JS parser.",
+  "gold_patch_file": "patches/typescript-hard.patch",
+  "expected_files": [
+    "packages/vite/src/node/optimizer/rolldownDepPlugin.ts",
+    "playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+    "playground/optimize-deps/dep-cjs-css-main-field/package.json",
+    "playground/optimize-deps/dep-cjs-css-main-field/style.css",
+    "playground/optimize-deps/dep-cjs-require-css-main-field/index.js",
+    "playground/optimize-deps/dep-cjs-require-css-main-field/package.json",
+    "playground/optimize-deps/index.html",
+    "playground/optimize-deps/package.json",
+    "pnpm-lock.yaml"
+  ],
+  "setup_commands": [
+    "corepack enable",
+    "pnpm install --frozen-lockfile"
+  ],
+  "test_command": "pnpm vitest run playground/optimize-deps/__tests__/optimize-deps.spec.ts",
+  "timeout_s": 900
+}

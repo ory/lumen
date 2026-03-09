@@ -1,0 +1,89 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 22a2b39..eaf5103 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,7 +1,12 @@
+-TBD
+-===
++15.0.1
++======
+ Unreleased changes. Release notes have not yet been written.
+ 
++Bug fixes:
++
++* [BUG #3194](https://github.com/BurntSushi/ripgrep/issues/3194):
++  Fix a regression with `--line-buffered` introduced in ripgrep 15.0.0.
++
+ 
+ 15.0.0 (2025-10-15)
+ ===================
+@@ -37,8 +42,6 @@ Performance improvements:
+   Don't resolve helper binaries on Windows when `-z/--search-zip` isn't used.
+ * [PERF #2865](https://github.com/BurntSushi/ripgrep/pull/2865):
+   Avoid using path canonicalization on Windows when emitting hyperlinks.
+-* [PERF #3184](https://github.com/BurntSushi/ripgrep/pull/3184):
+-  Improve performance of large values with `-A/--after-context`.
+ 
+ Bug fixes:
+ 
+diff --git a/crates/searcher/src/line_buffer.rs b/crates/searcher/src/line_buffer.rs
+index 5bc49db..2a7ff09 100644
+--- a/crates/searcher/src/line_buffer.rs
++++ b/crates/searcher/src/line_buffer.rs
+@@ -415,26 +415,21 @@ impl LineBuffer {
+         assert_eq!(self.pos, 0);
+         loop {
+             self.ensure_capacity()?;
+-            let oldend = self.end;
+-            while !self.free_buffer().is_empty() {
+-                let readlen = rdr.read(self.free_buffer())?;
+-                if readlen == 0 {
+-                    break;
+-                }
+-                self.end += readlen;
++            let readlen = rdr.read(self.free_buffer().as_bytes_mut())?;
++            if readlen == 0 {
++                // We're only done reading for good once the caller has
++                // consumed everything.
++                self.last_lineterm = self.end;
++                return Ok(!self.buffer().is_empty());
+             }
+ 
+             // Get a mutable view into the bytes we've just read. These are
+             // the bytes that we do binary detection on, and also the bytes we
+             // search to find the last line terminator. We need a mutable slice
+             // in the case of binary conversion.
++            let oldend = self.end;
++            self.end += readlen;
+             let newbytes = &mut self.buf[oldend..self.end];
+-            if newbytes.is_empty() {
+-                self.last_lineterm = self.end;
+-                // We're only done reading for good once the caller has
+-                // consumed everything.
+-                return Ok(!self.buffer().is_empty());
+-            }
+ 
+             // Binary detection.
+             match self.config.binary {
+diff --git a/crates/searcher/src/searcher/glue.rs b/crates/searcher/src/searcher/glue.rs
+index 7c94307..defb9c4 100644
+--- a/crates/searcher/src/searcher/glue.rs
++++ b/crates/searcher/src/searcher/glue.rs
+@@ -737,7 +737,7 @@ d
+         // Namely, it will *always* detect binary data in the current buffer
+         // before searching it. Thus, the total number of bytes searched is
+         // smaller than below.
+-        let exp = "0:a\n\nbyte count:262142\nbinary offset:262153\n";
++        let exp = "0:a\n\nbyte count:262146\nbinary offset:262153\n";
+         // In contrast, the slice readers (for multi line as well) will only
+         // look for binary data in the initial chunk of bytes. After that
+         // point, it only looks for binary data in matches. Note though that
+@@ -771,7 +771,7 @@ d
+         haystack.push_str("a\x00a\n");
+         haystack.push_str("a\n");
+ 
+-        let exp = "0:a\n\nbyte count:262142\nbinary offset:262149\n";
++        let exp = "0:a\n\nbyte count:262146\nbinary offset:262149\n";
+         // The binary offset for the Slice readers corresponds to the binary
+         // data in `a\x00a\n` since the first line with binary data
+         // (`b\x00b\n`) isn't part of a match, and is therefore undetected.

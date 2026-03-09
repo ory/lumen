@@ -1,0 +1,22 @@
+{
+  "id": "typescript-easy",
+  "language": "typescript",
+  "difficulty": "easy",
+  "repo": "https://github.com/colinhacks/zod",
+  "base_commit": "65f1f404f644cfc9b7f790d310500a05b9d30ca4",
+  "fix_commit": "5b5745014af2a3b0ea6339ccd7bbcbdf845f7181",
+  "issue_url": "https://github.com/colinhacks/zod/issues/5680",
+  "issue_title": "`abort: true` in refine does not stop further validations",
+  "issue_body": "It looks like the `abort: true` option in `.refine()` is ignored.\n\n```ts\nimport { z } from \"zod\";\n\nconst schema = z.object({\n  name: z\n    .string()\n    .refine((v) => v.length > 0, {\n      abort: true,\n      message: \"Required\",\n    })\n    .refine(() => false, {\n      message: \"Error\",\n    })\n    .min(3),\n});\n\nconsole.log(schema.safeParse({ name: \"\" }));\n```\n\n### Expected behavior\n\nIf `abort: true` works, validation should stop after the first failing refine, so only one error should be returned:\n\n* `Required`\n\n### Actual behavior\n\nZod continues validating and returns multiple issues:\n\n* `custom - Required`\n* `too_small - expected string to have >=3 characters`",
+  "gold_patch_file": "patches/typescript-easy.patch",
+  "expected_files": [
+    "packages/zod/src/v4/core/schemas.ts",
+    "packages/zod/src/v4/core/util.ts"
+  ],
+  "setup_commands": [
+    "corepack enable",
+    "pnpm install"
+  ],
+  "test_command": "npx vitest run packages/zod/src/v4/core/tests/index.test.ts",
+  "timeout_s": 900
+}

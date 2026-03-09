@@ -1,0 +1,4 @@
+=== RUN   TestHostMatcher
+--- PASS: TestHostMatcher (0.00s)
+PASS
+ok  	github.com/gorilla/mux	0.198s

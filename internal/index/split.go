@@ -145,12 +145,24 @@ func countLeadingWhitespace(s string) int {
 // overlapLines is the number of lines from the end of the previous partition
 // prepended to the next partition. This improves search recall for queries
 // that match concepts spanning a split boundary.
-const overlapLines = 5
+const overlapLines = 10
+
+// headerLines is the number of lines taken from the start of the first
+// partition and injected into all subsequent sub-chunks. This gives the
+// embedding model the function signature / doc-comment context needed to
+// associate algorithmic body code with its parent declaration.
+const headerLines = 5
 
 func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 	totalParts := len(parts)
 	var result []chunker.Chunk
 	lineOffset := 0
+
+	// Extract function signature / doc-comment header from the first partition.
+	header := parts[0]
+	if len(header) > headerLines {
+		header = header[:headerLines]
+	}
 
 	for i, part := range parts {
 		// Prepend overlap from the previous partition (except for the first).
@@ -160,8 +172,9 @@ func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 			prev := parts[i-1]
 			n := min(overlapLines, len(prev))
 			overlap := prev[len(prev)-n:]
-			effective = make([]string, 0, n+len(part))
-			effective = append(effective, overlap...)
+			effective = make([]string, 0, len(header)+n+len(part))
+			effective = append(effective, header...)  // function signature context
+			effective = append(effective, overlap...) // cross-boundary overlap
 			effective = append(effective, part...)
 			overlapCount = n
 		}
@@ -169,7 +182,7 @@ func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 		content := strings.Join(effective, "")
 		startLine := c.StartLine + lineOffset - overlapCount
 		endLine := c.StartLine + lineOffset + len(part) - 1
-		symbol := fmt.Sprintf("%s[%d/%d]", c.Symbol, i+1, totalParts)
+		symbol := fmt.Sprintf("%s[%d/%d:L%d-L%d]", c.Symbol, i+1, totalParts, startLine, endLine)
 
 		h := sha256.New()
 		h.Write([]byte(c.FilePath))

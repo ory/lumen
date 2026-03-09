@@ -1,0 +1,62 @@
+diff --git a/mux_test.go b/mux_test.go
+index 2d8d2b3..529ca4e 100644
+--- a/mux_test.go
++++ b/mux_test.go
+@@ -225,6 +225,40 @@ func TestHost(t *testing.T) {
+ 	}
+ }
+ 
++func TestHostWildcardPortMismatch(t *testing.T) {
++	tests := []routeTest{
++		{
++			title:        "Wildcard host without port, request with port",
++			route:        new(Route).Host("{subdomain:.+}.localhost").Path("/"),
++			request:      newRequestHost("GET", "/", "test.localhost:8080"),
++			vars:         map[string]string{"subdomain": "test"},
++			path:         "/",
++			shouldMatch:  true,
++		},
++		{
++			title:        "Wildcard host without port, request without port",
++			route:        new(Route).Host("{subdomain:.+}.localhost").Path("/"),
++			request:      newRequestHost("GET", "/", "test.localhost"),
++			vars:         map[string]string{"subdomain": "test"},
++			path:         "/",
++			shouldMatch:  true,
++		},
++		{
++			title:        "Wildcard host with port, request with matching port",
++			route:        new(Route).Host("{subdomain:.+}.localhost:{port:.*}").Path("/"),
++			request:      newRequestHost("GET", "/", "test.localhost:8080"),
++			vars:         map[string]string{"subdomain": "test", "port": "8080"},
++			path:         "/",
++			shouldMatch:  true,
++		},
++	}
++	for _, test := range tests {
++		t.Run(test.title, func(t *testing.T) {
++			testRoute(t, test)
++		})
++	}
++}
++
+ func TestPath(t *testing.T) {
+ 	tests := []routeTest{
+ 		{
+diff --git a/regexp.go b/regexp.go
+index 96dd94a..0144842 100644
+--- a/regexp.go
++++ b/regexp.go
+@@ -325,6 +325,12 @@ func (v routeRegexpGroup) setMatch(req *http.Request, m *RouteMatch, r *Route) {
+ 	// Store host variables.
+ 	if v.host != nil {
+ 		host := getHost(req)
++		if v.host.wildcardHostPort {
++			// Don't be strict on the port match
++			if i := strings.Index(host, ":"); i != -1 {
++				host = host[:i]
++			}
++		}
+ 		matches := v.host.regexp.FindStringSubmatchIndex(host)
+ 		if len(matches) > 0 {
+ 			extractVars(host, matches, v.host.varsN, m.Vars)

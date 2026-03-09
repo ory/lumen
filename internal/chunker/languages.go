@@ -41,9 +41,6 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".cs",
-	".md", ".mdx",
-	".yaml", ".yml", ".json", ".toml",
-	".mod",
 }
 
 // SupportedExtensions returns the file extensions indexed by DefaultLanguages.
@@ -58,40 +55,71 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		Queries: []QueryDef{
 			{Pattern: `(function_definition name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(class_definition name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(decorated_definition definition: (function_definition name: (identifier) @name)) @decl`, Kind: "function"},
+			{Pattern: `(decorated_definition definition: (class_definition name: (identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(assignment left: (identifier) @name) @decl`, Kind: "var"},
 		},
 	})
 
 	ts := mustTreeSitterChunker(LanguageDef{
 		Language: sitter_ts.GetLanguage(),
 		Queries: []QueryDef{
+			// Exported const/let with non-function values (regex, string, object, etc.).
+			// Must come before the lexical_declaration function patterns so that exported
+			// arrow functions are overwritten by the more specific "function" kind below.
+			{Pattern: `(export_statement (lexical_declaration (variable_declarator name: (identifier) @name))) @decl`, Kind: "const"},
 			{Pattern: `(function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(abstract_class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(interface_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
 			{Pattern: `(type_alias_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(method_definition name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(method_signature name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(internal_module name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(ambient_declaration (function_signature name: (identifier) @name)) @decl`, Kind: "function"},
 		},
 	})
 
 	tsx := mustTreeSitterChunker(LanguageDef{
 		Language: sitter_tsx.GetLanguage(),
 		Queries: []QueryDef{
+			// Exported const/let with non-function values (regex, string, object, etc.).
+			// Must come before the lexical_declaration function patterns so that exported
+			// arrow functions are overwritten by the more specific "function" kind below.
+			{Pattern: `(export_statement (lexical_declaration (variable_declarator name: (identifier) @name))) @decl`, Kind: "const"},
 			{Pattern: `(function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(abstract_class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(interface_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
 			{Pattern: `(type_alias_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(method_definition name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(method_signature name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(internal_module name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(ambient_declaration (function_signature name: (identifier) @name)) @decl`, Kind: "function"},
 		},
 	})
 
 	js := mustTreeSitterChunker(LanguageDef{
 		Language: sitter_js.GetLanguage(),
 		Queries: []QueryDef{
+			// Exported const/let with non-function values (regex, string, object, etc.).
+			// Must come before the lexical_declaration function patterns so that exported
+			// arrow functions are overwritten by the more specific "function" kind below.
+			{Pattern: `(export_statement (lexical_declaration (variable_declarator name: (identifier) @name))) @decl`, Kind: "const"},
 			{Pattern: `(function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(class_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(method_definition name: (property_identifier) @name) @decl`, Kind: "method"},
-			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
 		},
 	})
 
@@ -103,6 +131,15 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(enum_item name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(trait_item name: (type_identifier) @name) @decl`, Kind: "interface"},
 			{Pattern: `(const_item name: (identifier) @name) @decl`, Kind: "const"},
+			{Pattern: `(impl_item type: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(impl_item type: (generic_type type: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(impl_item type: (scoped_type_identifier name: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(type_item name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(static_item name: (identifier) @name) @decl`, Kind: "var"},
+			{Pattern: `(mod_item name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(macro_definition name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(union_item name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(function_signature_item name: (identifier) @name) @decl`, Kind: "function"},
 		},
 	})
 
@@ -113,6 +150,8 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(singleton_method name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(class name: (constant) @name) @decl`, Kind: "type"},
 			{Pattern: `(module name: (constant) @name) @decl`, Kind: "type"},
+			{Pattern: `(alias name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(assignment left: (constant) @name) @decl`, Kind: "var"},
 		},
 	})
 
@@ -124,6 +163,9 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(interface_declaration name: (identifier) @name) @decl`, Kind: "interface"},
 			{Pattern: `(constructor_declaration name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(annotation_type_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(record_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(field_declaration declarator: (variable_declarator name: (identifier) @name)) @decl`, Kind: "var"},
 		},
 	})
 
@@ -134,6 +176,10 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(function_definition declarator: (pointer_declarator declarator: (function_declarator declarator: (identifier) @name))) @decl`, Kind: "function"},
 			{Pattern: `(struct_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(enum_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(union_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(preproc_function_def name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(preproc_def name: (identifier) @name) @decl`, Kind: "const"},
 		},
 	})
 
@@ -145,6 +191,14 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(class_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(struct_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(enum_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(function_definition declarator: (function_declarator declarator: (qualified_identifier name: (identifier) @name))) @decl`, Kind: "method"},
+			{Pattern: `(namespace_definition name: (namespace_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(alias_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(concept_definition name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(union_specifier name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(preproc_function_def name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(preproc_def name: (identifier) @name) @decl`, Kind: "const"},
 		},
 	})
 
@@ -155,6 +209,11 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(interface_declaration name: (name) @name) @decl`, Kind: "interface"},
 			{Pattern: `(trait_declaration name: (name) @name) @decl`, Kind: "type"},
 			{Pattern: `(method_declaration name: (name) @name) @decl`, Kind: "method"},
+			{Pattern: `(class_declaration name: (name) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (name) @name) @decl`, Kind: "type"},
+			{Pattern: `(namespace_definition name: (namespace_name) @name) @decl`, Kind: "type"},
+			{Pattern: `(const_declaration (const_element (name) @name)) @decl`, Kind: "const"},
+			{Pattern: `(property_declaration (property_element (variable_name (name) @name))) @decl`, Kind: "var"},
 		},
 	})
 
@@ -172,14 +231,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(delegate_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(record_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(event_field_declaration (variable_declaration (variable_declarator (identifier) @name))) @decl`, Kind: "var"},
+			{Pattern: `(namespace_declaration name: (_) @name) @decl`, Kind: "type"},
+			{Pattern: `(field_declaration (variable_declaration (variable_declarator (identifier) @name))) @decl`, Kind: "var"},
+			{Pattern: `(event_declaration name: (identifier) @name) @decl`, Kind: "var"},
 		},
 	})
 
 	goChunker := NewGoAST()
-
-	md := NewMarkdownChunker()
-
-	structured := NewStructuredChunker(maxChunkTokens)
 
 	return map[string]Chunker{
 		".go":   goChunker,
@@ -200,12 +258,5 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".hpp":  cpp,
 		".php":  php,
 		".cs":   cs,
-		".md":   md,
-		".mdx":  md,
-		".yaml": structured,
-		".yml":  structured,
-		".json": structured,
-		".toml": structured,
-		".mod":  structured,
 	}
 }

@@ -60,11 +60,11 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 		t.Fatalf("expected multiple chunks, got %d", len(result))
 	}
 
-	// Check symbol format
+	// Check symbol format: BigFunc[N/M:LX-LY]
 	for i, r := range result {
-		expected := fmt.Sprintf("BigFunc[%d/%d]", i+1, len(result))
-		if r.Symbol != expected {
-			t.Errorf("chunk %d: expected symbol %q, got %q", i, expected, r.Symbol)
+		expectedPrefix := fmt.Sprintf("BigFunc[%d/%d:L", i+1, len(result))
+		if !strings.HasPrefix(r.Symbol, expectedPrefix) || !strings.HasSuffix(r.Symbol, "]") {
+			t.Errorf("chunk %d: expected symbol matching %q..., got %q", i, expectedPrefix, r.Symbol)
 		}
 		if r.Kind != "function" {
 			t.Errorf("chunk %d: expected kind 'function', got %q", i, r.Kind)
@@ -394,24 +394,56 @@ func TestCreateSubChunks_OverlapIncluded(t *testing.T) {
 	}
 }
 
+func TestCreateSubChunks_HeaderInjected(t *testing.T) {
+	// Verify that sub-chunks after the first have the function signature header
+	// (first headerLines lines of parts[0]) prepended before the overlap.
+	header := []string{"func BigFunc(x int) {\n", "\t// doc comment\n", "\tvar a int\n", "\tvar b int\n", "\tvar c int\n"}
+	rest := []string{"line6\n", "line7\n", "line8\n", "line9\n", "line10\n", "line11\n", "line12\n", "line13\n"}
+	part0 := append(header, rest...)
+	part1 := []string{"line14\n", "line15\n", "line16\n"}
+
+	c := makeTestChunk("BigFunc", 1, 16, "")
+	result := createSubChunks(c, [][]string{part0, part1})
+	if len(result) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(result))
+	}
+	second := result[1].Content
+	// Header lines must appear in the second chunk.
+	for _, h := range header {
+		if !strings.Contains(second, h) {
+			t.Errorf("expected second chunk to contain header line %q", h)
+		}
+	}
+	// Body line of second partition must also appear.
+	if !strings.Contains(second, "line14\n") {
+		t.Error("expected second chunk to contain 'line14'")
+	}
+	// First chunk must not contain lines from part1.
+	if strings.Contains(result[0].Content, "line14\n") {
+		t.Error("first chunk should not contain lines from second partition")
+	}
+}
+
 func TestCreateSubChunks_OverlapLineNumbers(t *testing.T) {
 	// Verify line numbers account for overlap correctly.
+	// First partition has 20 lines so the 10-line overlap doesn't consume it entirely.
 	parts := [][]string{
-		{"a\n", "b\n", "c\n", "d\n", "e\n", "f\n", "g\n", "h\n", "i\n", "j\n"},
-		{"k\n", "l\n"},
+		{"a\n", "b\n", "c\n", "d\n", "e\n", "f\n", "g\n", "h\n", "i\n", "j\n",
+			"k\n", "l\n", "m\n", "n\n", "o\n", "p\n", "q\n", "r\n", "s\n", "t\n"},
+		{"u\n", "v\n"},
 	}
-	c := makeTestChunk("Func", 10, 21, "")
+	c := makeTestChunk("Func", 10, 31, "")
 	result := createSubChunks(c, parts)
-	// First chunk: lines 10-19
-	if result[0].StartLine != 10 || result[0].EndLine != 19 {
-		t.Errorf("first chunk lines: got %d-%d, want 10-19", result[0].StartLine, result[0].EndLine)
+	// First chunk: lines 10-29
+	if result[0].StartLine != 10 || result[0].EndLine != 29 {
+		t.Errorf("first chunk lines: got %d-%d, want 10-29", result[0].StartLine, result[0].EndLine)
 	}
-	// Second chunk with overlap: starts 5 lines before partition boundary
-	if result[1].StartLine != 15 {
-		t.Errorf("second chunk start: got %d, want 15 (overlap of 5)", result[1].StartLine)
+	// Second chunk with overlap: starts overlapLines=10 lines before partition boundary
+	if result[1].StartLine != 20 {
+		t.Errorf("second chunk start: got %d, want 20 (overlap of 10)", result[1].StartLine)
 	}
-	if result[1].EndLine != 21 {
-		t.Errorf("second chunk end: got %d, want 21", result[1].EndLine)
+	if result[1].EndLine != 31 {
+		t.Errorf("second chunk end: got %d, want 31", result[1].EndLine)
 	}
 }
 

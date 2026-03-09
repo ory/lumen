@@ -1,0 +1,23 @@
+{
+  "id": "c-easy",
+  "language": "c",
+  "difficulty": "easy",
+  "repo": "https://github.com/jqlang/jq",
+  "base_commit": "4cf1408e0bbac8fc714b051fe420921905128efd",
+  "fix_commit": "f85c9fcb78f89fa833f2d5a2cf26b54318e06e05",
+  "issue_url": "https://github.com/jqlang/jq/issues/2826",
+  "issue_title": "Array indexing of negative indices wraps twice",
+  "issue_body": "Negative indices should wrap only once, not twice.\n\nTo reproduce, run:\n\n    jq -n '[0,1,2] | .[-5]'\n\nThis produces `1`, which is incorrect.\n\nExpected behavior: Since the array has length 3, `.[-5]` computes `.[3-5]` which is `.[-2]`. After one wrap this becomes `.[1]`, giving `1`. However, the negative index should only wrap once. Since `-5` is still out of bounds after a single wrap (3 + (-5) = -2, which is still negative), the result should be `null`.\n\nMore generally, any negative index whose absolute value exceeds the array length should return `null` rather than wrapping around a second time. For example, `[1,2,3] | .[-4]` should also return `null` since `-4` is beyond the array bounds after a single adjustment.\n\nThe root cause appears to be that negative index adjustment is being applied in two places in the codebase. The index gets adjusted by adding the array length to the negative index, but this adjustment happens twice during evaluation, causing the double wrap.",
+  "gold_patch_file": "patches/c-easy.patch",
+  "expected_files": [
+    "src/execute.c"
+  ],
+  "setup_commands": [
+    "git submodule update --init",
+    "autoreconf -i",
+    "./configure --with-oniguruma=builtin",
+    "make -j$(nproc)"
+  ],
+  "test_command": "make check",
+  "timeout_s": 900
+}

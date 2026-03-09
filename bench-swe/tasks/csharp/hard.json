@@ -1,0 +1,24 @@
+{
+  "id": "csharp-hard",
+  "language": "csharp",
+  "difficulty": "hard",
+  "repo": "https://github.com/JamesNK/Newtonsoft.Json",
+  "base_commit": "4e13299d4b0ec96bd4df9954ef646bd2d1b5bf2a",
+  "fix_commit": "a162f27661ce5bab4167b477f338cf5115343c09",
+  "issue_url": "https://github.com/JamesNK/Newtonsoft.Json/issues/3080",
+  "issue_title": "13.0.4 breaks SerializerSettings",
+  "issue_body": "Upgrading from 13.0.3 to 13.0.4 has caused SerializerSettings not to be respected. In my case NullValueHandling, although set, is no longer working.\n\nOur setup is a .NET 8 Web API where SerializerSettings are configured in Program.cs:\n\n```\n.AddNewtonsoftJson(options =>\n{\n    options.SerializerSettings.Converters.Add(new StringEnumConverter());\n    options.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;\n});\n```\n\nControllers call a RestSharp client that deserializes responses like this:\n\n```\nvar parsedJson = JObject.Parse(response.Content);\nvar parsedList = parsedJson[\"users\"].Children().Select(r => r.ToObject<T>());\n```\n\nIt seems that in 13.0.4, ToObject<T>() loses the context of the SerializerSettings set in Program.cs. In 13.0.3 it works. When deserializing objects that have value type properties, setting null to those properties now throws a NullReferenceException instead of assigning the default value.\n\nCould you provide guidance? Is this a regression or are we doing something wrong?",
+  "gold_patch_file": "patches/csharp-hard.patch",
+  "expected_files": [
+    "Src/Newtonsoft.Json.Tests/Issues/Issue2775.cs",
+    "Src/Newtonsoft.Json.Tests/Issues/Issue3055.cs",
+    "Src/Newtonsoft.Json.Tests/Issues/Issue3056.cs",
+    "Src/Newtonsoft.Json.Tests/Issues/Issue3080.cs",
+    "Src/Newtonsoft.Json/Serialization/DynamicValueProvider.cs",
+    "Src/Newtonsoft.Json/Serialization/ExpressionValueProvider.cs",
+    "Src/Newtonsoft.Json/Utilities/ILGeneratorExtensions.cs"
+  ],
+  "setup_commands": [],
+  "test_command": "dotnet test Src/Newtonsoft.Json.Tests/Newtonsoft.Json.Tests.csproj --filter Issue3080",
+  "timeout_s": 900
+}

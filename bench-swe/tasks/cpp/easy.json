@@ -1,0 +1,18 @@
+{
+  "id": "cpp-easy",
+  "language": "cpp",
+  "difficulty": "easy",
+  "repo": "https://github.com/fmtlib/fmt",
+  "base_commit": "0e078f6ed0624be8babc43bd145371d9f3a08aab",
+  "fix_commit": "a9ea225cadc2ad0d0620ddd458310b24d2a1b4b8",
+  "issue_url": "https://github.com/fmtlib/fmt/pull/4653",
+  "issue_title": "Fix C++20 concept detection",
+  "issue_body": "Compilation fails on GCC with the `-fconcepts` flag. When building any code that includes `fmt/base.h` using an older GCC version (before 8.4) with `-fconcepts`, the compiler emits errors related to the `formattable` concept definition in `include/fmt/base.h`.\n\nThe issue appears to be that the library assumes full C++20 concepts support whenever any form of concepts is available, but older GCC versions with `-fconcepts` only provide the earlier Concepts TS (ISO-19217), which is not fully compatible with C++20 concept syntax.\n\nReproduction: compile any code that includes `fmt/base.h` with an older GCC using the `-fconcepts` flag. See https://godbolt.org/z/vv179vWGe for a live example.\n\nExpected behavior: The library should compile cleanly when concepts are enabled, even on compilers that only support the Concepts TS rather than full C++20 concepts.",
+  "gold_patch_file": "patches/cpp-easy.patch",
+  "expected_files": [
+    "include/fmt/base.h"
+  ],
+  "setup_commands": [],
+  "test_command": "cd build && cmake .. -DFMT_TEST=ON && cmake --build . --target base-test && ./bin/base-test",
+  "timeout_s": 900
+}

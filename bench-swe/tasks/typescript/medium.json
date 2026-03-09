@@ -1,0 +1,25 @@
+{
+  "id": "typescript-medium",
+  "language": "typescript",
+  "difficulty": "medium",
+  "repo": "https://github.com/colinhacks/zod",
+  "base_commit": "3a818de145dc2fa9b5753bc8bf97b0b8484cfbaf",
+  "fix_commit": "3cd45ebcbcf06a3f16e702a010074dfceca3ea50",
+  "issue_url": "https://github.com/colinhacks/zod/issues/5284",
+  "issue_title": "z.string().url() allows invalid urls like 'http:/www.apple.com'",
+  "issue_body": "The `z.string().url()` validator (specifically `z.httpUrl()`) incorrectly allows URLs with a single forward slash or no slashes after the protocol. For example, `http:/www.apple.com` and `http:example.com` both pass validation when they should fail.\n\nReproduction:\n\n```typescript\nimport { z } from 'zod/v4';\n\nconst httpUrl = z.httpUrl();\n\n// These should all fail validation but currently pass:\nhttpUrl.parse('http:example.com');      // missing // after protocol\nhttpUrl.parse('https:example.com');     // missing // after protocol\nhttpUrl.parse('https:/www.google.com'); // missing one /\nhttpUrl.parse('http:/example.com');     // missing one /\n```\n\nAll of these are malformed URLs that should be rejected. The native `URL` constructor silently normalizes them (e.g. `new URL('http:/www.apple.com')` returns `http://www.apple.com`), so the validator accepts inputs that are clearly invalid.",
+  "gold_patch_file": "patches/typescript-medium.patch",
+  "expected_files": [
+    "packages/zod/src/v4/classic/schemas.ts",
+    "packages/zod/src/v4/classic/tests/string.test.ts",
+    "packages/zod/src/v4/core/regexes.ts",
+    "packages/zod/src/v4/core/schemas.ts",
+    "packages/zod/src/v4/mini/schemas.ts"
+  ],
+  "setup_commands": [
+    "corepack enable",
+    "pnpm install --frozen-lockfile"
+  ],
+  "test_command": "pnpm vitest run packages/zod/src/v4/classic/tests/string.test.ts -t \"httpurl\"",
+  "timeout_s": 900
+}

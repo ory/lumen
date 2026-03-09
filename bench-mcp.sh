@@ -187,7 +187,7 @@ run_judge() {
   local have_answers=false
 
   for model in "${MODELS[@]}"; do
-    for scenario in baseline mcp-only mcp-full; do
+    for scenario in baseline mcp-only with-lumen; do
       local af="$RESULTS_DIR/${slug}-${model}-${scenario}-answer.txt"
       local mf="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
       if [[ -f "$af" ]]; then
@@ -275,7 +275,7 @@ emit_overall_stats() {
   echo "|-------|----------|------------|-----------------|------------------|------------------|"
 
   for model in "${MODELS[@]}"; do
-    for scenario in baseline mcp-only mcp-full; do
+    for scenario in baseline mcp-only with-lumen; do
       local total_dur_ms=0 total_in=0 total_out=0 total_cost_scaled=0 count=0
       for q_idx in "${Q_INDICES[@]}"; do
         local mf="$RESULTS_DIR/${Q_SLUGS[$q_idx]}-${model}-${scenario}-metrics.json"
@@ -329,7 +329,7 @@ emit_overall_comparison() {
       case "$winner_scenario" in
         baseline) (( wins_baseline++ )) || true ;;
         mcp-only) (( wins_mcp_only++ )) || true ;;
-        mcp-full) (( wins_mcp_full++ )) || true ;;
+        with-lumen) (( wins_mcp_full++ )) || true ;;
       esac
     fi
 
@@ -337,7 +337,7 @@ emit_overall_comparison() {
     local runner_up="—"
     local best_cost_scaled=999999999
     for model in "${MODELS[@]}"; do
-      for scenario in baseline mcp-only mcp-full; do
+      for scenario in baseline mcp-only with-lumen; do
         local run_key="${model}/${scenario}"
         [[ "$run_key" == "$winner" ]] && continue
         local mf="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
@@ -365,12 +365,12 @@ emit_overall_comparison() {
   local overall_winner_scenario=""
   local overall_winner_count=0
 
-  for scenario in baseline mcp-only mcp-full; do
+  for scenario in baseline mcp-only with-lumen; do
     local wins
     case "$scenario" in
       baseline) wins=$wins_baseline ;;
       mcp-only) wins=$wins_mcp_only ;;
-      mcp-full) wins=$wins_mcp_full ;;
+      with-lumen) wins=$wins_mcp_full ;;
     esac
     echo "| $scenario | $wins |"
     if (( wins > overall_winner_count )); then
@@ -403,7 +403,7 @@ generate_reports() {
     echo "|----------|-------------|"
     echo "| **baseline** | All default Claude tools, no MCP |"
     echo "| **mcp-only** | \`semantic_search\` MCP tool only |"
-    echo "| **mcp-full** | All default tools + MCP |"
+    echo "| **with-lumen** | All default tools + MCP |"
     echo ""
     emit_overall_stats
     echo "---"
@@ -429,7 +429,7 @@ generate_reports() {
       [[ -f "$judge_brief_file" ]] && winner=$(extract_winner "$judge_brief_file")
 
       for model in "${MODELS[@]}"; do
-        for scenario in baseline mcp-only mcp-full; do
+        for scenario in baseline mcp-only with-lumen; do
           local metrics_file="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
           if [[ -f "$metrics_file" ]]; then
             local in_tok cr_tok out_tok cost_usd dur_ms cost_fmt dur_s badge
@@ -493,7 +493,7 @@ generate_reports() {
       echo "|-------|----------|----------|-----------|------------|---------------|------------|------------|"
 
       for model in "${MODELS[@]}"; do
-        for scenario in baseline mcp-only mcp-full; do
+        for scenario in baseline mcp-only with-lumen; do
           local metrics_file="$RESULTS_DIR/${slug}-${model}-${scenario}-metrics.json"
           if [[ -f "$metrics_file" ]]; then
             local in_tok cr_tok cc_tok out_tok cost_usd dur_ms cost_fmt dur_s
@@ -515,7 +515,7 @@ generate_reports() {
       echo ""
 
       for model in "${MODELS[@]}"; do
-        for scenario in baseline mcp-only mcp-full; do
+        for scenario in baseline mcp-only with-lumen; do
           local af="$RESULTS_DIR/${slug}-${model}-${scenario}-answer.txt"
           if [[ -f "$af" ]]; then
             echo "### Answer: \`$model\` / \`$scenario\`"
@@ -553,7 +553,7 @@ for model in "${MODELS[@]}"; do
     _t1=$(mktemp) _t2=$(mktemp) _t3=$(mktemp)
     run "$MCP_EMPTY"   "$model" "$q_idx" "baseline" ""  >"$_t1" 2>&1 & _p1=$!
     run "$MCP_ENABLED" "$model" "$q_idx" "mcp-only"  "1" >"$_t2" 2>&1 & _p2=$!
-    run "$MCP_ENABLED" "$model" "$q_idx" "mcp-full"  ""  >"$_t3" 2>&1 & _p3=$!
+    run "$MCP_ENABLED" "$model" "$q_idx" "with-lumen"  ""  >"$_t3" 2>&1 & _p3=$!
     wait "$_p1" || true; cat "$_t1"; rm -f "$_t1"
     wait "$_p2" || true; cat "$_t2"; rm -f "$_t2"
     wait "$_p3" || true; cat "$_t3"; rm -f "$_t3"

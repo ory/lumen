@@ -293,10 +293,15 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     float32(1.0 - r.Distance),
+			Score:     boostedScore(float32(1.0-r.Distance), r.Kind, r.FilePath),
 			Content:   content,
 		}
 	}
+
+	// Re-sort by boosted score so documentation does not outrank source code.
+	slices.SortStableFunc(out.Results, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
 
 	text := formatSearchResults(input.Path, out)
 	return &mcp.CallToolResult{
@@ -546,6 +551,62 @@ func normalizeLineRange(startLine, endLine, totalLines int) (int, int) {
 	start := max(startLine-1, 0)
 	end := min(endLine, totalLines)
 	return start, end
+}
+
+// sourceCodeKinds lists chunk kinds that represent source code declarations.
+// These receive a score boost to outrank documentation and changelog chunks.
+var sourceCodeKinds = map[string]bool{
+	"function":  true,
+	"method":    true,
+	"type":      true,
+	"interface": true,
+	"const":     true,
+	"var":       true,
+}
+
+// boostedScore adjusts the raw cosine score of a chunk based on its kind and
+// file type. Source code declarations get a 1.15x boost; test files are
+// demoted by 0.9x and documentation files by 0.6x so that implementation
+// code outranks test data tables and README prose for concept queries. The
+// result is capped at 1.0.
+func boostedScore(score float32, kind, filePath string) float32 {
+	if sourceCodeKinds[kind] {
+		if boosted := score * 1.15; boosted < 1.0 {
+			score = boosted
+		} else {
+			score = 1.0
+		}
+	}
+	if isTestFile(filePath) {
+		score *= 0.9
+	}
+	if isDocFile(filePath) {
+		score *= 0.6
+	}
+	return score
+}
+
+// isTestFile reports whether filePath looks like a test file across common
+// language conventions: Go (*_test.go), Rust (*_test.rs), Ruby (*_spec.rb),
+// JS/TS (*.test.*, *.spec.*).
+func isTestFile(filePath string) bool {
+	base := strings.ToLower(filepath.Base(filePath))
+	ext := filepath.Ext(base)
+	nameNoExt := strings.TrimSuffix(base, ext)
+	return strings.HasSuffix(nameNoExt, "_test") ||
+		strings.HasSuffix(nameNoExt, "_spec") ||
+		strings.Contains(base, ".test.") ||
+		strings.Contains(base, ".spec.")
+}
+
+// isDocFile reports whether filePath is a documentation file whose natural
+// language content tends to embed close to concept queries.
+func isDocFile(filePath string) bool {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".md", ".mdx", ".rst":
+		return true
+	}
+	return false
 }
 
 var xmlEscaper = strings.NewReplacer(

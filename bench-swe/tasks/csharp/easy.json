@@ -1,0 +1,18 @@
+{
+  "id": "csharp-easy",
+  "language": "csharp",
+  "difficulty": "easy",
+  "repo": "https://github.com/JamesNK/Newtonsoft.Json",
+  "base_commit": "a162f27661ce5bab4167b477f338cf5115343c09",
+  "fix_commit": "341b3aee29328323e8f5a0cf30a66611f4a56a94",
+  "issue_url": "https://github.com/JamesNK/Newtonsoft.Json/issues/3084",
+  "issue_title": "JObject.ToString MissingMethodException when app built against Newtonsoft.Json 13.0.4 loads 13.0.3 from GAC",
+  "issue_body": "Applications compiled against Newtonsoft.Json 13.0.4 can fail at runtime if version 13.0.3 is installed in the Global Assembly Cache (GAC).\n\nBecause both 13.0.3 and 13.0.4 use AssemblyVersion = 13.0.0.0, the CLR will load the 13.0.3 assembly from the GAC even when the application was compiled against 13.0.4. This results in missing members at runtime.\n\n## Steps to Reproduce\n\n1. Install Newtonsoft.Json 13.0.3 into the GAC.\n2. Create a project that references NuGet package Newtonsoft.Json 13.0.4.\n3. Use the following code:\n\n```csharp\nusing Newtonsoft.Json;\nusing Newtonsoft.Json.Linq;\n\nvar jObject = JObject.Parse(\"{'fieldName':{'fieldValue':'innerObjectValue'},'anotherField':'anotherValue'}\");\njObject.ToString(Formatting.None);\n```\n\n4. Build and run the project on the machine with 13.0.3 in the GAC.\n\n## Expected Behavior\n\nThe application should load the version it was compiled against (13.0.4) and successfully invoke the ToString overload without errors.\n\n## Actual Behavior\n\nThe runtime loads Newtonsoft.Json 13.0.3 from the GAC, and the following exception occurs:\n\n```\nSystem.MissingMethodException : Method not found:\n'System.String Newtonsoft.Json.Linq.JToken.ToString(Newtonsoft.Json.Formatting)'\n```\n\n## Notes\n\n- The issue is triggered by the fact that the AssemblyVersion remains 13.0.0.0 across these patch releases.\n- Since the GAC version takes precedence, applications compiled against 13.0.4 cannot safely run when 13.0.3 is present in the GAC.",
+  "gold_patch_file": "patches/csharp-easy.patch",
+  "expected_files": [
+    "Src/Newtonsoft.Json/Linq/JToken.cs"
+  ],
+  "setup_commands": [],
+  "test_command": "dotnet test Src/Newtonsoft.Json.Tests/Newtonsoft.Json.Tests.csproj --filter \"FullyQualifiedName~JTokenTests\"",
+  "timeout_s": 900
+}

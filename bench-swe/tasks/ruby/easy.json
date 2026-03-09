@@ -1,0 +1,22 @@
+{
+  "id": "ruby-easy",
+  "language": "ruby",
+  "difficulty": "easy",
+  "repo": "https://github.com/Shopify/liquid",
+  "base_commit": "f15d24509d0f429f56284da527e6186708a27725",
+  "fix_commit": "2a12f253bf89c2a861a6654fa80baf888733f8b1",
+  "issue_url": "https://github.com/Shopify/liquid/issues/345",
+  "issue_title": "Inconsistency in rendering false",
+  "issue_body": "There is an inconsistency in how Liquid renders variables that are equal to `false`. When a variable is set to `false` via the render context hash, it renders as an empty string instead of the string \"false\". However, the literal `false` and variables assigned via the `assign` tag render correctly.\n\nReproduction:\n\n```ruby\nLiquid::Template.parse(\"{{qq}}\").render(\"qq\" => false)          # => \"\" (expected \"false\")\nLiquid::Template.parse(\"{{ false }}\").render                    # => \"false\" (correct)\nLiquid::Template.parse(\"{%assign rr = false %}{{ rr }}\").render # => \"false\" (correct)\n```\n\nThe first case should render \"false\" just like the other two cases. Variables passed through the render context that are equal to `false` should be rendered consistently with literal `false` values and assigned `false` variables.",
+  "gold_patch_file": "patches/ruby-easy.patch",
+  "expected_files": [
+    "lib/liquid/context.rb",
+    "test/integration/context_test.rb",
+    "test/integration/variable_test.rb"
+  ],
+  "setup_commands": [
+    "bundle install"
+  ],
+  "test_command": "bundle exec ruby test/integration/variable_test.rb --name test_false_renders_as_false",
+  "timeout_s": 900
+}

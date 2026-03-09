@@ -1,0 +1,98 @@
+diff --git a/router.go b/router.go
+index 15a3398..ed728d6 100644
+--- a/router.go
++++ b/router.go
+@@ -355,6 +355,10 @@ func (r *Router) Find(method, path string, c Context) {
+ 
+ 		// Attempt to go back up the tree on no matching prefix or no remaining search
+ 		if l != pl || search == "" {
++			// Handle special case of trailing slash route with existing any route (see #1526)
++			if path[len(path)-1] == '/' && cn.findChildByKind(akind) != nil {
++				goto Any
++			}
+ 			if nn == nil { // Issue #1348
+ 				return // Not found
+ 			}
+diff --git a/router_test.go b/router_test.go
+index 8c27b9f..cb628df 100644
+--- a/router_test.go
++++ b/router_test.go
+@@ -942,6 +942,78 @@ func TestRouterPriorityNotFound(t *testing.T) {
+ 	assert.Equal(t, http.StatusNotFound, he.Code)
+ }
+ 
++// TestRouterMatchAnySlash shall verify finding the best route
++// for any routes with trailing slash requests
++func TestRouterMatchAnySlash(t *testing.T) {
++	e := New()
++	r := e.router
++
++	handler := func(c Context) error {
++		c.Set("path", c.Path())
++		return nil
++	}
++
++	// Routes
++	r.Add(http.MethodGet, "/users", handler)
++	r.Add(http.MethodGet, "/users/*", handler)
++	r.Add(http.MethodGet, "/img/*", handler)
++	r.Add(http.MethodGet, "/img/load", handler)
++	r.Add(http.MethodGet, "/img/load/*", handler)
++	r.Add(http.MethodGet, "/assets/*", handler)
++
++	c := e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/", c)
++	assert.Equal(t, "", c.Param("*"))
++
++	// Test trailing slash request for simple any route (see #1526)
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/users/", c)
++	c.handler(c)
++	assert.Equal(t, "/users/*", c.Get("path"))
++	assert.Equal(t, "", c.Param("*"))
++
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/users/joe", c)
++	c.handler(c)
++	assert.Equal(t, "/users/*", c.Get("path"))
++	assert.Equal(t, "joe", c.Param("*"))
++
++	// Test trailing slash request for nested any route (see #1526)
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/img/load", c)
++	c.handler(c)
++	assert.Equal(t, "/img/load", c.Get("path"))
++	assert.Equal(t, "", c.Param("*"))
++
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/img/load/", c)
++	c.handler(c)
++	assert.Equal(t, "/img/load/*", c.Get("path"))
++	assert.Equal(t, "", c.Param("*"))
++
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/img/load/ben", c)
++	c.handler(c)
++	assert.Equal(t, "/img/load/*", c.Get("path"))
++	assert.Equal(t, "ben", c.Param("*"))
++
++	// Test /assets/* any route
++	// ... without trailing slash must not match
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/assets", c)
++	c.handler(c)
++	assert.Equal(t, nil, c.Get("path"))
++	assert.Equal(t, "", c.Param("*"))
++
++	// ... with trailing slash must match
++	c = e.NewContext(nil, nil).(*context)
++	r.Find(http.MethodGet, "/assets/", c)
++	c.handler(c)
++	assert.Equal(t, "/assets/*", c.Get("path"))
++	assert.Equal(t, "", c.Param("*"))
++
++}
++
+ func TestRouterParamNames(t *testing.T) {
+ 	e := New()
+ 	r := e.router

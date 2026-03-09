@@ -1,0 +1,20 @@
+{
+  "id": "javascript-medium",
+  "language": "javascript",
+  "difficulty": "medium",
+  "repo": "https://github.com/chalk/chalk",
+  "base_commit": "fc809b686d5048d56fec3a5d96d1ad57dee193bf",
+  "fix_commit": "4ebb62d1ca70c122674558a88932ddf6545fe9ef",
+  "issue_url": "https://github.com/chalk/chalk/issues/639",
+  "issue_title": "Not handling navigator being undefined",
+  "issue_body": "After updating to chalk 5.x, our application build fails with a `ReferenceError: navigator is not defined`. This happens because the vendored `supports-color` package does not handle `navigator` being `undefined` in non-browser environments. The latest standalone `supports-color` version (10.0.0) already handles this correctly, so the vendored copy in chalk needs to be updated to guard against `navigator` not existing before accessing its properties.",
+  "gold_patch_file": "patches/javascript-medium.patch",
+  "expected_files": [
+    "source/vendor/supports-color/browser.js"
+  ],
+  "setup_commands": [
+    "npm install"
+  ],
+  "test_command": "npx ava test/chalk.js test/level.js -v",
+  "timeout_s": 900
+}

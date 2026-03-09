@@ -1,0 +1,65 @@
+diff --git a/old_test.go b/old_test.go
+index f088a95..96dbe33 100644
+--- a/old_test.go
++++ b/old_test.go
+@@ -260,6 +260,18 @@ var hostMatcherTests = []hostMatcherTest{
+ 		vars:    map[string]string{"foo": "abc", "bar": "def", "baz": "ghi"},
+ 		result:  true,
+ 	},
++	{
++		matcher: NewRouter().NewRoute().Host("{foo:[a-z][a-z][a-z]}.{bar:[a-z][a-z][a-z]}.{baz:[a-z][a-z][a-z]}:{port:.*}"),
++		url:     "http://abc.def.ghi:65535/",
++		vars:    map[string]string{"foo": "abc", "bar": "def", "baz": "ghi", "port": "65535"},
++		result:  true,
++	},
++	{
++		matcher: NewRouter().NewRoute().Host("{foo:[a-z][a-z][a-z]}.{bar:[a-z][a-z][a-z]}.{baz:[a-z][a-z][a-z]}"),
++		url:     "http://abc.def.ghi:65535/",
++		vars:    map[string]string{"foo": "abc", "bar": "def", "baz": "ghi"},
++		result:  true,
++	},
+ 	{
+ 		matcher: NewRouter().NewRoute().Host("{foo:[a-z][a-z][a-z]}.{bar:[a-z][a-z][a-z]}.{baz:[a-z][a-z][a-z]}"),
+ 		url:     "http://a.b.c/",
+@@ -365,6 +377,11 @@ var urlBuildingTests = []urlBuildingTest{
+ 		vars:  []string{"subdomain", "bar"},
+ 		url:   "http://bar.domain.com",
+ 	},
++	{
++		route: new(Route).Host("{subdomain}.domain.com:{port:.*}"),
++		vars:  []string{"subdomain", "bar", "port", "65535"},
++		url:   "http://bar.domain.com:65535",
++	},
+ 	{
+ 		route: new(Route).Host("foo.domain.com").Path("/articles"),
+ 		vars:  []string{},
+@@ -412,7 +429,11 @@ func TestHeaderMatcher(t *testing.T) {
+ 
+ func TestHostMatcher(t *testing.T) {
+ 	for _, v := range hostMatcherTests {
+-		request, _ := http.NewRequest("GET", v.url, nil)
++		request, err := http.NewRequest("GET", v.url, nil)
++		if err != nil {
++			t.Errorf("http.NewRequest failed %#v", err)
++			continue
++		}
+ 		var routeMatch RouteMatch
+ 		result := v.matcher.Match(request, &routeMatch)
+ 		vars := routeMatch.Vars
+diff --git a/regexp.go b/regexp.go
+index 96dd94a..0144842 100644
+--- a/regexp.go
++++ b/regexp.go
+@@ -325,6 +325,12 @@ func (v routeRegexpGroup) setMatch(req *http.Request, m *RouteMatch, r *Route) {
+ 	// Store host variables.
+ 	if v.host != nil {
+ 		host := getHost(req)
++		if v.host.wildcardHostPort {
++			// Don't be strict on the port match
++			if i := strings.Index(host, ":"); i != -1 {
++				host = host[:i]
++			}
++		}
+ 		matches := v.host.regexp.FindStringSubmatchIndex(host)
+ 		if len(matches) > 0 {
+ 			extractVars(host, matches, v.host.varsN, m.Vars)

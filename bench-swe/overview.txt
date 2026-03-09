@@ -1,0 +1,10 @@
+Task                            Lang      Diff    Scenario    Rating    Cost      Time   
+------------------------------------------------------------------------------------------
+go-easy                         go        easy    baseline    Poor      —         —      
+go-easy                         go        easy    with-lumen  Poor      $0.6723   235.6s 
+go-hard                         go        hard    baseline    Good      $0.9738   238.7s 
+go-hard                         go        hard    with-lumen  Poor      $0.4909   118.5s 
+go-medium                       go        medium  baseline    Perfect   $0.1522   24.2s  
+go-medium                       go        medium  with-lumen  Perfect   $0.1628   29.3s  
+------------------------------------------------------------------------------------------
+Perfect: 2  Good: 1  Poor: 3  Total cost: $2.4519

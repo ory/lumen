@@ -1,0 +1,79 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..240be36 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,19 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		// Check if there's a valid default value to preserve
++		derefVal := defaultVal
++		for derefVal.Kind() == reflect.Ptr {
++			derefVal = derefVal.Elem()
++		}
++		// Get the decodable type (always dereferenced)
++		decodableType := typ
++		for decodableType.Kind() == reflect.Ptr {
++			decodableType = decodableType.Elem()
++		}
++		if derefVal.IsValid() && derefVal.Type().AssignableTo(decodableType) {
++			return d.castToAssignableValue(derefVal, typ), nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..5575016 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -3027,3 +3027,50 @@ func TestMapKeyCustomUnmarshaler(t *testing.T) {
+ 		t.Fatalf("expected to have value \"value\", but got %q", val)
+ 	}
+ }
++
++type DefaultValueTestStruct struct {
++	Key string `yaml:"key"`
++}
++
++type DefaultValueTestOuter struct {
++	First    string                 `yaml:"first"`
++	Defaults DefaultValueTestStruct `yaml:"second"`
++}
++
++func TestDecodePreservesDefaultsWithNullNode(t *testing.T) {
++	// Test preserving defaults when YAML node is null or contains only comments
++	yml := `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`
++
++	test := DefaultValueTestOuter{Defaults: DefaultValueTestStruct{Key: "My default Value"}}
++	d := yaml.NewDecoder(strings.NewReader(yml))
++	err := d.Decode(&test)
++	if err != nil {
++		t.Fatalf("failed to decode %v", err)
++	}
++
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("expected to preserve default value, but got %q", test.Defaults.Key)
++	}
++}
++
++func TestDecodePreservesDefaultsWithExplicitNull(t *testing.T) {
++	// Test preserving defaults when YAML value is explicitly null
++	yml := `first: "Test"
++second: null
++`
++
++	test := DefaultValueTestOuter{Defaults: DefaultValueTestStruct{Key: "My default Value"}}
++	d := yaml.NewDecoder(strings.NewReader(yml))
++	err := d.Decode(&test)
++	if err != nil {
++		t.Fatalf("failed to decode %v", err)
++	}
++
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("expected to preserve default value, but got %q", test.Defaults.Key)
++	}
++}

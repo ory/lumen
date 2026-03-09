@@ -1,0 +1,18 @@
+{
+  "id": "csharp-medium",
+  "language": "csharp",
+  "difficulty": "medium",
+  "repo": "https://github.com/serilog/serilog-extensions-logging",
+  "base_commit": "924776ecb498cde2af42ce2f585d90348e493a57",
+  "fix_commit": "d8c75ece18b37efb5d0302784aeff1d8b2dada5d",
+  "issue_url": "https://github.com/serilog/serilog-extensions-logging/issues/276",
+  "issue_title": "Remove closure allocation in SerilogLoggerProvider",
+  "issue_body": "Currently, a closure is being allocated in SerilogLoggerProvider (see https://github.com/serilog/serilog-extensions-logging/blob/dev/src/Serilog.Extensions.Logging/Extensions/Logging/SerilogLoggerProvider.cs#L107). We're working on optimizing memory usage, so avoiding extra allocations is important to us. The closure allocation happens on every log event, which adds unnecessary GC pressure in high-throughput logging scenarios.",
+  "gold_patch_file": "patches/csharp-medium.patch",
+  "expected_files": [
+    "src/Serilog.Extensions.Logging/Extensions/Logging/SerilogLoggerProvider.cs"
+  ],
+  "setup_commands": [],
+  "test_command": "dotnet test test/Serilog.Extensions.Logging.Tests/Serilog.Extensions.Logging.Tests.csproj",
+  "timeout_s": 900
+}

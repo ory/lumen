@@ -1,0 +1,28 @@
+{
+  "id": "ruby-hard",
+  "language": "ruby",
+  "difficulty": "hard",
+  "repo": "https://github.com/sinatra/sinatra",
+  "base_commit": "ca6b71c2e48f90ae0fe3b9cd54c4d2459c1bde7c",
+  "fix_commit": "1551ef7ffc9f937f8ae02d7adb23b250cfac109b",
+  "issue_url": "https://github.com/sinatra/sinatra/issues/1973",
+  "issue_title": "Classic Style Application without a config.ru does not work with Ruby 3.3 and Bundler 2.5",
+  "issue_body": "A classic-style Sinatra application (without a `config.ru`) silently exits immediately without starting the server when run with Ruby 3.3 and Bundler 2.5.\n\nSteps to reproduce:\n\n1. Create a simple Sinatra app:\n\n```ruby\n# my_app.rb\nrequire 'sinatra'\n\nget \"/ready\" do\n  \"ready\"\nend\n```\n\n2. Create a Gemfile:\n\n```ruby\nsource 'https://rubygems.org'\n\ngem \"sinatra\"\ngem \"webrick\"\n```\n\n3. Run:\n\n```shell\n$ bundle\n$ bundle exec ruby my_app.rb\n<No response, the application exits immediately>\n```\n\nEnvironment: Ruby 3.3.0, Bundler 2.5.3\n\nExpected behavior: The Sinatra application should start and listen on the default port.\n\nActual behavior: The application exits silently without starting the web server. No error message, no deprecation warning \u2014 it just returns to the shell prompt. The same app works fine on Ruby 3.2 with the same Bundler version, and also works if you wrap it in a `config.ru` and use `rackup` instead.",
+  "gold_patch_file": "patches/ruby-hard.patch",
+  "expected_files": [
+    ".github/workflows/test.yml",
+    "Gemfile",
+    "lib/sinatra/base.rb",
+    "test/integration/simple_app.rb",
+    "test/integration/zeitwerk_app.rb",
+    "test/integration_start_helper.rb",
+    "test/integration_start_test.rb"
+  ],
+  "setup_commands": [
+    "rm -f Gemfile.lock",
+    "bundle config set --local path vendor/bundle",
+    "bundle install"
+  ],
+  "test_command": "bundle exec ruby test/integration_start_test.rb",
+  "timeout_s": 900
+}

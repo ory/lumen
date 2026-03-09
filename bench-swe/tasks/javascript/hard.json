@@ -1,0 +1,25 @@
+{
+  "id": "javascript-hard",
+  "language": "javascript",
+  "difficulty": "hard",
+  "repo": "https://github.com/webpack/webpack",
+  "base_commit": "75d605cb57b23257ee88f99ada7938273ea3a1ff",
+  "fix_commit": "eafe0605b018dd4e19a46d45fb5d72442772aff1",
+  "issue_url": "https://github.com/webpack/webpack/pull/20561",
+  "issue_title": "Narrow the export presence guard detection to namespace imports only",
+  "issue_body": "## Problem\n\nWebpack's export presence guard detection is too broad. When using named or default imports that reference a missing export, webpack should emit a warning or error. However, it currently suppresses these diagnostics when the import binding appears inside certain conditional patterns such as `if (x)`, `if (ns.x)`, `if (x !== undefined)`, or `if (ns.x !== undefined)`.\n\nIn all of these cases, the imported binding `x` has already been accessed in the condition expression itself, so the guard should not suppress the missing export diagnostic. For example:\n\n```js\nimport { x } from \"./module\";\nif (x) { fn(x); }\n```\n\nHere, `x` is used directly in the `if` condition. If `x` does not exist in `./module`, webpack should still report the missing export \u2014 but currently it does not, because the conditional pattern is incorrectly treated as an export presence guard.\n\nThis only makes sense for explicit existence checks on namespace imports like `\"x\" in ns`, where the export is being tested for presence without actually accessing its value.\n\n## Expected Behavior\n\n- Named and default imports referencing missing exports should always produce a warning or error, regardless of whether they appear inside conditional expressions.\n- Only explicit existence checks on namespace objects (e.g., `\"x\" in ns`) should suppress missing export diagnostics.\n- Value-based checks (truthiness, nullish comparisons, typeof, etc.) should not act as export presence guards.",
+  "gold_patch_file": "patches/javascript-hard.patch",
+  "expected_files": [
+    ".changeset/wild-yaks-wave.md",
+    "lib/dependencies/HarmonyImportDependencyParserPlugin.js",
+    "test/configCases/compiletime/exports-presence/index.js",
+    "test/configCases/compiletime/exports-presence/module.js",
+    "test/configCases/compiletime/exports-presence/warnings.js",
+    "test/configCases/compiletime/exports-presence/webpack.config.js"
+  ],
+  "setup_commands": [
+    "yarn install"
+  ],
+  "test_command": "node --expose-gc --max-old-space-size=4096 --experimental-vm-modules node_modules/jest-cli/bin/jest --testMatch '<rootDir>/test/ConfigTestCases.basictest.js' --testPathPattern 'ConfigTestCases'",
+  "timeout_s": 900
+}

@@ -1,0 +1,20 @@
+{
+  "id": "python-easy",
+  "language": "python",
+  "difficulty": "easy",
+  "repo": "https://github.com/pallets/click",
+  "base_commit": "7f7bbe4569ea68e8dabee232eade069ef3310aea",
+  "fix_commit": "ebcd548d50662bc8fa4f8b9ec7fe13cb8310bfaa",
+  "issue_url": "https://github.com/pallets/click/issues/3084",
+  "issue_title": "Bug: Optional value not optional anymore",
+  "issue_body": "Since Click 8.3.0, using `is_flag=False` with `flag_value=value` no longer works as documented. Instead of treating the option as having an optional value, Click raises 'Error: Option requires an argument'.\n\nReproduction:\n```python\nimport click\n\n@click.command()\n@click.option(\"--name\", is_flag=False, flag_value=\"Flag\", default=\"Default\")\ndef hello(name):\n    click.echo(f\"Hello, {name}!\")\n```\n\n```shell\n$ hello --name\nError: Option '--name' requires an argument.\n```\n\nExpected behavior:\n```shell\n$ hello --name\nHello, Flag!\n```\n\nThe option should accept an optional value: if `--name` is given without an argument, it should use `flag_value` (\"Flag\"). If `--name Bob` is given, it should use \"Bob\". If the option is omitted entirely, it should use `default` (\"Default\").\n\nThis regression was introduced in 8.3.0. The documentation at https://click.palletsprojects.com/en/stable/options/#optional-value describes the correct behavior, but it no longer works.\n\n- Python version: 3.11\n- Click version: 8.3.0",
+  "gold_patch_file": "patches/python-easy.patch",
+  "expected_files": [
+    "src/click/core.py"
+  ],
+  "setup_commands": [
+    "pip install -e '.[dev]'"
+  ],
+  "test_command": "pytest tests/test_options.py::test_flag_value_on_option_with_zero_or_one_args -v",
+  "timeout_s": 900
+}

@@ -13,3 +13,6 @@ dist/
 
 # Claude
 .claude/*.local.json
+
+bench-swe/bench-swe
+lumen
