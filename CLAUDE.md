@@ -106,13 +106,13 @@ system handles MCP registration, hooks, and skills declaratively via:
 
 ## Environment Variables
 
-| Variable                 | Default           | Description                                |
-| ------------------------ | ----------------- | ------------------------------------------ |
-| `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
-| `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
-| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                     |
-| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                  |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
+| Variable                 | Default                  | Description                                |
+| ------------------------ | ------------------------ | ------------------------------------------ |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
+| `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting      |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
 `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
