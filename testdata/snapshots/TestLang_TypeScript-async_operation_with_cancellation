@@ -1,12 +1,12 @@
 results: 10
-async.ts:67-70  cancel (method)
-async.ts:284-287  Throttler[3/3] (type)
+async.ts:20-22  CancelablePromise+cancel (method)
+async.ts:67-70  createCancelablePromise.cancel (method)
 async.ts:284-286  dispose (method)
-async.ts:432-439  cancel (method)
+async.ts:432-448  cancel+cancelTimeout+dispose (method)
 async.ts:478-480  cancel (method)
+async.ts:1002-1012  clearPending (method)
 async.ts:1157-1162  flush (method)
 async.ts:1611-1613  cancelRunning (method)
-async.ts:1796-1802  DeferredPromise[3/3] (type)
 async.ts:1799-1801  cancel (method)
-async.ts:2535-2537  cancel (method)
+async.ts:2527-2538  CancelableAsyncIterableProducer+cancel (method)
 

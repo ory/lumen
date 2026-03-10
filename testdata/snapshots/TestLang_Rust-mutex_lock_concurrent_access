@@ -1,12 +1,11 @@
-results: 10
-tokio-mutex.rs:293-293  TryLockError (type)
-tokio-mutex.rs:434-458  lock[1/2] (function)
-tokio-mutex.rs:520-522  blocking_lock (function)
-tokio-mutex.rs:618-641  lock_owned[1/2] (function)
-tokio-mutex.rs:814-821  fmt (function)
-tokio-mutex.rs:827-836  skip_drop (function)
+results: 9
+tokio-mutex.rs:399-523  Mutex+lock+blocking_lock (type)
+tokio-mutex.rs:529-581  Mutex (type)
+tokio-mutex.rs:588-621  Mutex (type)
+tokio-mutex.rs:635-684  Mutex (type)
+tokio-mutex.rs:695-725  Mutex (type)
+tokio-mutex.rs:757-793  Mutex (type)
+tokio-mutex.rs:828-859  MutexGuard (type)
 tokio-mutex.rs:959-961  mutex (function)
-tokio-mutex.rs:980-982  deref (function)
-tokio-mutex.rs:986-988  deref_mut (function)
-tokio-mutex.rs:1141-1143  mutex (function)
+tokio-mutex.rs:980-988  deref+deref_mut (function)
 

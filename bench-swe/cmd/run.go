@@ -64,7 +64,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	repoRoot := filepath.Dir(benchDir)
-	lumenBinary := filepath.Join(repoRoot, "lumen")
+	lumenBinary := filepath.Join(repoRoot, "bin", "lumen")
 	tasksDir := filepath.Join(benchDir, "tasks")
 
 	// Detect backend

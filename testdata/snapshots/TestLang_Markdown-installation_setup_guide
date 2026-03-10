@@ -1,12 +1,2 @@
-results: 10
-01-installation.mdx:50-57  System requirements (section)
-01-installation.mdx:102-117  Create with the CLI[2/2] (section)
-01-installation.mdx:173-173  Manual installation[3/3] (section)
-01-installation.mdx:239-245  Create the `app` directory[3/3] (section)
-01-installation.mdx:346-348  Create the `public` folder (optional)[2/2] (section)
-02-project-structure.mdx:324-344  Route groups[1/2] (section)
-ch01-01-installation.md:58-70  Installing `rustup` on Windows (section)
-ch01-01-installation.md:110-111  Troubleshooting[2/2] (section)
-ch01-01-installation.md:155-171  Working Offline with This Book[1/2] (section)
-ch01-01-installation.md:172-180  Working Offline with This Book[2/2] (section)
+results: 0
 

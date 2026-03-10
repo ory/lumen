@@ -1,12 +1,6 @@
-results: 10
+results: 4
 django-base.py:22-34  ContextMixin (type)
-django-exceptions.py:117-120  MiddlewareNotUsed (type)
-flask-app.py:586-602  Flask[27/81] (type)
-flask-cli.py:629-634  get_command[2/2] (function)
-flask-ctx.py:260-274  AppContext[1/13] (type)
-flask-ctx.py:291-314  AppContext[3/13] (type)
-flask-ctx.py:351-353  has_request (function)
-flask-ctx.py:371-379  request (function)
-flask-ctx.py:379-398  AppContext[7/13] (type)
-flask-ctx.py:418-437  AppContext[9/13] (type)
+django-common.py:52-79  CommonMiddleware (type)
+flask-ctx.py:260-452  AppContext+has_request+push (type)
+flask-ctx.py:488-525  AppContext (type)
 

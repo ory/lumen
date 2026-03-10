@@ -1,12 +1,8 @@
-results: 10
-django-views.py:77-96  LoginView[1/3] (type)
-django-views.py:88-97  dispatch (function)
-django-views.py:114-117  form_valid (function)
-django-views.py:134-154  LogoutView[1/2] (type)
-django-views.py:176-181  logout_then_login (function)
-django-views.py:184-196  redirect_to_login (function)
-django-views.py:321-326  form_valid (function)
-django-views.py:344-351  PasswordResetCompleteView (type)
-django-views.py:357-373  PasswordChangeView (type)
-django-views.py:368-373  form_valid (function)
+results: 6
+django-views.py:73-130  LoginView+dispatch+form_valid (type)
+django-views.py:176-196  logout_then_login+redirect_to_login (function)
+django-views.py:249-252  PasswordResetDoneView (type)
+django-views.py:267-299  PasswordResetConfirmView (type)
+django-views.py:311-351  PasswordResetConfirmView+form_valid+PasswordResetCompleteView (type)
+django-views.py:368-379  form_valid+PasswordChangeDoneView (function)
 

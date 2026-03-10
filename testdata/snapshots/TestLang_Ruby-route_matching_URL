@@ -1,12 +1,12 @@
 results: 10
-application.rb:163-169  reload_routes! (function)
+application.rb:163-173  reload_routes!+reload_routes_unless_loaded (function)
 engine.rb:527-529  endpoint (function)
 engine.rb:544-548  routes (function)
 engine.rb:685-687  routes? (function)
 metal.rb:230-232  url_for (function)
-sinatra-base.rb:1076-1100  Base[5/47] (type)
-sinatra-base.rb:1080-1105  Sinatra[43/88] (type)
-sinatra-base.rb:1101-1113  Base[6/47] (type)
-sinatra-base.rb:1531-1537  get (function)
-sinatra-base.rb:1551-1551  link (function)
+sinatra-base.rb:343-344  url+to (function)
+sinatra-base.rb:1098-1109  process_route (function)
+sinatra-base.rb:1136-1140  route_missing (function)
+sinatra-base.rb:1531-1545  get+put+delete+head (function)
+sinatra-base.rb:1551-1553  link+unlink (function)
 

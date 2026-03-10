@@ -1,12 +1,9 @@
-results: 10
-PetClinicApplication.java:28-36  PetClinicApplication (type)
-PetClinicApplication.java:32-34  main (method)
-PetController.java:46-69  PetController[1/6] (type)
-VetController.java:35-56  VetController[1/2] (type)
-VetController.java:40-42  VetController (function)
-VetController.java:44-52  showVetList (method)
-VetController.java:69-76  showResourcesVetList (method)
+results: 7
+CacheConfiguration.java:31-39  CacheConfiguration (type)
+OwnerController.java:59-62  setAllowedFields (method)
+PetClinicApplication.java:28-36  PetClinicApplication+main (type)
+PetController.java:46-111  PetController (type)
+VetController.java:35-78  VetController+vetRepository+showVetList+showResourcesVetList (function)
 VetRepository.java:44-46  findAll (method)
-VisitController.java:41-65  VisitController[1/3] (type)
-VisitController.java:66-90  VisitController[2/3] (type)
+VisitController.java:41-104  VisitController+setAllowedFields (type)
 

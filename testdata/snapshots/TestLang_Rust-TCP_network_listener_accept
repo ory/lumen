@@ -1,12 +1,7 @@
-results: 10
-tokio-listener.rs:163-172  accept (function)
-tokio-listener.rs:180-195  poll_accept (function)
-tokio-listener.rs:244-250  from_std (function)
-tokio-listener.rs:274-296  into_std[1/2] (function)
-tokio-listener.rs:397-399  try_from (function)
-tokio-oneshot.rs:352-358  TryRecvError (type)
-tokio-stream.rs:160-163  new (function)
-tokio-stream.rs:207-213  from_std (function)
-tokio-stream.rs:1211-1213  quickack (function)
-tokio-stream.rs:1251-1253  set_quickack (function)
+results: 5
+tokio-listener.rs:62-272  TcpListener+from_std (type)
+tokio-listener.rs:300-388  TcpListener (type)
+tokio-stream.rs:75-113  TcpStream (type)
+tokio-stream.rs:207-235  TcpStream (type)
+tokio-stream.rs:1146-1176  TcpStream (type)
 

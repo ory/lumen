@@ -1,12 +1,2 @@
-results: 10
-prettier-package.json:55-55  dependencies.camelcase (section)
-prettier-package.json:62-62  dependencies.diff (section)
-prettier-package.json:78-78  dependencies.ignore (section)
-prettier-package.json:83-83  dependencies.json5 (section)
-prettier-package.json:100-100  dependencies.n-readlines (section)
-prettier-package.json:125-125  dependencies.unified (section)
-prettier-package.json:126-126  dependencies.url-or-path (section)
-react-package.json:147-147  scripts.version-check (section)
-react-package.json:152-152  scripts.check-release-dependencies (section)
-typescript-package.json:5-5  version (section)
+results: 0
 

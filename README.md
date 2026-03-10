@@ -30,7 +30,8 @@ Claude reads entire files to find what it needs. Lumen gives it a map.
 Lumen is a 100% local semantic code search engine for AI coding agents. No API
 keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
-and your CPU. A single static binary, no runtime required.
+and your CPU. A single static binary and your own local embedding
+server.
 
 The payoff is measurable and reproducible: across 7 languages and 42 real GitHub
 bug-fix tasks, Lumen reduces tool calls by **27% on average**, cuts PHP tokens
@@ -90,8 +91,8 @@ Two skills are also available: `/lumen:doctor` (health check) and
   via Merkle tree diffing
 - **Incremental updates** — re-indexes only what changed; large codebases
   re-index in seconds after the first run
-- **15 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
-  Java, PHP, C/C++, C#, Markdown, YAML, JSON, TOML, Go module
+- **11 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
+  Java, PHP, C/C++, C#
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
@@ -142,11 +143,11 @@ runs, per-language breakdowns, and reproduce instructions.
 
 ## Supported Languages
 
-Supports **15 language families** with semantic chunking:
+Supports **11 language families** with semantic chunking:
 
 | Language         | Parser      | Extensions                                | Benchmark status                             |
 | ---------------- | ----------- | ----------------------------------------- | -------------------------------------------- |
-| Go               | Native AST  | `.go`, `.mod`                             | Benchmarked: -27% tool calls                 |
+| Go               | Native AST  | `.go`                                     | Benchmarked: -27% tool calls                 |
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality both ways       |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: chunker needs improvement       |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -56% cost, -39% tool calls      |
@@ -156,9 +157,6 @@ Supports **15 language families** with semantic chunking:
 | Java             | tree-sitter | `.java`                                   | Supported                                    |
 | C#               | tree-sitter | `.cs`                                     | Supported                                    |
 | C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                                    |
-| Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                                    |
-| YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                                    |
-| JSON / TOML      | structured  | `.json`, `.toml`                          | Supported                                    |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
@@ -172,8 +170,8 @@ All configuration is via environment variables:
 | ------------------------ | ----------------- | ------------------------------------------ |
 | `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
 | `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
-| `OLLAMA_HOST`            | `localhost:11434` | Ollama server URL                          |
-| `LM_STUDIO_HOST`         | `localhost:1234`  | LM Studio server URL                       |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                     |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                  |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
@@ -210,9 +208,9 @@ code search — generated protobuf files, test snapshots, vendored data, etc.
 <summary>Built-in skips (always excluded)</summary>
 
 **Directories:** `.git`, `node_modules`, `vendor`, `dist`, `.cache`, `.venv`,
-`__pycache__`, `target`, `.gradle`, `_build`, `deps`, `.idea`, `.vscode`,
-`.next`, `.nuxt`, `.build`, `.output`, `bower_components`, `.bundle`, `.tox`,
-`.eggs`, `testdata`, `.hg`, `.svn`
+`venv`, `__pycache__`, `target`, `.gradle`, `_build`, `deps`, `.idea`,
+`.vscode`, `.next`, `.nuxt`, `.build`, `.output`, `bower_components`, `.bundle`,
+`.tox`, `.eggs`, `testdata`, `.hg`, `.svn`
 
 **Lock files:** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`,
 `bun.lockb`, `go.sum`, `composer.lock`, `poetry.lock`, `Pipfile.lock`,
@@ -229,8 +227,10 @@ Index databases are stored outside your project:
 ~/.local/share/lumen/<hash>/index.db
 ```
 
-Where `<hash>` is derived from the absolute project path and embedding model
-name. No files are added to your repo, no `.gitignore` modifications needed.
+Where `<hash>` is derived from the absolute project path, embedding model name,
+and binary version. Different models or Lumen versions automatically get
+separate indexes. No files are added to your repo, no `.gitignore` modifications
+needed.
 
 You can safely delete the entire `lumen` directory to clear all indexes, or use
 `lumen purge` to do it automatically.
@@ -283,8 +283,8 @@ take several minutes — this is a one-time cost.
 git clone https://github.com/ory/lumen.git
 cd lumen
 
-# Build (CGO required for sqlite-vec)
-make build
+# Build locally (CGO required for sqlite-vec)
+make build-local
 
 # Run tests
 make test

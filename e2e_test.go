@@ -70,7 +70,7 @@ var serverBinary string
 func TestMain(m *testing.M) {
 	// Build the server binary.
 	bin := filepath.Join(os.TempDir(), "lumen-e2e-test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd := exec.Command("go", "build", "-ldflags", "-X github.com/ory/lumen/internal/config.BinaryVersion=dev", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

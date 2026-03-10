@@ -1,12 +1,2 @@
-results: 10
-ch13-01-closures.md:230-243  Capturing References or Moving Ownership[4/7] (section)
-ch16-01-threads.md:1-13  Using Threads to Run Code Simultaneously[1/3] (section)
-ch16-01-threads.md:14-29  Using Threads to Run Code Simultaneously[2/3] (section)
-ch16-01-threads.md:30-33  Using Threads to Run Code Simultaneously[3/3] (section)
-ch16-01-threads.md:52-72  Creating a New Thread with `spawn`[2/3] (section)
-ch16-01-threads.md:73-85  Creating a New Thread with `spawn`[3/3] (section)
-ch16-01-threads.md:87-101  Waiting for All Threads to Finish[1/5] (section)
-ch16-01-threads.md:121-144  Waiting for All Threads to Finish[3/5] (section)
-ch16-01-threads.md:167-174  Waiting for All Threads to Finish[5/5] (section)
-ch16-01-threads.md:275-283  Using `move` Closures with Threads[7/7] (section)
+results: 0
 

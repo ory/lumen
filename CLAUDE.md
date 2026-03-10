@@ -10,10 +10,9 @@ marketplace.
 
 ## Go Standards
 
-- **Version**: Go 1.26+
-- **Build**: `CGO_ENABLED=1 go build -o bin/lumen-<os>-<arch> .` (sqlite-vec
-  requires CGO)
-- **Format**: `gofmt` (enforced in CI)
+- **Version**: Go 1.25+
+- **Build**: `make build-local` (CGO_ENABLED=1, sqlite-vec requires CGO)
+- **Format**: `goimports` (enforced in CI)
 - **Lint**: `golangci-lint run` (zero issues, see `.golangci.yml`)
 - **Vet**: `go vet ./...` (external dependency warnings OK)
 
@@ -79,7 +78,8 @@ marketplace.
 See `Makefile` for all commands:
 
 ```bash
-make build        # Build binary to bin/ (CGO_ENABLED=1)
+make build        # Cross-compile via Docker/xgoreleaser
+make build-local  # Build binary to bin/ (CGO_ENABLED=1)
 make test         # Run unit + integration tests
 make e2e          # Run E2E tests (requires Ollama/LM Studio)
 make lint         # Run golangci-lint
@@ -93,7 +93,7 @@ make plugin-dev   # Build + print plugin-dir usage
 ## Plugin Development
 
 ```bash
-make build
+make build-local
 claude --plugin-dir .
 ```
 
@@ -101,7 +101,6 @@ This loads lumen as a Claude Code plugin directly from the repo. The plugin
 system handles MCP registration, hooks, and skills declaratively via:
 
 - `.claude-plugin/plugin.json` — plugin manifest
-- `.mcp.json` — MCP server config
 - `hooks/hooks.json` — SessionStart + PreToolUse hooks
 - `skills/` — `/lumen:doctor` and `/lumen:reindex` skills
 
@@ -111,8 +110,8 @@ system handles MCP registration, hooks, and skills declaratively via:
 | ------------------------ | ----------------- | ------------------------------------------ |
 | `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
 | `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
-| `OLLAMA_HOST`            | `localhost:11434` | Ollama server URL                          |
-| `LM_STUDIO_HOST`         | `localhost:1234`  | LM Studio server URL                       |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                     |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                  |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
@@ -124,7 +123,6 @@ system handles MCP registration, hooks, and skills declaratively via:
 .
 ├── main.go              # 3-line entrypoint
 ├── .claude-plugin/      # Plugin manifest
-├── .mcp.json            # MCP server config
 ├── hooks/               # Hook declarations
 ├── skills/              # Skill definitions
 ├── scripts/             # Platform wrappers (run.sh, run.bat)
@@ -147,8 +145,8 @@ system handles MCP registration, hooks, and skills declaratively via:
 ## Key Design Decisions
 
 - **Merkle tree for diffs**: Avoid re-indexing unchanged code
-- **Model name in DB path**: Different models → separate indexes (SHA-256 hash
-  of path + model name)
+- **Model name + version in DB path**: Different models or binary versions →
+  separate indexes (SHA-256 hash of path + model name + BinaryVersion)
 - **6-layer file filtering**: SkipDirs → SkipFiles → .gitignore → .lumenignore →
   .gitattributes → extension
 - **Chunk splitting at line boundaries**: Oversized chunks split at
