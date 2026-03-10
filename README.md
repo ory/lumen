@@ -1,22 +1,3 @@
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-
-- [Demo](#demo)
-- [Quick Start](#quick-start)
-- [What You Get](#what-you-get)
-- [How It Works](#how-it-works)
-- [Benchmarks](#benchmarks)
-- [Supported Languages](#supported-languages)
-- [Configuration](#configuration)
-  - [Supported Embedding Models](#supported-embedding-models)
-- [Controlling What Gets Indexed](#controlling-what-gets-indexed)
-- [Database Location](#database-location)
-- [CLI Reference](#cli-reference)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
 ![Ory Lumen: Semantic code search for AI agents](.github/lumen-banner.png)
 
 [![CI](https://github.com/ory/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/ory/lumen/actions/workflows/ci.yml)
@@ -48,6 +29,27 @@ run yourself.
 | PHP (monolog)       | **$0.14, 34s** (-27%, -34%)  | $0.19, 52s          |
 | Patch quality       | **Never degraded**           | —                   |
 
+## Table of contents
+
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Demo](#demo)
+- [Quick start](#quick-start)
+- [What you get](#what-you-get)
+- [How it works](#how-it-works)
+- [Benchmarks](#benchmarks)
+- [Supported languages](#supported-languages)
+- [Configuration](#configuration)
+  - [Supported embedding models](#supported-embedding-models)
+- [Controlling what gets indexed](#controlling-what-gets-indexed)
+- [Database location](#database-location)
+- [CLI Reference](#cli-reference)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ## Demo
 
 <img src="docs/demo/demo.gif" alt="Lumen demo" width="600"/>
@@ -56,7 +58,7 @@ _Claude Code asking about the
 [Prometheus](https://github.com/prometheus/prometheus) codebase. Lumen's
 `semantic_search` finds the relevant code without reading entire files._
 
-## Quick Start
+## Quick start
 
 **Prerequisites:**
 
@@ -84,7 +86,7 @@ That's it. On first session start, Lumen:
 Two skills are also available: `/lumen:doctor` (health check) and
 `/lumen:reindex` (forced re-indexing).
 
-## What You Get
+## What you get
 
 - **Semantic vector search** — Claude finds relevant functions, types, and
   modules by meaning, not keyword matching
@@ -97,7 +99,7 @@ Two skills are also available: `/lumen:doctor` (health check) and
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
-## How It Works
+## How it works
 
 Lumen sits between your codebase and Claude as an MCP server. When a session
 starts, it walks your project and builds a **Merkle tree** over file hashes:
@@ -145,7 +147,7 @@ two-thirds fewer tokens.
 See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for per-language deep dives, judge
 rationales, and reproduce instructions.
 
-## Supported Languages
+## Supported languages
 
 Supports **11 language families** with semantic chunking:
 
@@ -181,7 +183,7 @@ All configuration is via environment variables:
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
 `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
 
-### Supported Embedding Models
+### Supported embedding models
 
 Dimensions and context length are configured automatically per model:
 
@@ -198,7 +200,7 @@ Dimensions and context length are configured automatically per model:
 Switching models creates a separate index automatically. The model name is part
 of the database path hash, so different models never collide.
 
-## Controlling What Gets Indexed
+## Controlling what gets indexed
 
 Lumen filters files through six layers: built-in directory and lock file skips →
 `.gitignore` → `.lumenignore` → `.gitattributes` (`linguist-generated`) →
@@ -223,7 +225,7 @@ code search — generated protobuf files, test snapshots, vendored data, etc.
 
 </details>
 
-## Database Location
+## Database location
 
 Index databases are stored outside your project:
 
