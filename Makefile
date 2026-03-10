@@ -12,7 +12,6 @@ build:
 
 build-local:
 	CGO_ENABLED=1 $(GO) build $(GOFLAGS) \
-		-ldflags "-X github.com/ory/lumen/internal/config.BinaryVersion=$$(git rev-parse HEAD 2>/dev/null || echo dev)" \
 		-o bin/lumen .
 
 build-bench-swe:

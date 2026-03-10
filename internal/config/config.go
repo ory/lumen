@@ -73,12 +73,11 @@ func Load() (Config, error) {
 
 // DBPathForProject returns the SQLite database path for a given project,
 // derived from a SHA-256 hash of the project path, embedding model name, and
-// BinaryVersion. Including the model ensures that switching models creates a
-// fresh index automatically. Including BinaryVersion ensures that binaries
-// built from different commits (which may embed chunks differently) never
-// share an index.
+// IndexVersion. Including the model ensures that switching models creates a
+// fresh index automatically. Including IndexVersion ensures that incompatible
+// chunker/index format changes never share an index with older data.
 func DBPathForProject(projectPath, model string) string {
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+BinaryVersion)))
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+IndexVersion)))
 	dataDir := XDGDataDir()
 	return filepath.Join(dataDir, "lumen", hash[:16], "index.db")
 }
