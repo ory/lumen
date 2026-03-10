@@ -1,22 +1,3 @@
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-
-- [Demo](#demo)
-- [Quick Start](#quick-start)
-- [What You Get](#what-you-get)
-- [How It Works](#how-it-works)
-- [Benchmarks](#benchmarks)
-- [Supported Languages](#supported-languages)
-- [Configuration](#configuration)
-  - [Supported Embedding Models](#supported-embedding-models)
-- [Controlling What Gets Indexed](#controlling-what-gets-indexed)
-- [Database Location](#database-location)
-- [CLI Reference](#cli-reference)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
 ![Ory Lumen: Semantic code search for AI agents](.github/lumen-banner.png)
 
 [![CI](https://github.com/ory/lumen/actions/workflows/ci.yml/badge.svg)](https://github.com/ory/lumen/actions/workflows/ci.yml)
@@ -30,22 +11,44 @@ Claude reads entire files to find what it needs. Lumen gives it a map.
 Lumen is a 100% local semantic code search engine for AI coding agents. No API
 keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
-and your CPU. A single static binary and your own local embedding
-server.
+and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 7 languages and 42 real GitHub
-bug-fix tasks, Lumen reduces tool calls by **27% on average**, cuts PHP tokens
-by **33–86% depending on run**, and cuts session cost by up to **56% on
-JavaScript** tasks — all verified with a
-[transparent, open-source benchmark framework](docs/BENCHMARKS.md).
+The payoff is measurable and reproducible: across 6 languages and real GitHub
+bug-fix tasks, Lumen cuts output tokens by **50% on average**, reduces session
+time by **32%**, and cuts cost by **20%** with zero quality degradation. All
+verified with a
+[transparent, open-source benchmark framework](docs/BENCHMARKS.md) that you can
+run yourself.
 
-|                                 | With Lumen                   | Baseline (no Lumen) |
-| ------------------------------- | ---------------------------- | ------------------- |
-| Tool calls (7-language avg)     | **21.8 avg** (-27%)          | 29.8 avg            |
-| PHP tokens (avg, excl. outlier) | **166K avg** (-33%)          | 247K avg            |
-| Rust hard tasks                 | **Good** (3/3 runs)          | Poor/Good/Poor      |
-| JavaScript best case            | **$0.32, 163s** (-56%, -51%) | $0.72, 336s         |
-| PHP best case                   | **$0.12, 36s** (-52%, -59%)  | $0.25, 90s          |
+|                     | With Lumen                   | Baseline (no Lumen) |
+| ------------------- | ---------------------------- | ------------------- |
+| Output tokens (avg) | **2,774** (-50%)             | 5,608               |
+| Session time (avg)  | **78s** (-32%)               | 115s                |
+| Cost (avg)          | **$0.21** (-20%)             | $0.26               |
+| JavaScript (marked) | **$0.32, 119s** (-33%, -53%) | $0.48, 255s         |
+| PHP (monolog)       | **$0.14, 34s** (-27%, -34%)  | $0.19, 52s          |
+| Patch quality       | **Never degraded**           | —                   |
+
+## Table of contents
+
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Demo](#demo)
+- [Quick start](#quick-start)
+- [What you get](#what-you-get)
+- [How it works](#how-it-works)
+- [Benchmarks](#benchmarks)
+- [Supported languages](#supported-languages)
+- [Configuration](#configuration)
+  - [Supported embedding models](#supported-embedding-models)
+- [Controlling what gets indexed](#controlling-what-gets-indexed)
+- [Database location](#database-location)
+- [CLI Reference](#cli-reference)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## Demo
 
@@ -55,7 +58,7 @@ _Claude Code asking about the
 [Prometheus](https://github.com/prometheus/prometheus) codebase. Lumen's
 `semantic_search` finds the relevant code without reading entire files._
 
-## Quick Start
+## Quick start
 
 **Prerequisites:**
 
@@ -83,7 +86,7 @@ That's it. On first session start, Lumen:
 Two skills are also available: `/lumen:doctor` (health check) and
 `/lumen:reindex` (forced re-indexing).
 
-## What You Get
+## What you get
 
 - **Semantic vector search** — Claude finds relevant functions, types, and
   modules by meaning, not keyword matching
@@ -96,7 +99,7 @@ Two skills are also available: `/lumen:doctor` (health check) and
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
-## How It Works
+## How it works
 
 Lumen sits between your codebase and Claude as an MCP server. When a session
 starts, it walks your project and builds a **Merkle tree** over file hashes:
@@ -117,46 +120,49 @@ different models never share an index.
 ## Benchmarks
 
 Lumen is evaluated using **bench-swe**: a SWE-bench-style harness that runs
-Claude on real GitHub bug-fix tasks and measures cost, time, tool usage, and
+Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 7 languages, hard difficulty, 42 total runs
+**Key results** — 6 languages, hard difficulty, real GitHub issues
 (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
-| Metric                          | With Lumen                   | Baseline             |
-| ------------------------------- | ---------------------------- | -------------------- |
-| Tool calls (7-language avg)     | **21.8** (-27%)              | 29.8                 |
-| PHP tokens (avg, excl. outlier) | **166K avg** (-33%)          | 247K avg             |
-| Rust patch quality              | **Good** (3/3 runs)          | Mixed (2/3 Poor)     |
-| JavaScript best case            | **$0.32, 163s** (-56%, -51%) | $0.72, 336s          |
-| PHP best case                   | **$0.12, 36s** (-52%, -59%)  | $0.25, 90s           |
-| Average cost (all tasks)        | $0.52                        | $0.51 (near-neutral) |
+| Language   | Output Token Reduction | Time Reduction | Cost Reduction | Quality                 |
+| ---------- | ---------------------- | -------------- | -------------- | ----------------------- |
+| JavaScript | **-66%** (14K → 5K)    | **-53%**       | **-33%**       | Perfect (both)          |
+| PHP        | **-59%** (1.9K → 0.8K) | **-34%**       | **-27%**       | Good (both)             |
+| Python     | **-36%** (1.7K → 1.1K) | **-29%**       | **-20%**       | Perfect (both)          |
+| Go         | **-30%** (9K → 6K)     | -5%            | -4%            | Good (both), +test file |
+| Java       | -24%                   | -33%           | -12%           | Good (both)             |
+| C++\*      | -11%                   | -14%           | +20%           | Good (both)             |
 
-The **tool call reduction** is the most consistent signal across all languages.
-Language-specific wins (PHP tokens, Rust quality, JavaScript cost/time) are
-where Lumen delivers clear per-task value today. TypeScript (complex chunking)
-is an active area of improvement.
+\*C++ is a feature implementation task (not bug fix) — the only case where cost
+increased due to large codebase search overhead.
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for the full results table, all 42
-runs, per-language breakdowns, and reproduce instructions.
+The **output token reduction** is the most consistent signal — every bug-fix
+task shows Lumen helping Claude explore less and act more. JavaScript shows the
+most dramatic improvement: same Perfect-rated fix in half the time with
+two-thirds fewer tokens.
 
-## Supported Languages
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for per-language deep dives, judge
+rationales, and reproduce instructions.
+
+## Supported languages
 
 Supports **11 language families** with semantic chunking:
 
-| Language         | Parser      | Extensions                                | Benchmark status                             |
-| ---------------- | ----------- | ----------------------------------------- | -------------------------------------------- |
-| Go               | Native AST  | `.go`                                     | Benchmarked: -27% tool calls                 |
-| Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality both ways       |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: chunker needs improvement       |
-| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -56% cost, -39% tool calls      |
-| Rust             | tree-sitter | `.rs`                                     | Benchmarked: quality uplift (Poor→Good)      |
-| Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -81% tool calls                 |
-| PHP              | tree-sitter | `.php`                                    | Benchmarked: -33% tokens avg, -86% best case |
-| Java             | tree-sitter | `.java`                                   | Supported                                    |
-| C#               | tree-sitter | `.cs`                                     | Supported                                    |
-| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                                    |
+| Language         | Parser      | Extensions                                | Benchmark status                            |
+| ---------------- | ----------- | ----------------------------------------- | ------------------------------------------- |
+| Go               | Native AST  | `.go`                                     | Benchmarked: -30% output tokens, +test file |
+| Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens   |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Supported                                   |
+| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time         |
+| Rust             | tree-sitter | `.rs`                                     | Supported                                   |
+| Ruby             | tree-sitter | `.rb`                                     | Supported                                   |
+| PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time         |
+| Java             | tree-sitter | `.java`                                   | Benchmarked: -24% tokens                    |
+| C#               | tree-sitter | `.cs`                                     | Supported                                   |
+| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -11% tokens (feature task)     |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
@@ -166,18 +172,18 @@ for full per-language benchmark data.
 
 All configuration is via environment variables:
 
-| Variable                 | Default           | Description                                |
-| ------------------------ | ----------------- | ------------------------------------------ |
-| `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
-| `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
-| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                     |
-| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                  |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
+| Variable                 | Default                  | Description                                |
+| ------------------------ | ------------------------ | ------------------------------------------ |
+| `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting      |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
 `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
 
-### Supported Embedding Models
+### Supported embedding models
 
 Dimensions and context length are configured automatically per model:
 
@@ -194,7 +200,7 @@ Dimensions and context length are configured automatically per model:
 Switching models creates a separate index automatically. The model name is part
 of the database path hash, so different models never collide.
 
-## Controlling What Gets Indexed
+## Controlling what gets indexed
 
 Lumen filters files through six layers: built-in directory and lock file skips →
 `.gitignore` → `.lumenignore` → `.gitattributes` (`linguist-generated`) →
@@ -219,7 +225,7 @@ code search — generated protobuf files, test snapshots, vendored data, etc.
 
 </details>
 
-## Database Location
+## Database location
 
 Index databases are stored outside your project:
 

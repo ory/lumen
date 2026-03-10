@@ -106,13 +106,13 @@ system handles MCP registration, hooks, and skills declaratively via:
 
 ## Environment Variables
 
-| Variable                 | Default           | Description                                |
-| ------------------------ | ----------------- | ------------------------------------------ |
-| `LUMEN_BACKEND`          | `ollama`          | Embedding backend (`ollama` or `lmstudio`) |
-| `LUMEN_EMBED_MODEL`      | see note ¹        | Embedding model (must be in registry)      |
-| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                     |
-| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                  |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512`             | Max tokens per chunk before splitting      |
+| Variable                 | Default                  | Description                                |
+| ------------------------ | ------------------------ | ------------------------------------------ |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
+| `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting      |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
 `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
@@ -145,8 +145,12 @@ system handles MCP registration, hooks, and skills declaratively via:
 ## Key Design Decisions
 
 - **Merkle tree for diffs**: Avoid re-indexing unchanged code
-- **Model name + version in DB path**: Different models or binary versions →
-  separate indexes (SHA-256 hash of path + model name + BinaryVersion)
+- **Model name + IndexVersion in DB path**: Different models or index versions →
+  separate indexes (SHA-256 hash of path + model name + `IndexVersion`).
+  `IndexVersion` is a hardcoded constant in `internal/config/version.go` — increment
+  it (and document why in the commit message) whenever a chunker, embedder, or
+  index-format change would make existing indexes incompatible. Do **not** use the
+  git commit hash; that forced a full re-index on every release.
 - **6-layer file filtering**: SkipDirs → SkipFiles → .gitignore → .lumenignore →
   .gitattributes → extension
 - **Chunk splitting at line boundaries**: Oversized chunks split at

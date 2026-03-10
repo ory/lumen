@@ -14,36 +14,16 @@
 
 package config
 
-import "runtime/debug"
-
-// BinaryVersion is the git commit hash of this binary. It is injected at build
-// time via ldflags:
+// IndexVersion is a manually-managed integer that determines the DB path hash.
+// Increment this constant whenever a change to the chunker, embedder, or index
+// format would make existing indexes incompatible with the current binary.
 //
-//	-ldflags "-X github.com/ory/lumen/internal/config.BinaryVersion=$(git rev-parse HEAD)"
+// Using a static version (rather than the git commit hash) means users only
+// need to re-index when we deliberately break compatibility, not on every
+// release. When you increment this value, document the reason in the commit
+// message.
 //
-// If not set by ldflags, init() falls back to the VCS revision embedded
-// automatically by the Go toolchain (available for both `go build` and
-// `go run .` when run inside a git repository). When no VCS information is
-// available at all — e.g. building in a CI container without git history or
-// outside a VCS directory — the value is set to "dev".
+// Current version history:
 //
-// BinaryVersion is included in the DB path hash (see DBPathForProject), so
-// each distinct binary version gets its own isolated index. This ensures that
-// a binary built with a new embedding format never reads vectors produced by an
-// older binary.
-var BinaryVersion = ""
-
-func init() {
-	if BinaryVersion != "" {
-		return
-	}
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" && s.Value != "" {
-				BinaryVersion = s.Value
-				return
-			}
-		}
-	}
-	BinaryVersion = "dev"
-}
+//	1 — initial stable version; removed markdown/YAML from chunker pipeline
+const IndexVersion = "1"
