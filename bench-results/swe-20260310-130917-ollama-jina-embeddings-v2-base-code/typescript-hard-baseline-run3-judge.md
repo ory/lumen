@@ -1,3 +1,0 @@
-## Rating: Good
-
-The candidate patch fixes the core issue by loosening the pattern constraint from `P.Pattern<NoInfer<T>>` to `Pattern<unknown>` and changing the return type to `value is T & P.infer<P>`, which correctly handles union types and unknown properties. However, the approach differs from the gold patch: instead of introducing `UnknownProperties` type and using it in both `UnknownPattern` and the overload signature, the candidate takes a simpler path that achieves the same runtime behavior. The candidate also modifies the test to remove the `@ts-expect-error` check for invalid patterns, which means it loses some type-safety for genuinely invalid patterns, whereas the gold patch's approach with `UnknownProperties` preserves better type checking.
