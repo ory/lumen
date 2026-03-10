@@ -1,3 +1,0 @@
-## Rating: Poor
-
-The candidate patch still uses `r.Walk` which traverses subrouters recursively, meaning it can still pick up routes from parent or sibling routers. More critically, it uses `route.regexp.path.Match` which only checks the path regexp without considering the full route match (including host, query params, etc.), and importantly it still has the same substring-matching problem — a path regexp for `/hello` can match the string `/hello/name` depending on the regexp. The gold patch correctly uses `route.Match(req, &match) || match.MatchErr == ErrMethodMismatch` which performs proper full route matching and directly iterates `r.routes` instead of walking the router tree.

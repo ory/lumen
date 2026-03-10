@@ -1,139 +1,67 @@
-diff --git a/Makefile b/Makefile
-index 1473c999..a1057d05 100644
---- a/Makefile
-+++ b/Makefile
-@@ -8,3 +8,6 @@ phpstan: tools/vendor
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e1..fa11d0ef 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -195,7 +195,11 @@ class JsonFormatter extends NormalizerFormatter
+             }
  
- php-cs-fixer: tools/vendor
- 	php tools/vendor/bin/php-cs-fixer fix
-+
-+tests:
-+	php vendor/bin/phpunit
-\ No newline at end of file
-diff --git a/doc/component/FAQ.markdown b/doc/component/FAQ.markdown
-index 62c0970c..2ef13f67 100644
---- a/doc/component/FAQ.markdown
-+++ b/doc/component/FAQ.markdown
-@@ -51,3 +51,17 @@ obtained through `$node->getAttribute('next')`.
- 
- `ParentConnectingVisitor` and `NodeConnectingVisitor` should not be used at the same time. The latter
- includes the functionality of the former.
-+
-+
-+How can I limit the impact of cyclic references in the AST?
-+-----
-+
-+NodeConnectingVisitor adds a parent reference, which introduces a cycle. This means that the AST can now only be collected by the cycle garbage collector.
-+This in turn can lead to performance and/or memory issues. 
-+
-+To break the cyclic references between AST nodes `NodeConnectingVisitor` supports a boolean `$weakReferences` constructor parameter.
-+When set to `true`, all attributes added by `NodeConnectingVisitor` will be wrapped into a `WeakReference` object.
-+
-+After enabling this parameter, the parent node can be obtained through `$node->getAttribute('weak_parent')`,
-+the previous node can be obtained through `$node->getAttribute('weak_previous')`, and the next node can be
-+obtained through `$node->getAttribute('weak_next')`.
-\ No newline at end of file
-diff --git a/lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php b/lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php
-index 38fedfd5..70e051e2 100644
---- a/lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php
-+++ b/lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php
-@@ -9,10 +9,12 @@ use PhpParser\NodeVisitorAbstract;
-  * Visitor that connects a child node to its parent node
-  * as well as its sibling nodes.
-  *
-- * On the child node, the parent node can be accessed through
-+ * With <code>$weakReferences=false</code> on the child node, the parent node can be accessed through
-  * <code>$node->getAttribute('parent')</code>, the previous
-  * node can be accessed through <code>$node->getAttribute('previous')</code>,
-  * and the next node can be accessed through <code>$node->getAttribute('next')</code>.
-+ *
-+ * With <code>$weakReferences=true</code> attribute names are prefixed by "weak_", e.g. "weak_parent".
-  */
- final class NodeConnectingVisitor extends NodeVisitorAbstract {
-     /**
-@@ -25,6 +27,12 @@ final class NodeConnectingVisitor extends NodeVisitorAbstract {
-      */
-     private $previous;
- 
-+    private bool $weakReferences;
-+
-+    public function __construct(bool $weakReferences = false) {
-+        $this->weakReferences = $weakReferences;
-+    }
-+
-     public function beforeTraverse(array $nodes) {
-         $this->stack    = [];
-         $this->previous = null;
-@@ -32,12 +40,26 @@ final class NodeConnectingVisitor extends NodeVisitorAbstract {
- 
-     public function enterNode(Node $node) {
-         if (!empty($this->stack)) {
--            $node->setAttribute('parent', $this->stack[count($this->stack) - 1]);
-+            $parent = $this->stack[count($this->stack) - 1];
-+            if ($this->weakReferences) {
-+                $node->setAttribute('weak_parent', \WeakReference::create($parent));
-+            } else {
-+                $node->setAttribute('parent', $parent);
-+            }
-         }
- 
--        if ($this->previous !== null && $this->previous->getAttribute('parent') === $node->getAttribute('parent')) {
--            $node->setAttribute('previous', $this->previous);
--            $this->previous->setAttribute('next', $node);
-+        if ($this->previous !== null) {
-+            if (
-+                $this->weakReferences
-+            ) {
-+                if ($this->previous->getAttribute('weak_parent') === $node->getAttribute('weak_parent')) {
-+                    $node->setAttribute('weak_previous', \WeakReference::create($this->previous));
-+                    $this->previous->setAttribute('weak_next', \WeakReference::create($node));
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (Throwable) {
++                    return $data::class;
 +                }
-+            } elseif ($this->previous->getAttribute('parent') === $node->getAttribute('parent')) {
-+                $node->setAttribute('previous', $this->previous);
-+                $this->previous->setAttribute('next', $node);
-+            }
-         }
+             }
  
-         $this->stack[] = $node;
-diff --git a/lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php b/lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php
-index 1e7e9e8b..abf6e37d 100644
---- a/lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php
-+++ b/lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php
-@@ -11,8 +11,10 @@ use function count;
- /**
-  * Visitor that connects a child node to its parent node.
-  *
-- * On the child node, the parent node can be accessed through
-+ * With <code>$weakReferences=false</code> on the child node, the parent node can be accessed through
-  * <code>$node->getAttribute('parent')</code>.
-+ *
-+ * With <code>$weakReferences=true</code> the attribute name is "weak_parent" instead.
-  */
- final class ParentConnectingVisitor extends NodeVisitorAbstract {
-     /**
-@@ -20,13 +22,24 @@ final class ParentConnectingVisitor extends NodeVisitorAbstract {
-      */
-     private array $stack = [];
+             if (\get_class($data) === '__PHP_Incomplete_Class') {
+diff --git a/tests/Monolog/Formatter/JsonFormatterTest.php b/tests/Monolog/Formatter/JsonFormatterTest.php
+index 56cef228..271881f0 100644
+--- a/tests/Monolog/Formatter/JsonFormatterTest.php
++++ b/tests/Monolog/Formatter/JsonFormatterTest.php
+@@ -11,6 +11,7 @@
  
-+    private bool $weakReferences;
-+
-+    public function __construct(bool $weakReferences = false) {
-+        $this->weakReferences = $weakReferences;
-+    }
-+
-     public function beforeTraverse(array $nodes) {
-         $this->stack = [];
+ namespace Monolog\Formatter;
+ 
++use Exception;
+ use Monolog\Level;
+ use Monolog\LogRecord;
+ use JsonSerializable;
+@@ -338,6 +339,24 @@ class JsonFormatterTest extends MonologTestCase
+             $record
+         );
      }
++
++    public function testNormalizeHandleExceptionInToString(): void
++    {
++        $formatter = new JsonFormatter();
++
++        $res = $formatter->format($this->getRecord(
++            Level::Critical,
++            'bar',
++            datetime: new \DateTimeImmutable('2025-05-19 00:00:00'),
++            channel: 'test',
++            context: ['object' => new TestJsonNormWithFailingToString],
++        ));
++
++        $this->assertSame(
++            '{"message":"bar","context":{"object":"Monolog\\\\Formatter\\\\TestJsonNormWithFailingToString"},"level":500,"level_name":"CRITICAL","channel":"test","datetime":"2025-05-19T00:00:00+00:00","extra":{}}'."\n",
++            $res,
++        );
++    }
+ }
  
-     public function enterNode(Node $node) {
-         if (!empty($this->stack)) {
--            $node->setAttribute('parent', $this->stack[count($this->stack) - 1]);
-+            $parent = $this->stack[count($this->stack) - 1];
-+            if ($this->weakReferences) {
-+                $node->setAttribute('weak_parent', \WeakReference::create($parent));
-+            } else {
-+                $node->setAttribute('parent', $parent);
-+            }
-         }
- 
-         $this->stack[] = $node;
+ class TestJsonNormPublic
+@@ -370,3 +389,11 @@ class TestJsonNormWithToString
+         return 'stringified';
+     }
+ }
++
++class TestJsonNormWithFailingToString
++{
++    public function __toString()
++    {
++        throw new Exception('Whatever');
++    }
++}
+\ No newline at end of file

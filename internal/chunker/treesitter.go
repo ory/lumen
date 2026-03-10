@@ -105,6 +105,9 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 			}
 
 			symbol := nameNode.Content(content)
+			if parent := findEnclosingSymbol(declNode, content); parent != "" {
+				symbol = parent + "." + symbol
+			}
 			startLine := int(declNode.StartPoint().Row) + 1
 			endLine := int(declNode.EndPoint().Row) + 1
 			snippet := declNode.Content(content)
@@ -114,4 +117,33 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 	}
 
 	return chunks, nil
+}
+
+// findEnclosingSymbol walks up the AST from node and returns the name of the
+// nearest enclosing named function or method, or "" if none is found.
+func findEnclosingSymbol(node *sitter.Node, content []byte) string {
+	current := node.Parent()
+	for current != nil {
+		switch current.Type() {
+		case "function_declaration", "function_definition":
+			if n := current.ChildByFieldName("name"); n != nil {
+				return n.Content(content)
+			}
+		case "variable_declarator":
+			if v := current.ChildByFieldName("value"); v != nil {
+				switch v.Type() {
+				case "arrow_function", "function_expression", "generator_function":
+					if n := current.ChildByFieldName("name"); n != nil {
+						return n.Content(content)
+					}
+				}
+			}
+		case "method_definition", "method_declaration":
+			if n := current.ChildByFieldName("name"); n != nil {
+				return n.Content(content)
+			}
+		}
+		current = current.Parent()
+	}
+	return ""
 }

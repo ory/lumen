@@ -1,0 +1,49 @@
+diff --git a/src/is-matching.ts b/src/is-matching.ts
+index f786ff1..c9c99c0 100644
+--- a/src/is-matching.ts
++++ b/src/is-matching.ts
+@@ -1,4 +1,9 @@
+-import { MatchedValue, Pattern } from './types/Pattern';
++import {
++  MatchedValue,
++  Pattern,
++  UnknownPattern,
++  UnknownProperties,
++} from './types/Pattern';
+ import * as P from './patterns';
+ import { matchPattern } from './internals/helpers';
+
+@@ -33,10 +38,10 @@ export function isMatching<const p extends Pattern<unknown>>(
+  *    return input.name
+  *  }
+  */
+-export function isMatching<const T, const P extends P.Pattern<NoInfer<T>>>(
+-  pattern: P,
+-  value: T
+-): value is P.infer<P>;
++export function isMatching<
++  const T,
++  const P extends P.Pattern<T> & UnknownProperties
++>(pattern: P, value: T): value is P.infer<P>;
+
+ export function isMatching<const p extends Pattern<any>>(
+   ...args: [pattern: p, value?: any]
+diff --git a/src/types/Pattern.ts b/src/types/Pattern.ts
+index 6fecf1f..3ac4dea 100644
+--- a/src/types/Pattern.ts
++++ b/src/types/Pattern.ts
+@@ -126,11 +126,13 @@ export interface Override<a> {
+   [symbols.override]: a;
+ }
+
++export type UnknownProperties = { readonly [k: PropertyKey]: unknown };
++
+ export type UnknownPattern =
+   | readonly []
+   | readonly [unknown, ...unknown[]]
+   | readonly [...unknown[], unknown]
+-  | { readonly [k: string]: unknown }
++  | UnknownProperties
+   | Primitives
+   | UnknownMatcher;
+

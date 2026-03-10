@@ -67,9 +67,9 @@ func checkOllama(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("cannot reach Ollama at %s: %w", host, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Ollama returned %d", resp.StatusCode)
+		return fmt.Errorf("ollama returned %d", resp.StatusCode)
 	}
 	fmt.Println("ok")
 	return nil

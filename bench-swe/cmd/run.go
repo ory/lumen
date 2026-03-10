@@ -24,7 +24,6 @@ var (
 	flagEmbedModel    string
 	flagClaudeModel   string
 	flagLanguage      []string
-	flagDifficulty    string
 	flagScenario      string
 	flagParallel      int
 	flagRuns          int
@@ -45,7 +44,6 @@ func init() {
 	runCmd.Flags().StringVar(&flagEmbedModel, "embed-model", "ordis/jina-embeddings-v2-base-code", "Embedding model")
 	runCmd.Flags().StringVar(&flagClaudeModel, "claude-model", "haiku", "Claude model for tasks")
 	runCmd.Flags().StringArrayVar(&flagLanguage, "language", nil, "Filter by language (repeatable)")
-	runCmd.Flags().StringVar(&flagDifficulty, "difficulty", "", "Filter by difficulty")
 	runCmd.Flags().StringVar(&flagScenario, "scenario", "all", "Scenario filter (baseline|with-lumen|all)")
 	runCmd.Flags().IntVar(&flagParallel, "parallel", 3, "Max concurrent runs")
 	runCmd.Flags().IntVar(&flagRuns, "runs", 1, "Number of runs per task×scenario")
@@ -105,7 +103,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load tasks
-	tasks, err := task.LoadTasks(tasksDir, flagLanguage, flagDifficulty)
+	tasks, err := task.LoadTasks(tasksDir, flagLanguage)
 	if err != nil {
 		return err
 	}
@@ -217,9 +215,6 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 							line = fmt.Sprintf("  %-20s %s error: %v\n", t.ID, runLabel, err)
 						} else if result != nil {
 							line = fmt.Sprintf("  %-20s %s %s\n", t.ID, runLabel, result.Rating)
-							if result.Explanation != "" {
-								line += fmt.Sprintf("    → %s\n", result.Explanation)
-							}
 						}
 						lines = append(lines, line)
 					}

@@ -1,22 +1,18 @@
 {
   "id": "java-hard",
   "language": "java",
-  "difficulty": "hard",
-  "repo": "https://github.com/FasterXML/jackson-databind",
-  "base_commit": "521ae2a247930c46a7ca1c403150238f4161d0c7",
-  "fix_commit": "71b78cece96f808025cc1f846a9bd8ea61603288",
-  "issue_url": "https://github.com/FasterXML/jackson-databind/issues/5734",
-  "issue_title": "Add `DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES` to allow preventing absent-primitive failure",
-  "issue_body": "While upgrading to Jackson 3 / Spring Boot 4 I noticed that `DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES` is now `true` by default (it defaulted to `false` in Jackson 2).\n\nI agree that it's a good default to fail on attempt to deserialize JSON with `null` to a primitive, as primitives cannot be `null`.\n\nBut why does it fail on `absent` values? If I leave out a property for a reference field (`String`, `LocalDate` etc.) Jackson will default this field to `null` as expected, so I'd expect it would default `boolean` to `false`, `int` to `0` etc. There is an unnecessary discrepancy between Java reference types and Java primitive types: absent JSON fields for Java reference types are defaulted but primitives fail.\n\nVersion: 3.0.4\n\nReproduction:\n```java\nrecord PrimitiveRecord(int int1, int int2, boolean boolean1, boolean boolean2) {}\n\n// This test fails with default Jackson 3.x configuration:\nvoid shouldDeserializeAbsentPrimitives() {\n    String json = \"{\\\"int2\\\": 42, \\\"boolean1\\\": true}\";\n    PrimitiveRecord actual = JSON_MAPPER.readValue(json, PrimitiveRecord.class);\n    // Expect absent int1=0 and boolean2=false (JVM defaults)\n    assertEquals(new PrimitiveRecord(0, 42, true, false), actual);\n}\n```\n\nExpected behavior: absent primitive fields should use JVM defaults (0 for int, false for boolean, etc.) rather than throwing an error. There should be a way to control the behavior for absent primitives separately from explicit null primitives, since these are semantically different cases.\n\nCurrently `FAIL_ON_NULL_FOR_PRIMITIVES` controls both explicit `null` and absent values, but these should be independently configurable. An explicit JSON `null` for a primitive is arguably a mistake worth catching, while an absent field is a normal case that should use JVM defaults.",
+  "repo": "https://github.com/jhy/jsoup",
+  "base_commit": "6c0c2d4514278a82eb0868c5d978612a79c6d058",
+  "fix_commit": "385219da0dea81918ffc285b42cca51f9c8d9df9",
+  "issue_url": "https://github.com/jhy/jsoup/pull/2114",
+  "issue_title": "NullPointerException in W3CDom when a custom document is passed",
+  "issue_body": "When providing a custom output Document to W3CDom#convert, a NullPointerException is thrown in the W3CBuilder constructor.\n\nThe W3CBuilder constructor retrieves the context element via doc.getUserData(ContextProperty). When converting with a custom output Document (e.g., one created via DocumentBuilderFactory.newDocumentBuilder().newDocument()), the context element is null because no context property has been set on the custom document. The code then unconditionally calls contextElement.ownerDocument() without checking for null first, causing the NPE.\n\nStacktrace:\n```\njava.lang.NullPointerException: Cannot invoke \"org.jsoup.nodes.Element.ownerDocument()\" because \"this.contextElement\" is null\n\n\tat org.jsoup.helper.W3CDom$W3CBuilder.<init>(W3CDom.java:364)\n\tat org.jsoup.helper.W3CDom.convert(W3CDom.java:250)\n\tat org.jsoup.helper.W3CDom.convert(W3CDom.java:238)\n```\n\nReproduction steps:\n1. Parse an HTML string using Jsoup.parse()\n2. Create a custom W3C Document via DocumentBuilderFactory.newDocumentBuilder().newDocument()\n3. Call new W3CDom().convert(jsoupDoc, customDocument)\n4. Observe the NullPointerException\n\nExpected behavior: The conversion should succeed when a custom output Document is provided. The contextElement null case should be handled gracefully, as it is a valid scenario when users supply their own output Document.",
   "gold_patch_file": "patches/java-hard.patch",
   "expected_files": [
-    "release-notes/CREDITS",
-    "release-notes/VERSION",
-    "src/main/java/tools/jackson/databind/DeserializationFeature.java",
-    "src/main/java/tools/jackson/databind/deser/jdk/NumberDeserializers.java",
-    "src/test/java/tools/jackson/databind/deser/creators/CreatorNullPrimitivesTest.java"
+    "src/main/java/org/jsoup/helper/W3CDom.java",
+    "src/test/java/org/jsoup/helper/W3CDomTest.java"
   ],
   "setup_commands": [],
-  "test_command": "mvn test -pl . -Dtest=tools.jackson.databind.deser.creators.CreatorNullPrimitivesTest -DfailIfNoTests=false -q",
+  "test_command": "mvn test -pl . -Dtest=org.jsoup.helper.W3CDomTest#canConvertToCustomDocument -DfailIfNoTests=false -q",
   "timeout_s": 900
 }

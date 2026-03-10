@@ -1,0 +1,48 @@
+Found 2 results:
+
+<result:file filename="decoder.go">
+  <result:chunk line-start="16" line-end="42" symbol="decodeStruct" kind="method" score="0.70">
+// decodeStruct reads a struct from the buffer.
+// It processes each field sequentially.
+func (d *Decoder) decodeStruct() (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+
+	fieldCount, err := d.readVarInt()
+	if err != nil {
+		return nil, fmt.Errorf("read field count: %w", err)
+	}
+
+	for i := 0; i < fieldCount; i++ {
+		name, err := d.readString()
+		if err != nil {
+			return nil, fmt.Errorf("read field name: %w", err)
+		}
+
+		value, err := d.readValue()
+		if err != nil {
+			return nil, fmt.Errorf("read field %s: %w", name, err)
+		}
+
+		result[name] = value
+	}
+
+	return result, nil
+}
+
+  </result:chunk>
+  <result:chunk line-start="53" line-end="65" symbol="readString" kind="method" score="0.55">
+// readString reads a length-prefixed string.
+func (d *Decoder) readString() (string, error) {
+	length, err := d.readVarInt()
+	if err != nil {
+		return "", err
+	}
+	if d.offset+length > len(d.buf) {
+		return "", fmt.Errorf("string exceeds buffer")
+	}
+	s := string(d.buf[d.offset : d.offset+length])
+	d.offset += length
+	return s, nil
+}
+  </result:chunk>
+</result:file>

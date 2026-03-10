@@ -345,14 +345,14 @@ func TestTreeSitterChunker_TypeScript_ModernPatterns(t *testing.T) {
 		}
 	}
 
-	check("greet", "function")    // arrow function in const
-	check("handler", "function")  // function expression in const
-	check("legacy", "function")   // function expression in var
-	check("gen", "function")      // generator in const
-	check("namedFn", "function")  // regular function declaration
-	check("Direction", "type")    // enum
-	check("Status", "type")       // const enum
-	check("MyClass", "type")      // class
+	check("greet", "function")   // arrow function in const
+	check("handler", "function") // function expression in const
+	check("legacy", "function")  // function expression in var
+	check("gen", "function")     // generator in const
+	check("namedFn", "function") // regular function declaration
+	check("Direction", "type")   // enum
+	check("Status", "type")      // const enum
+	check("MyClass", "type")     // class
 }
 
 var sampleExportedConsts = []byte(`export const domain: RegExp = /^[\w.-]+$/;
@@ -755,7 +755,7 @@ func TestTreeSitterChunker_CSharp(t *testing.T) {
 	check("Add", "method")          // method_declaration
 	check("Value", "method")        // property_declaration
 	check("Calculator", "function") // constructor_declaration
-	check("OnStatusChanged", "var")  // event_field_declaration
+	check("OnStatusChanged", "var") // event_field_declaration
 }
 
 func symbolNames(chunks []chunker.Chunk) []string {
@@ -813,8 +813,6 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
 		".cs":   []byte("class Foo {}"),
-		".md":   []byte("# Foo\nSome content."),
-		".mdx":  []byte("# Foo\nSome content."),
 		".yaml": []byte("foo: bar\n"),
 		".yml":  []byte("foo: bar\n"),
 		".json": []byte(`{"foo": "bar"}`),
@@ -969,13 +967,13 @@ func TestTreeSitterChunker_Rust_Comprehensive(t *testing.T) {
 	check("MyStruct", "type")     // struct_item + impl_item
 	check("MyEnum", "type")       // enum_item
 	check("MyTrait", "interface") // trait_item
-	check("MY_CONST", "const")   // const_item
-	check("method", "function")  // function_item inside impl
-	check("Alias", "type")       // type_item
-	check("MY_STATIC", "var")    // static_item
-	check("my_module", "type")   // mod_item
+	check("MY_CONST", "const")    // const_item
+	check("method", "function")   // function_item inside impl
+	check("Alias", "type")        // type_item
+	check("MY_STATIC", "var")     // static_item
+	check("my_module", "type")    // mod_item
 	check("my_macro", "function") // macro_definition
-	check("MyUnion", "type")     // union_item
+	check("MyUnion", "type")      // union_item
 }
 
 var sampleRubyComprehensive = []byte(`
@@ -1029,7 +1027,7 @@ func TestTreeSitterChunker_Ruby_Comprehensive(t *testing.T) {
 	check("class_method", "function") // singleton_method
 	check("Animal", "type")
 	check("speak", "function")
-	check("Utilities", "type") // module
+	check("Utilities", "type")     // module
 	check("new_greet", "function") // alias
 }
 
@@ -1143,13 +1141,13 @@ func TestTreeSitterChunker_PHP_Comprehensive(t *testing.T) {
 	}
 
 	check("helper", "function")
-	check("User", "type")              // class_declaration — was missing!
+	check("User", "type") // class_declaration — was missing!
 	check("getName", "method")
 	check("Repository", "interface")
-	check("Cacheable", "type")         // trait
-	check("Color", "type")             // enum
-	check("App\\Models", "type")       // namespace
-	check("TABLE", "const")            // const_declaration
+	check("Cacheable", "type")   // trait
+	check("Color", "type")       // enum
+	check("App\\Models", "type") // namespace
+	check("TABLE", "const")      // const_declaration
 }
 
 var sampleCSharpComprehensive = []byte(`using System;
@@ -1217,18 +1215,18 @@ func TestTreeSitterChunker_CSharp_Comprehensive(t *testing.T) {
 		}
 	}
 
-	check("MyApp", "type")             // namespace_declaration
-	check("Calculator", "type")        // class_declaration
-	check("IShape", "interface")       // interface_declaration
-	check("Vector2", "type")           // struct_declaration
-	check("Direction", "type")         // enum_declaration
-	check("Point", "type")             // record_declaration
-	check("StatusChanged", "type")     // delegate_declaration
-	check("Add", "method")             // method_declaration
-	check("Value", "method")           // property_declaration
-	check("Calculator", "function")    // constructor_declaration
-	check("OnStatusChanged", "var")    // event_field_declaration
-	check("_value", "var")             // field_declaration
+	check("MyApp", "type")          // namespace_declaration
+	check("Calculator", "type")     // class_declaration
+	check("IShape", "interface")    // interface_declaration
+	check("Vector2", "type")        // struct_declaration
+	check("Direction", "type")      // enum_declaration
+	check("Point", "type")          // record_declaration
+	check("StatusChanged", "type")  // delegate_declaration
+	check("Add", "method")          // method_declaration
+	check("Value", "method")        // property_declaration
+	check("Calculator", "function") // constructor_declaration
+	check("OnStatusChanged", "var") // event_field_declaration
+	check("_value", "var")          // field_declaration
 }
 
 var sampleCComprehensive = []byte(`
@@ -1286,12 +1284,12 @@ func TestTreeSitterChunker_C_Comprehensive(t *testing.T) {
 
 	check("add", "function")
 	check("get_ptr", "function") // pointer-return
-	check("Point", "type")      // struct
-	check("Color", "type")      // enum
-	check("Data", "type")       // union
-	check("MyInt", "type")      // typedef
-	check("MAX_SIZE", "const")  // preproc_def
-	check("SQUARE", "function") // preproc_function_def
+	check("Point", "type")       // struct
+	check("Color", "type")       // enum
+	check("Data", "type")        // union
+	check("MyInt", "type")       // typedef
+	check("MAX_SIZE", "const")   // preproc_def
+	check("SQUARE", "function")  // preproc_function_def
 }
 
 var sampleCPPComprehensive = []byte(`
@@ -1358,12 +1356,12 @@ func TestTreeSitterChunker_CPP_Comprehensive(t *testing.T) {
 		}
 	}
 
-	check("Vec2", "type")       // class_specifier
-	check("Point", "type")      // struct_specifier
-	check("add", "function")    // function_definition
-	check("Color", "type")      // enum_specifier
-	check("MyLib", "type")      // namespace_definition
-	check("IntAlias", "type")   // alias_declaration
+	check("Vec2", "type")        // class_specifier
+	check("Point", "type")       // struct_specifier
+	check("add", "function")     // function_definition
+	check("Color", "type")       // enum_specifier
+	check("MyLib", "type")       // namespace_definition
+	check("IntAlias", "type")    // alias_declaration
 	check("normalize", "method") // qualified method definition
 	check("Data", "type")        // union_specifier
 	check("MyInt", "type")       // type_definition
@@ -1427,16 +1425,16 @@ func TestTreeSitterChunker_TypeScript_Comprehensive(t *testing.T) {
 	}
 
 	check("namedFn", "function")
-	check("genFn", "function")       // generator
-	check("arrowFn", "function")     // arrow function
+	check("genFn", "function")   // generator
+	check("arrowFn", "function") // arrow function
 	check("MyClass", "type")
 	check("method", "method")
-	check("BaseClass", "type")       // abstract class
+	check("BaseClass", "type") // abstract class
 	check("IShape", "interface")
-	check("Color", "type")           // type_alias
-	check("Direction", "type")       // enum
-	check("MAX", "const")            // exported const
-	check("write", "method")         // method_signature in interface
+	check("Color", "type")     // type_alias
+	check("Direction", "type") // enum
+	check("MAX", "const")      // exported const
+	check("write", "method")   // method_signature in interface
 }
 
 // mustPyChunker creates a Python TreeSitterChunker for use in tests.

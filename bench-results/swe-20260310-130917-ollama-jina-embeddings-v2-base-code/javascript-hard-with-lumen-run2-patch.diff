@@ -1,0 +1,36 @@
+diff --git a/src/Tokenizer.ts b/src/Tokenizer.ts
+index d6d6ca8..ec8f5e5 100644
+--- a/src/Tokenizer.ts
++++ b/src/Tokenizer.ts
+@@ -296,6 +296,7 @@ export class _Tokenizer<ParserOutput = string, RendererOutput = string> {
+           const fencesBeginRegex = this.rules.other.fencesBeginRegex(indent);
+           const headingBeginRegex = this.rules.other.headingBeginRegex(indent);
+           const htmlBeginRegex = this.rules.other.htmlBeginRegex(indent);
++          const blockquoteBeginRegex = this.rules.other.blockquoteBeginRegex(indent);
+ 
+           // Check if following lines should be included in List Item
+           while (src) {
+@@ -326,6 +327,11 @@ export class _Tokenizer<ParserOutput = string, RendererOutput = string> {
+               break;
+             }
+ 
++            // End list item if found start of new blockquote
++            if (blockquoteBeginRegex.test(nextLine)) {
++              break;
++            }
++
+             // End list item if found start of new bullet
+             if (nextBulletRegex.test(nextLine)) {
+               break;
+diff --git a/src/rules.ts b/src/rules.ts
+index af66342..6d0846d 100644
+--- a/src/rules.ts
++++ b/src/rules.ts
+@@ -85,6 +85,7 @@ export const other = {
+   fencesBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}(?:\`\`\`|~~~)`),
+   headingBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}#`),
+   htmlBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}<(?:[a-z].*>|!--)`, 'i'),
++  blockquoteBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}>`),
+ };
+ 
+ /**

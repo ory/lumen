@@ -1,6 +1,5 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [Demo](#demo)
 - [Quick Start](#quick-start)
@@ -33,15 +32,19 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary, no runtime required.
 
-The payoff is measurable: **2.1–2.3× faster** task completion and **63–81%
-cheaper** API costs, with reproducible [benchmarks](docs/BENCHMARKS.md) and
-answer quality that wins every blind comparison.
+The payoff is measurable and reproducible: across 7 languages and 42 real GitHub
+bug-fix tasks, Lumen reduces tool calls by **27% on average**, cuts PHP tokens
+by **33–86% depending on run**, and cuts session cost by up to **56% on
+JavaScript** tasks — all verified with a
+[transparent, open-source benchmark framework](docs/BENCHMARKS.md).
 
-|                              | With lumen          | Baseline (no MCP) |
-| ---------------------------- | ------------------- | ----------------- |
-| Task completion              | **2.1-2.3x faster** | baseline          |
-| API cost                     | **63-81% cheaper**  | baseline          |
-| Answer quality (blind judge) | **5/5 wins**        | 0/5 wins          |
+|                                 | With Lumen                   | Baseline (no Lumen) |
+| ------------------------------- | ---------------------------- | ------------------- |
+| Tool calls (7-language avg)     | **21.8 avg** (-27%)          | 29.8 avg            |
+| PHP tokens (avg, excl. outlier) | **166K avg** (-33%)          | 247K avg            |
+| Rust hard tasks                 | **Good** (3/3 runs)          | Poor/Good/Poor      |
+| JavaScript best case            | **$0.32, 163s** (-56%, -51%) | $0.72, 336s         |
+| PHP best case                   | **$0.12, 36s** (-52%, -59%)  | $0.25, 90s          |
 
 ## Demo
 
@@ -112,45 +115,54 @@ different models never share an index.
 
 ## Benchmarks
 
-Key results (Ollama, `jina-embeddings-v2-base-code`, Golang fixture):
+Lumen is evaluated using **bench-swe**: a SWE-bench-style harness that runs
+Claude on real GitHub bug-fix tasks and measures cost, time, tool usage, and
+patch quality — with and without Lumen. All results are reproducible: raw JSONL
+streams, patch diffs, and judge ratings are committed to this repository.
 
-| Model      | Speedup         | Cost Savings    | Quality      |
-| ---------- | --------------- | --------------- | ------------ |
-| Sonnet 4.6 | **2.2x faster** | **63% cheaper** | 5/5 MCP wins |
-| Opus 4.6   | **2.1x faster** | **81% cheaper** | 5/5 MCP wins |
+**Key results** — 7 languages, hard difficulty, 42 total runs
+(`ordis/jina-embeddings-v2-base-code`, Ollama):
 
-Results hold across LM Studio (nomic-embed-code) and across Go, Python, and
-TypeScript in extended multi-model benchmarks.
+| Metric                          | With Lumen                   | Baseline             |
+| ------------------------------- | ---------------------------- | -------------------- |
+| Tool calls (7-language avg)     | **21.8** (-27%)              | 29.8                 |
+| PHP tokens (avg, excl. outlier) | **166K avg** (-33%)          | 247K avg             |
+| Rust patch quality              | **Good** (3/3 runs)          | Mixed (2/3 Poor)     |
+| JavaScript best case            | **$0.32, 163s** (-56%, -51%) | $0.72, 336s          |
+| PHP best case                   | **$0.12, 36s** (-52%, -59%)  | $0.25, 90s           |
+| Average cost (all tasks)        | $0.52                        | $0.51 (near-neutral) |
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for full speed/cost tables, answer
-quality breakdowns, per-language results across 4 embedding models, and
-reproduce instructions.
+The **tool call reduction** is the most consistent signal across all languages.
+Language-specific wins (PHP tokens, Rust quality, JavaScript cost/time) are
+where Lumen delivers clear per-task value today. TypeScript (complex chunking)
+is an active area of improvement.
+
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for the full results table, all 42
+runs, per-language breakdowns, and reproduce instructions.
 
 ## Supported Languages
 
 Supports **15 language families** with semantic chunking:
 
-| Language         | Parser      | Extensions                                | Status                               |
-| ---------------- | ----------- |-------------------------------------------| ------------------------------------ |
-| Go               | Native AST  | `.go`, `.mod`                             | Optimized: 3.8x faster, 90% cheaper |
-| Python           | tree-sitter | `.py`                                     | Tested: 1.8x faster, 72% cheaper    |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Tested: 1.4x faster, 48% cheaper    |
-| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Supported                            |
-| Rust             | tree-sitter | `.rs`                                     | Supported                            |
-| Ruby             | tree-sitter | `.rb`                                     | Supported                            |
-| Java             | tree-sitter | `.java`                                   | Supported                            |
-| PHP              | tree-sitter | `.php`                                    | Supported                            |
-| C#               | tree-sitter | `.cs`                                     | Supported                            |
-| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                            |
-| Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                            |
-| YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                            |
-| JSON / TOML      | structured  | `.json`, `.toml`                          | Supported                            |
+| Language         | Parser      | Extensions                                | Benchmark status                             |
+| ---------------- | ----------- | ----------------------------------------- | -------------------------------------------- |
+| Go               | Native AST  | `.go`, `.mod`                             | Benchmarked: -27% tool calls                 |
+| Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality both ways       |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: chunker needs improvement       |
+| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -56% cost, -39% tool calls      |
+| Rust             | tree-sitter | `.rs`                                     | Benchmarked: quality uplift (Poor→Good)      |
+| Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -81% tool calls                 |
+| PHP              | tree-sitter | `.php`                                    | Benchmarked: -33% tokens avg, -86% best case |
+| Java             | tree-sitter | `.java`                                   | Supported                                    |
+| C#               | tree-sitter | `.cs`                                     | Supported                                    |
+| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Supported                                    |
+| Markdown / MDX   | tree-sitter | `.md`, `.mdx`                             | Supported                                    |
+| YAML             | tree-sitter | `.yaml`, `.yml`                           | Supported                                    |
+| JSON / TOML      | structured  | `.json`, `.toml`                          | Supported                                    |
 
 Go uses the native Go AST parser for the most precise chunks. All other
-languages use tree-sitter grammars.
-
-_Note: Golang is the best-supported language. Other languages work via
-tree-sitter but may benefit from improved chunking strategies._
+languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+for full per-language benchmark data.
 
 ## Configuration
 

@@ -17,7 +17,7 @@ func TestTask_applyDefaults(t *testing.T) {
 		{
 			name:        "zero values get defaults",
 			task:        Task{},
-			wantTimeout: 300,
+			wantTimeout: 900,
 		},
 		{
 			name:        "non-zero timeout preserved",
@@ -153,17 +153,17 @@ func TestLoadTasks(t *testing.T) {
 
 	t.Run("single valid JSON returns 1 task with defaults", func(t *testing.T) {
 		dir := t.TempDir()
-		writeTask(dir, "task1.json", Task{ID: "t1", Language: "go", Difficulty: "easy", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
+		writeTask(dir, "task1.json", Task{ID: "t1", Language: "go", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 
-		tasks, err := LoadTasks(dir, nil, "")
+		tasks, err := LoadTasks(dir, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(tasks) != 1 {
 			t.Fatalf("got %d tasks, want 1", len(tasks))
 		}
-		if tasks[0].TimeoutSeconds != 300 {
-			t.Errorf("TimeoutSeconds = %d, want 300", tasks[0].TimeoutSeconds)
+		if tasks[0].TimeoutSeconds != 900 {
+			t.Errorf("TimeoutSeconds = %d, want 900", tasks[0].TimeoutSeconds)
 		}
 	})
 
@@ -176,7 +176,7 @@ func TestLoadTasks(t *testing.T) {
 		writeTask(dir, "task1.json", Task{ID: "t1", Language: "go", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 		writeTask(sub, "task2.json", Task{ID: "t2", Language: "python", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 
-		tasks, err := LoadTasks(dir, nil, "")
+		tasks, err := LoadTasks(dir, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestLoadTasks(t *testing.T) {
 		writeTask(dir, "go.json", Task{ID: "t1", Language: "go", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 		writeTask(dir, "py.json", Task{ID: "t2", Language: "python", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 
-		tasks, err := LoadTasks(dir, []string{"go"}, "")
+		tasks, err := LoadTasks(dir, []string{"go"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -208,7 +208,7 @@ func TestLoadTasks(t *testing.T) {
 		writeTask(dir, "py.json", Task{ID: "t2", Language: "python", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 		writeTask(dir, "ts.json", Task{ID: "t3", Language: "typescript", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
 
-		tasks, err := LoadTasks(dir, []string{"go", "python"}, "")
+		tasks, err := LoadTasks(dir, []string{"go", "python"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -217,26 +217,9 @@ func TestLoadTasks(t *testing.T) {
 		}
 	})
 
-	t.Run("filter by difficulty", func(t *testing.T) {
-		dir := t.TempDir()
-		writeTask(dir, "easy.json", Task{ID: "t1", Language: "go", Difficulty: "easy", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
-		writeTask(dir, "hard.json", Task{ID: "t2", Language: "go", Difficulty: "hard", Repo: "r", BaseCommit: "c", IssueBody: "b", GoldPatchFile: "p"})
-
-		tasks, err := LoadTasks(dir, nil, "hard")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(tasks) != 1 {
-			t.Fatalf("got %d tasks, want 1", len(tasks))
-		}
-		if tasks[0].Difficulty != "hard" {
-			t.Errorf("Difficulty = %q, want %q", tasks[0].Difficulty, "hard")
-		}
-	})
-
 	t.Run("empty dir returns error", func(t *testing.T) {
 		dir := t.TempDir()
-		_, err := LoadTasks(dir, nil, "")
+		_, err := LoadTasks(dir, nil)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -250,7 +233,7 @@ func TestLoadTasks(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("{invalid json"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		_, err := LoadTasks(dir, nil, "")
+		_, err := LoadTasks(dir, nil)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}

@@ -1,23 +1,20 @@
 {
   "id": "php-hard",
   "language": "php",
-  "difficulty": "hard",
-  "repo": "https://github.com/nikic/PHP-Parser",
-  "base_commit": "14f9c9df7fab294d33cc4eb02207076cf2eb23ed",
-  "fix_commit": "c9d0b6c9f2c2c323661d31f7c81a26bf479ae3ff",
-  "issue_url": "https://github.com/nikic/PHP-Parser/issues/1055",
-  "issue_title": "Inefficient GC behavior when using AST node-connecting visitors",
-  "issue_body": "When using the AST visitors that attach parent, previous sibling, and next sibling information to parsed PHP nodes, the resulting data structure creates circular reference cycles between parent and child nodes. These cycles defeat PHP's reference-counting garbage collector, causing it to fall back to the much slower cycle-collecting GC.\n\nThis leads to significant memory overhead and degraded performance in long-running PHP processes that parse many files, such as static analysis tools. Profiling shows that a large portion of execution time is spent in garbage collection when these visitors are enabled.\n\nThe core problem is that the visitor stores direct object references from child nodes back to their parent and sibling nodes via node attributes. Since the parent node already holds references to its children through the AST structure, this creates bidirectional strong reference cycles that the reference-counting GC cannot reclaim.\n\nThe implementation needs to be changed so that backward references (from child to parent, and between siblings) do not prevent garbage collection of unreachable AST subtrees. The public API for retrieving these connected nodes should remain the same, but the internal storage mechanism must avoid creating strong reference cycles.\n\nAdditionally, the documentation should be updated to explain the corrected behavior and any changes in how the connected node attributes are accessed.",
+  "repo": "https://github.com/Seldaek/monolog",
+  "base_commit": "daa0acaec23ef0a6e2c39422362cb505a5167ab3",
+  "fix_commit": "05c6b188963c47b961d75a071c34e00a4b05c023",
+  "issue_url": "https://github.com/Seldaek/monolog/issues/1969",
+  "issue_title": "JsonFormatter crashes when stringable object has an error",
+  "issue_body": "When using JsonFormatter with a stringable object, if the __toString() method throws an exception the whole normalization process crashes.\n\nTo reproduce:\n1. Create a class that implements Stringable (has a __toString() method)\n2. Make the __toString() method throw an exception\n3. Pass an instance of that class as context data to a log record\n4. Format the record using JsonFormatter\n\nExpected behavior: The formatter should gracefully handle the exception and continue logging. It should not throw an exception while trying to log something. A reasonable fallback would be to use the class name of the object instead of its string representation.\n\nActual behavior: The JsonFormatter crashes with an unhandled exception propagating from the __toString() call during normalization, which prevents the log entry from being written at all.\n\nThis is particularly problematic because logging should be a reliable operation that does not itself become a source of failures. If a stringable object's __toString() is broken, the logger should degrade gracefully rather than failing entirely.",
   "gold_patch_file": "patches/php-hard.patch",
   "expected_files": [
-    "Makefile",
-    "doc/component/FAQ.markdown",
-    "lib/PhpParser/NodeVisitor/NodeConnectingVisitor.php",
-    "lib/PhpParser/NodeVisitor/ParentConnectingVisitor.php"
+    "src/Monolog/Formatter/JsonFormatter.php",
+    "tests/Monolog/Formatter/JsonFormatterTest.php"
   ],
   "setup_commands": [
-    "composer install --no-interaction --prefer-dist"
+    "COMPOSER_ROOT_VERSION=3.x-dev composer install --no-interaction --prefer-dist --ignore-platform-req=ext-mongodb"
   ],
-  "test_command": "vendor/bin/phpunit",
+  "test_command": "vendor/bin/phpunit --filter=JsonFormatter",
   "timeout_s": 900
 }

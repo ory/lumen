@@ -1,7 +1,6 @@
 {
   "id": "cpp-hard",
   "language": "cpp",
-  "difficulty": "hard",
   "repo": "https://github.com/fmtlib/fmt",
   "base_commit": "b35de87ad91951c8269fe533dca6aebc3e0a25ba",
   "fix_commit": "1dc644e021b11b5a14cda5640621f1ef2c596565",

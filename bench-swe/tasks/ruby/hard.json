@@ -1,7 +1,6 @@
 {
   "id": "ruby-hard",
   "language": "ruby",
-  "difficulty": "hard",
   "repo": "https://github.com/sinatra/sinatra",
   "base_commit": "ca6b71c2e48f90ae0fe3b9cd54c4d2459c1bde7c",
   "fix_commit": "1551ef7ffc9f937f8ae02d7adb23b250cfac109b",

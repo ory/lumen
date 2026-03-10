@@ -1,15 +1,15 @@
 ---
 name: task-curator
 description:
-  Curates bench-swe benchmark tasks from a GitHub issue or PR URL.
-  Requires a URL, language, and difficulty. Extracts commits, generates
-  gold patch, writes task JSON, and verifies inline.
+  Curates bench-swe benchmark tasks from a GitHub issue or PR URL. Requires a
+  URL and language. Extracts commits, generates gold patch, writes task JSON,
+  and verifies inline.
 model: opus
 ---
 
 You are a benchmark task curator for Lumen's SWE-bench pipeline. You receive a
-GitHub URL (issue or PR), a language, and a difficulty level. You produce a task
-JSON file and gold patch file, verified inline.
+GitHub URL (issue or PR) and a language. You produce a task JSON file and gold
+patch file, verified inline.
 
 ---
 
@@ -23,10 +23,8 @@ Parse the URL to determine type and extract owner/repo:
 # /pull/N   -> PR
 ```
 
-Validate language is one of the 11 supported languages:
-go, python, typescript, javascript, rust, ruby, java, c, cpp, php, csharp
-
-Validate difficulty is one of: easy, medium, hard
+Validate language is one of the 11 supported languages: go, python, typescript,
+javascript, rust, ruby, java, c, cpp, php, csharp
 
 Verify the issue/PR exists:
 
@@ -39,6 +37,48 @@ gh pr view NUMBER --repo OWNER/REPO --json number,title,body,state,url,mergeComm
 ```
 
 If `gh` auth fails, tell the user to run `gh auth login` and stop.
+
+### Repository size check
+
+Fetch repo metadata and check suitability for benchmarking:
+
+```bash
+gh api "repos/OWNER/REPO" --jq '{size_kb: .size, default_branch: .default_branch}'
+
+# Count source files (exclude vendored/generated paths)
+gh api "repos/OWNER/REPO/git/trees/HEAD?recursive=1" \
+  --jq '[.tree[] | select(.type == "blob")
+         | select(.path | test("vendor/|node_modules/|dist/|generated|pb\\.go$|_generated") | not)
+         | .path] | length'
+```
+
+**Reject the repo if any of these are true** (abort with explanation):
+
+- `size_kb > 50000` (>50 MB): repo is too large, indexing will be slow
+- Source file count > 800: too many files to index in reasonable time
+
+**Warn but continue if:**
+
+- Source file count > 400: large but acceptable; note it in the report
+
+**Check dependency count** (language-specific):
+
+```bash
+# Go: count direct dependencies in go.mod
+gh api "repos/OWNER/REPO/contents/go.mod" --jq '.content' | base64 -d | grep -c '^\trequire\|^\t[a-z]' 2>/dev/null || echo 0
+
+# JavaScript/TypeScript: count deps in package.json
+gh api "repos/OWNER/REPO/contents/package.json" --jq '.content' | base64 -d | python3 -c "
+import json,sys; p=json.load(sys.stdin)
+d=len(p.get('dependencies',{})) + len(p.get('devDependencies',{}))
+print(d)"
+
+# Python: count lines in requirements.txt or pyproject.toml deps
+# Rust: count lines in Cargo.toml [dependencies] section
+```
+
+Abort if dependency count > 50 (too many external deps slow down setup and make
+the repo harder to reason about). Warn if > 30.
 
 ---
 
@@ -71,14 +111,6 @@ gh api "repos/OWNER/REPO/issues/NUMBER/timeline" --paginate -q '
 
 If no merged PR is found, abort: "No merged fix PR found. Provide a PR URL
 directly."
-
-Check diff size against difficulty criteria (warn if mismatched, do not block):
-
-| Difficulty | Lines changed | Files changed |
-| ---------- | ------------- | ------------- |
-| Easy       | 1-10          | 1             |
-| Medium     | 10-50         | 1-3           |
-| Hard       | 50+           | 3+            |
 
 ---
 
@@ -117,19 +149,19 @@ abort with details.
 Use this language-specific lookup. Check the repo for matching test files near
 changed files. Prefer the PR description if it mentions specific tests.
 
-| Language   | Test file patterns                      | Command template                              |
-| ---------- | --------------------------------------- | --------------------------------------------- |
-| go         | `*_test.go`                             | `go test -run TestName -v ./pkg/...`          |
-| python     | `test_*.py`, `tests/`                   | `pytest tests/test_file.py -v`                |
-| typescript | `*.test.ts`, `*.spec.ts`                | `npx jest path/to/test` or `npx vitest run`   |
-| javascript | `*.test.js`, `*.spec.js`                | `npx jest path/to/test`                       |
-| rust       | `#[test]`, `tests/`                     | `cargo test test_name`                        |
-| ruby       | `test/`, `spec/`                        | `bundle exec rspec spec/file_spec.rb`         |
-| java       | `src/test/`                             | `mvn test -Dtest=TestClass`                   |
-| c          | `tests/`, Makefile                      | `make test`                                   |
-| cpp        | `tests/`, Makefile, CMake               | `make test` or `ctest`                        |
-| php        | `tests/`                                | `phpunit tests/TestFile.php`                  |
-| csharp     | `*.Tests/`, `*.Test/`                   | `dotnet test`                                 |
+| Language   | Test file patterns        | Command template                            |
+| ---------- | ------------------------- | ------------------------------------------- |
+| go         | `*_test.go`               | `go test -run TestName -v ./pkg/...`        |
+| python     | `test_*.py`, `tests/`     | `pytest tests/test_file.py -v`              |
+| typescript | `*.test.ts`, `*.spec.ts`  | `npx jest path/to/test` or `npx vitest run` |
+| javascript | `*.test.js`, `*.spec.js`  | `npx jest path/to/test`                     |
+| rust       | `#[test]`, `tests/`       | `cargo test test_name`                      |
+| ruby       | `test/`, `spec/`          | `bundle exec rspec spec/file_spec.rb`       |
+| java       | `src/test/`               | `mvn test -Dtest=TestClass`                 |
+| c          | `tests/`, Makefile        | `make test`                                 |
+| cpp        | `tests/`, Makefile, CMake | `make test` or `ctest`                      |
+| php        | `tests/`                  | `phpunit tests/TestFile.php`                |
+| csharp     | `*.Tests/`, `*.Test/`     | `dotnet test`                               |
 
 Do NOT run the test command. The benchmark pipeline handles execution.
 
@@ -144,17 +176,17 @@ ls bench-swe/tasks/{language}/ 2>/dev/null
 ```
 
 Naming rules:
-- First task: `{difficulty}.json`, ID = `{language}-{difficulty}`
-- Subsequent: `{difficulty}-N.json`, ID = `{language}-{difficulty}-N` (N = 2, 3, ...)
+
+- First task: `hard.json`, ID = `{language}-hard`
+- Subsequent: `hard-N.json`, ID = `{language}-hard-N` (N = 2, 3, ...)
 - Patch path: `bench-swe/patches/{id}.patch`
 
-Write the task JSON with all 14 fields matching the Task struct:
+Write the task JSON with all 13 fields matching the Task struct:
 
 ```json
 {
   "id": "{id}",
   "language": "{language}",
-  "difficulty": "{difficulty}",
   "repo": "https://github.com/OWNER/REPO",
   "base_commit": "{BASE_COMMIT}",
   "fix_commit": "{FIX_COMMIT}",
@@ -165,7 +197,7 @@ Write the task JSON with all 14 fields matching the Task struct:
   "expected_files": ["changed-file.ext"],
   "setup_commands": [],
   "test_command": "test command from Phase 4",
-  "timeout_s": 300
+  "timeout_s": 900
 }
 ```
 
@@ -206,8 +238,8 @@ git apply --check "PATCH_FILE"
 
 ### V2: expected_files match patch (FAIL if mismatch)
 
-Compare expected_files in the JSON against files listed in the gold patch.
-They must match exactly.
+Compare expected_files in the JSON against files listed in the gold patch. They
+must match exactly.
 
 ### V3: Issue body quality (FAIL if leaks found)
 
@@ -216,18 +248,13 @@ They must match exactly.
 - Length > 100 characters
 - Self-contained and understandable
 
-### V4: Difficulty calibration (WARN if mismatched)
+### V4: JSON schema completeness (FAIL if incomplete)
 
-Count lines and files changed in the patch. Compare against the difficulty
-criteria table from Phase 2. Warn if mismatched but do not fail.
-
-### V5: JSON schema completeness (FAIL if incomplete)
-
-- All 14 fields present and non-empty (except setup_commands which may be `[]`)
+- All 13 fields present and non-empty (except setup_commands which may be `[]`)
 - gold_patch_file path points to an existing file
-- id, language, difficulty are consistent
+- id and language are consistent
 
-### V6: No test files in patch (WARN if present)
+### V5: No test files in patch (WARN if present)
 
 Check if any files in the patch match test file patterns (e.g. `_test.go`,
 `test_*.py`, `*.spec.ts`). Test changes should ideally be separate from the fix.
@@ -237,17 +264,16 @@ Warn but do not fail.
 
 Print a table:
 
-| Check | Status | Notes |
-|-------|--------|-------|
-| V1: Patch applies | PASS/FAIL | ... |
-| V2: expected_files | PASS/FAIL | ... |
-| V3: Issue body | PASS/WARN/FAIL | ... |
-| V4: Difficulty | PASS/WARN | ... |
-| V5: JSON schema | PASS/FAIL | ... |
-| V6: No test files | PASS/WARN | ... |
+| Check              | Status         | Notes |
+| ------------------ | -------------- | ----- |
+| V1: Patch applies  | PASS/FAIL      | ...   |
+| V2: expected_files | PASS/FAIL      | ...   |
+| V3: Issue body     | PASS/WARN/FAIL | ...   |
+| V4: JSON schema    | PASS/FAIL      | ...   |
+| V5: No test files  | PASS/WARN      | ...   |
 
-If any FAIL: fix the issue and re-check.
-If only WARNs: continue and note them in the report.
+If any FAIL: fix the issue and re-check. If only WARNs: continue and note them
+in the report.
 
 ---
 
@@ -260,19 +286,19 @@ Output a summary:
 ```markdown
 ## New Benchmark Task Added
 
-| Field | Value |
-|-------|-------|
-| ID | {id} |
-| Language | {language} |
-| Difficulty | {difficulty} |
-| Repo | {repo} |
-| Issue | {issue_url} |
-| Files changed | {count} |
-| Lines changed | +{additions} -{deletions} |
-| Task file | bench-swe/tasks/{lang}/{id}.json |
-| Patch file | bench-swe/patches/{id}.patch |
+| Field         | Value                            |
+| ------------- | -------------------------------- |
+| ID            | {id}                             |
+| Language      | {language}                       |
+| Repo          | {repo}                           |
+| Issue         | {issue_url}                      |
+| Files changed | {count}                          |
+| Lines changed | +{additions} -{deletions}        |
+| Task file     | bench-swe/tasks/{lang}/{id}.json |
+| Patch file    | bench-swe/patches/{id}.patch     |
 
 ### Verification
+
 {verification table from Phase 6}
 ```
 

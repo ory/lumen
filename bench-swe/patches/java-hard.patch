@@ -1,245 +1,57 @@
-diff --git a/release-notes/CREDITS b/release-notes/CREDITS
-index 29f897a3b..ad1574ad8 100644
---- a/release-notes/CREDITS
-+++ b/release-notes/CREDITS
-@@ -275,8 +275,14 @@ Brandon Schmitt (@BrandonSchmitt)
-  
- Matthew Luckam (@mluckam)
-  * Contributed #5630: Add `DelegatingSerializer`
-+  [3.1.0]
- 
- Kyrylo Merzlikin (@kirmerzlikin)
-  * Reported #5706: `TokenBuffer` serialization fails when buffer contains integer
-    encoded as String
-   [3.1.0]
-+
-+Martin Uhlen (@MartinUhlen)
-+ * Requested #5734: Add `DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES` to
-+   allow preventing absent-primitive failure
-+  [3.2.0]
-diff --git a/release-notes/VERSION b/release-notes/VERSION
-index 78c53ed17..e209d6475 100644
---- a/release-notes/VERSION
-+++ b/release-notes/VERSION
-@@ -15,6 +15,10 @@ Versions: 3.x (for earlier see VERSION-2.x)
-   `BeanDescription.getIgnoredPropertyNames()`
-  (requested by Oliver D)
-  (fix by @cowtowncoder, w/ Claude code)
-+#5734: Add `DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES` to
-+  allow preventing absent-primitive failure
-+ (requested by Martin U)
-+ (fix by @cowtowncoder, w/ Claude code)
- - Remove project-specific Android SDK compatibility level, use shared;
-   no change level itself (stillAndroid SDK 34)
- 
-diff --git a/src/main/java/tools/jackson/databind/DeserializationFeature.java b/src/main/java/tools/jackson/databind/DeserializationFeature.java
-index be63bb61a..6814e44ef 100644
---- a/src/main/java/tools/jackson/databind/DeserializationFeature.java
-+++ b/src/main/java/tools/jackson/databind/DeserializationFeature.java
-@@ -152,14 +152,35 @@ public enum DeserializationFeature implements ConfigFeature
-     /**
-      * Feature that determines whether encountering of JSON null
-      * is an error when deserializing into Java primitive types
--     * (like 'int' or 'double'). If it is, a {@link DatabindException}
-+     * (like {@code int} or {@code double}). If it is, a {@link DatabindException}
-      * is thrown to indicate this; if not, default value is used
--     * (0 for 'int', 0.0 for double, same defaulting as what JVM uses).
-+     * ({@code 0} for {@code int}, {@code 0.0} for {@code double}, same defaulting as JVM uses).
-+     *<p>
-+     * Note that this is separate from {@link #FAIL_ON_ABSENT_FOR_PRIMITIVES} added
-+     * in 3.1.
-      *<p>
-      * Feature is enabled by default as of Jackson 3.0 (in 2.x it was disabled).
-      */
-     FAIL_ON_NULL_FOR_PRIMITIVES(true),
- 
-+    /**
-+     * Feature that determines whether absence of a JSON property
-+     * is an error when deserializing into Java primitive types
-+     * (like {@code int} or {@code double}). If it is, a {@link DatabindException}
-+     * is thrown to indicate this; if not, default value is used
-+     * ({@code 0} for {@code int}, {@code 0.0} for {@code double}, same defaulting as JVM uses).
-+     *<p>
-+     * Note that this is separate from {@link #FAIL_ON_NULL_FOR_PRIMITIVES}:
-+     * that feature controls behavior for explicit JSON {@code null} values,
-+     * while this one controls behavior when a JSON property is entirely absent.
-+     *<p>
-+     * Feature is disabled by default (added in Jackson 3.1); formerly
-+     * value of {@link #FAIL_ON_NULL_FOR_PRIMITIVES} was used.
-+     *
-+     * @since 3.1
-+     */
-+    FAIL_ON_ABSENT_FOR_PRIMITIVES(false),
-+
-     /**
-      * Feature that determines what happens when type of a polymorphic
-      * value (indicated for example by {@link com.fasterxml.jackson.annotation.JsonTypeInfo})
-@@ -173,7 +194,7 @@ public enum DeserializationFeature implements ConfigFeature
- 
-     /**
-      * Feature that determines whether abstract types (abstract classes, interfaces)
--     * should be ignored when building the type fingerprints for polymorphic type
-+     * should be ignored when building the type finger prints for polymorphic type
-      * deduction using {@link com.fasterxml.jackson.annotation.JsonTypeInfo.Id#DEDUCTION}.
-      * When enabled, non-concrete types are excluded from deduction since they cannot
-      * be instantiated; when disabled, they participate in deduction which may cause
-diff --git a/src/main/java/tools/jackson/databind/deser/jdk/NumberDeserializers.java b/src/main/java/tools/jackson/databind/deser/jdk/NumberDeserializers.java
-index c55b9dc68..a4334a02a 100644
---- a/src/main/java/tools/jackson/databind/deser/jdk/NumberDeserializers.java
-+++ b/src/main/java/tools/jackson/databind/deser/jdk/NumberDeserializers.java
-@@ -172,6 +172,19 @@ public class NumberDeserializers
-             return _nullValue;
-         }
- 
-+        // @since 3.1
-+        @Override
-+        public Object getAbsentValue(DeserializationContext ctxt) {
-+            // [databind#5734]: Absent (missing) JSON fields for primitives controlled
-+            //   separately from explicit nulls (FAIL_ON_NULL_FOR_PRIMITIVES)
-+            if (_primitive && ctxt.isEnabled(DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES)) {
-+                return ctxt.handleNullForPrimitives(handledType(), ctxt.getParser(), this,
-+"Cannot map absent (missing) value to type %s (set `DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES` to 'false' to allow)",
-+                                ClassUtil.nameOf(handledType()));
-+            }
-+            return _nullValue;
+diff --git a/src/main/java/org/jsoup/helper/W3CDom.java b/src/main/java/org/jsoup/helper/W3CDom.java
+index 6ce0abd9..3946366e 100644
+--- a/src/main/java/org/jsoup/helper/W3CDom.java
++++ b/src/main/java/org/jsoup/helper/W3CDom.java
+@@ -360,12 +360,14 @@ public class W3CDom {
+             namespacesStack.push(new HashMap<>());
+             dest = doc;
+             contextElement = (org.jsoup.nodes.Element) doc.getUserData(ContextProperty); // Track the context jsoup Element, so we can save the corresponding w3c element
+-            final org.jsoup.nodes.Document inDoc = contextElement.ownerDocument();
+-            if (namespaceAware && inDoc != null && inDoc.parser().getTreeBuilder() instanceof HtmlTreeBuilder) {
+-              // as per the WHATWG HTML5 spec § 2.1.3, elements are in the HTML namespace by default
+-              namespacesStack.peek().put("", Parser.NamespaceHtml);
++            if (contextElement != null) {
++                final org.jsoup.nodes.Document inDoc = contextElement.ownerDocument();
++                if ( namespaceAware && inDoc != null && inDoc.parser().getTreeBuilder() instanceof HtmlTreeBuilder ) {
++                    // as per the WHATWG HTML5 spec § 2.1.3, elements are in the HTML namespace by default
++                    namespacesStack.peek().put("", Parser.NamespaceHtml);
++                }
+             }
+-          }
 +        }
-+
-         @Override
-         public Object getEmptyValue(DeserializationContext ctxt) {
-             return _emptyValue;
-diff --git a/src/test/java/tools/jackson/databind/deser/creators/CreatorNullPrimitivesTest.java b/src/test/java/tools/jackson/databind/deser/creators/CreatorNullPrimitivesTest.java
-index f3132c18b..fe2037512 100644
---- a/src/test/java/tools/jackson/databind/deser/creators/CreatorNullPrimitivesTest.java
-+++ b/src/test/java/tools/jackson/databind/deser/creators/CreatorNullPrimitivesTest.java
-@@ -86,6 +86,10 @@ public class CreatorNullPrimitivesTest
-         }
+ 
+         public void head(org.jsoup.nodes.Node source, int depth) {
+             namespacesStack.push(new HashMap<>(namespacesStack.peek())); // inherit from above on the stack
+diff --git a/src/test/java/org/jsoup/helper/W3CDomTest.java b/src/test/java/org/jsoup/helper/W3CDomTest.java
+index de0ce166..e236b29f 100644
+--- a/src/test/java/org/jsoup/helper/W3CDomTest.java
++++ b/src/test/java/org/jsoup/helper/W3CDomTest.java
+@@ -13,6 +13,7 @@ import org.xml.sax.InputSource;
+ 
+ import javax.xml.parsers.DocumentBuilder;
+ import javax.xml.parsers.DocumentBuilderFactory;
++import javax.xml.parsers.ParserConfigurationException;
+ import javax.xml.transform.OutputKeys;
+ import javax.xml.xpath.XPathConstants;
+ import javax.xml.xpath.XPathExpression;
+@@ -187,6 +188,20 @@ public class W3CDomTest {
+         assertEquals("<?xml version=\"1.0\" encoding=\"UTF-8\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><head/><body>&lt;インセンティブで高収入！&gt;Text <p>More</p></body></html>", xml);
      }
  
-+    // [databind#5734]
-+    record PrimitiveRecord(int int1, int int2, boolean boolean1, boolean boolean2) {
++    @Test
++    public void canConvertToCustomDocument() throws ParserConfigurationException {
++        org.jsoup.nodes.Document document = Jsoup.parse("<html><div></div></html>");
++
++        DocumentBuilderFactory localDocumentBuilderFactory = DocumentBuilderFactory.newInstance();
++        Document customDocumentResult = localDocumentBuilderFactory.newDocumentBuilder().newDocument();
++
++        W3CDom w3cDom = new W3CDom();
++        w3cDom.convert(document, customDocumentResult);
++
++        String html = W3CDom.asString(customDocumentResult, W3CDom.OutputHtml());
++        assertEquals("<html><head><META http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"></head><body><div></div></body></html>", html);
 +    }
 +
-     /*
-     /**********************************************************
-     /* Test methods
-@@ -96,10 +100,11 @@ public class CreatorNullPrimitivesTest
- 
-     // [databind#2101]: ensure that the property is included in the path
      @Test
--    public void testCreatorNullPrimitive() throws Exception {
-+    public void testCreatorExplicitNullPrimitive() throws Exception {
-         final ObjectReader r = MAPPER.readerFor(JsonEntity.class)
-             .with(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
--        String json = a2q("{'x': 2}");
-+        // Explicit null should still fail
-+        String json = a2q("{'x': 2, 'y': null}");
-         try {
-             r.readValue(json);
-             fail("Should not have succeeded");
-@@ -111,10 +116,11 @@ public class CreatorNullPrimitivesTest
-     }
- 
-     @Test
--    public void testCreatorNullPrimitiveInNestedObject() throws Exception {
-+    public void testCreatorExplicitNullPrimitiveInNestedObject() throws Exception {
-         final ObjectReader r = MAPPER.readerFor(NestedJsonEntity.class)
-                 .with(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
--        String json = a2q("{ 'entity': {'x': 2}}");
-+        // Explicit null should still fail
-+        String json = a2q("{ 'entity': {'x': 2, 'y': null}}");
-         try {
-             r.readValue(json);
-             fail("Should not have succeeded");
-@@ -126,6 +132,31 @@ public class CreatorNullPrimitivesTest
-         }
-     }
- 
-+    // [databind#5734]: absent (missing) primitive creator properties should get
-+    //   JVM defaults when FAIL_ON_ABSENT_FOR_PRIMITIVES is disabled
-+    @Test
-+    public void testCreatorAbsentPrimitiveShouldDefault() throws Exception {
-+        final ObjectReader r = MAPPER.readerFor(JsonEntity.class)
-+            .with(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
-+        // Missing "y" should default to 0, not fail
-+        String json = a2q("{'x': 2}");
-+        JsonEntity result = r.readValue(json);
-+        assertEquals(2, result.x);
-+        assertEquals(0, result.y);
-+    }
-+
-+    // [databind#5734]: absent (missing) primitive creator properties in nested objects
-+    @Test
-+    public void testCreatorAbsentPrimitiveInNestedObjectShouldDefault() throws Exception {
-+        final ObjectReader r = MAPPER.readerFor(NestedJsonEntity.class)
-+                .with(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
-+        // Missing "y" in nested entity should default to 0, not fail
-+        String json = a2q("{ 'entity': {'x': 2}}");
-+        NestedJsonEntity result = r.readValue(json);
-+        assertEquals(2, result.entity.x);
-+        assertEquals(0, result.entity.y);
-+    }
-+
-     // [databind#988]
-     @Test
-     public void testRequiredNonNullParam() throws Exception
-@@ -174,4 +205,60 @@ public class CreatorNullPrimitivesTest
-         TestClass2977 result = mapper.readValue(a2q("{'aa': 8}"), TestClass2977.class);
-         assertEquals(8, result.a);
-     }
-+
-+    // [databind#5734]: record with absent primitives should use JVM defaults
-+    //   when FAIL_ON_ABSENT_FOR_PRIMITIVES is disabled
-+    @Test
-+    void testRecordAbsentPrimitivesShouldDefault() throws Exception {
-+        // FAIL_ON_NULL_FOR_PRIMITIVES is enabled by default in 3.x;
-+        // FAIL_ON_ABSENT_FOR_PRIMITIVES is disabled by default
-+        String json = a2q("{'int2': 42, 'boolean1': true}");
-+        PrimitiveRecord result = MAPPER.readValue(json, PrimitiveRecord.class);
-+        assertEquals(0, result.int1());
-+        assertEquals(42, result.int2());
-+        assertEquals(true, result.boolean1());
-+        assertEquals(false, result.boolean2());
-+    }
-+
-+    // [databind#5734]: record with explicit null primitives should still fail
-+    @Test
-+    void testRecordExplicitNullPrimitiveShouldFail() throws Exception {
-+        String json = a2q("{'int1': 111, 'int2': 222, 'boolean1': true, 'boolean2': null}");
-+        try {
-+            MAPPER.readValue(json, PrimitiveRecord.class);
-+            fail("Should not have succeeded");
-+        } catch (MismatchedInputException e) {
-+            verifyException(e, "Cannot map `null` into type `boolean`");
-+        }
-+    }
-+
-+    // [databind#5734]: FAIL_ON_ABSENT_FOR_PRIMITIVES should fail on missing primitives
-+    @Test
-+    void testFailOnAbsentForPrimitivesEnabled() throws Exception {
-+        final ObjectReader r = MAPPER.readerFor(JsonEntity.class)
-+            .with(DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES);
-+        String json = a2q("{'x': 2}");
-+        try {
-+            r.readValue(json);
-+            fail("Should not have succeeded");
-+        } catch (MismatchedInputException e) {
-+            verifyException(e, "Cannot map absent");
-+            assertEquals(1, e.getPath().size());
-+            assertEquals("y", e.getPath().get(0).getPropertyName());
-+        }
-+    }
-+
-+    // [databind#5734]: FAIL_ON_ABSENT_FOR_PRIMITIVES with record
-+    @Test
-+    void testFailOnAbsentForPrimitivesWithRecord() throws Exception {
-+        final ObjectReader r = MAPPER.readerFor(PrimitiveRecord.class)
-+            .with(DeserializationFeature.FAIL_ON_ABSENT_FOR_PRIMITIVES);
-+        String json = a2q("{'int2': 42, 'boolean1': true}");
-+        try {
-+            r.readValue(json);
-+            fail("Should not have succeeded");
-+        } catch (MismatchedInputException e) {
-+            verifyException(e, "Cannot map absent");
-+        }
-+    }
- }
+     public void treatsUndeclaredNamespaceAsLocalName() {
+         String html = "<fb:like>One</fb:like>";

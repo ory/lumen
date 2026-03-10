@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch changes the two-argument overload to accept `Pattern<unknown>` instead of `Pattern<NoInfer<T>>`, which fixes the type rejection issue but completely loses the type relationship between the pattern and the value — the pattern is no longer constrained to be compatible with `T` at all. The gold patch solves this more precisely by keeping the `Pattern<T>` constraint but adding `& UnknownProperties` to allow patterns with extra/unknown properties, preserving proper type checking while fixing the regression. Additionally, the candidate removes a valid `@ts-expect-error` test that verified invalid patterns are rejected, which weakens type safety guarantees.

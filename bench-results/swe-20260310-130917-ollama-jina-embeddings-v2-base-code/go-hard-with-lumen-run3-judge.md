@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch takes a different but valid approach: when the node is null and the type is a struct with a valid default, it returns the default value directly instead of zeroing it out. The gold patch is more comprehensive — it creates a new value (instead of reflect.Zero), applies the default to it, and only calls decodeValue when not null — which handles pointer types and edge cases more robustly. The candidate's approach works for the reported issue but is narrower in scope (only handles `reflect.Struct` kind, not pointer-to-struct or other cases), while the gold patch restructures the logic more cleanly to handle the general case.

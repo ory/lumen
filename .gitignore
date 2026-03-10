@@ -14,5 +14,7 @@ dist/
 # Claude
 .claude/*.local.json
 
-bench-swe/bench-swe
 lumen
+
+bench-swe/bench-swe
+bench-swe/overview.txt

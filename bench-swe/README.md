@@ -12,8 +12,8 @@ go build -o bench-swe .
 # Run all tasks (requires Ollama + Claude CLI)
 ./bench-swe run
 
-# Run single language/difficulty
-./bench-swe run --language go --difficulty easy
+# Run single language
+./bench-swe run --language go
 
 # Skip preflight checks (faster iteration)
 ./bench-swe run --skip-preflight --language go
@@ -27,9 +27,9 @@ go build -o bench-swe .
 
 ## Scenarios
 
-| Scenario     | MCP Tools                         | Built-in Tools                     |
-| ------------ | --------------------------------- | ---------------------------------- |
-| **baseline** | None                              | All (Read, Edit, Write, Grep, ...) |
+| Scenario       | MCP Tools                         | Built-in Tools                     |
+| -------------- | --------------------------------- | ---------------------------------- |
+| **baseline**   | None                              | All (Read, Edit, Write, Grep, ...) |
 | **with-lumen** | `semantic_search`, `index_status` | All                                |
 
 ## Metrics
@@ -45,20 +45,19 @@ Per task x scenario:
 
 ### Task JSON format
 
-Create `tasks/{language}/{difficulty}.json`:
+Create `tasks/{language}/hard.json`:
 
 ```json
 {
-  "id": "go-easy",
+  "id": "go-hard",
   "language": "go",
-  "difficulty": "easy",
   "repo": "https://github.com/owner/repo",
   "base_commit": "commit-before-fix",
   "fix_commit": "commit-with-fix",
   "issue_url": "https://github.com/owner/repo/issues/123",
   "issue_title": "Short description",
   "issue_body": "Full issue description...",
-  "gold_patch_file": "patches/go-easy.patch",
+  "gold_patch_file": "patches/go-hard.patch",
   "expected_files": ["file.go"],
   "setup_commands": [],
   "test_command": "go test ./...",
@@ -72,16 +71,8 @@ Save the actual fix as a unified diff in `patches/`:
 
 ```bash
 cd /tmp && git clone REPO && cd REPO
-git diff BASE_COMMIT FIX_COMMIT > /path/to/bench-swe/patches/lang-difficulty.patch
+git diff BASE_COMMIT FIX_COMMIT > /path/to/bench-swe/patches/lang-hard.patch
 ```
-
-### Difficulty criteria
-
-| Difficulty | Lines changed | Files changed | Description                    |
-| ---------- | ------------- | ------------- | ------------------------------ |
-| Easy       | 1-10          | 1             | Single function fix, nil check |
-| Medium     | 10-50         | 1-3           | Multi-function, new helper     |
-| Hard       | 50+           | 3+            | Cross-module, architectural    |
 
 ### Source repos by language
 
@@ -111,7 +102,8 @@ git diff BASE_COMMIT FIX_COMMIT > /path/to/bench-swe/patches/lang-difficulty.pat
 - [ ] Fix is reasonably deterministic
 - [ ] Grep score < 50%: `./bench-swe validate` passes without REJECT
   - Issue body must not name the files or functions changed in the patch
-  - Prefer issues that describe user-visible symptoms, not internal code locations
+  - Prefer issues that describe user-visible symptoms, not internal code
+    locations
 
 ## Chunker Analysis
 

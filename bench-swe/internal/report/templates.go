@@ -37,7 +37,7 @@ Generated: {{ .Date }}
 
 {{ range .Tasks }}---
 
-## {{ .ID }} [{{ .Language }} / {{ .Difficulty }}]
+## {{ .ID }} [{{ .Language }}]
 
 **Issue:** {{ .IssueTitle }}
 
@@ -52,8 +52,6 @@ Generated: {{ .Date }}
 {{ range .ScenarioDetails }}### {{ .Scenario }}
 
 {{ if .Rating }}**Rating: {{ .Rating }}**
-
-{{ end }}{{ if .Explanation }}{{ .Explanation }}
 
 {{ end }}{{ if .Patch }}` + "```diff" + `
 {{ .Patch }}` + "```" + `

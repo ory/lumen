@@ -142,6 +142,79 @@ func countLeadingWhitespace(s string) int {
 	return len(s)
 }
 
+// minMergeTokens is the threshold below which same-kind adjacent chunks are merged.
+// Chunks smaller than this are vulnerable to keyword-density false positives.
+const minMergeTokens = 50
+
+// mergeUndersizedChunks combines consecutive same-file, same-kind chunks that
+// fall below minMergeTokens into a single chunk. Only "var", "const", and "type"
+// kinds are eligible; functions and methods are always left intact.
+// Token count is estimated as len(content)/4.
+func mergeUndersizedChunks(chunks []chunker.Chunk, minTokens int) []chunker.Chunk {
+	minChars := minTokens * 4
+	result := make([]chunker.Chunk, 0, len(chunks))
+	i := 0
+	for i < len(chunks) {
+		c := chunks[i]
+		if !isMergeable(c.Kind) || len(c.Content) >= minChars {
+			result = append(result, c)
+			i++
+			continue
+		}
+		// Collect a run of consecutive undersized same-file same-kind chunks.
+		group := []chunker.Chunk{c}
+		for i+len(group) < len(chunks) {
+			next := chunks[i+len(group)]
+			if next.FilePath != c.FilePath || next.Kind != c.Kind || len(next.Content) >= minChars {
+				break
+			}
+			group = append(group, next)
+		}
+		if len(group) == 1 {
+			result = append(result, c)
+			i++
+			continue
+		}
+		result = append(result, mergeChunkGroup(group))
+		i += len(group)
+	}
+	return result
+}
+
+func isMergeable(kind string) bool {
+	return kind == "var" || kind == "const" || kind == "type"
+}
+
+func mergeChunkGroup(group []chunker.Chunk) chunker.Chunk {
+	var sb strings.Builder
+	symbols := make([]string, len(group))
+	for i, c := range group {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(c.Content)
+		symbols[i] = c.Symbol
+	}
+	content := sb.String()
+	first, last := group[0], group[len(group)-1]
+
+	h := sha256.New()
+	h.Write([]byte(first.FilePath))
+	h.Write([]byte{':'})
+	h.Write([]byte(content))
+	id := fmt.Sprintf("%x", h.Sum(nil))[:16]
+
+	return chunker.Chunk{
+		ID:        id,
+		FilePath:  first.FilePath,
+		Symbol:    strings.Join(symbols, "+"),
+		Kind:      first.Kind,
+		StartLine: first.StartLine,
+		EndLine:   last.EndLine,
+		Content:   content,
+	}
+}
+
 // overlapLines is the number of lines from the end of the previous partition
 // prepended to the next partition. This improves search recall for queries
 // that match concepts spanning a split boundary.
@@ -154,7 +227,6 @@ const overlapLines = 10
 const headerLines = 5
 
 func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
-	totalParts := len(parts)
 	var result []chunker.Chunk
 	lineOffset := 0
 
@@ -182,7 +254,7 @@ func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 		content := strings.Join(effective, "")
 		startLine := c.StartLine + lineOffset - overlapCount
 		endLine := c.StartLine + lineOffset + len(part) - 1
-		symbol := fmt.Sprintf("%s[%d/%d:L%d-L%d]", c.Symbol, i+1, totalParts, startLine, endLine)
+		symbol := c.Symbol
 
 		h := sha256.New()
 		h.Write([]byte(c.FilePath))

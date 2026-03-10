@@ -26,7 +26,7 @@ func runAnalyze(_ *cobra.Command, args []string) error {
 	}
 	tasksDir := filepath.Join(benchDir, "tasks")
 
-	tasks, err := task.LoadTasks(tasksDir, nil, "")
+	tasks, err := task.LoadTasks(tasksDir, nil)
 	if err != nil {
 		return fmt.Errorf("loading tasks: %w", err)
 	}

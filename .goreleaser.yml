@@ -14,7 +14,8 @@ builds:
     flags:
       - -tags=fts5
     ldflags:
-      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit }}
+      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit
+        }}
     env:
       - CGO_ENABLED=1
       - CC=o64-clang
@@ -31,7 +32,8 @@ builds:
     flags:
       - -tags=fts5
     ldflags:
-      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit }}
+      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit
+        }}
     env:
       - CGO_ENABLED=1
     goos:
@@ -45,7 +47,8 @@ builds:
     flags:
       - -tags=fts5
     ldflags:
-      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit }}
+      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit
+        }}
     env:
       - CGO_ENABLED=1
       - CC=aarch64-linux-gnu-gcc
@@ -60,7 +63,8 @@ builds:
     flags:
       - -tags=fts5
     ldflags:
-      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit }}
+      - -s -w -X github.com/ory/lumen/internal/config.BinaryVersion={{ .Commit
+        }}
     env:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc

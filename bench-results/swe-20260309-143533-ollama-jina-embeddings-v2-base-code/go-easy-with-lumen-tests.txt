@@ -1,7 +1,0 @@
-=== RUN   TestRouterMatchAnySlash
---- PASS: TestRouterMatchAnySlash (0.00s)
-PASS
-ok  	github.com/labstack/echo/v4	0.251s
-testing: warning: no tests to run
-PASS
-ok  	github.com/labstack/echo/v4/middleware	0.520s [no tests to run]

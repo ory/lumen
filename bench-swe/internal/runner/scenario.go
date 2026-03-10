@@ -9,8 +9,8 @@ import (
 type Scenario string
 
 const (
-	Baseline Scenario = "baseline"
-	WithLumen  Scenario = "with-lumen"
+	Baseline  Scenario = "baseline"
+	WithLumen Scenario = "with-lumen"
 )
 
 func AllScenarios() []Scenario {
@@ -75,13 +75,13 @@ func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, fun
 		return "", nil, err
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", nil, err
 	}
-	f.Close()
+	_ = f.Close()
 
-	return f.Name(), func() { os.Remove(f.Name()) }, nil
+	return f.Name(), func() { _ = os.Remove(f.Name()) }, nil
 }
 
 // ClaudeArgs returns the extra CLI arguments for a given scenario.

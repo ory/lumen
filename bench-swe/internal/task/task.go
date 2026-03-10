@@ -15,7 +15,6 @@ var identRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9_]{3,}`)
 type Task struct {
 	ID             string   `json:"id"`
 	Language       string   `json:"language"`
-	Difficulty     string   `json:"difficulty"`
 	Repo           string   `json:"repo"`
 	BaseCommit     string   `json:"base_commit"`
 	FixCommit      string   `json:"fix_commit"`
@@ -117,7 +116,7 @@ func patchIdentifiers(patch string) []string {
 	return ids
 }
 
-func LoadTasks(tasksDir string, langs []string, difficulty string) ([]Task, error) {
+func LoadTasks(tasksDir string, langs []string) ([]Task, error) {
 	var tasks []Task
 
 	langSet := make(map[string]bool, len(langs))
@@ -147,9 +146,6 @@ func LoadTasks(tasksDir string, langs []string, difficulty string) ([]Task, erro
 		if len(langSet) > 0 && !langSet[t.Language] {
 			return nil
 		}
-		if difficulty != "" && t.Difficulty != difficulty {
-			return nil
-		}
 
 		tasks = append(tasks, t)
 		return nil
@@ -159,7 +155,7 @@ func LoadTasks(tasksDir string, langs []string, difficulty string) ([]Task, erro
 	}
 
 	if len(tasks) == 0 {
-		return nil, fmt.Errorf("no tasks found in %s (langs=%v, difficulty=%q)", tasksDir, langs, difficulty)
+		return nil, fmt.Errorf("no tasks found in %s (langs=%v)", tasksDir, langs)
 	}
 	return tasks, nil
 }

@@ -1,161 +1,284 @@
-diff --git a/.github/labeler.yml b/.github/labeler.yml
-index 318dd468..da6ee527 100644
---- a/.github/labeler.yml
-+++ b/.github/labeler.yml
-@@ -1,3 +1,6 @@
-+R-loom-blocking:
-+- tokio/src/runtime/blocking/*
-+- tokio/src/runtime/blocking/**/*
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b13..ac25b2de 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -218,13 +218,13 @@ impl<'i> State<'i> {
+             anstyle::AnsiColor::Blue.on_default(),
+         );
  
- R-loom-sync:
- - tokio/src/sync/*
-diff --git a/.github/workflows/loom.yml b/.github/workflows/loom.yml
-index c400a28c..0799017a 100644
---- a/.github/workflows/loom.yml
-+++ b/.github/workflows/loom.yml
-@@ -23,6 +23,22 @@ permissions:
-   contents: read
+-        let dotted = true;
++        let dotted = !path.is_empty();
+         let Some(parent_table) = descend_path(&mut self.current_table, &path, dotted, errors)
+         else {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        let mixed_table_types = dotted && !parent_table.is_implicit();
+         if mixed_table_types {
+             let key_span = get_key_span(&key);
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+@@ -423,7 +423,8 @@ fn descend_path<'t, 'i>(
+                         // Since tables cannot be defined more than once, redefining such tables using a
+                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
+                         // already defined in [table] form is not allowed.
+-                        if dotted && !sweet_child_of_mine.is_implicit() {
++                        let mixed_table_types = dotted && !sweet_child_of_mine.is_implicit();
++                        if mixed_table_types {
+                             let key_span = get_key_span(key);
+                             errors.report_error(
+                                 ParseError::new("duplicate key").with_unexpected(key_span),
+diff --git a/crates/toml/tests/decoder_compliance.rs b/crates/toml/tests/decoder_compliance.rs
+index 1e39db7c..ab428317 100644
+--- a/crates/toml/tests/decoder_compliance.rs
++++ b/crates/toml/tests/decoder_compliance.rs
+@@ -2,6 +2,29 @@ mod decoder;
  
- jobs:
-+  loom-blocking:
-+    name: loom tokio::runtime::spawn_blocking
-+    # base_ref is null when it's not a pull request
-+    if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-blocking') || (github.base_ref == null))
-+    runs-on: ubuntu-latest
-+    steps:
-+      - uses: actions/checkout@v5
-+      - name: Install Rust ${{ env.rust_stable }}
-+        uses: dtolnay/rust-toolchain@master
-+        with:
-+            toolchain: ${{ env.rust_stable }}
-+      - uses: Swatinem/rust-cache@v2
-+      - name: run tests
-+        run: cargo test --lib --release --features full -- --nocapture loom_blocking
-+        working-directory: tokio
+ #[cfg(all(feature = "parse", feature = "display", feature = "serde"))]
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
 +
-   loom-sync:
-     name: loom tokio::sync
-     # base_ref is null when it's not a pull request
-diff --git a/tokio/src/runtime/blocking/pool.rs b/tokio/src/runtime/blocking/pool.rs
-index 30934812..dae98bc9 100644
---- a/tokio/src/runtime/blocking/pool.rs
-+++ b/tokio/src/runtime/blocking/pool.rs
-@@ -507,6 +507,8 @@ impl Inner {
+     let invalid_ext = walkdir::WalkDir::new("tests/fixtures/invalid")
+         .sort_by_file_name()
+         .into_iter()
+@@ -24,6 +47,7 @@ fn main() {
+     harness.version("1.1.0");
+     harness.ignore([]).unwrap();
+     harness.snapshot_root("tests/snapshots");
++    harness.extend_valid(valid_ext);
+     harness.extend_invalid(invalid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml/tests/encoder_compliance.rs b/crates/toml/tests/encoder_compliance.rs
+index b1725eaf..9f699cd2 100644
+--- a/crates/toml/tests/encoder_compliance.rs
++++ b/crates/toml/tests/encoder_compliance.rs
+@@ -3,10 +3,34 @@ mod encoder;
  
-         let mut shared = self.shared.lock();
-         let mut join_on_thread = None;
-+        // is this thread currently counted in `num_idle_threads`?
-+        let mut is_counted_idle;
- 
-         'main: loop {
-             // BUSY
-@@ -520,6 +522,8 @@ impl Inner {
- 
-             // IDLE
-             self.metrics.inc_num_idle_threads();
-+            // mark this thread as currently counted in `num_idle_threads`.
-+            is_counted_idle = true;
- 
-             while !shared.shutdown {
-                 let lock_result = self.condvar.wait_timeout(shared, self.keep_alive).unwrap();
-@@ -532,6 +536,9 @@ impl Inner {
-                     // acknowledge it by decrementing the counter
-                     // and transition to the BUSY state.
-                     shared.num_notify -= 1;
-+                    // since this is a legitimate wakeup,
-+                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.
-+                    is_counted_idle = false;
-                     break;
-                 }
- 
-@@ -568,14 +575,17 @@ impl Inner {
-         // Thread exit
-         self.metrics.dec_num_threads();
- 
--        // `num_idle_threads` should now be tracked exactly, panic
--        // with a descriptive message if it is not the
--        // case.
--        let prev_idle = self.metrics.dec_num_idle_threads();
--        assert_ne!(
--            prev_idle, 0,
--            "`num_idle_threads` underflowed on thread exit"
--        );
-+        // Is this thread currently counted in `num_idle_threads`?
-+        if is_counted_idle {
-+            // `num_idle_threads` should now be tracked exactly, panic
-+            // with a descriptive message if it is not the
-+            // case.
-+            let prev_idle = self.metrics.dec_num_idle_threads();
-+            assert_ne!(
-+                prev_idle, 0,
-+                "`num_idle_threads` underflowed on thread exit"
-+            );
-+        }
- 
-         if shared.shutdown && self.metrics.num_threads() == 0 {
-             self.condvar.notify_one();
-diff --git a/tokio/src/runtime/tests/loom_blocking.rs b/tokio/src/runtime/tests/loom_blocking.rs
-index 5c4aeae3..ce1f2644 100644
---- a/tokio/src/runtime/tests/loom_blocking.rs
-+++ b/tokio/src/runtime/tests/loom_blocking.rs
-@@ -1,6 +1,7 @@
- use crate::runtime::{self, Runtime};
- 
- use std::sync::Arc;
-+use std::time::Duration;
- 
- #[test]
- fn blocking_shutdown() {
-@@ -75,7 +76,6 @@ fn spawn_mandatory_blocking_should_run_even_when_shutting_down_from_other_thread
- 
- #[test]
- fn spawn_blocking_when_paused() {
--    use std::time::Duration;
-     loom::model(|| {
-         let rt = crate::runtime::Builder::new_current_thread()
-             .enable_time()
-@@ -94,6 +94,44 @@ fn spawn_blocking_when_paused() {
-     });
+ #[cfg(all(feature = "parse", feature = "display", feature = "serde"))]
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let encoder = encoder::Encoder;
+     let decoder = decoder::Decoder;
+     let mut harness = toml_test_harness::EncoderHarness::new(encoder, decoder);
+     harness.version("1.1.0");
++    harness.extend_valid(valid_ext);
+     harness.test();
  }
  
-+#[test]
-+/// See <https://github.com/tokio-rs/tokio/pull/7922>
-+fn spawn_blocking_then_shutdown() {
-+    loom::model(|| {
-+        let rt = crate::runtime::Builder::new_current_thread()
-+            .max_blocking_threads(1)
-+            .thread_keep_alive(Duration::from_secs(7200)) // don't let the thread exit on its own
-+            .build()
-+            .unwrap();
-+        let rt_hdl = rt.handle().clone();
-+
-+        // Currently, there is no live blocking thread,
-+        // so `spawn_blocking` will spawn a new blocking thread.
-+        let jh0 = rt_hdl.spawn_blocking(|| {});
-+        loom::future::block_on(jh0).unwrap();
-+
-+        // Now, there is a idle blocking threads park on the condvar,
-+        // so the following `spawn_blocking` will decrease the `num_idle_threads`
-+        // and then notify one of the idle threads to run the task.
-+
-+        // this will decrease the `num_idle_threads`
-+        // and then notify one of the idle threads to run the task.
-+        let jh3 = rt_hdl.spawn_blocking(|| {});
-+
-+        // shutdown the runtime, which also shutdown the blocking pool
-+        drop(rt);
-+
-+        // loom will emulate two parrel operations:
-+        //
-+        // 1. the blocking thread is woken up on the condvar
-+        // 2. the main thread is waiting for the blocking thread to finish the task
-+        //
-+        // So, if the `num_idle_threads` is not counted correctly,
-+        // it will trigger the assertions inside the `Inner::run` function.
-+        let _ = loom::future::block_on(jh3);
-+    });
+diff --git a/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+new file mode 100644
+index 00000000..cbfc236c
+--- /dev/null
++++ b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+@@ -0,0 +1,13 @@
++{
++    "fruit": {
++        "apple": {
++            "texture": {
++                "smooth": {"type": "bool", "value": "true"}
++            },
++            "color": {"type": "string", "value": "red"},
++            "taste": {
++                "sweet": {"type": "bool", "value": "true"}
++            }
++        }
++    }
 +}
+diff --git a/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+new file mode 100644
+index 00000000..10beb5dc
+--- /dev/null
++++ b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+@@ -0,0 +1,6 @@
++[fruit.apple.texture]
++smooth = true
 +
- fn mk_runtime(num_threads: usize) -> Runtime {
-     runtime::Builder::new_multi_thread()
-         .worker_threads(num_threads)
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb7..b06516cd 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -301,13 +301,13 @@ impl State {
+             anstyle::AnsiColor::Blue.on_default(),
+         );
+ 
+-        let dotted = true;
++        let dotted = !path.is_empty();
+         let Some(parent_table) = descend_path(&mut self.current_table, &path, dotted, errors)
+         else {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        let mixed_table_types = dotted && !parent_table.is_implicit();
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+@@ -478,7 +478,8 @@ fn descend_path<'t>(
+                         // Since tables cannot be defined more than once, redefining such tables using a
+                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
+                         // already defined in [table] form is not allowed.
+-                        if dotted && !sweet_child_of_mine.is_implicit() {
++                        let mixed_table_types = dotted && !sweet_child_of_mine.is_implicit();
++                        if mixed_table_types {
+                             let key_span = get_key_span(key).expect("all keys have spans");
+                             errors.report_error(
+                                 ParseError::new("duplicate key").with_unexpected(key_span),
+diff --git a/crates/toml_edit/tests/decoder_compliance.rs b/crates/toml_edit/tests/decoder_compliance.rs
+index f2a063cf..f9e7e7e1 100644
+--- a/crates/toml_edit/tests/decoder_compliance.rs
++++ b/crates/toml_edit/tests/decoder_compliance.rs
+@@ -1,6 +1,29 @@
+ mod decoder;
+ 
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let invalid_ext = walkdir::WalkDir::new("tests/fixtures/invalid")
+         .sort_by_file_name()
+         .into_iter()
+@@ -23,6 +46,7 @@ fn main() {
+     harness.version("1.1.0");
+     harness.ignore([]).unwrap();
+     harness.snapshot_root("tests/snapshots");
++    harness.extend_valid(valid_ext);
+     harness.extend_invalid(invalid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml_edit/tests/encoder_compliance.rs b/crates/toml_edit/tests/encoder_compliance.rs
+index 355c5408..c7ebb764 100644
+--- a/crates/toml_edit/tests/encoder_compliance.rs
++++ b/crates/toml_edit/tests/encoder_compliance.rs
+@@ -2,9 +2,33 @@ mod decoder;
+ mod encoder;
+ 
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let encoder = encoder::Encoder;
+     let decoder = decoder::Decoder;
+     let mut harness = toml_test_harness::EncoderHarness::new(encoder, decoder);
+-    harness.version("1.0.0");
++    harness.version("1.1.0");
++    harness.extend_valid(valid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+new file mode 100644
+index 00000000..cbfc236c
+--- /dev/null
++++ b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+@@ -0,0 +1,13 @@
++{
++    "fruit": {
++        "apple": {
++            "texture": {
++                "smooth": {"type": "bool", "value": "true"}
++            },
++            "color": {"type": "string", "value": "red"},
++            "taste": {
++                "sweet": {"type": "bool", "value": "true"}
++            }
++        }
++    }
++}
+diff --git a/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+new file mode 100644
+index 00000000..10beb5dc
+--- /dev/null
++++ b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+@@ -0,0 +1,6 @@
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true

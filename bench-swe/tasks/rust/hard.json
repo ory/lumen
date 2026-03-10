@@ -1,21 +1,26 @@
 {
   "id": "rust-hard",
   "language": "rust",
-  "difficulty": "hard",
-  "repo": "https://github.com/tokio-rs/tokio",
-  "base_commit": "d81e8f0acbdd7d866bce4f733b3545fd834c7840",
-  "fix_commit": "f21f2693f02aec9a876ac2bd21566c85e15b682e",
-  "issue_url": "https://github.com/tokio-rs/tokio/pull/7922",
-  "issue_title": "runtime: fix race condition during the blocking pool shutdown",
-  "issue_body": "There is a race condition in the tokio blocking thread pool that causes a panic during shutdown.\n\nConsider this sequence of events:\n\n1. A blocking thread is sleeping, waiting on a condvar in the inner loop of `run` (in `tokio/src/runtime/blocking/pool.rs`).\n2. Another thread enqueues a task, decreases `num_idle_threads`, and calls `condvar.notify_one` to wake a sleeping thread.\n3. Concurrently, the blocking pool is shut down: the `shared.shutdown` flag is flipped and the shared mutex is unlocked.\n4. The sleeping blocking thread wakes up from the condvar wait. It sees the shutdown flag and exits the inner loop. At this point, `num_idle_threads` has already been decreased (by the thread that enqueued the task in step 2).\n5. The blocking thread then attempts to decrease `num_idle_threads` again in the shutdown cleanup path, causing an underflow panic.\n\nThe root cause is that when a thread is woken by `condvar.notify_one` (because a task was enqueued), the `num_idle_threads` counter is decremented by the notifier. But if the thread also observes the shutdown flag before processing the task, it takes the shutdown exit path which redundantly decrements `num_idle_threads` again.",
+  "repo": "https://github.com/toml-rs/toml",
+  "base_commit": "500b26979f2545c9fb62beffb87f22e7e4bed5cc",
+  "fix_commit": "e134bb64a3f0a4829c88c6aed582f7d113cf6541",
+  "issue_url": "https://github.com/toml-rs/toml/issues/1106",
+  "issue_title": "False duplicate key error for dotted keys when parent table is implicitly created by a nested header",
+  "issue_body": "The following valid TOML document is incorrectly rejected by the parser with a false 'duplicate key' error:\n\n```toml\n[fruit.apple.texture]\nsmooth = true\n\n[fruit]\napple.color = \"red\"\napple.taste.sweet = true\n```\n\nParsing this document produces the error:\n```\nTOML parse error at line 6, column 7\n  |\n6 | apple.color = \"red\"\n  |       ^^^^^\nduplicate key\n```\n\nThe document is valid according to the TOML specification. When `[fruit.apple.texture]` is declared first, it implicitly creates the `fruit` and `fruit.apple` tables. When `[fruit]` is later explicitly declared, dotted keys like `apple.color` should be allowed to extend the implicitly-created `fruit.apple` table, since it was never explicitly defined -- only implicitly created as a parent of `fruit.apple.texture`.\n\nBoth the Python standard library `tomllib` and the BurntSushi TOML validator accept this document as valid.\n\nThe TOML specification discussion at toml-lang/toml#769 clarifies that order should not matter in TOML (except for arrays of tables), and that implicitly created tables can be extended with dotted keys.\n\nNote that the parser currently accepts these related cases correctly:\n\n1. When the nested header creates an unrelated key under the same parent:\n```toml\n[fruit.apple.texture]\nsmooth = true\n\n[fruit]\nbanana = \"yellow\"\n```\n\n2. When the dotted keys appear before the nested header:\n```toml\n[fruit]\napple.color = \"red\"\napple.taste.sweet = true\n\n[fruit.apple.texture]\nsmooth = true\n```\n\nThe bug only manifests when dotted keys in a later `[fruit]` section attempt to extend a table that was implicitly created by an earlier nested header like `[fruit.apple.texture]`.",
   "gold_patch_file": "patches/rust-hard.patch",
   "expected_files": [
-    ".github/labeler.yml",
-    ".github/workflows/loom.yml",
-    "tokio/src/runtime/blocking/pool.rs",
-    "tokio/src/runtime/tests/loom_blocking.rs"
+    "crates/toml/src/de/parser/document.rs",
+    "crates/toml/tests/decoder_compliance.rs",
+    "crates/toml/tests/encoder_compliance.rs",
+    "crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json",
+    "crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml",
+    "crates/toml_edit/src/parser/document.rs",
+    "crates/toml_edit/tests/decoder_compliance.rs",
+    "crates/toml_edit/tests/encoder_compliance.rs",
+    "crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json",
+    "crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml"
   ],
   "setup_commands": [],
-  "test_command": "cargo test --lib --features testing -- runtime::tests::loom_blocking",
+  "test_command": "cargo test -p toml --test decoder_compliance -- append_with_dotted_keys && cargo test -p toml --test encoder_compliance -- append_with_dotted_keys && cargo test -p toml_edit --test decoder_compliance -- append_with_dotted_keys && cargo test -p toml_edit --test encoder_compliance -- append_with_dotted_keys",
   "timeout_s": 900
 }

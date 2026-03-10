@@ -57,16 +57,19 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	}
 	repoDir := filepath.Join(workdir, "repo")
 
-	// Clone (blobless for speed, 10 min timeout)
+	// Shallow clone: only fetch the single base commit (no history).
+	// init → remote add → fetch --depth=1 <sha> → checkout FETCH_HEAD
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cloneCancel()
-	if out, err := exec.CommandContext(cloneCtx, "git", "clone", "--quiet", "--filter=blob:none", t.Repo, repoDir).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("cloning %s: %w\n%s", t.Repo, err, out)
-	}
-
-	// Checkout base commit
-	if out, err := exec.CommandContext(ctx, "git", "-C", repoDir, "checkout", "--quiet", t.BaseCommit).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("checking out %s: %w\n%s", t.BaseCommit, err, out)
+	for _, args := range [][]string{
+		{"init", "--quiet", repoDir},
+		{"-C", repoDir, "remote", "add", "origin", t.Repo},
+		{"-C", repoDir, "fetch", "--quiet", "--depth=1", "--filter=blob:none", "origin", t.BaseCommit},
+		{"-C", repoDir, "checkout", "--quiet", "FETCH_HEAD"},
+	} {
+		if out, err := exec.CommandContext(cloneCtx, "git", args...).CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("git %s: %w\n%s", args[0], err, out)
+		}
 	}
 
 	// For Python tasks, create an isolated venv to avoid system/conda package conflicts
@@ -159,13 +162,13 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	if err != nil {
 		return nil, fmt.Errorf("creating stderr file: %w", err)
 	}
-	defer stderrFile.Close()
+	defer func() { _ = stderrFile.Close() }()
 
 	claudeCmd.Stdout = rawFile
 	claudeCmd.Stderr = stderrFile
 
 	_ = claudeCmd.Run() // non-zero exit is OK
-	rawFile.Close()
+	_ = rawFile.Close()
 
 	// Capture patch
 	_ = exec.CommandContext(ctx, "git", "-C", repoDir, "add", "-A").Run()

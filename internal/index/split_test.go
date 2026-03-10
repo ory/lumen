@@ -60,11 +60,10 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 		t.Fatalf("expected multiple chunks, got %d", len(result))
 	}
 
-	// Check symbol format: BigFunc[N/M:LX-LY]
+	// All sub-chunks inherit the parent symbol unchanged.
 	for i, r := range result {
-		expectedPrefix := fmt.Sprintf("BigFunc[%d/%d:L", i+1, len(result))
-		if !strings.HasPrefix(r.Symbol, expectedPrefix) || !strings.HasSuffix(r.Symbol, "]") {
-			t.Errorf("chunk %d: expected symbol matching %q..., got %q", i, expectedPrefix, r.Symbol)
+		if r.Symbol != "BigFunc" {
+			t.Errorf("chunk %d: expected symbol %q, got %q", i, "BigFunc", r.Symbol)
 		}
 		if r.Kind != "function" {
 			t.Errorf("chunk %d: expected kind 'function', got %q", i, r.Kind)
@@ -447,11 +446,113 @@ func TestCreateSubChunks_OverlapLineNumbers(t *testing.T) {
 	}
 }
 
+func makeVarChunk(symbol, filePath string, startLine, endLine int, content string) chunker.Chunk {
+	return chunker.Chunk{
+		ID:        "id-" + symbol,
+		FilePath:  filePath,
+		Symbol:    symbol,
+		Kind:      "var",
+		StartLine: startLine,
+		EndLine:   endLine,
+		Content:   content,
+	}
+}
+
+func TestMergeUndersizedChunks_MergesSmallVarChunks(t *testing.T) {
+	// Two small var chunks from the same file should be merged.
+	c1 := makeVarChunk("Foo", "a.go", 1, 1, "var Foo = 1")
+	c2 := makeVarChunk("Bar", "a.go", 2, 2, "var Bar = 2")
+	result := mergeUndersizedChunks([]chunker.Chunk{c1, c2}, 50)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 merged chunk, got %d", len(result))
+	}
+	m := result[0]
+	if m.Symbol != "Foo+Bar" {
+		t.Errorf("expected symbol 'Foo+Bar', got %q", m.Symbol)
+	}
+	if m.Kind != "var" {
+		t.Errorf("expected kind 'var', got %q", m.Kind)
+	}
+	if m.StartLine != 1 || m.EndLine != 2 {
+		t.Errorf("expected lines 1-2, got %d-%d", m.StartLine, m.EndLine)
+	}
+	if !strings.Contains(m.Content, "var Foo = 1") || !strings.Contains(m.Content, "var Bar = 2") {
+		t.Errorf("merged content missing source chunks: %q", m.Content)
+	}
+}
+
+func TestMergeUndersizedChunks_SkipsFunctions(t *testing.T) {
+	// Function chunks should never be merged even if small.
+	c1 := chunker.Chunk{ID: "f1", FilePath: "a.go", Symbol: "F1", Kind: "function", StartLine: 1, EndLine: 2, Content: "func F1() {}"}
+	c2 := chunker.Chunk{ID: "f2", FilePath: "a.go", Symbol: "F2", Kind: "function", StartLine: 3, EndLine: 4, Content: "func F2() {}"}
+	result := mergeUndersizedChunks([]chunker.Chunk{c1, c2}, 50)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 chunks (functions untouched), got %d", len(result))
+	}
+}
+
+func TestMergeUndersizedChunks_BreaksAcrossFiles(t *testing.T) {
+	// Small var chunks from different files must NOT be merged.
+	c1 := makeVarChunk("X", "a.go", 1, 1, "var X = 1")
+	c2 := makeVarChunk("Y", "b.go", 1, 1, "var Y = 2")
+	result := mergeUndersizedChunks([]chunker.Chunk{c1, c2}, 50)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 chunks (different files), got %d", len(result))
+	}
+}
+
+func TestMergeUndersizedChunks_LargeChunkBreaksRun(t *testing.T) {
+	// A large chunk in the middle breaks the merge run.
+	small1 := makeVarChunk("A", "a.go", 1, 1, "var A = 1")
+	large := makeVarChunk("Big", "a.go", 2, 2, strings.Repeat("x", 300)) // >= 50*4=200 chars
+	small2 := makeVarChunk("B", "a.go", 3, 3, "var B = 3")
+	result := mergeUndersizedChunks([]chunker.Chunk{small1, large, small2}, 50)
+	// small1 alone (no neighbor to merge with), large passes through, small2 alone
+	if len(result) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(result))
+	}
+	if result[0].Symbol != "A" {
+		t.Errorf("expected first chunk symbol 'A', got %q", result[0].Symbol)
+	}
+}
+
+func TestMergeUndersizedChunks_SingleChunkNoMerge(t *testing.T) {
+	c := makeVarChunk("Solo", "a.go", 1, 1, "var Solo = 1")
+	result := mergeUndersizedChunks([]chunker.Chunk{c}, 50)
+	if len(result) != 1 || result[0].Symbol != "Solo" {
+		t.Fatalf("expected single chunk unchanged, got %v", result)
+	}
+}
+
+func TestMergeUndersizedChunks_MixedKindsNotMerged(t *testing.T) {
+	// var and const of the same file should NOT merge (different kinds).
+	varChunk := makeVarChunk("V", "a.go", 1, 1, "var V = 1")
+	constChunk := chunker.Chunk{ID: "c1", FilePath: "a.go", Symbol: "C", Kind: "const", StartLine: 2, EndLine: 2, Content: "const C = 2"}
+	result := mergeUndersizedChunks([]chunker.Chunk{varChunk, constChunk}, 50)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 chunks (different kinds not merged), got %d", len(result))
+	}
+}
+
+func TestMergeUndersizedChunks_UniqueID(t *testing.T) {
+	// Merged chunks must have a unique, stable ID.
+	c1 := makeVarChunk("X", "a.go", 1, 1, "var X = 1")
+	c2 := makeVarChunk("Y", "a.go", 2, 2, "var Y = 2")
+	r1 := mergeUndersizedChunks([]chunker.Chunk{c1, c2}, 50)
+	r2 := mergeUndersizedChunks([]chunker.Chunk{c1, c2}, 50)
+	if r1[0].ID != r2[0].ID {
+		t.Errorf("ID not stable across calls: %q vs %q", r1[0].ID, r2[0].ID)
+	}
+	if r1[0].ID == c1.ID || r1[0].ID == c2.ID {
+		t.Errorf("merged ID collides with source ID: %q", r1[0].ID)
+	}
+}
+
 func TestFindSplitPoint_ExactBoundaries(t *testing.T) {
 	tests := []struct {
-		name     string
-		lines    []string
-		wantIdx  int
+		name    string
+		lines   []string
+		wantIdx int
 	}{
 		{
 			name:    "closing brace",

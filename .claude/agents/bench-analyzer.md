@@ -46,8 +46,8 @@ The raw JSONL files (`*-raw.jsonl`) can be 100KB+. Use the `bench-swe extract`
 subcommand to parse them. Do NOT attempt to read them with the `Read` tool.
 
 For each scenario that uses Lumen (currently only `with-lumen`), parse the raw
-JSONL. The only scenarios in the benchmark are `baseline` and `with-lumen` -- there
-is no `mcp-only` scenario.
+JSONL. The only scenarios in the benchmark are `baseline` and `with-lumen` --
+there is no `mcp-only` scenario.
 
 Build and run the extract command:
 
@@ -55,8 +55,9 @@ Build and run the extract command:
 cd bench-swe && go build -o bench-swe . && ./bench-swe extract <results-dir>/<scenario>-raw.jsonl
 ```
 
-This prints all tool calls in sequence, highlighting `mcp__lumen__semantic_search`
-calls with their query and result preview, plus a validation summary.
+This prints all tool calls in sequence, highlighting
+`mcp__lumen__semantic_search` calls with their query and result preview, plus a
+validation summary.
 
 Use `--search-only` to filter to just semantic_search calls, or `--json` for
 machine-readable output that can be piped to other tools.
@@ -273,12 +274,12 @@ and results are **NOT** top-level events. They are nested inside
 - **tool_use blocks** appear in JSONL objects with top-level
   `"type": "assistant"` and `"message.role": "assistant"`. The tool_use block
   itself is an element of `message.content[]` with `"type": "tool_use"`.
-- **tool_result blocks** appear in JSONL objects with top-level
-  `"type": "user"` and `"message.role": "user"`. The tool_result block itself is
-  an element of `message.content[]` with `"type": "tool_result"`.
+- **tool_result blocks** appear in JSONL objects with top-level `"type": "user"`
+  and `"message.role": "user"`. The tool_result block itself is an element of
+  `message.content[]` with `"type": "tool_result"`.
 - The `tool_result` content field can be **either** a plain string **OR** a list
-  of `[{"type":"text", "text":"..."}]` objects. You MUST handle both formats.
-  In practice, Claude CLI almost always uses the list format.
+  of `[{"type":"text", "text":"..."}]` objects. You MUST handle both formats. In
+  practice, Claude CLI almost always uses the list format.
 
 Always parse JSONL with `bench-swe extract`. These files are too large for the
 `Read` tool. The extract command handles all these format variants correctly.

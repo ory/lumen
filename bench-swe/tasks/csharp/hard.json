@@ -1,7 +1,6 @@
 {
   "id": "csharp-hard",
   "language": "csharp",
-  "difficulty": "hard",
   "repo": "https://github.com/JamesNK/Newtonsoft.Json",
   "base_commit": "4e13299d4b0ec96bd4df9954ef646bd2d1b5bf2a",
   "fix_commit": "a162f27661ce5bab4167b477f338cf5115343c09",

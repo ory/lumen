@@ -1,0 +1,13 @@
+PASS tests/is-matching.test.ts
+  isMatching
+    ✓ should generate a type guard function from a pattern if given a single argument (1 ms)
+    ✓ should act as a type guard function if given a two arguments
+    ✓ type inference should be precise without `as const`
+    ✓ should support patterns with properties not shared by all union members (1 ms)
+    ✓ should support patterns with unknown properties
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        0.412 s, estimated 1 s
+Ran all test suites matching /tests\/is-matching.test.ts/i.

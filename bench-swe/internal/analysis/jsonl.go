@@ -69,7 +69,7 @@ func ExtractToolCalls(rawPath string) ([]ToolCall, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var calls []ToolCall
 	pendingIDs := map[string]int{} // tool_use ID -> index in calls slice

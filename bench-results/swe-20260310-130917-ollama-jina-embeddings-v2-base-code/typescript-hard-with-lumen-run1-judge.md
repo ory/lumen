@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch changes `P extends P.Pattern<NoInfer<T>>` to `P extends Pattern<unknown>`, which loses the type constraint linking the pattern to the value type `T` — this means TypeScript can no longer validate that the pattern is related to the input type at all, making invalid patterns go undetected. The gold patch preserves type safety by using `P.Pattern<T> & UnknownProperties` (where `UnknownProperties = { readonly [k: PropertyKey]: unknown }`) to allow patterns with extra/unknown properties while still constraining the pattern to be valid for `T`. The candidate also removes the `@ts-expect-error` test for invalid patterns without the `UnknownProperties` type being introduced in `Pattern.ts`, indicating this is a weaker, less correct fix.

@@ -18,7 +18,8 @@ package embedder
 type ModelSpec struct {
 	Dims      int
 	CtxLength int
-	Backend   string // "ollama", "lmstudio", or "" for both
+	Backend   string  // "ollama", "lmstudio", or "" for both
+	MinScore  float64 // default minimum cosine similarity threshold for search
 }
 
 // DefaultOllamaModel is the default model when using the Ollama backend.
@@ -36,13 +37,33 @@ var ModelAliases = map[string]string{
 	"text-embedding-nomic-embed-code": "nomic-ai/nomic-embed-code-GGUF",
 }
 
+// DefaultMinScore is the fallback noise-floor threshold used when the active
+// model is not in KnownModels and dimensions are unknown.
+const DefaultMinScore = 0.20
+
+// DimensionAwareMinScore returns a noise-floor threshold appropriate for the
+// given embedding dimensionality. Higher-dimensional spaces compress cosine
+// similarity ranges (concentration of measure), so they need lower floors.
+func DimensionAwareMinScore(dims int) float64 {
+	switch {
+	case dims > 3072:
+		return 0.15
+	case dims > 1024:
+		return 0.20
+	case dims > 512:
+		return 0.25
+	default:
+		return 0.20
+	}
+}
+
 // KnownModels maps model names to their specifications.
 var KnownModels = map[string]ModelSpec{
-	"ordis/jina-embeddings-v2-base-code": {Dims: 768, CtxLength: 8192, Backend: "ollama"},
-	"nomic-embed-text":                   {Dims: 768, CtxLength: 8192, Backend: "ollama"},
-	"nomic-ai/nomic-embed-code-GGUF":     {Dims: 3584, CtxLength: 8192, Backend: "lmstudio"},
-	"qwen3-embedding:8b":                 {Dims: 4096, CtxLength: 40960, Backend: "ollama"},
-	"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama"},
-	"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama"},
-	"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama"},
+	"ordis/jina-embeddings-v2-base-code": {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.35},
+	"nomic-embed-text":                   {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.30},
+	"nomic-ai/nomic-embed-code-GGUF":     {Dims: 3584, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.15},
+	"qwen3-embedding:8b":                 {Dims: 4096, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
+	"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
+	"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
+	"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
 }

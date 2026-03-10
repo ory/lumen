@@ -41,7 +41,7 @@ func runValidate(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	tasks, err := task.LoadTasks(tasksDir, nil, "")
+	tasks, err := task.LoadTasks(tasksDir, nil)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,7 +111,7 @@ func TestGenerateSummary(t *testing.T) {
 	dir := t.TempDir()
 
 	tasks := []task.Task{
-		{ID: "task-1", Language: "go", Difficulty: "easy"},
+		{ID: "task-1", Language: "go"},
 	}
 	scenarios := []runner.Scenario{runner.Baseline, runner.WithLumen}
 
@@ -172,6 +173,249 @@ func TestGenerateSummary(t *testing.T) {
 	}
 }
 
+func TestTotalTokens(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		if got := totalTokens(nil); got != 0 {
+			t.Errorf("totalTokens(nil) = %d, want 0", got)
+		}
+	})
+	t.Run("sum", func(t *testing.T) {
+		m := &metrics.Metrics{InputTokens: 100, OutputTokens: 50, CacheRead: 200}
+		if got := totalTokens(m); got != 350 {
+			t.Errorf("totalTokens = %d, want 350", got)
+		}
+	})
+}
+
+// writeToolCallJSONL writes a minimal raw JSONL file with the given number
+// of tool_use events (all named "Bash") plus optional lumen search calls.
+func writeToolCallJSONL(t *testing.T, path string, bashCalls, lumenCalls int) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	idx := 0
+	for range bashCalls {
+		_, _ = fmt.Fprintf(f, `{"type":"tool_use","id":"tc_%d","name":"Bash","input":{}}%s`, idx, "\n")
+		idx++
+	}
+	for range lumenCalls {
+		_, _ = fmt.Fprintf(f, `{"type":"tool_use","id":"tc_%d","name":"mcp__lumen__semantic_search","input":{"query":"test"}}%s`, idx, "\n")
+		idx++
+	}
+}
+
+func TestGenerateOverview_Columns(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "overview.txt")
+
+	m := &metrics.Metrics{
+		CostUSD:      0.5000,
+		DurationMS:   120000,
+		InputTokens:  3000,
+		CacheRead:    7000,
+		OutputTokens: 1000,
+	}
+	mData, _ := json.Marshal(m)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-metrics.json"), mData, 0o644)
+
+	j := &judge.JudgeResult{Rating: judge.Good, FilesCorrect: true}
+	jData, _ := json.Marshal(j)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-judge.json"), jData, 0o644)
+
+	// Write a raw JSONL with 5 tool calls
+	writeToolCallJSONL(t, filepath.Join(dir, "task-1-baseline-raw.jsonl"), 5, 0)
+
+	cfg := &Config{
+		ResultsDir:  dir,
+		EmbedModel:  "test-embed",
+		ClaudeModel: "test-claude",
+		Tasks:       []task.Task{{ID: "task-1", Language: "go"}},
+		Scenarios:   []runner.Scenario{runner.Baseline},
+		OutputPath:  outPath,
+	}
+
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatalf("GenerateOverview: %v", err)
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading overview: %v", err)
+	}
+	content := string(data)
+
+	// Check new columns exist in header
+	for _, col := range []string{"Run", "Tool Calls", "Total Tokens"} {
+		if !strings.Contains(content, col) {
+			t.Errorf("overview missing column header %q", col)
+		}
+	}
+
+	// Check data: run=1, tokens=11000 (3000+7000+1000), tool calls=5
+	if !strings.Contains(content, "11000") {
+		t.Errorf("overview missing total tokens value 11000")
+	}
+	if !strings.Contains(content, "5") {
+		t.Errorf("overview missing tool calls value 5")
+	}
+	// Check run marker
+	if !strings.Contains(content, "=== Run:") {
+		t.Error("overview missing run marker")
+	}
+	if !strings.Contains(content, "embed=test-embed") {
+		t.Error("overview missing embed model in marker")
+	}
+}
+
+func TestGenerateOverview_AppendMode(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "overview.txt")
+
+	cfg := &Config{
+		ResultsDir:  dir,
+		EmbedModel:  "test-embed",
+		ClaudeModel: "test-claude",
+		Tasks:       []task.Task{{ID: "task-1", Language: "go"}},
+		Scenarios:   []runner.Scenario{runner.Baseline},
+		OutputPath:  outPath,
+	}
+
+	// Write minimal fixtures
+	m := &metrics.Metrics{CostUSD: 0.01, DurationMS: 1000}
+	mData, _ := json.Marshal(m)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-metrics.json"), mData, 0o644)
+
+	// Call twice — should append, not overwrite
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading overview: %v", err)
+	}
+	content := string(data)
+
+	count := strings.Count(content, "=== Run:")
+	if count != 2 {
+		t.Errorf("expected 2 run markers, got %d", count)
+	}
+}
+
+func TestGenerateOverview_Comparison(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "overview.txt")
+
+	// Baseline: expensive and slow
+	blMetrics := &metrics.Metrics{
+		CostUSD:      1.0000,
+		DurationMS:   300000,
+		InputTokens:  10000,
+		CacheRead:    40000,
+		OutputTokens: 5000,
+	}
+	blData, _ := json.Marshal(blMetrics)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-metrics.json"), blData, 0o644)
+
+	blJudge := &judge.JudgeResult{Rating: judge.Poor}
+	bjData, _ := json.Marshal(blJudge)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-judge.json"), bjData, 0o644)
+	writeToolCallJSONL(t, filepath.Join(dir, "task-1-baseline-raw.jsonl"), 40, 0)
+
+	// With-lumen: cheap and fast
+	lmMetrics := &metrics.Metrics{
+		CostUSD:      0.2000,
+		DurationMS:   60000,
+		InputTokens:  2000,
+		CacheRead:    8000,
+		OutputTokens: 1000,
+	}
+	lmData, _ := json.Marshal(lmMetrics)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-with-lumen-metrics.json"), lmData, 0o644)
+
+	lmJudge := &judge.JudgeResult{Rating: judge.Perfect}
+	ljData, _ := json.Marshal(lmJudge)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-with-lumen-judge.json"), ljData, 0o644)
+	writeToolCallJSONL(t, filepath.Join(dir, "task-1-with-lumen-raw.jsonl"), 5, 3)
+
+	cfg := &Config{
+		ResultsDir:  dir,
+		EmbedModel:  "test-embed",
+		ClaudeModel: "test-claude",
+		Tasks:       []task.Task{{ID: "task-1", Language: "go"}},
+		Scenarios:   []runner.Scenario{runner.Baseline, runner.WithLumen},
+		OutputPath:  outPath,
+	}
+
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatalf("GenerateOverview: %v", err)
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading overview: %v", err)
+	}
+	content := string(data)
+
+	// Check comparison section exists
+	if !strings.Contains(content, "--- Comparison: worst baseline vs best with-lumen ---") {
+		t.Error("missing comparison header")
+	}
+	if !strings.Contains(content, "cheaper") {
+		t.Error("missing cost comparison")
+	}
+	if !strings.Contains(content, "faster") {
+		t.Error("missing time comparison")
+	}
+	if !strings.Contains(content, "fewer tokens") {
+		t.Error("missing tokens comparison")
+	}
+	if !strings.Contains(content, "fewer tool calls") {
+		t.Error("missing tool calls comparison")
+	}
+	if !strings.Contains(content, "Poor (baseline) vs Perfect (lumen)") {
+		t.Error("missing rating comparison")
+	}
+}
+
+func TestGenerateOverview_SingleScenarioNoComparison(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "overview.txt")
+
+	m := &metrics.Metrics{CostUSD: 0.01, DurationMS: 1000}
+	mData, _ := json.Marshal(m)
+	_ = os.WriteFile(filepath.Join(dir, "task-1-baseline-metrics.json"), mData, 0o644)
+
+	cfg := &Config{
+		ResultsDir:  dir,
+		EmbedModel:  "test-embed",
+		ClaudeModel: "test-claude",
+		Tasks:       []task.Task{{ID: "task-1", Language: "go"}},
+		Scenarios:   []runner.Scenario{runner.Baseline},
+		OutputPath:  outPath,
+	}
+
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatalf("GenerateOverview: %v", err)
+	}
+
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading overview: %v", err)
+	}
+	content := string(data)
+
+	if strings.Contains(content, "--- Comparison:") {
+		t.Error("comparison section should not appear with single scenario")
+	}
+}
+
 func TestGenerate_EmptyResults(t *testing.T) {
 	dir := t.TempDir()
 
@@ -179,7 +423,7 @@ func TestGenerate_EmptyResults(t *testing.T) {
 		ResultsDir:  dir,
 		EmbedModel:  "test-model",
 		ClaudeModel: "test-claude",
-		Tasks:       []task.Task{{ID: "task-1", Language: "go", Difficulty: "easy"}},
+		Tasks:       []task.Task{{ID: "task-1", Language: "go"}},
 		Scenarios:   []runner.Scenario{runner.Baseline},
 	}
 

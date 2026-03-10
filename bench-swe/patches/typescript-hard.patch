@@ -1,233 +1,756 @@
-diff --git a/packages/vite/src/node/optimizer/rolldownDepPlugin.ts b/packages/vite/src/node/optimizer/rolldownDepPlugin.ts
-index 3c7ebb12f..d93561276 100644
---- a/packages/vite/src/node/optimizer/rolldownDepPlugin.ts
-+++ b/packages/vite/src/node/optimizer/rolldownDepPlugin.ts
-@@ -76,6 +76,19 @@ export function rolldownDepPlugin(
-   const esmPackageCache: PackageCache = new Map()
-   const cjsPackageCache: PackageCache = new Map()
- 
-+  const resolveAssets = (resolved: string, kind: ImportKind) => {
-+    if (kind === 'require-call') {
-+      // here it is not set to `external: true` to convert `require` to `import`
-+      return {
-+        id: externalWithConversionNamespace + resolved,
-+      }
-+    }
-+    return {
-+      id: resolved,
-+      external: 'absolute' as const,
-+    }
-+  }
+diff --git a/src/jsx/dom/intrinsic-element/components.test.tsx b/src/jsx/dom/intrinsic-element/components.test.tsx
+index 0df659d2..2f91295f 100644
+--- a/src/jsx/dom/intrinsic-element/components.test.tsx
++++ b/src/jsx/dom/intrinsic-element/components.test.tsx
+@@ -313,6 +313,268 @@ describe('intrinsic element', () => {
+         await Promise.resolve()
+         expect(root.innerHTML).toBe('<div><div>Content</div><button>Show</button></div>')
+       })
 +
-   // default resolver which prefers ESM
-   const _resolve = createBackCompatIdResolver(environment.getTopLevelConfig(), {
-     asSrc: false,
-@@ -106,7 +119,7 @@ export function rolldownDepPlugin(
-     return resolver(environment, id, _importer)
-   }
++      describe('React 19 compatibility', () => {
++        type LinkSignatureInput = {
++          rel: string
++          href: string
++          hrefLang?: string
++          type?: string
++          title?: string
++          media?: string
++          as?: string
++          crossOrigin?: string
++          sizes?: string
++          dataPrecedence?: string
++        }
++
++        const sig = (v: LinkSignatureInput) =>
++          [
++            v.rel,
++            v.href,
++            v.hrefLang ?? '',
++            v.type ?? '',
++            v.title ?? '',
++            v.media ?? '',
++            v.as ?? '',
++            v.crossOrigin ?? '',
++            v.sizes ?? '',
++            v.dataPrecedence ?? '',
++          ].join('|')
++
++        const headLinkSignatures = () =>
++          Array.from(document.head.querySelectorAll('link')).map((el) =>
++            sig({
++              rel: el.getAttribute('rel') ?? '',
++              href: el.getAttribute('href') ?? '',
++              hrefLang: el.getAttribute('hreflang') ?? '',
++              type: el.getAttribute('type') ?? '',
++              title: el.getAttribute('title') ?? '',
++              media: el.getAttribute('media') ?? '',
++              as: el.getAttribute('as') ?? '',
++              crossOrigin: el.getAttribute('crossorigin') ?? '',
++              sizes: el.getAttribute('sizes') ?? '',
++              dataPrecedence: el.getAttribute('data-precedence') ?? '',
++            })
++          )
++
++        const assertHeadLinks = (
++          node: unknown,
++          expected: string[],
++          expectedRootInnerHTML?: string
++        ) => {
++          render(node as never, root)
++          expect(headLinkSignatures()).toEqual(expected)
++          if (expectedRootInnerHTML !== undefined) {
++            expect(root.innerHTML).toBe(expectedRootInnerHTML)
++          }
++        }
++
++        it('should keep canonical and alternates in source order', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </div>,
++            [
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'alternate', href: 'https://example.com/ja/about', hrefLang: 'ja' }),
++            ]
++          )
++        })
++
++        it('should keep alternate-canonical-alternate order', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </div>,
++            [
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/ja/about', hrefLang: 'ja' }),
++            ]
++          )
++        })
++
++        it('should not de-duplicate canonical links', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='canonical' href='https://example.com/en/about' />
++            </div>,
++            [
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++            ]
++          )
++        })
++
++        it('should not de-duplicate alternate links', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++            </div>,
++            [
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++            ]
++          )
++        })
++
++        it('should de-duplicate stylesheet with precedence', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++            </div>,
++            [sig({ rel: 'stylesheet', href: '/style.css', dataPrecedence: 'default' })]
++          )
++        })
++
++        it('should not de-duplicate stylesheet against preload with same href', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='preload' href='/style.css' as='style' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++            </div>,
++            [
++              sig({ rel: 'stylesheet', href: '/style.css', dataPrecedence: 'default' }),
++              sig({ rel: 'preload', href: '/style.css', as: 'style' }),
++            ]
++          )
++        })
++
++        it('should keep stylesheet links without precedence in root', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='stylesheet' href='/style.css' />
++              <link rel='stylesheet' href='/style.css' />
++            </div>,
++            [],
++            '<div><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/style.css"></div>'
++          )
++        })
++
++        it('should keep different stylesheets with same precedence', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='stylesheet' href='/a.css' precedence='default' />
++              <link rel='stylesheet' href='/b.css' precedence='default' />
++            </div>,
++            [
++              sig({ rel: 'stylesheet', href: '/a.css', dataPrecedence: 'default' }),
++              sig({ rel: 'stylesheet', href: '/b.css', dataPrecedence: 'default' }),
++            ]
++          )
++        })
++
++        it('should not de-duplicate preload links', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++            </div>,
++            [
++              sig({ rel: 'preload', href: '/font.woff2', as: 'font', crossOrigin: '' }),
++              sig({ rel: 'preload', href: '/font.woff2', as: 'font', crossOrigin: '' }),
++            ]
++          )
++        })
++
++        it('should not de-duplicate modulepreload links', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='modulepreload' href='/module.js' />
++              <link rel='modulepreload' href='/module.js' />
++            </div>,
++            [
++              sig({ rel: 'modulepreload', href: '/module.js' }),
++              sig({ rel: 'modulepreload', href: '/module.js' }),
++            ]
++          )
++        })
++
++        it('should keep links from two components', () => {
++          const Head = () => (
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </>
++          )
++          const Body = () => (
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </>
++          )
++          assertHeadLinks(
++            <div>
++              <Head />
++              <Body />
++            </div>,
++            [
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'alternate', href: 'https://example.com/ja/about', hrefLang: 'ja' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'alternate', href: 'https://example.com/ja/about', hrefLang: 'ja' }),
++            ]
++          )
++        })
++
++        it('should hoist from deep nested component and keep duplicates', () => {
++          const Nested = () => (
++            <div>
++              <div>
++                <link rel='canonical' href='https://example.com/en/about' />
++              </div>
++            </div>
++          )
++          assertHeadLinks(
++            <div>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <Nested />
++            </div>,
++            [
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++            ]
++          )
++        })
++
++        it('should keep mixed links and de-duplicate only stylesheet', () => {
++          assertHeadLinks(
++            <div>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++            </div>,
++            [
++              sig({ rel: 'stylesheet', href: '/style.css', dataPrecedence: 'default' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'preload', href: '/font.woff2', as: 'font', crossOrigin: '' }),
++              sig({ rel: 'canonical', href: 'https://example.com/en/about' }),
++              sig({ rel: 'alternate', href: 'https://example.com/en/about', hrefLang: 'en' }),
++              sig({ rel: 'preload', href: '/font.woff2', as: 'font', crossOrigin: '' }),
++            ]
++          )
++        })
++      })
+     })
  
--  const resolveResult = (id: string, resolved: string) => {
-+  const resolveResult = (id: string, resolved: string, kind: ImportKind) => {
-     if (resolved.startsWith(browserExternalId)) {
-       return {
-         id: browserExternalNamespace + id,
-@@ -117,6 +130,9 @@ export function rolldownDepPlugin(
-         id: optionalPeerDepNamespace + resolved,
+     describe('style element', () => {
+@@ -719,6 +981,42 @@ describe('intrinsic element', () => {
+         expect(onError).toBeCalledTimes(1)
+       })
+ 
++      it('should not register load handlers when the tag has no de-duplication key', () => {
++        const addEventListener = vi.fn<HTMLElement['addEventListener']>()
++        const onLoad = vi.fn()
++        const onError = vi.fn()
++
++        const App = () => {
++          return (
++            <div>
++              <title
++                ref={(e: HTMLTitleElement) => {
++                  if (!e) {
++                    return
++                  }
++                  const originalAddEventListener = e.addEventListener.bind(e)
++                  addEventListener.mockImplementation((...args) =>
++                    originalAddEventListener(...args)
++                  )
++                  e.addEventListener = addEventListener
++                }}
++                onLoad={onLoad}
++                onError={onError}
++              >
++                Document Title
++              </title>
++              Content
++            </div>
++          )
++        }
++        render(<App />, root)
++        expect(document.head.innerHTML).toBe('<title>Document Title</title>')
++        expect(root.innerHTML).toBe('<div>Content</div>')
++        expect(addEventListener).not.toBeCalled()
++        expect(onLoad).not.toBeCalled()
++        expect(onError).not.toBeCalled()
++      })
++
+       it('should be blocked by blocking attribute', async () => {
+         const Component = () => {
+           return (
+diff --git a/src/jsx/dom/intrinsic-element/components.ts b/src/jsx/dom/intrinsic-element/components.ts
+index 9fc6fba1..49526637 100644
+--- a/src/jsx/dom/intrinsic-element/components.ts
++++ b/src/jsx/dom/intrinsic-element/components.ts
+@@ -1,7 +1,13 @@
+ import type { Props } from '../../base'
+ import { useContext } from '../../context'
+ import { use, useCallback, useMemo, useState } from '../../hooks'
+-import { dataPrecedenceAttr, deDupeKeyMap, domRenderers } from '../../intrinsic-element/common'
++import {
++  dataPrecedenceAttr,
++  deDupeKeyMap,
++  domRenderers,
++  isStylesheetLinkWithPrecedence,
++  shouldDeDupeByKey,
++} from '../../intrinsic-element/common'
+ import type { IntrinsicElements } from '../../intrinsic-elements'
+ import type { FC, JSXNode, PropsWithChildren, RefObject } from '../../types'
+ import { FormContext, registerAction } from '../hooks'
+@@ -72,11 +78,17 @@ const documentMetadataTag = (
+   let created = false
+ 
+   const deDupeKeys = deDupeKeyMap[tag]
++  const deDupeByKey = shouldDeDupeByKey(tag, supportSort)
++  const isDeDupeCandidateLink = (e: HTMLElement) =>
++    e.getAttribute('rel') === 'stylesheet' && e.getAttribute(dataPrecedenceAttr) !== null
+   let existingElements: NodeListOf<HTMLElement> | undefined = undefined
+-  if (deDupeKeys.length > 0) {
++  if (deDupeByKey) {
+     const tags = head.querySelectorAll<HTMLElement>(tag)
+     LOOP: for (const e of tags) {
+-      for (const key of deDupeKeyMap[tag]) {
++      if (tag === 'link' && !isDeDupeCandidateLink(e)) {
++        continue
++      }
++      for (const key of deDupeKeys) {
+         if (e.getAttribute(key) === props[key]) {
+           element = e
+           break LOOP
+@@ -96,10 +108,9 @@ const documentMetadataTag = (
+           if (props[key] !== undefined) {
+             e.setAttribute(key, props[key] as string)
+           }
+-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+-          if ((props as any).rel) {
+-            e.setAttribute('rel', props.rel)
+-          }
++        }
++        if (props.rel) {
++          e.setAttribute('rel', props.rel)
+         }
+         return e
+       })()
+@@ -115,7 +126,29 @@ const documentMetadataTag = (
+ 
+   const insert = useCallback(
+     (e: HTMLElement) => {
+-      if (deDupeKeys.length > 0) {
++      if (deDupeByKey) {
++        if (tag === 'link' && precedence !== undefined) {
++          let found = false
++          for (const existingElement of head.querySelectorAll<HTMLElement>(tag)) {
++            const existingPrecedence = existingElement.getAttribute(dataPrecedenceAttr)
++            if (existingPrecedence === null) {
++              head.insertBefore(e, existingElement)
++              return
++            }
++            if (found && existingPrecedence !== precedence) {
++              head.insertBefore(e, existingElement)
++              return
++            }
++            if (existingPrecedence === precedence) {
++              found = true
++            }
++          }
++
++          // if sentinel is not found, append to the end
++          head.appendChild(e)
++          return
++        }
++
+         let found = false
+         for (const existingElement of head.querySelectorAll<HTMLElement>(tag)) {
+           if (found && existingElement.getAttribute(dataPrecedenceAttr) !== precedence) {
+@@ -129,6 +162,10 @@ const documentMetadataTag = (
+ 
+         // if sentinel is not found, append to the end
+         head.appendChild(e)
++      } else if (tag === 'link') {
++        if (!head.contains(e)) {
++          head.appendChild(e)
++        }
+       } else if (existingElements) {
+         let found = false
+         for (const existingElement of existingElements!) {
+@@ -147,7 +184,7 @@ const documentMetadataTag = (
+         existingElements = undefined
        }
-     }
-+    if (allExternalTypesReg.test(resolved)) {
-+      return resolveAssets(resolved, kind)
-+    }
-     if (isBuiltin(environment.config.resolve.builtins, resolved)) {
+     },
+-    [precedence]
++    [deDupeByKey, precedence, tag]
+   )
+ 
+   const ref = composeRef(props.ref, (e: HTMLElement) => {
+@@ -164,6 +201,9 @@ const documentMetadataTag = (
+     if (!onError && !onLoad) {
        return
      }
-@@ -175,17 +191,7 @@ export function rolldownDepPlugin(
-                 external: false,
-               }
-             }
--
--            if (kind === 'require-call') {
--              // here it is not set to `external: true` to convert `require` to `import`
--              return {
--                id: externalWithConversionNamespace + resolved,
--              }
--            }
--            return {
--              id: resolved,
--              external: 'absolute',
--            }
-+            return resolveAssets(resolved, kind)
-           }
-         },
-       },
-@@ -241,7 +247,7 @@ export function rolldownDepPlugin(
-           // use vite's own resolver
-           const resolved = await resolve(id, importer, kind)
-           if (resolved) {
--            return resolveResult(id, resolved)
-+            return resolveResult(id, resolved, kind)
-           }
-         },
-       },
-diff --git a/playground/optimize-deps/__tests__/optimize-deps.spec.ts b/playground/optimize-deps/__tests__/optimize-deps.spec.ts
-index 60e2e5bd2..03d0b12aa 100644
---- a/playground/optimize-deps/__tests__/optimize-deps.spec.ts
-+++ b/playground/optimize-deps/__tests__/optimize-deps.spec.ts
-@@ -166,6 +166,10 @@ test('CJS dep with css import', async () => {
-   await expect.poll(() => getColor('.cjs-with-assets')).toBe('blue')
- })
++    if (!key) {
++      return
++    }
  
-+test('CJS dep requiring dep with css main field', async () => {
-+  await expect.poll(() => getColor('.cjs-require-css-main-field')).toBe('coral')
-+})
-+
- test('externalize known non-js files in optimize included dep', async () => {
-   await expect
-     .poll(() => page.textContent('.externalize-known-non-js'))
-diff --git a/playground/optimize-deps/dep-cjs-css-main-field/package.json b/playground/optimize-deps/dep-cjs-css-main-field/package.json
-new file mode 100644
-index 000000000..3a5d93b9e
---- /dev/null
-+++ b/playground/optimize-deps/dep-cjs-css-main-field/package.json
-@@ -0,0 +1,6 @@
-+{
-+  "name": "@vitejs/test-dep-cjs-css-main-field",
-+  "private": true,
-+  "version": "0.0.0",
-+  "main": "style.css"
-+}
-diff --git a/playground/optimize-deps/dep-cjs-css-main-field/style.css b/playground/optimize-deps/dep-cjs-css-main-field/style.css
-new file mode 100644
-index 000000000..3117cf513
---- /dev/null
-+++ b/playground/optimize-deps/dep-cjs-css-main-field/style.css
-@@ -0,0 +1,3 @@
-+.cjs-require-css-main-field {
-+  color: coral;
-+}
-diff --git a/playground/optimize-deps/dep-cjs-require-css-main-field/index.js b/playground/optimize-deps/dep-cjs-require-css-main-field/index.js
-new file mode 100644
-index 000000000..0623deeda
---- /dev/null
-+++ b/playground/optimize-deps/dep-cjs-require-css-main-field/index.js
-@@ -0,0 +1,2 @@
-+require('@vitejs/test-dep-cjs-css-main-field')
-+exports.a = 1
-diff --git a/playground/optimize-deps/dep-cjs-require-css-main-field/package.json b/playground/optimize-deps/dep-cjs-require-css-main-field/package.json
-new file mode 100644
-index 000000000..c8c2ca7eb
---- /dev/null
-+++ b/playground/optimize-deps/dep-cjs-require-css-main-field/package.json
-@@ -0,0 +1,9 @@
-+{
-+  "name": "@vitejs/test-dep-cjs-require-css-main-field",
-+  "private": true,
-+  "version": "0.0.0",
-+  "main": "index.js",
-+  "dependencies": {
-+    "@vitejs/test-dep-cjs-css-main-field": "file:../dep-cjs-css-main-field"
-+  }
-+}
-diff --git a/playground/optimize-deps/index.html b/playground/optimize-deps/index.html
-index 5e856c175..f52be0151 100644
---- a/playground/optimize-deps/index.html
-+++ b/playground/optimize-deps/index.html
-@@ -52,6 +52,9 @@
- <h2>CJS Dep with CSS</h2>
- <div class="cjs-with-assets">This should be blue</div>
+     let promise = (blockingPromiseMap[e.getAttribute(key) as string] ||= new Promise<Event>(
+       (resolve, reject) => {
+@@ -182,7 +222,7 @@ const documentMetadataTag = (
  
-+<h2>CJS Dep requiring dep with CSS main field</h2>
-+<div class="cjs-require-css-main-field">This should be coral</div>
-+
- <h2>import * as ...</h2>
- <div class="import-star"></div>
- 
-@@ -170,6 +173,7 @@
+   if (supportBlocking && blocking === 'render') {
+     const key = deDupeKeyMap[tag][0]
+-    if (props[key]) {
++    if (key && props[key]) {
+       const value = props[key]
+       const promise = (blockingPromiseMap[value] ||= new Promise<Event>((resolve, reject) => {
+         insert(element as HTMLElement)
+@@ -268,7 +308,7 @@ export const link: FC<PropsWithChildren<IntrinsicElements['link']>> = (props) =>
+       ref: props.ref,
+     } as unknown as JSXNode
    }
+-  return documentMetadataTag('link', props, 1, 'precedence' in props, true)
++  return documentMetadataTag('link', props, 1, isStylesheetLinkWithPrecedence(props), true)
+ }
  
-   import '@vitejs/test-dep-cjs-with-assets'
-+  import '@vitejs/test-dep-cjs-require-css-main-field'
-   import '@vitejs/test-dep-css-require'
-   import cssModuleRequire from '@vitejs/test-dep-css-require/mod.cjs'
-   document
-diff --git a/playground/optimize-deps/package.json b/playground/optimize-deps/package.json
-index ca8fe82e7..20e7dbc01 100644
---- a/playground/optimize-deps/package.json
-+++ b/playground/optimize-deps/package.json
-@@ -20,6 +20,8 @@
-     "@vitejs/test-dep-cjs-with-assets": "file:./dep-cjs-with-assets",
-     "@vitejs/test-dep-cjs-with-es-module-flag": "file:./dep-cjs-with-es-module-flag",
-     "@vitejs/test-dep-cjs-with-external-deps": "file:./dep-cjs-with-external-deps",
-+    "@vitejs/test-dep-cjs-css-main-field": "file:./dep-cjs-css-main-field",
-+    "@vitejs/test-dep-cjs-require-css-main-field": "file:./dep-cjs-require-css-main-field",
-     "@vitejs/test-dep-css-require": "file:./dep-css-require",
-     "@vitejs/test-dep-esbuild-plugin-transform": "file:./dep-esbuild-plugin-transform",
-     "@vitejs/test-dep-incompatible": "file:./dep-incompatible",
-diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index b683c0b5b..d5461fd1b 100644
---- a/pnpm-lock.yaml
-+++ b/pnpm-lock.yaml
-@@ -1023,9 +1023,15 @@ importers:
-       '@vitejs/test-dep-cjs-compiled-from-esm':
-         specifier: file:./dep-cjs-compiled-from-esm
-         version: file:playground/optimize-deps/dep-cjs-compiled-from-esm
-+      '@vitejs/test-dep-cjs-css-main-field':
-+        specifier: file:./dep-cjs-css-main-field
-+        version: file:playground/optimize-deps/dep-cjs-css-main-field
-       '@vitejs/test-dep-cjs-external-package-omit-js-suffix':
-         specifier: file:./dep-cjs-external-package-omit-js-suffix
-         version: file:playground/optimize-deps/dep-cjs-external-package-omit-js-suffix
-+      '@vitejs/test-dep-cjs-require-css-main-field':
-+        specifier: file:./dep-cjs-require-css-main-field
-+        version: file:playground/optimize-deps/dep-cjs-require-css-main-field
-       '@vitejs/test-dep-cjs-with-assets':
-         specifier: file:./dep-cjs-with-assets
-         version: file:playground/optimize-deps/dep-cjs-with-assets
-@@ -1168,8 +1174,16 @@ importers:
- 
-   playground/optimize-deps/dep-cjs-compiled-from-esm: {}
- 
-+  playground/optimize-deps/dep-cjs-css-main-field: {}
+ export const meta: FC<PropsWithChildren> = (props) => {
+diff --git a/src/jsx/intrinsic-element/common.ts b/src/jsx/intrinsic-element/common.ts
+index 8c066ddb..d1a349de 100644
+--- a/src/jsx/intrinsic-element/common.ts
++++ b/src/jsx/intrinsic-element/common.ts
+@@ -1,3 +1,5 @@
++import type { Props } from '../base'
 +
-   playground/optimize-deps/dep-cjs-external-package-omit-js-suffix: {}
+ export const deDupeKeyMap: Record<string, string[]> = {
+   title: [],
+   script: ['src'],
+@@ -9,3 +11,13 @@ export const deDupeKeyMap: Record<string, string[]> = {
+ export const domRenderers: Record<string, Function> = {}
  
-+  playground/optimize-deps/dep-cjs-require-css-main-field:
-+    dependencies:
-+      '@vitejs/test-dep-cjs-css-main-field':
-+        specifier: file:../dep-cjs-css-main-field
-+        version: file:playground/optimize-deps/dep-cjs-css-main-field
+ export const dataPrecedenceAttr = 'data-precedence'
 +
-   playground/optimize-deps/dep-cjs-with-assets: {}
- 
-   playground/optimize-deps/dep-cjs-with-es-module-flag: {}
-@@ -4103,9 +4117,15 @@ packages:
-   '@vitejs/test-dep-cjs-compiled-from-esm@file:playground/optimize-deps/dep-cjs-compiled-from-esm':
-     resolution: {directory: playground/optimize-deps/dep-cjs-compiled-from-esm, type: directory}
- 
-+  '@vitejs/test-dep-cjs-css-main-field@file:playground/optimize-deps/dep-cjs-css-main-field':
-+    resolution: {directory: playground/optimize-deps/dep-cjs-css-main-field, type: directory}
++export const isStylesheetLinkWithPrecedence = (props: Props): boolean =>
++  props.rel === 'stylesheet' && 'precedence' in props
 +
-   '@vitejs/test-dep-cjs-external-package-omit-js-suffix@file:playground/optimize-deps/dep-cjs-external-package-omit-js-suffix':
-     resolution: {directory: playground/optimize-deps/dep-cjs-external-package-omit-js-suffix, type: directory}
- 
-+  '@vitejs/test-dep-cjs-require-css-main-field@file:playground/optimize-deps/dep-cjs-require-css-main-field':
-+    resolution: {directory: playground/optimize-deps/dep-cjs-require-css-main-field, type: directory}
++export const shouldDeDupeByKey = (tagName: string, supportSort: boolean): boolean => {
++  if (tagName === 'link') {
++    return supportSort
++  }
++  return deDupeKeyMap[tagName].length > 0
++}
+diff --git a/src/jsx/intrinsic-element/components.test.tsx b/src/jsx/intrinsic-element/components.test.tsx
+index a5693300..7ab40fa1 100644
+--- a/src/jsx/intrinsic-element/components.test.tsx
++++ b/src/jsx/intrinsic-element/components.test.tsx
+@@ -115,6 +115,193 @@ describe('intrinsic element', () => {
+           '<html><head></head><body><link rel="stylesheet" href="style1.css"/><h1>World</h1></body></html>'
+         )
+       })
 +
-   '@vitejs/test-dep-cjs-with-assets@file:playground/optimize-deps/dep-cjs-with-assets':
-     resolution: {directory: playground/optimize-deps/dep-cjs-with-assets, type: directory}
- 
-@@ -10113,8 +10133,14 @@ snapshots:
- 
-   '@vitejs/test-dep-cjs-compiled-from-esm@file:playground/optimize-deps/dep-cjs-compiled-from-esm': {}
- 
-+  '@vitejs/test-dep-cjs-css-main-field@file:playground/optimize-deps/dep-cjs-css-main-field': {}
++      describe('React 19 compatibility', () => {
++        const headContent = (html: string) => html.match(/<head>(.*)<\/head>/)?.[1] ?? ''
++        const bodyContent = (html: string) => html.match(/<body>(.*)<\/body>/)?.[1] ?? ''
++        const renderDocument = (children: unknown) =>
++          (
++            <html>
++              <head></head>
++              <body>{children}</body>
++            </html>
++          ).toString()
++        const assertHeadAndBody = (children: unknown, expectedHead: string, expectedBody = '') => {
++          const output = renderDocument(children)
++          expect(headContent(output)).toBe(expectedHead)
++          expect(bodyContent(output)).toBe(expectedBody)
++        }
 +
-   '@vitejs/test-dep-cjs-external-package-omit-js-suffix@file:playground/optimize-deps/dep-cjs-external-package-omit-js-suffix': {}
- 
-+  '@vitejs/test-dep-cjs-require-css-main-field@file:playground/optimize-deps/dep-cjs-require-css-main-field':
-+    dependencies:
-+      '@vitejs/test-dep-cjs-css-main-field': file:playground/optimize-deps/dep-cjs-css-main-field
++        const canonical = () => <link rel='canonical' href='https://example.com/en/about' />
++        const alternateEn = () => (
++          <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++        )
++        const alternateJa = () => (
++          <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++        )
 +
-   '@vitejs/test-dep-cjs-with-assets@file:playground/optimize-deps/dep-cjs-with-assets': {}
++        it('should keep canonical and alternates in source order', () => {
++          assertHeadAndBody(
++            <>
++              {canonical()}
++              {alternateEn()}
++              {alternateJa()}
++            </>,
++            '<link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="alternate" hrefLang="ja" href="https://example.com/ja/about"/>'
++          )
++        })
++
++        it('should keep alternate-canonical-alternate order', () => {
++          assertHeadAndBody(
++            <>
++              {alternateEn()}
++              {canonical()}
++              {alternateJa()}
++            </>,
++            '<link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="ja" href="https://example.com/ja/about"/>'
++          )
++        })
++
++        it('should not de-dupe canonical links', () => {
++          assertHeadAndBody(
++            <>
++              {canonical()}
++              {canonical()}
++            </>,
++            '<link rel="canonical" href="https://example.com/en/about"/><link rel="canonical" href="https://example.com/en/about"/>'
++          )
++        })
++
++        it('should not de-dupe alternate links', () => {
++          assertHeadAndBody(
++            <>
++              {alternateEn()}
++              {alternateEn()}
++            </>,
++            '<link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/>'
++          )
++        })
++
++        it('should de-dupe stylesheet with precedence', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++            </>,
++            '<link rel="stylesheet" href="/style.css" data-precedence="default"/>'
++          )
++        })
++
++        it('should not de-dupe stylesheet against preload with same href', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='preload' href='/style.css' as='style' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++            </>,
++            '<link rel="stylesheet" href="/style.css" data-precedence="default"/><link rel="preload" href="/style.css" as="style"/>'
++          )
++        })
++
++        it('should not hoist stylesheet without precedence', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='stylesheet' href='/style.css' />
++              <link rel='stylesheet' href='/style.css' />
++            </>,
++            '',
++            '<link rel="stylesheet" href="/style.css"/><link rel="stylesheet" href="/style.css"/>'
++          )
++        })
++
++        it('should keep different stylesheets with same precedence', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='stylesheet' href='/a.css' precedence='default' />
++              <link rel='stylesheet' href='/b.css' precedence='default' />
++            </>,
++            '<link rel="stylesheet" href="/a.css" data-precedence="default"/><link rel="stylesheet" href="/b.css" data-precedence="default"/>'
++          )
++        })
++
++        it('should not de-dupe preload links', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++            </>,
++            '<link rel="preload" href="/font.woff2" as="font" crossorigin=""/><link rel="preload" href="/font.woff2" as="font" crossorigin=""/>'
++          )
++        })
++
++        it('should not de-dupe modulepreload links', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='modulepreload' href='/module.js' />
++              <link rel='modulepreload' href='/module.js' />
++            </>,
++            '<link rel="modulepreload" href="/module.js"/><link rel="modulepreload" href="/module.js"/>'
++          )
++        })
++
++        it('should keep links from two components', () => {
++          const Head = () => (
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </>
++          )
++          const Body = () => (
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='ja' href='https://example.com/ja/about' />
++            </>
++          )
++          assertHeadAndBody(
++            <>
++              <Head />
++              <Body />
++            </>,
++            '<link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="alternate" hrefLang="ja" href="https://example.com/ja/about"/><link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="alternate" hrefLang="ja" href="https://example.com/ja/about"/>'
++          )
++        })
++
++        it('should hoist from deep nested component and keep duplicates', () => {
++          const Nested = () => (
++            <div>
++              <div>
++                <link rel='canonical' href='https://example.com/en/about' />
++              </div>
++            </div>
++          )
++          assertHeadAndBody(
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <Nested />
++            </>,
++            '<link rel="canonical" href="https://example.com/en/about"/><link rel="canonical" href="https://example.com/en/about"/>',
++            '<div><div></div></div>'
++          )
++        })
++
++        it('should keep mixed links and de-dupe only stylesheet', () => {
++          assertHeadAndBody(
++            <>
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++              <link rel='canonical' href='https://example.com/en/about' />
++              <link rel='alternate' hrefLang='en' href='https://example.com/en/about' />
++              <link rel='stylesheet' href='/style.css' precedence='default' />
++              <link rel='preload' href='/font.woff2' as='font' crossOrigin='' />
++            </>,
++            '<link rel="stylesheet" href="/style.css" data-precedence="default"/><link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="preload" href="/font.woff2" as="font" crossorigin=""/><link rel="canonical" href="https://example.com/en/about"/><link rel="alternate" hrefLang="en" href="https://example.com/en/about"/><link rel="preload" href="/font.woff2" as="font" crossorigin=""/>'
++          )
++        })
++      })
+     })
  
-   '@vitejs/test-dep-cjs-with-es-module-flag@file:playground/optimize-deps/dep-cjs-with-es-module-flag': {}
+     describe('meta element', () => {
+diff --git a/src/jsx/intrinsic-element/components.ts b/src/jsx/intrinsic-element/components.ts
+index e711a932..7629e0a9 100644
+--- a/src/jsx/intrinsic-element/components.ts
++++ b/src/jsx/intrinsic-element/components.ts
+@@ -7,7 +7,12 @@ import { PERMALINK } from '../constants'
+ import { useContext } from '../context'
+ import type { IntrinsicElements } from '../intrinsic-elements'
+ import type { FC, PropsWithChildren } from '../types'
+-import { dataPrecedenceAttr, deDupeKeyMap } from './common'
++import {
++  dataPrecedenceAttr,
++  deDupeKeyMap,
++  isStylesheetLinkWithPrecedence,
++  shouldDeDupeByKey,
++} from './common'
+ 
+ const metaTagMap: WeakMap<
+   object,
+@@ -30,8 +35,15 @@ const insertIntoHead: (
+ 
+     let duped = false
+     const deDupeKeys = deDupeKeyMap[tagName]
+-    if (deDupeKeys.length > 0) {
++    const deDupeByKey = shouldDeDupeByKey(tagName, precedence !== undefined)
++    if (deDupeByKey) {
+       LOOP: for (const [, tagProps] of tags) {
++        if (
++          tagName === 'link' &&
++          !(tagProps.rel === 'stylesheet' && tagProps[dataPrecedenceAttr] !== undefined)
++        ) {
++          continue
++        }
+         for (const key of deDupeKeys) {
+           if ((tagProps?.[key] ?? null) === props?.[key]) {
+             duped = true
+@@ -43,7 +55,7 @@ const insertIntoHead: (
+ 
+     if (duped) {
+       buffer[0] = buffer[0].replaceAll(tag, '')
+-    } else if (deDupeKeys.length > 0) {
++    } else if (deDupeByKey || tagName === 'link') {
+       tags.push([tag, props, precedence])
+     } else {
+       tags.unshift([tag, props, precedence])
+@@ -51,21 +63,24 @@ const insertIntoHead: (
+ 
+     if (buffer[0].indexOf('</head>') !== -1) {
+       let insertTags
+-      if (precedence === undefined) {
+-        insertTags = tags.map(([tag]) => tag)
+-      } else {
++      if (tagName === 'link' || precedence !== undefined) {
+         const precedences: string[] = []
+         insertTags = tags
+-          .map(([tag, , precedence]) => {
+-            let order = precedences.indexOf(precedence as string)
++          .map(([tag, , tagPrecedence], index) => {
++            if (tagPrecedence === undefined) {
++              return [tag, Number.MAX_SAFE_INTEGER, index] as [string, number, number]
++            }
++            let order = precedences.indexOf(tagPrecedence as string)
+             if (order === -1) {
+-              precedences.push(precedence as string)
++              precedences.push(tagPrecedence as string)
+               order = precedences.length - 1
+             }
+-            return [tag, order] as [string, number]
++            return [tag, order, index] as [string, number, number]
+           })
+-          .sort((a, b) => a[1] - b[1])
++          .sort((a, b) => a[1] - b[1] || a[2] - b[2])
+           .map(([tag]) => tag)
++      } else {
++        insertTags = tags.map(([tag]) => tag)
+       }
+ 
+       insertTags.forEach((tag) => {
+@@ -151,7 +166,7 @@ export const link: FC<PropsWithChildren<IntrinsicElements['link']>> = ({ childre
+   ) {
+     return returnWithoutSpecialBehavior('link', children, props)
+   }
+-  return documentMetadataTag('link', children, props, 'precedence' in props)
++  return documentMetadataTag('link', children, props, isStylesheetLinkWithPrecedence(props))
+ }
+ export const meta: FC<PropsWithChildren> = ({ children, ...props }) => {
+   const nameSpaceContext = getNameSpaceContext()

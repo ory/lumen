@@ -33,16 +33,16 @@ type searchCall struct {
 }
 
 type langStats struct {
-	Language      string
-	TotalTasks    int
-	TotalRuns     int
-	InvalidRuns   int // with-lumen runs where mcp__lumen__semantic_search was never called
-	TotalQueries  int
-	FilesHit      int
-	FilesMissed   int
-	TotalResults  int
-	NoiseResults  int
-	MissedFiles   []string
+	Language     string
+	TotalTasks   int
+	TotalRuns    int
+	InvalidRuns  int // with-lumen runs where mcp__lumen__semantic_search was never called
+	TotalQueries int
+	FilesHit     int
+	FilesMissed  int
+	TotalResults int
+	NoiseResults int
+	MissedFiles  []string
 }
 
 func Analyze(resultsDir, tasksBaseDir string, tasks []task.Task) error {
@@ -171,10 +171,10 @@ func writeAnalysis(resultsDir string, stats map[string]*langStats) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := func(format string, args ...any) {
-		fmt.Fprintf(f, format+"\n", args...)
+		_, _ = fmt.Fprintf(f, format+"\n", args...)
 	}
 
 	w("# Chunker Analysis")

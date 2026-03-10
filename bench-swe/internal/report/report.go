@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,6 +35,7 @@ type taskResult struct {
 	judge     *judge.JudgeResult
 	patch     string
 	lumenUsed bool // true if mcp__lumen__semantic_search was called at least once
+	toolCalls int  // total tool call count from raw JSONL
 }
 
 func Generate(cfg *Config) error {
@@ -75,9 +77,17 @@ func loadResults(cfg *Config) []taskResult {
 					tr.patch = string(data)
 				}
 
-				if s == runner.WithLumen {
-					rawPath := filepath.Join(cfg.ResultsDir, slug+"-raw.jsonl")
-					tr.lumenUsed, _ = analysis.HasLumenSearch(rawPath)
+				rawPath := filepath.Join(cfg.ResultsDir, slug+"-raw.jsonl")
+				if calls, err := analysis.ExtractToolCalls(rawPath); err == nil {
+					tr.toolCalls = len(calls)
+					if s == runner.WithLumen {
+						for _, tc := range calls {
+							if tc.Name == "mcp__lumen__semantic_search" {
+								tr.lumenUsed = true
+								break
+							}
+						}
+					}
 				}
 
 				results = append(results, tr)
@@ -115,9 +125,9 @@ type scenarioAgg struct {
 }
 
 type langAgg struct {
-	Language     string
-	BaselineWins int
-	WithLumenWins  int
+	Language      string
+	BaselineWins  int
+	WithLumenWins int
 }
 
 func generateSummary(cfg *Config, results []taskResult) error {
@@ -126,7 +136,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data := summaryData{
 		Date:        time.Now().UTC().Format("2006-01-02 15:04 UTC"),
@@ -136,8 +146,8 @@ func generateSummary(cfg *Config, results []taskResult) error {
 
 	// Build dynamic table header/separator
 	var header, sep strings.Builder
-	header.WriteString("| Task | Lang | Diff |")
-	sep.WriteString("|------|------|------|")
+	header.WriteString("| Task | Lang |")
+	sep.WriteString("|------|------|")
 	for _, s := range cfg.Scenarios {
 		fmt.Fprintf(&header, " %s Rating |", s)
 		sep.WriteString("------------|")
@@ -157,7 +167,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 	multiRun := cfg.Runs > 1
 	for _, t := range cfg.Tasks {
 		var row strings.Builder
-		fmt.Fprintf(&row, "| %s | %s | %s |", t.ID, t.Language, t.Difficulty)
+		fmt.Fprintf(&row, "| %s | %s |", t.ID, t.Language)
 		for _, s := range cfg.Scenarios {
 			runs := findResults(results, t.ID, s)
 			if s == runner.WithLumen && allRunsInvalid(runs) {
@@ -271,9 +281,9 @@ func generateSummary(cfg *Config, results []taskResult) error {
 			}
 		}
 		data.LangAggs = append(data.LangAggs, langAgg{
-			Language:     lang,
-			BaselineWins: wins[runner.Baseline],
-			WithLumenWins:  wins[runner.WithLumen],
+			Language:      lang,
+			BaselineWins:  wins[runner.Baseline],
+			WithLumenWins: wins[runner.WithLumen],
 		})
 	}
 
@@ -295,7 +305,6 @@ type detailData struct {
 type detailTask struct {
 	ID              string
 	Language        string
-	Difficulty      string
 	IssueTitle      string
 	IssueBodyQuoted string
 	MetricsRows     []detailMetricsRow
@@ -324,7 +333,7 @@ func generateDetail(cfg *Config, results []taskResult) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	data := detailData{
 		Date: time.Now().UTC().Format("2006-01-02 15:04 UTC"),
@@ -334,7 +343,6 @@ func generateDetail(cfg *Config, results []taskResult) error {
 		dt := detailTask{
 			ID:              t.ID,
 			Language:        t.Language,
-			Difficulty:      t.Difficulty,
 			IssueTitle:      t.IssueTitle,
 			IssueBodyQuoted: strings.ReplaceAll(t.IssueBody, "\n", "\n> "),
 		}
@@ -498,47 +506,187 @@ func ratingRank(r judge.Rating) int {
 	}
 }
 
+// totalTokens returns the total token count (input + output + cache read).
+func totalTokens(m *metrics.Metrics) int64 {
+	if m == nil {
+		return 0
+	}
+	return m.InputTokens + m.OutputTokens + m.CacheRead
+}
+
+func ratingName(rank int) string {
+	switch rank {
+	case 3:
+		return "Perfect"
+	case 2:
+		return "Good"
+	case 1:
+		return "Poor"
+	default:
+		return "None"
+	}
+}
+
+func pctDiff(label, better, worse string, base, cmp float64) string {
+	if base == 0 {
+		return ""
+	}
+	pct := (base - cmp) / base * 100
+	if pct >= 0 {
+		return fmt.Sprintf("%-12s%.4g (baseline) vs %.4g (lumen) → %.0f%% %s\n", label, base, cmp, pct, better)
+	}
+	return fmt.Sprintf("%-12s%.4g (baseline) vs %.4g (lumen) → %.0f%% %s\n", label, base, cmp, -pct, worse)
+}
+
 // GenerateOverview prints and/or writes a compact overview table of results.
-// It runs only if cfg.Verbose is true or cfg.OutputPath is non-empty.
+// Output is appended to the file (not overwritten) so that multiple runs
+// can be compared side-by-side.
 func GenerateOverview(cfg *Config) error {
 	results := loadResults(cfg)
 
 	var b strings.Builder
-	const hdr = "%-30s  %-8s  %-6s  %-10s  %-8s  %-8s  %-7s\n"
-	const row = "%-30s  %-8s  %-6s  %-10s  %-8s  %-8s  %-7s\n"
-	fmt.Fprintf(&b, hdr, "Task", "Lang", "Diff", "Scenario", "Rating", "Cost", "Time")
-	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 90))
+
+	// Run marker for distinguishing appended runs
+	fmt.Fprintf(&b, "=== Run: %s | embed=%s | claude=%s ===\n\n",
+		time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		cfg.EmbedModel,
+		cfg.ClaudeModel,
+	)
+
+	const (
+		hdr = "%-30s  %-8s  %-10s  %-4s  %-8s  %-8s  %-7s  %-13s  %-11s  %-5s\n"
+		row = "%-30s  %-8s  %-10s  %-4s  %-8s  %-8s  %-7s  %-13s  %-11s  %-5s\n"
+		sep = 120
+	)
+	fmt.Fprintf(&b, hdr, "Task", "Lang", "Scenario", "Run", "Rating", "Cost", "Time", "Total Tokens", "Tool Calls", "Valid")
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", sep))
 
 	var totalCost float64
 	counts := map[judge.Rating]int{}
+	invalidCount := 0
+
+	// Comparison accumulators: worst baseline vs best with-lumen
+	var (
+		blMaxCost   float64
+		blMaxTime   int64
+		blMaxTokens int64
+		blMaxCalls  int
+		blWorstRank = 4 // higher than any real rank, so first match is always "worse"
+		hasBaseline bool
+
+		lmMinCost   = math.MaxFloat64
+		lmMinTime   = int64(math.MaxInt64)
+		lmMinTokens = int64(math.MaxInt64)
+		lmMinCalls  = math.MaxInt
+		lmBestRank  int
+		hasLumen    bool
+	)
 
 	for _, t := range cfg.Tasks {
 		for _, s := range cfg.Scenarios {
 			runs := findResults(results, t.ID, s)
-			jr := bestRating(runs)
-			m := medianMetrics(runs)
+			for _, r := range runs {
+				invalid := r.scenario == runner.WithLumen && !r.lumenUsed
+				valid := "YES"
+				if invalid {
+					valid = "NO"
+					invalidCount++
+				}
 
-			rating := "—"
-			cost := "—"
-			dur := "—"
+				rating := "—"
+				cost := "—"
+				dur := "—"
+				tokens := "—"
+				calls := "—"
+				runCol := fmt.Sprintf("%d", r.runIndex)
 
-			if jr != nil {
-				rating = string(jr.Rating)
-				counts[jr.Rating]++
+				if invalid {
+					rating = "INVALID"
+				} else if r.judge != nil {
+					rating = string(r.judge.Rating)
+					counts[r.judge.Rating]++
+				}
+				if r.metrics != nil {
+					cost = fmt.Sprintf("$%.4f", r.metrics.CostUSD)
+					dur = fmt.Sprintf("%.1fs", float64(r.metrics.DurationMS)/1000)
+					totalCost += r.metrics.CostUSD
+					tokens = fmt.Sprintf("%d", totalTokens(r.metrics))
+				}
+				if r.toolCalls > 0 {
+					calls = fmt.Sprintf("%d", r.toolCalls)
+				}
+
+				fmt.Fprintf(&b, row, t.ID, t.Language, string(s), runCol, rating, cost, dur, tokens, calls, valid)
+
+				// Accumulate comparison data
+				if r.scenario == runner.Baseline && r.metrics != nil && !invalid {
+					hasBaseline = true
+					if r.metrics.CostUSD > blMaxCost {
+						blMaxCost = r.metrics.CostUSD
+					}
+					if r.metrics.DurationMS > blMaxTime {
+						blMaxTime = r.metrics.DurationMS
+					}
+					tk := totalTokens(r.metrics)
+					if tk > blMaxTokens {
+						blMaxTokens = tk
+					}
+					if r.toolCalls > blMaxCalls {
+						blMaxCalls = r.toolCalls
+					}
+					if r.judge != nil {
+						rank := ratingRank(r.judge.Rating)
+						if rank < blWorstRank {
+							blWorstRank = rank
+						}
+					}
+				}
+				if r.scenario == runner.WithLumen && r.lumenUsed && r.metrics != nil {
+					hasLumen = true
+					if r.metrics.CostUSD < lmMinCost {
+						lmMinCost = r.metrics.CostUSD
+					}
+					if r.metrics.DurationMS < lmMinTime {
+						lmMinTime = r.metrics.DurationMS
+					}
+					tk := totalTokens(r.metrics)
+					if tk < lmMinTokens {
+						lmMinTokens = tk
+					}
+					if r.toolCalls < lmMinCalls {
+						lmMinCalls = r.toolCalls
+					}
+					if r.judge != nil {
+						rank := ratingRank(r.judge.Rating)
+						if rank > lmBestRank {
+							lmBestRank = rank
+						}
+					}
+				}
 			}
-			if m != nil {
-				cost = fmt.Sprintf("$%.4f", m.CostUSD)
-				dur = fmt.Sprintf("%.1fs", float64(m.DurationMS)/1000)
-				totalCost += m.CostUSD
-			}
-
-			fmt.Fprintf(&b, row, t.ID, t.Language, t.Difficulty, string(s), rating, cost, dur)
 		}
 	}
 
-	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", 90))
-	fmt.Fprintf(&b, "Perfect: %d  Good: %d  Poor: %d  Total cost: $%.4f\n",
-		counts[judge.Perfect], counts[judge.Good], counts[judge.Poor], totalCost)
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", sep))
+	fmt.Fprintf(&b, "Perfect: %d  Good: %d  Poor: %d  Invalid: %d  Total cost: $%.4f\n",
+		counts[judge.Perfect], counts[judge.Good], counts[judge.Poor], invalidCount, totalCost)
+
+	// Comparison summary: worst baseline vs best with-lumen
+	if hasBaseline && hasLumen {
+		fmt.Fprintf(&b, "\n--- Comparison: worst baseline vs best with-lumen ---\n")
+		fmt.Fprint(&b, pctDiff("Cost:", "cheaper", "more expensive",
+			blMaxCost, lmMinCost))
+		fmt.Fprint(&b, pctDiff("Time:", "faster", "slower",
+			float64(blMaxTime)/1000, float64(lmMinTime)/1000))
+		fmt.Fprint(&b, pctDiff("Tokens:", "fewer tokens", "more tokens",
+			float64(blMaxTokens), float64(lmMinTokens)))
+		fmt.Fprint(&b, pctDiff("Tool calls:", "fewer tool calls", "more tool calls",
+			float64(blMaxCalls), float64(lmMinCalls)))
+		fmt.Fprintf(&b, "%-12s%s (baseline) vs %s (lumen)\n",
+			"Rating:", ratingName(blWorstRank), ratingName(lmBestRank))
+	}
+
+	fmt.Fprintln(&b) // trailing blank line between appended runs
 
 	out := b.String()
 
@@ -551,7 +699,12 @@ func GenerateOverview(cfg *Config) error {
 	if outPath == "" {
 		outPath = "overview.txt"
 	}
-	if err := os.WriteFile(outPath, []byte(out), 0o644); err != nil {
+	f, err := os.OpenFile(outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("opening overview file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := f.WriteString(out); err != nil {
 		return fmt.Errorf("writing overview: %w", err)
 	}
 	fmt.Printf("  Overview: %s\n", outPath)

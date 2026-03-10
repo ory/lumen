@@ -1,0 +1,59 @@
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..0e6aee0 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -307,7 +307,16 @@ impl State {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        let mixed_table_types = if path.is_empty() {
++            // Writing directly into the current table: error if it was created by dotted keys
++            parent_table.is_dotted()
++        } else {
++            // Writing via dotted keys into a sub-table: error only if the sub-table was explicitly
++            // defined with a [header] (non-dotted and non-implicit).
++            // Implicitly created parent tables (e.g. `apple` from `[fruit.apple.texture]`) are
++            // allowed to be extended with dotted keys.
++            !parent_table.is_dotted() && !parent_table.is_implicit()
++        };
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+diff --git a/crates/toml_edit/tests/compliance/parse.rs b/crates/toml_edit/tests/compliance/parse.rs
+index 6ab6cae..9928fcd 100644
+--- a/crates/toml_edit/tests/compliance/parse.rs
++++ b/crates/toml_edit/tests/compliance/parse.rs
+@@ -191,6 +191,32 @@ fn empty_table() {
+     table["foo"].as_table().unwrap();
+ }
+ 
++#[test]
++fn dotted_keys_extend_implicit_table() {
++    // Implicit tables created by nested headers (e.g. `apple` from `[fruit.apple.texture]`)
++    // must be extendable with dotted keys in a later section. See toml-lang/toml#769.
++    let input = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++    let document = input.parse::<crate::RustDocument>().unwrap();
++    assert_eq!(
++        document["fruit"]["apple"]["color"].as_str(),
++        Some("red")
++    );
++    assert_eq!(
++        document["fruit"]["apple"]["taste"]["sweet"].as_bool(),
++        Some(true)
++    );
++    assert_eq!(
++        document["fruit"]["apple"]["texture"]["smooth"].as_bool(),
++        Some(true)
++    );
++}
++
+ #[test]
+ fn mixed_table_issue_527() {
+     let input = r#"

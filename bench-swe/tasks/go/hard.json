@@ -1,7 +1,6 @@
 {
   "id": "go-hard",
   "language": "go",
-  "difficulty": "hard",
   "repo": "https://github.com/goccy/go-yaml",
   "base_commit": "237df0ef1c53d7c1732e6afb1fcfd85dd1745637",
   "fix_commit": "3a90d7186f4be93a1ad3575c36d5eebcc4a50181",
@@ -9,10 +8,7 @@
   "issue_title": "Decoder overrides defaults with null values",
   "issue_body": "The decoder overrides the default values of a nested struct with zero-initialised values when the YAML node is null or contains only comments.\n\nGiven the following Go types:\n\n```go\ntype Default struct {\n    Key string `yaml:\"key\"`\n}\n\ntype Test struct {\n    First    string  `yaml:\"first\"`\n    Defaults Default `yaml:\"second\"`\n}\n```\n\nAnd the following YAML input where the nested struct key is present but has no actual values (only comments):\n\n```yaml\nfirst: \"Test\"\nsecond:\n  # Just want to document the fields of the nested struct\n#  key: \"Value from YAML\"\n```\n\nWhen decoding into a pre-initialized struct with default values:\n\n```go\ntest := Test{Defaults: Default{Key: \"My default Value\"}}\nd := yaml.NewDecoder(strings.NewReader(yml))\nerr := d.Decode(&test)\n```\n\nThe decoder zeroes out the nested struct, losing the pre-set default value. After decoding, `test.Defaults.Key` is an empty string instead of preserving the original default value \"My default Value\".\n\nThe standard library yaml.v3 preserves the default values in this scenario. The go-yaml decoder should also preserve struct defaults when the corresponding YAML node is null or contains no actual values.",
   "gold_patch_file": "patches/go-hard.patch",
-  "expected_files": [
-    "decode.go",
-    "decode_test.go"
-  ],
+  "expected_files": ["decode.go", "decode_test.go"],
   "setup_commands": [],
   "test_command": "go test -run TestDecoderPreservesDefaultValues -v ./...",
   "timeout_s": 900

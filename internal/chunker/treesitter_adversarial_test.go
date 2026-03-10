@@ -150,7 +150,7 @@ func TestAdversarial_Python(t *testing.T) {
 	cs.mustHave("MY_CONST", "var")
 	cs.mustHave("__all__", "var")
 	cs.mustHave("outer", "function")
-	cs.mustHave("inner", "function")
+	cs.mustHave("outer.inner", "function")
 
 	// Must NOT extract from comments/strings
 	cs.mustNotHave("commented_function", "function")
@@ -321,7 +321,7 @@ func TestAdversarial_TSX(t *testing.T) {
 	cs.mustHave("Props", "interface")
 	cs.mustHave("Theme", "type")
 	cs.mustHave("Wrapper", "function")
-	cs.mustHave("Inner", "function")
+	cs.mustHave("Wrapper.Inner", "function")
 }
 
 // ---------- JavaScript Adversarial ----------
