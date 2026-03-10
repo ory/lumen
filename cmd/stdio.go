@@ -32,7 +32,6 @@ import (
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/merkle"
-	"github.com/ory/lumen/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -51,10 +50,10 @@ var stdioCmd = &cobra.Command{
 // SemanticSearchInput defines the parameters for the semantic_search tool.
 type SemanticSearchInput struct {
 	Query        string   `json:"query" jsonschema:"Natural language search query"`
-	Path         string   `json:"path" jsonschema:"Absolute path to search in. Defaults to cwd. When a subdirectory of cwd, results are filtered to that subtree."`
+	Path         string   `json:"path,omitempty" jsonschema:"Absolute path to search in. Defaults to cwd. When a subdirectory of cwd, results are filtered to that subtree."`
 	Cwd          string   `json:"cwd,omitempty" jsonschema:"The current working directory / project root. Used as index root when provided."`
-	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 20"`
-	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default 0.5. Use -1 to return all results."`
+	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 8"`
+	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default depends on embedding model. Use -1 to return all results."`
 	ForceReindex bool     `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
 	Summary      bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
 	MaxLines     int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
@@ -76,6 +75,7 @@ type SemanticSearchOutput struct {
 	Results      []SearchResultItem `json:"results"`
 	Reindexed    bool               `json:"reindexed"`
 	IndexedFiles int                `json:"indexed_files,omitempty"`
+	FilteredHint string             `json:"filtered_hint,omitempty"`
 }
 
 // IndexStatusInput defines the parameters for the index_status tool.
@@ -259,7 +259,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return nil, nil, err
 	}
 
-	maxDistance := computeMaxDistance(input.MinScore)
+	maxDistance := computeMaxDistance(input.MinScore, ic.model, ic.embedder.Dimensions())
 
 	// When searching a subdirectory, filter results to that prefix only.
 	var pathPrefix string
@@ -269,35 +269,62 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		}
 	}
 
-	results, err := idx.Search(ctx, effectiveRoot, queryVec, input.Limit, maxDistance, pathPrefix)
+	// Over-fetch from KNN so that merging overlapping split chunks doesn't
+	// reduce the final result count below the requested limit.
+	fetchLimit := input.Limit * 2
+	results, err := idx.Search(ctx, effectiveRoot, queryVec, fetchLimit, maxDistance, pathPrefix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search: %w", err)
 	}
 
-	out.Results = make([]SearchResultItem, len(results))
-	var snippets []string
-	if !input.Summary {
-		snippets = extractSnippets(effectiveRoot, results)
-	}
-	for i, r := range results {
-		var content string
-		if snippets != nil {
-			content = snippets[i]
-			if input.MaxLines > 0 && content != "" {
-				content = truncateLines(content, input.MaxLines)
-			}
+	// When the noise floor filtered out all results, check whether unfiltered
+	// results exist so we can tell the caller why the search came up empty.
+	if len(results) == 0 && maxDistance > 0 {
+		unfiltered, ufErr := idx.Search(ctx, effectiveRoot, queryVec, 1, 0, pathPrefix)
+		if ufErr == nil && len(unfiltered) > 0 {
+			bestScore := 1.0 - unfiltered[0].Distance
+			noiseFloor := 1.0 - maxDistance
+			out.FilteredHint = fmt.Sprintf(
+				"Results exist but were below the %.2f noise floor (best match scored %.2f). "+
+					"Use min_score=-1 to see all results, or lower min_score.",
+				noiseFloor, bestScore,
+			)
 		}
-		out.Results[i] = SearchResultItem{
+	}
+
+	// Convert store results to SearchResultItems with boosted scores.
+	items := make([]SearchResultItem, len(results))
+	for i, r := range results {
+		items[i] = SearchResultItem{
 			FilePath:  r.FilePath,
 			Symbol:    r.Symbol,
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     float32(1.0 - r.Distance),
-			Content:   content,
+			Score:     boostedScore(float32(1.0-r.Distance), r.Kind, r.FilePath),
 		}
 	}
 
+	// Merge overlapping/adjacent chunks from the same file to eliminate
+	// duplicates caused by split chunks and to present cohesive results.
+	items = mergeOverlappingResults(items)
+
+	// Re-sort by boosted score so documentation does not outrank source code.
+	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
+
+	// Cap to the originally requested limit after merging.
+	if len(items) > input.Limit {
+		items = items[:input.Limit]
+	}
+
+	// Extract snippets for merged results.
+	if !input.Summary {
+		fillSnippets(effectiveRoot, items, input.MaxLines)
+	}
+
+	out.Results = items
 	text := formatSearchResults(input.Path, out)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
@@ -316,7 +343,14 @@ func validateSearchInput(input *SemanticSearchInput) error {
 		input.Path = input.Cwd
 	}
 	if input.Path == "" {
-		return fmt.Errorf("path is required (or provide cwd)")
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("path is required (or provide cwd): %w", err)
+		}
+		input.Path = wd
+		if input.Cwd == "" {
+			input.Cwd = wd
+		}
 	}
 
 	if input.Cwd != "" && input.Path != input.Cwd {
@@ -330,7 +364,7 @@ func validateSearchInput(input *SemanticSearchInput) error {
 		return fmt.Errorf("query is required")
 	}
 	if input.Limit <= 0 {
-		input.Limit = 20
+		input.Limit = 8
 	}
 	return nil
 }
@@ -384,9 +418,19 @@ func (ic *indexerCache) embedQuery(ctx context.Context, query string) ([]float32
 	return vecs[0], nil
 }
 
-func computeMaxDistance(minScore *float64) float64 {
+// computeMaxDistance converts a user-facing min_score into the cosine distance
+// ceiling used by sqlite-vec. When no explicit score is given, the noise floor
+// is determined from KnownModels or, for unknown models, from the embedding
+// dimensionality via DimensionAwareMinScore.
+func computeMaxDistance(minScore *float64, model string, dims int) float64 {
 	if minScore == nil {
-		return 0.5 // Default: 0.5 min_score
+		if spec, ok := embedder.KnownModels[model]; ok && spec.MinScore > 0 {
+			return 1.0 - spec.MinScore
+		}
+		if dims > 0 {
+			return 1.0 - embedder.DimensionAwareMinScore(dims)
+		}
+		return 1.0 - embedder.DefaultMinScore
 	}
 	if *minScore > -1 {
 		return 1.0 - *minScore
@@ -481,32 +525,6 @@ func healthResult(backend, host, model string, reachable bool, message string) *
 	}
 }
 
-func extractSnippets(projectPath string, results []store.SearchResult) []string {
-	snippets := make([]string, len(results))
-	filesByPath := groupResultsByFile(results)
-
-	for filePath, refs := range filesByPath {
-		lines := readFileLines(projectPath, filePath)
-		extractForFile(snippets, lines, refs)
-	}
-
-	return snippets
-}
-
-type resultRef struct {
-	idx       int
-	startLine int
-	endLine   int
-}
-
-func groupResultsByFile(results []store.SearchResult) map[string][]resultRef {
-	byFile := make(map[string][]resultRef)
-	for i, r := range results {
-		byFile[r.FilePath] = append(byFile[r.FilePath], resultRef{i, r.StartLine, r.EndLine})
-	}
-	return byFile
-}
-
 func readFileLines(projectPath, filePath string) []string {
 	absPath := filepath.Join(projectPath, filePath)
 	f, err := os.Open(absPath)
@@ -521,16 +539,6 @@ func readFileLines(projectPath, filePath string) []string {
 		lines = append(lines, scanner.Text())
 	}
 	return lines
-}
-
-func extractForFile(snippets []string, lines []string, refs []resultRef) {
-	for _, ref := range refs {
-		start, end := normalizeLineRange(ref.startLine, ref.endLine, len(lines))
-		if start >= end {
-			continue
-		}
-		snippets[ref.idx] = strings.Join(lines[start:end], "\n")
-	}
 }
 
 // truncateLines returns at most maxLines lines from a string.
@@ -548,6 +556,160 @@ func normalizeLineRange(startLine, endLine, totalLines int) (int, int) {
 	return start, end
 }
 
+// mergeOverlappingResults combines search results from the same file whose
+// line ranges overlap or are adjacent (within 5 lines). This eliminates
+// duplicates from split chunks and produces cohesive results. The highest
+// score among merged items is kept.
+func mergeOverlappingResults(items []SearchResultItem) []SearchResultItem {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Group by file path.
+	type group struct {
+		items []SearchResultItem
+	}
+	groups := make(map[string]*group)
+	var order []string
+	for _, item := range items {
+		g, ok := groups[item.FilePath]
+		if !ok {
+			g = &group{}
+			groups[item.FilePath] = g
+			order = append(order, item.FilePath)
+		}
+		g.items = append(g.items, item)
+	}
+
+	var merged []SearchResultItem
+	const adjacencyGap = 5
+
+	for _, fp := range order {
+		g := groups[fp]
+		// Sort by StartLine to find overlaps.
+		slices.SortFunc(g.items, func(a, b SearchResultItem) int {
+			return cmp.Compare(a.StartLine, b.StartLine)
+		})
+
+		// Merge overlapping/adjacent items.
+		current := g.items[0]
+		for _, next := range g.items[1:] {
+			if next.StartLine <= current.EndLine+adjacencyGap {
+				// Merge: extend line range, keep best score, join symbols.
+				if next.EndLine > current.EndLine {
+					current.EndLine = next.EndLine
+				}
+				if next.Score > current.Score {
+					current.Score = next.Score
+					current.Kind = next.Kind
+				}
+				if !strings.Contains(current.Symbol, next.Symbol) {
+					current.Symbol = current.Symbol + "+" + next.Symbol
+				}
+			} else {
+				merged = append(merged, current)
+				current = next
+			}
+		}
+		merged = append(merged, current)
+	}
+
+	return merged
+}
+
+// fillSnippets reads source files and populates Content for each result item.
+func fillSnippets(projectPath string, items []SearchResultItem, maxLines int) {
+	// Group by file to read each file once.
+	type ref struct {
+		idx       int
+		startLine int
+		endLine   int
+	}
+	byFile := make(map[string][]ref)
+	for i, item := range items {
+		byFile[item.FilePath] = append(byFile[item.FilePath], ref{i, item.StartLine, item.EndLine})
+	}
+
+	for filePath, refs := range byFile {
+		lines := readFileLines(projectPath, filePath)
+		if lines == nil {
+			continue
+		}
+		for _, r := range refs {
+			start, end := normalizeLineRange(r.startLine, r.endLine, len(lines))
+			if start >= end {
+				continue
+			}
+			content := strings.Join(lines[start:end], "\n")
+			if maxLines > 0 && content != "" {
+				content = truncateLines(content, maxLines)
+			}
+			items[r.idx].Content = content
+		}
+	}
+}
+
+// sourceCodeKinds lists chunk kinds that represent source code declarations.
+// These receive a score boost to outrank documentation and changelog chunks.
+var sourceCodeKinds = map[string]bool{
+	"function":  true,
+	"method":    true,
+	"type":      true,
+	"interface": true,
+	"const":     true,
+	"var":       true,
+}
+
+// boostedScore adjusts the raw cosine score of a chunk based on its kind and
+// file type. Source code declarations get a 1.15x boost; test files are
+// demoted by 0.75x so that implementation code clearly outranks test helpers
+// for concept queries. The result is capped at 1.0.
+func boostedScore(score float32, kind, filePath string) float32 {
+	if sourceCodeKinds[kind] {
+		if boosted := score * 1.15; boosted < 1.0 {
+			score = boosted
+		} else {
+			score = 1.0
+		}
+	}
+	if isTestFile(filePath) {
+		score *= 0.75
+	}
+	return score
+}
+
+// isTestFile reports whether filePath looks like a test file across common
+// language conventions: Go (*_test.go), Rust (*_test.rs), Ruby (*_spec.rb),
+// JS/TS (*.test.*, *.spec.*), Python (test_*.py, tests/ directory),
+// Java (src/test/), PHP (tests/).
+func isTestFile(filePath string) bool {
+	lower := strings.ToLower(filepath.ToSlash(filePath))
+	base := filepath.Base(lower)
+	ext := filepath.Ext(base)
+	nameNoExt := strings.TrimSuffix(base, ext)
+
+	// Filename-based patterns.
+	switch {
+	case strings.HasSuffix(nameNoExt, "_test"),
+		strings.HasSuffix(nameNoExt, "_spec"),
+		strings.HasSuffix(nameNoExt, ".test"),
+		strings.HasSuffix(nameNoExt, ".spec"),
+		strings.HasPrefix(nameNoExt, "test_"),
+		strings.Contains(base, ".test."),
+		strings.Contains(base, ".spec."):
+		return true
+	}
+
+	// Directory-based patterns: check each path segment.
+	for dir := filepath.Dir(lower); dir != "." && dir != "/"; dir = filepath.Dir(dir) {
+		switch filepath.Base(dir) {
+		case "test", "tests", "__tests__":
+			return true
+		}
+	}
+	return false
+}
+
 var xmlEscaper = strings.NewReplacer(
 	"&", "&amp;",
 	"<", "&lt;",
@@ -558,13 +720,18 @@ var xmlEscaper = strings.NewReplacer(
 // formatSearchResults builds an XML-tagged representation of search results
 // for LLM consumption. File paths are shown relative to the project root.
 // Chunks from the same file are grouped under a <result:file> element to
-// reduce repetition.
+// reduce repetition. Overlapping chunks are merged before this function is
+// called, so no per-file cap is needed.
 func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if len(out.Results) == 0 {
 		var b strings.Builder
 		b.WriteString("No results found.")
 		if out.Reindexed {
 			fmt.Fprintf(&b, " (indexed %d files)", out.IndexedFiles)
+		}
+		if out.FilteredHint != "" {
+			b.WriteString("\n")
+			b.WriteString(out.FilteredHint)
 		}
 		return b.String()
 	}
@@ -693,7 +860,7 @@ This includes:
 
 Auto-indexes if the index is stale or empty.
 
-Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query.`,
+Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query. Increase limit beyond 10 if you need broader coverage.`,
 	}, indexers.handleSemanticSearch)
 
 	mcp.AddTool(server, &mcp.Tool{

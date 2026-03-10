@@ -1,12 +1,10 @@
-results: 10
-application.rb:769-785  Rails[39/39] (type)
+results: 8
 application.rb:772-774  coerce_same_site_protection (function)
-base.rb:306-315  action_signature (function)
-base.rb:307-325  Base[10/11] (type)
-cache.rb:446-465  Cache[24/57] (type)
-callbacks.rb:50-68  ActiveRecord[4/22] (type)
-callbacks.rb:106-130  ActiveRecord[7/22] (type)
-callbacks.rb:270-284  ActiveRecord[15/22] (type)
-sinatra-base.rb:1486-1509  Base[23/47] (type)
-sinatra-base.rb:1493-1516  Sinatra[61/88] (type)
+base.rb:49-83  ActionCable (type)
+base.rb:90-119  ActionCable (type)
+base.rb:300-339  Base+ActionCable+Channel+action_signature+parameter_filter (type)
+callbacks.rb:121-173  ActiveRecord (type)
+callbacks.rb:278-394  Callbacks+CALLBACKS (var)
+sinatra-base.rb:244-256  ExtendedRack (type)
+sinatra-base.rb:1055-1061  filter! (function)
 

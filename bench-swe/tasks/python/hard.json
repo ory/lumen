@@ -1,0 +1,21 @@
+{
+  "id": "python-hard",
+  "language": "python",
+  "repo": "https://github.com/pallets/click",
+  "base_commit": "5b1624bf09947d6f10eaffd63d6fb737dfe7656a",
+  "fix_commit": "bc16dbf788861266177661b576291a1b264fb5de",
+  "issue_url": "https://github.com/pallets/click/issues/2632",
+  "issue_title": "Flag option with secondary opts: show_default=True does not show value from default_map in help output",
+  "issue_body": "When setting the `default_map` from a config file, the values from the `default_map` are not correctly shown in the `--help` output when `show_default=True` is set on a boolean flag option with secondary opts.\n\nGiven an option defined like this:\n\n```python\n@click.option(\n    \"--long/--short\",\n    \"-l/-s\",\n    is_flag=True,\n    show_default=True,\n    help=\"show additional information like size and creation date\",\n)\n```\n\nAnd a custom command class that sets a `default_map` via `context_settings`:\n\n```python\nclass ConfigAwareCommand(click.Command):\n    def __init__(self, *args, **kwargs):\n        kwargs[\"context_settings\"] = {\n            \"default_map\": {\"long\": True}\n        }\n        super().__init__(*args, **kwargs)\n```\n\nThe `default_map` value is `{'long': True}`. When executing the command, the default value from the `default_map` is used correctly (`long` defaults to `True`). However, in the `--help` output, the default value is shown incorrectly:\n\n```\n  -l, --long / -s, --short        show additional information like size and\n                                  creation date  [default: short]\n```\n\nThe help text shows `[default: short]` instead of `[default: long]`, because the help rendering for boolean flags with secondary opts uses the option's own default attribute rather than the resolved default value that accounts for the `default_map`.\n\nEnvironment:\n- Python version: 3.10.12\n- Click version: 8.1.7",
+  "gold_patch_file": "patches/python-hard.patch",
+  "expected_files": [
+    "CHANGES.rst",
+    "src/click/core.py",
+    "tests/test_defaults.py"
+  ],
+  "setup_commands": [
+    "pip install -e . && pip install -r requirements/tests.txt"
+  ],
+  "test_command": "pytest tests/test_defaults.py::test_flag_default_map -v",
+  "timeout_s": 900
+}

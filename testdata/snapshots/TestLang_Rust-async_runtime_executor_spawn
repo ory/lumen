@@ -1,12 +1,9 @@
-results: 10
-tokio-builder.rs:53-81  Builder[1/4] (type)
-tokio-builder.rs:107-121  Builder[3/4] (type)
-tokio-builder.rs:816-822  on_task_spawn (function)
-tokio-builder.rs:1561-1572  build_current_thread_runtime (function)
-tokio-builder.rs:1575-1588  build_current_thread_local_runtime (function)
-tokio-builder.rs:1590-1608  build_current_thread_runtime_components[1/3] (function)
-tokio-builder.rs:1609-1625  build_current_thread_runtime_components[2/3] (function)
-tokio-mod.rs:1065-1072  output (function)
-tokio-mod.rs:1326-1330  kill (function)
-tokio-mod.rs:1379-1396  wait (function)
+results: 7
+tokio-builder.rs:423-460  Builder (type)
+tokio-builder.rs:507-540  Builder (type)
+tokio-builder.rs:555-870  Builder (type)
+tokio-builder.rs:950-985  Builder (type)
+tokio-builder.rs:1068-1097  Builder (type)
+tokio-builder.rs:1171-1198  Builder (type)
+tokio-mod.rs:1365-1397  Child (type)
 

@@ -1,0 +1,25 @@
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e..40185de 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -14,6 +14,7 @@ namespace Monolog\Formatter;
+ use Stringable;
+ use Throwable;
+ use Monolog\LogRecord;
++use Monolog\Utils;
+ 
+ /**
+  * Encodes whatever record data is passed to it as json
+@@ -195,7 +196,11 @@ class JsonFormatter extends NormalizerFormatter
+             }
+ 
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (\Throwable) {
++                    return Utils::getClass($data);
++                }
+             }
+ 
+             if (\get_class($data) === '__PHP_Incomplete_Class') {

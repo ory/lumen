@@ -1,0 +1,20 @@
+{
+  "id": "cpp-hard",
+  "language": "cpp",
+  "repo": "https://github.com/fmtlib/fmt",
+  "base_commit": "b35de87ad91951c8269fe533dca6aebc3e0a25ba",
+  "fix_commit": "1dc644e021b11b5a14cda5640621f1ef2c596565",
+  "issue_url": "https://github.com/fmtlib/fmt/issues/4663",
+  "issue_title": "Consider adding a C API",
+  "issue_body": "There is a well-defined binary interface between top-level functions such as `fmt::format` and their type-erased counterparts like `fmt::vformat`. This interface relies only on basic C++ features and should be compatible with C (except for the overload returning `std::string` obviously). As a result, it may be possible to provide a C API that builds argument lists and invokes the type-erased functions.\n\nUnlike the `printf` family of functions, such an API could be fully type-safe, including for runtime format strings, and would not rely on encoding type information in the format string itself.\n\nIt would be great to have a C-compatible interface so that C projects and other languages with C FFI can use fmt's formatting capabilities without needing a C++ compiler.",
+  "gold_patch_file": "patches/cpp-hard.patch",
+  "expected_files": [
+    "CMakeLists.txt",
+    "include/fmt/fmt-c.h",
+    "src/fmt-c.cc",
+    "test/test_c.c"
+  ],
+  "setup_commands": [],
+  "test_command": "cd build && cmake .. -DFMT_TEST=ON && cmake --build . && ctest -R test_c -V",
+  "timeout_s": 900
+}

@@ -1,12 +1,8 @@
-results: 10
-OwnerController.java:73-96  OwnerController[2/6] (type)
-OwnerController.java:89-92  initFindForm (method)
-PetController.java:46-69  PetController[1/6] (type)
-PetController.java:98-103  initCreationForm (method)
-VetController.java:57-78  VetController[2/2] (type)
-VetController.java:69-76  showResourcesVetList (method)
-VisitController.java:41-65  VisitController[1/3] (type)
-VisitController.java:84-87  initNewVisitForm (method)
-VisitController.java:91-104  VisitController[3/3] (type)
-VisitController.java:91-102  processNewVisitForm (method)
+results: 6
+OwnerController.java:84-119  OwnerController+initFindForm+processFindForm (method)
+OwnerController.java:126-154  OwnerController (type)
+PetController.java:46-66  PetController (type)
+PetController.java:78-159  PetController+initCreationForm (type)
+VetController.java:35-78  VetController+showVetList+showResourcesVetList (method)
+VisitController.java:41-104  VisitController+initNewVisitForm+processNewVisitForm (type)
 

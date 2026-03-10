@@ -1,0 +1,67 @@
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e1..fa11d0ef 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -195,7 +195,11 @@ class JsonFormatter extends NormalizerFormatter
+             }
+ 
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (Throwable) {
++                    return $data::class;
++                }
+             }
+ 
+             if (\get_class($data) === '__PHP_Incomplete_Class') {
+diff --git a/tests/Monolog/Formatter/JsonFormatterTest.php b/tests/Monolog/Formatter/JsonFormatterTest.php
+index 56cef228..271881f0 100644
+--- a/tests/Monolog/Formatter/JsonFormatterTest.php
++++ b/tests/Monolog/Formatter/JsonFormatterTest.php
+@@ -11,6 +11,7 @@
+ 
+ namespace Monolog\Formatter;
+ 
++use Exception;
+ use Monolog\Level;
+ use Monolog\LogRecord;
+ use JsonSerializable;
+@@ -338,6 +339,24 @@ class JsonFormatterTest extends MonologTestCase
+             $record
+         );
+     }
++
++    public function testNormalizeHandleExceptionInToString(): void
++    {
++        $formatter = new JsonFormatter();
++
++        $res = $formatter->format($this->getRecord(
++            Level::Critical,
++            'bar',
++            datetime: new \DateTimeImmutable('2025-05-19 00:00:00'),
++            channel: 'test',
++            context: ['object' => new TestJsonNormWithFailingToString],
++        ));
++
++        $this->assertSame(
++            '{"message":"bar","context":{"object":"Monolog\\\\Formatter\\\\TestJsonNormWithFailingToString"},"level":500,"level_name":"CRITICAL","channel":"test","datetime":"2025-05-19T00:00:00+00:00","extra":{}}'."\n",
++            $res,
++        );
++    }
+ }
+ 
+ class TestJsonNormPublic
+@@ -370,3 +389,11 @@ class TestJsonNormWithToString
+         return 'stringified';
+     }
+ }
++
++class TestJsonNormWithFailingToString
++{
++    public function __toString()
++    {
++        throw new Exception('Whatever');
++    }
++}
+\ No newline at end of file

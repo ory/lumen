@@ -1,0 +1,67 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..733c0fd 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,9 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		if typ.Kind() == reflect.Struct && defaultVal.IsValid() {
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..494c16b 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -1945,6 +1945,48 @@ w: w_value
+ 	}
+ }
+ 
++func TestDecoder_DefaultValuesWithNullNode(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	tests := []struct {
++		name     string
++		yaml     string
++		wantKey  string
++	}{
++		{
++			name: "null node with comments preserves struct default",
++			yaml: `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`,
++			wantKey: "My default Value",
++		},
++		{
++			name:    "explicit null preserves struct default",
++			yaml:    "first: \"Test\"\nsecond:\n",
++			wantKey: "My default Value",
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			test := Test{Defaults: Default{Key: "My default Value"}}
++			if err := yaml.NewDecoder(strings.NewReader(tt.yaml)).Decode(&test); err != nil {
++				t.Fatalf("unexpected error: %s", err)
++			}
++			if test.Defaults.Key != tt.wantKey {
++				t.Fatalf("expected Defaults.Key to be %q, got %q", tt.wantKey, test.Defaults.Key)
++			}
++		})
++	}
++}
++
+ func Example_YAMLTags() {
+ 	yml := `---
+ foo: 1

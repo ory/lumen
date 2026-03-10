@@ -1,0 +1,284 @@
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b13..ac25b2de 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -218,13 +218,13 @@ impl<'i> State<'i> {
+             anstyle::AnsiColor::Blue.on_default(),
+         );
+ 
+-        let dotted = true;
++        let dotted = !path.is_empty();
+         let Some(parent_table) = descend_path(&mut self.current_table, &path, dotted, errors)
+         else {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        let mixed_table_types = dotted && !parent_table.is_implicit();
+         if mixed_table_types {
+             let key_span = get_key_span(&key);
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+@@ -423,7 +423,8 @@ fn descend_path<'t, 'i>(
+                         // Since tables cannot be defined more than once, redefining such tables using a
+                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
+                         // already defined in [table] form is not allowed.
+-                        if dotted && !sweet_child_of_mine.is_implicit() {
++                        let mixed_table_types = dotted && !sweet_child_of_mine.is_implicit();
++                        if mixed_table_types {
+                             let key_span = get_key_span(key);
+                             errors.report_error(
+                                 ParseError::new("duplicate key").with_unexpected(key_span),
+diff --git a/crates/toml/tests/decoder_compliance.rs b/crates/toml/tests/decoder_compliance.rs
+index 1e39db7c..ab428317 100644
+--- a/crates/toml/tests/decoder_compliance.rs
++++ b/crates/toml/tests/decoder_compliance.rs
+@@ -2,6 +2,29 @@ mod decoder;
+ 
+ #[cfg(all(feature = "parse", feature = "display", feature = "serde"))]
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let invalid_ext = walkdir::WalkDir::new("tests/fixtures/invalid")
+         .sort_by_file_name()
+         .into_iter()
+@@ -24,6 +47,7 @@ fn main() {
+     harness.version("1.1.0");
+     harness.ignore([]).unwrap();
+     harness.snapshot_root("tests/snapshots");
++    harness.extend_valid(valid_ext);
+     harness.extend_invalid(invalid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml/tests/encoder_compliance.rs b/crates/toml/tests/encoder_compliance.rs
+index b1725eaf..9f699cd2 100644
+--- a/crates/toml/tests/encoder_compliance.rs
++++ b/crates/toml/tests/encoder_compliance.rs
+@@ -3,10 +3,34 @@ mod encoder;
+ 
+ #[cfg(all(feature = "parse", feature = "display", feature = "serde"))]
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let encoder = encoder::Encoder;
+     let decoder = decoder::Decoder;
+     let mut harness = toml_test_harness::EncoderHarness::new(encoder, decoder);
+     harness.version("1.1.0");
++    harness.extend_valid(valid_ext);
+     harness.test();
+ }
+ 
+diff --git a/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+new file mode 100644
+index 00000000..cbfc236c
+--- /dev/null
++++ b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+@@ -0,0 +1,13 @@
++{
++    "fruit": {
++        "apple": {
++            "texture": {
++                "smooth": {"type": "bool", "value": "true"}
++            },
++            "color": {"type": "string", "value": "red"},
++            "taste": {
++                "sweet": {"type": "bool", "value": "true"}
++            }
++        }
++    }
++}
+diff --git a/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+new file mode 100644
+index 00000000..10beb5dc
+--- /dev/null
++++ b/crates/toml/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+@@ -0,0 +1,6 @@
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb7..b06516cd 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -301,13 +301,13 @@ impl State {
+             anstyle::AnsiColor::Blue.on_default(),
+         );
+ 
+-        let dotted = true;
++        let dotted = !path.is_empty();
+         let Some(parent_table) = descend_path(&mut self.current_table, &path, dotted, errors)
+         else {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        let mixed_table_types = dotted && !parent_table.is_implicit();
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+@@ -478,7 +478,8 @@ fn descend_path<'t>(
+                         // Since tables cannot be defined more than once, redefining such tables using a
+                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
+                         // already defined in [table] form is not allowed.
+-                        if dotted && !sweet_child_of_mine.is_implicit() {
++                        let mixed_table_types = dotted && !sweet_child_of_mine.is_implicit();
++                        if mixed_table_types {
+                             let key_span = get_key_span(key).expect("all keys have spans");
+                             errors.report_error(
+                                 ParseError::new("duplicate key").with_unexpected(key_span),
+diff --git a/crates/toml_edit/tests/decoder_compliance.rs b/crates/toml_edit/tests/decoder_compliance.rs
+index f2a063cf..f9e7e7e1 100644
+--- a/crates/toml_edit/tests/decoder_compliance.rs
++++ b/crates/toml_edit/tests/decoder_compliance.rs
+@@ -1,6 +1,29 @@
+ mod decoder;
+ 
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let invalid_ext = walkdir::WalkDir::new("tests/fixtures/invalid")
+         .sort_by_file_name()
+         .into_iter()
+@@ -23,6 +46,7 @@ fn main() {
+     harness.version("1.1.0");
+     harness.ignore([]).unwrap();
+     harness.snapshot_root("tests/snapshots");
++    harness.extend_valid(valid_ext);
+     harness.extend_invalid(invalid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml_edit/tests/encoder_compliance.rs b/crates/toml_edit/tests/encoder_compliance.rs
+index 355c5408..c7ebb764 100644
+--- a/crates/toml_edit/tests/encoder_compliance.rs
++++ b/crates/toml_edit/tests/encoder_compliance.rs
+@@ -2,9 +2,33 @@ mod decoder;
+ mod encoder;
+ 
+ fn main() {
++    let valid_ext = walkdir::WalkDir::new("tests/fixtures/valid")
++        .sort_by_file_name()
++        .into_iter()
++        .map(Result::unwrap)
++        .filter(|e| e.path().extension() == Some(std::ffi::OsStr::new("toml")))
++        .map(|e| {
++            let name = e
++                .path()
++                .strip_prefix("tests/fixtures")
++                .unwrap()
++                .to_owned()
++                .into();
++            let fixture = std::fs::read(e.path()).unwrap().into();
++            let expected_path = e.path().with_extension("json");
++            let expected = std::fs::read(expected_path).unwrap().into();
++            toml_test_data::Valid {
++                name,
++                fixture,
++                expected,
++            }
++        })
++        .collect::<Vec<_>>();
++
+     let encoder = encoder::Encoder;
+     let decoder = decoder::Decoder;
+     let mut harness = toml_test_harness::EncoderHarness::new(encoder, decoder);
+-    harness.version("1.0.0");
++    harness.version("1.1.0");
++    harness.extend_valid(valid_ext);
+     harness.test();
+ }
+diff --git a/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+new file mode 100644
+index 00000000..cbfc236c
+--- /dev/null
++++ b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.json
+@@ -0,0 +1,13 @@
++{
++    "fruit": {
++        "apple": {
++            "texture": {
++                "smooth": {"type": "bool", "value": "true"}
++            },
++            "color": {"type": "string", "value": "red"},
++            "taste": {
++                "sweet": {"type": "bool", "value": "true"}
++            }
++        }
++    }
++}
+diff --git a/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+new file mode 100644
+index 00000000..10beb5dc
+--- /dev/null
++++ b/crates/toml_edit/tests/fixtures/valid/ext/table/append-with-dotted-keys-1.toml
+@@ -0,0 +1,6 @@
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true

@@ -289,6 +289,175 @@ func TestTreeSitterChunker_JavaScript(t *testing.T) {
 	check("speak", "method")
 }
 
+var sampleModernTypeScript = []byte(`export const greet = (name: string): string => {
+  return "hello " + name;
+};
+
+const handler = function() {
+  return 42;
+};
+
+var legacy = function() {
+  return 0;
+};
+
+export const gen = function*() {
+  yield 1;
+};
+
+export function namedFn() {}
+
+export enum Direction { Up, Down, Left, Right }
+
+const enum Status { Active, Inactive }
+
+export class MyClass {
+  method() {}
+}
+`)
+
+func TestTreeSitterChunker_TypeScript_ModernPatterns(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c, ok := langs[".ts"]
+	if !ok {
+		t.Fatal("DefaultLanguages() missing .ts")
+	}
+
+	chunks, err := c.Chunk("sample.ts", sampleModernTypeScript)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbol := make(map[string]chunker.Chunk)
+	for _, ch := range chunks {
+		bySymbol[ch.Symbol] = ch
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		ch, ok := bySymbol[symbol]
+		if !ok {
+			t.Errorf("missing chunk %q (got: %v)", symbol, symbolNames(chunks))
+			return
+		}
+		if ch.Kind != kind {
+			t.Errorf("chunk %q kind = %q, want %q", symbol, ch.Kind, kind)
+		}
+	}
+
+	check("greet", "function")   // arrow function in const
+	check("handler", "function") // function expression in const
+	check("legacy", "function")  // function expression in var
+	check("gen", "function")     // generator in const
+	check("namedFn", "function") // regular function declaration
+	check("Direction", "type")   // enum
+	check("Status", "type")      // const enum
+	check("MyClass", "type")     // class
+}
+
+var sampleExportedConsts = []byte(`export const domain: RegExp = /^[\w.-]+$/;
+export const httpProtocol: RegExp = /^https?$/;
+export const MAX_RETRIES = 3;
+export const defaultConfig = { timeout: 5000, retries: 3 };
+export const greetFn = (name: string) => "hello " + name;
+`)
+
+func TestTreeSitterChunker_TypeScript_ExportedConsts(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c, ok := langs[".ts"]
+	if !ok {
+		t.Fatal("DefaultLanguages() missing .ts")
+	}
+
+	chunks, err := c.Chunk("regexes.ts", sampleExportedConsts)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbol := make(map[string]chunker.Chunk)
+	for _, ch := range chunks {
+		bySymbol[ch.Symbol] = ch
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		ch, ok := bySymbol[symbol]
+		if !ok {
+			t.Errorf("missing chunk %q (got: %v)", symbol, symbolNames(chunks))
+			return
+		}
+		if ch.Kind != kind {
+			t.Errorf("chunk %q kind = %q, want %q", symbol, ch.Kind, kind)
+		}
+	}
+
+	check("domain", "const")        // exported regex constant
+	check("httpProtocol", "const")  // exported regex constant
+	check("MAX_RETRIES", "const")   // exported numeric constant
+	check("defaultConfig", "const") // exported object constant
+	check("greetFn", "function")    // exported arrow function — should be "function" not "const"
+}
+
+var sampleModernJavaScript = []byte(`export const greet = (name) => {
+  return "hello " + name;
+};
+
+const handler = function() {
+  return 42;
+};
+
+var legacy = function() {
+  return 0;
+};
+
+export const gen = function*() {
+  yield 1;
+};
+
+export function namedFn() {}
+
+export class Animal {
+  speak() {}
+}
+`)
+
+func TestTreeSitterChunker_JavaScript_ModernPatterns(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c, ok := langs[".js"]
+	if !ok {
+		t.Fatal("DefaultLanguages() missing .js")
+	}
+
+	chunks, err := c.Chunk("sample.js", sampleModernJavaScript)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbol := make(map[string]chunker.Chunk)
+	for _, ch := range chunks {
+		bySymbol[ch.Symbol] = ch
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		ch, ok := bySymbol[symbol]
+		if !ok {
+			t.Errorf("missing chunk %q (got: %v)", symbol, symbolNames(chunks))
+			return
+		}
+		if ch.Kind != kind {
+			t.Errorf("chunk %q kind = %q, want %q", symbol, ch.Kind, kind)
+		}
+	}
+
+	check("greet", "function")   // arrow function in const
+	check("handler", "function") // function expression in const
+	check("legacy", "function")  // function expression in var
+	check("gen", "function")     // generator in const
+	check("namedFn", "function") // regular function declaration
+	check("Animal", "type")      // class
+}
+
 var sampleTSX = []byte(`export function render(): JSX.Element {
   return <div />;
 }
@@ -586,7 +755,7 @@ func TestTreeSitterChunker_CSharp(t *testing.T) {
 	check("Add", "method")          // method_declaration
 	check("Value", "method")        // property_declaration
 	check("Calculator", "function") // constructor_declaration
-	check("OnStatusChanged", "var")  // event_field_declaration
+	check("OnStatusChanged", "var") // event_field_declaration
 }
 
 func symbolNames(chunks []chunker.Chunk) []string {
@@ -644,8 +813,6 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
 		".cs":   []byte("class Foo {}"),
-		".md":   []byte("# Foo\nSome content."),
-		".mdx":  []byte("# Foo\nSome content."),
 		".yaml": []byte("foo: bar\n"),
 		".yml":  []byte("foo: bar\n"),
 		".json": []byte(`{"foo": "bar"}`),
@@ -675,6 +842,599 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 			t.Errorf("Chunk(%q): expected at least 1 chunk, got 0", ext)
 		}
 	}
+}
+
+// --- Comprehensive tests for new query patterns ---
+
+var samplePythonComprehensive = []byte(`
+def bare_function():
+    pass
+
+class BareClass:
+    pass
+
+@decorator
+def decorated_function():
+    pass
+
+@decorator
+class DecoratedClass:
+    pass
+
+MY_VAR = 42
+`)
+
+func TestTreeSitterChunker_Python_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".py"]
+
+	chunks, err := c.Chunk("sample.py", samplePythonComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("bare_function", "function")
+	check("BareClass", "type")
+	check("decorated_function", "function")
+	check("DecoratedClass", "type")
+	check("MY_VAR", "var")
+}
+
+var sampleRustComprehensive = []byte(`
+fn bare_fn() {}
+
+pub struct MyStruct {
+    x: i32,
+}
+
+pub enum MyEnum {
+    A,
+    B,
+}
+
+pub trait MyTrait {
+    fn required(&self);
+}
+
+pub const MY_CONST: i32 = 42;
+
+impl MyStruct {
+    fn method(&self) {}
+}
+
+impl<T> MyStruct {
+    fn generic_method(&self) {}
+}
+
+type Alias = i32;
+
+static MY_STATIC: i32 = 10;
+
+mod my_module {}
+
+macro_rules! my_macro {
+    () => {};
+}
+
+union MyUnion {
+    x: i32,
+    y: f64,
+}
+`)
+
+func TestTreeSitterChunker_Rust_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".rs"]
+
+	chunks, err := c.Chunk("sample.rs", sampleRustComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("bare_fn", "function")
+	check("MyStruct", "type")     // struct_item + impl_item
+	check("MyEnum", "type")       // enum_item
+	check("MyTrait", "interface") // trait_item
+	check("MY_CONST", "const")    // const_item
+	check("method", "function")   // function_item inside impl
+	check("Alias", "type")        // type_item
+	check("MY_STATIC", "var")     // static_item
+	check("my_module", "type")    // mod_item
+	check("my_macro", "function") // macro_definition
+	check("MyUnion", "type")      // union_item
+}
+
+var sampleRubyComprehensive = []byte(`
+def greet(name)
+  "hello #{name}"
+end
+
+def self.class_method
+  "class method"
+end
+
+class Animal
+  def speak
+    "..."
+  end
+end
+
+module Utilities
+end
+
+alias new_greet greet
+`)
+
+func TestTreeSitterChunker_Ruby_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".rb"]
+
+	chunks, err := c.Chunk("sample.rb", sampleRubyComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbol := make(map[string]chunker.Chunk)
+	for _, ch := range chunks {
+		bySymbol[ch.Symbol] = ch
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		ch, ok := bySymbol[symbol]
+		if !ok {
+			t.Errorf("missing chunk %q (got: %v)", symbol, symbolNames(chunks))
+			return
+		}
+		if ch.Kind != kind {
+			t.Errorf("chunk %q kind = %q, want %q", symbol, ch.Kind, kind)
+		}
+	}
+
+	check("greet", "function")
+	check("class_method", "function") // singleton_method
+	check("Animal", "type")
+	check("speak", "function")
+	check("Utilities", "type")     // module
+	check("new_greet", "function") // alias
+}
+
+var sampleJavaComprehensive = []byte(`
+public class Calculator {
+    public static final int MAX = 100;
+
+    public int add(int a, int b) {
+        return a + b;
+    }
+
+    public Calculator() {}
+}
+
+interface Computable {
+    int compute();
+}
+
+enum Status { ACTIVE, INACTIVE }
+
+@interface MyAnnotation {
+    String value();
+}
+
+record Point(int x, int y) {}
+`)
+
+func TestTreeSitterChunker_Java_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".java"]
+
+	chunks, err := c.Chunk("sample.java", sampleJavaComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("Calculator", "type")      // class
+	check("Calculator", "function")  // constructor
+	check("add", "method")           // method
+	check("Computable", "interface") // interface
+	check("Status", "type")          // enum
+	check("MyAnnotation", "type")    // annotation_type
+	check("Point", "type")           // record
+	check("MAX", "var")              // field
+}
+
+var samplePHPComprehensive = []byte(`<?php
+namespace App\Models;
+
+function helper() {}
+
+class User {
+    const TABLE = 'users';
+
+    public function getName() {}
+}
+
+interface Repository {
+    public function find($id);
+}
+
+trait Cacheable {
+    public function cache() {}
+}
+
+enum Color {
+    case Red;
+    case Blue;
+}
+`)
+
+func TestTreeSitterChunker_PHP_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".php"]
+
+	chunks, err := c.Chunk("sample.php", samplePHPComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("helper", "function")
+	check("User", "type") // class_declaration — was missing!
+	check("getName", "method")
+	check("Repository", "interface")
+	check("Cacheable", "type")   // trait
+	check("Color", "type")       // enum
+	check("App\\Models", "type") // namespace
+	check("TABLE", "const")      // const_declaration
+}
+
+var sampleCSharpComprehensive = []byte(`using System;
+
+namespace MyApp
+{
+    public delegate void StatusChanged(string status);
+
+    public enum Direction { North, South, East, West }
+
+    public interface IShape
+    {
+        double Area();
+    }
+
+    public record Point(double X, double Y);
+
+    public struct Vector2
+    {
+        public double X;
+        public double Y;
+    }
+
+    public class Calculator : IShape
+    {
+        private int _value;
+
+        public event StatusChanged OnStatusChanged;
+
+        public int Value { get => _value; set => _value = value; }
+
+        public Calculator(int initial) { _value = initial; }
+
+        ~Calculator() { }
+
+        public int Add(int a, int b) => a + b;
+
+        public double Area() => _value;
+    }
+}
+`)
+
+func TestTreeSitterChunker_CSharp_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".cs"]
+
+	chunks, err := c.Chunk("sample.cs", sampleCSharpComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("MyApp", "type")          // namespace_declaration
+	check("Calculator", "type")     // class_declaration
+	check("IShape", "interface")    // interface_declaration
+	check("Vector2", "type")        // struct_declaration
+	check("Direction", "type")      // enum_declaration
+	check("Point", "type")          // record_declaration
+	check("StatusChanged", "type")  // delegate_declaration
+	check("Add", "method")          // method_declaration
+	check("Value", "method")        // property_declaration
+	check("Calculator", "function") // constructor_declaration
+	check("OnStatusChanged", "var") // event_field_declaration
+	check("_value", "var")          // field_declaration
+}
+
+var sampleCComprehensive = []byte(`
+int add(int a, int b) {
+    return a + b;
+}
+
+int *get_ptr(void) {
+    return 0;
+}
+
+struct Point {
+    int x;
+    int y;
+};
+
+enum Color { RED, GREEN, BLUE };
+
+union Data {
+    int i;
+    float f;
+};
+
+typedef int MyInt;
+
+#define MAX_SIZE 1024
+
+#define SQUARE(x) ((x) * (x))
+`)
+
+func TestTreeSitterChunker_C_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".c"]
+
+	chunks, err := c.Chunk("sample.c", sampleCComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("add", "function")
+	check("get_ptr", "function") // pointer-return
+	check("Point", "type")       // struct
+	check("Color", "type")       // enum
+	check("Data", "type")        // union
+	check("MyInt", "type")       // typedef
+	check("MAX_SIZE", "const")   // preproc_def
+	check("SQUARE", "function")  // preproc_function_def
+}
+
+var sampleCPPComprehensive = []byte(`
+class Vec2 {
+    float x;
+    float y;
+};
+
+struct Point {
+    int x;
+    int y;
+};
+
+int add(int a, int b) {
+    return a + b;
+}
+
+enum Color { RED, GREEN, BLUE };
+
+namespace MyLib {
+    void helper() {}
+}
+
+using IntAlias = int;
+
+void Vec2::normalize() {
+    // ...
+}
+
+union Data {
+    int i;
+    float f;
+};
+
+typedef int MyInt;
+
+#define MAX_SIZE 1024
+
+#define SQUARE(x) ((x) * (x))
+`)
+
+func TestTreeSitterChunker_CPP_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".cpp"]
+
+	chunks, err := c.Chunk("sample.cpp", sampleCPPComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("Vec2", "type")        // class_specifier
+	check("Point", "type")       // struct_specifier
+	check("add", "function")     // function_definition
+	check("Color", "type")       // enum_specifier
+	check("MyLib", "type")       // namespace_definition
+	check("IntAlias", "type")    // alias_declaration
+	check("normalize", "method") // qualified method definition
+	check("Data", "type")        // union_specifier
+	check("MyInt", "type")       // type_definition
+	check("MAX_SIZE", "const")   // preproc_def
+	check("SQUARE", "function")  // preproc_function_def
+}
+
+var sampleTSComprehensive = []byte(`
+export function namedFn() {}
+
+export function* genFn() { yield 1; }
+
+export const arrowFn = (x: number) => x * 2;
+
+export class MyClass {
+  method() {}
+}
+
+export abstract class BaseClass {
+  abstract doWork(): void;
+}
+
+export interface IShape {
+  area(): number;
+}
+
+export type Color = "red" | "green" | "blue";
+
+export enum Direction { Up, Down }
+
+export const MAX = 100;
+
+interface Writable {
+  write(data: string): void;
+}
+`)
+
+func TestTreeSitterChunker_TypeScript_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".ts"]
+
+	chunks, err := c.Chunk("sample.ts", sampleTSComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("namedFn", "function")
+	check("genFn", "function")   // generator
+	check("arrowFn", "function") // arrow function
+	check("MyClass", "type")
+	check("method", "method")
+	check("BaseClass", "type") // abstract class
+	check("IShape", "interface")
+	check("Color", "type")     // type_alias
+	check("Direction", "type") // enum
+	check("MAX", "const")      // exported const
+	check("write", "method")   // method_signature in interface
 }
 
 // mustPyChunker creates a Python TreeSitterChunker for use in tests.

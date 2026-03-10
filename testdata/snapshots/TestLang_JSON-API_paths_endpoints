@@ -1,12 +1,2 @@
-results: 10
-express-package.json:22-22  keywords (section)
-petstore-openapi.json:14-14  externalDocs (section)
-petstore-openapi.json:18-18  servers (section)
-petstore-openapi.json:84-84  paths./pet.post.requestBody (section)
-petstore-openapi.json:159-159  paths./pet/findByStatus.get.security (section)
-petstore-openapi.json:163-163  paths./pet/findByTags.get[1/2] (section)
-petstore-openapi.json:279-279  paths./pet/{petId}.post.security (section)
-petstore-openapi.json:540-540  paths./user/login.get.summary (section)
-petstore-openapi.json:541-541  paths./user/login.get.description (section)
-petstore-openapi.json:627-627  paths./user/{username}.put[1/2] (section)
+results: 0
 

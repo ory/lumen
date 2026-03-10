@@ -1,0 +1,64 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..04b94bc 100644
+--- a/decode.go
++++ b/decode.go
+@@ -989,18 +989,22 @@ func (d *Decoder) createDecodedNewValue(
+ 			return newValue, nil
+ 		}
+ 	}
++	var newValue reflect.Value
+ 	if node.Type() == ast.NullType {
+-		return reflect.Zero(typ), nil
++		newValue = reflect.New(typ).Elem()
++	} else {
++		newValue = d.createDecodableValue(typ)
+ 	}
+-	newValue := d.createDecodableValue(typ)
+ 	for defaultVal.Kind() == reflect.Ptr {
+ 		defaultVal = defaultVal.Elem()
+ 	}
+ 	if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
+ 		newValue.Set(defaultVal)
+ 	}
+-	if err := d.decodeValue(ctx, newValue, node); err != nil {
+-		return newValue, errors.Wrapf(err, "failed to decode value")
++	if node.Type() != ast.NullType {
++		if err := d.decodeValue(ctx, newValue, node); err != nil {
++			return newValue, errors.Wrapf(err, "failed to decode value")
++		}
+ 	}
+ 	return newValue, nil
+ }
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..0d47a29 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -3027,3 +3027,28 @@ func TestMapKeyCustomUnmarshaler(t *testing.T) {
+ 		t.Fatalf("expected to have value \"value\", but got %q", val)
+ 	}
+ }
++
++func TestDecoderPreservesDefaultValues(t *testing.T) {
++	type nested struct {
++		Val string `yaml:"val"`
++	}
++
++	type test struct {
++		First   string `yaml:"first"`
++		Default nested `yaml:"nested"`
++	}
++
++	yml := `
++first: "Test"
++nested:
++  # Just some comment here
++#  val: "default"
++`
++	v := test{Default: nested{Val: "default"}}
++	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
++		t.Fatal(err)
++	}
++	if v.Default.Val != "default" {
++		t.Fatal("decoder doesn't preserve struct defaults")
++	}
++}

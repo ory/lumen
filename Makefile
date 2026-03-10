@@ -4,20 +4,25 @@ GOFLAGS  := -tags=$(GOTAGS)
 
 XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
-.PHONY: build build-local test e2e lint vet tidy clean format plugin-dev
+.PHONY: build build-local build-bench-swe test e2e lint vet tidy clean format plugin-dev
 
 build:
 	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
 		$(XGORELEASER_IMAGE) --snapshot --clean
 
 build-local:
-	CGO_ENABLED=1 $(GO) build $(GOFLAGS) -o bin/lumen .
+	CGO_ENABLED=1 $(GO) build $(GOFLAGS) \
+		-ldflags "-X github.com/ory/lumen/internal/config.BinaryVersion=$$(git rev-parse HEAD 2>/dev/null || echo dev)" \
+		-o bin/lumen .
+
+build-bench-swe:
+	cd bench-swe && $(GO) build -o ../bin/bench-swe .
 
 test:
 	CGO_ENABLED=1 $(GO) test $(GOFLAGS) ./...
 
 e2e:
-	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=20m -v -count=1 ./...
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 ./...
 
 lint:
 	golangci-lint run

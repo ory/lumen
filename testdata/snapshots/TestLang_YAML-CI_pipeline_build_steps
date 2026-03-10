@@ -1,12 +1,2 @@
-results: 10
-django-ci.yml:21-44  jobs.windows (section)
-express-ci.yml:3-14  on (section)
-express-ci.yml:80-82  jobs.test.steps[5] (section)
-ripgrep-ci.yml:118-121  jobs.test.steps[1] (section)
-ripgrep-ci.yml:150-151  jobs.test.steps[5] (section)
-rust-lang-ci.yml:51-72  jobs.calculate_matrix (section)
-rust-lang-ci.yml:228-233  jobs.job.steps[25] (section)
-rust-lang-ci.yml:233-250  jobs.job.steps[26] (section)
-rust-lang-ci.yml:271-281  jobs.job.steps[30] (section)
-rust-lang-ci.yml:307-315  jobs.job.steps[32] (section)
+results: 0
 

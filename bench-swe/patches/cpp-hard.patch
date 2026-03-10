@@ -1,0 +1,531 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 53afc513..30ce6b29 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -533,3 +533,51 @@ if (FMT_MASTER_PROJECT AND EXISTS ${gitignore})
+   set(CPACK_RESOURCE_FILE_README ${PROJECT_SOURCE_DIR}/README.md)
+   include(CPack)
+ endif ()
++
++# C API Wrapper
++add_library(fmt_c STATIC src/fmt-c.cc)
++
++target_compile_features(fmt_c PUBLIC cxx_std_11)
++target_link_libraries(fmt_c PUBLIC fmt::fmt)
++
++target_include_directories(fmt_c PUBLIC
++        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
++        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
++)
++
++set_target_properties(fmt_c PROPERTIES
++        VERSION ${FMT_VERSION}
++        SOVERSION ${CPACK_PACKAGE_VERSION_MAJOR}
++        DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}"
++        C_VISIBILITY_PRESET default
++        CXX_VISIBILITY_PRESET hidden
++)
++
++add_library(fmt::fmt_c ALIAS fmt_c)
++if(FMT_INSTALL)
++  install(TARGETS fmt_c
++          EXPORT fmt-targets
++          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
++)
++  install(FILES include/fmt/fmt-c.h
++          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/fmt
++)
++endif()
++
++if(FMT_TEST)
++  enable_language(C)
++  message(STATUS "Adding C API test executable")
++
++  add_executable(test-c-api test/test_c.c)
++  target_link_libraries(test-c-api PRIVATE fmt::fmt_c)
++  set_target_properties(test-c-api PROPERTIES
++          C_STANDARD 11
++          C_STANDARD_REQUIRED ON
++  )
++  if(MSVC)
++    target_compile_options(test-c-api PRIVATE /Zc:preprocessor)
++  endif()
++
++  add_test(NAME c-api-test COMMAND test-c-api)
++endif()
++
+diff --git a/include/fmt/fmt-c.h b/include/fmt/fmt-c.h
+new file mode 100644
+index 00000000..74ee42fa
+--- /dev/null
++++ b/include/fmt/fmt-c.h
+@@ -0,0 +1,200 @@
++#ifndef FMT_C_H
++#define FMT_C_H
++#include <stddef.h>
++#ifdef __cplusplus
++#  define _Bool bool
++#endif
++
++void fmt_error_unsupported_type_detected(void);
++
++enum { fmt_c_max_args = 16 };
++
++typedef enum {
++  fmt_err_exception = -1,
++  fmt_err_memory = -2,
++  fmt_err_invalid_arg = -3
++} fmt_error;
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++typedef enum {
++  fmt_int,
++  fmt_uint,
++  fmt_float,
++  fmt_double,
++  fmt_long_double,
++  fmt_string,
++  fmt_ptr,
++  fmt_bool,
++  fmt_char
++} fmt_type;
++
++typedef struct {
++  fmt_type type;
++  union {
++    long long i64;
++    unsigned long long u64;
++    float f32;
++    double f64;
++    long double f128;
++    const char* str;
++    const void* ptr;  // Used for FMT_PTR and custom data
++    _Bool bool_val;
++    char char_val;
++  } value;
++} fmt_arg;
++
++int fmt_vformat(char* buffer, size_t capacity, const char* format_str,
++                const fmt_arg* args, size_t arg_count);
++
++static inline fmt_arg fmt_from_int(long long x) {
++  fmt_arg arg;
++  arg.type = fmt_int;
++  arg.value.i64 = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_uint(unsigned long long x) {
++  fmt_arg arg;
++  arg.type = fmt_uint;
++  arg.value.u64 = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_float(float x) {
++  fmt_arg arg;
++  arg.type = fmt_float;
++  arg.value.f32 = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_double(double x) {
++  fmt_arg arg;
++  arg.type = fmt_double;
++  arg.value.f64 = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_long_double(long double x) {
++  fmt_arg arg;
++  arg.type = fmt_long_double;
++  arg.value.f128 = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_str(const char* x) {
++  fmt_arg arg;
++  arg.type = fmt_string;
++  arg.value.str = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_ptr(const void* x) {
++  fmt_arg arg;
++  arg.type = fmt_ptr;
++  arg.value.ptr = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_bool(_Bool x) {
++  fmt_arg arg;
++  arg.type = fmt_bool;
++  arg.value.bool_val = x;
++  return arg;
++}
++
++static inline fmt_arg fmt_from_char(int x) {
++  fmt_arg arg;
++  arg.type = fmt_char;
++  arg.value.char_val = x;
++  return arg;
++}
++
++#ifdef __cplusplus
++}
++#endif
++
++#ifndef __cplusplus
++
++// Require modern MSVC with conformant preprocessor
++#  if defined(_MSC_VER) && (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
++#    error "C API requires MSVC 2019+ with /Zc:preprocessor flag."
++#  endif
++
++#  define FMT_MAKE_ARG(x)                  \
++    _Generic((x),                          \
++        _Bool: fmt_from_bool,              \
++        char: fmt_from_char,               \
++        unsigned char: fmt_from_uint,      \
++        short: fmt_from_int,               \
++        unsigned short: fmt_from_uint,     \
++        int: fmt_from_int,                 \
++        unsigned int: fmt_from_uint,       \
++        long: fmt_from_int,                \
++        unsigned long: fmt_from_uint,      \
++        long long: fmt_from_int,           \
++        unsigned long long: fmt_from_uint, \
++        float: fmt_from_float,             \
++        double: fmt_from_double,           \
++        long double: fmt_from_long_double, \
++        char*: fmt_from_str,               \
++        const char*: fmt_from_str,         \
++        void*: fmt_from_ptr,               \
++        const void*: fmt_from_ptr,         \
++        default: fmt_error_unsupported_type_detected)(x)
++
++#  define FMT_CAT(a, b) FMT_CAT_(a, b)
++#  define FMT_CAT_(a, b) a##b
++
++#  define FMT_NARG_(_id, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, \
++                    _13, _14, _15, _16, N, ...)                             \
++    N
++#  define FMT_NARG(...)                                                        \
++    FMT_NARG_(dummy, ##__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, \
++              4, 3, 2, 1, 0)
++
++#  define FMT_MAP_0(...)
++#  define FMT_MAP_1(f, a) f(a)
++#  define FMT_MAP_2(f, a, b) f(a), f(b)
++#  define FMT_MAP_3(f, a, b, c) f(a), f(b), f(c)
++#  define FMT_MAP_4(f, a, b, c, d) f(a), f(b), f(c), f(d)
++#  define FMT_MAP_5(f, a, b, c, d, e) f(a), f(b), f(c), f(d), f(e)
++#  define FMT_MAP_6(f, a, b, c, d, e, g) f(a), f(b), f(c), f(d), f(e), f(g)
++#  define FMT_MAP_7(f, a, b, c, d, e, g, h) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h)
++#  define FMT_MAP_8(f, a, b, c, d, e, g, h, i) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i)
++#  define FMT_MAP_9(f, a, b, c, d, e, g, h, i, j) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j)
++#  define FMT_MAP_10(f, a, b, c, d, e, g, h, i, j, k) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k)
++#  define FMT_MAP_11(f, a, b, c, d, e, g, h, i, j, k, l) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l)
++#  define FMT_MAP_12(f, a, b, c, d, e, g, h, i, j, k, l, m) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l), f(m)
++#  define FMT_MAP_13(f, a, b, c, d, e, g, h, i, j, k, l, m, n) \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l), f(m), f(n)
++#  define FMT_MAP_14(f, a, b, c, d, e, g, h, i, j, k, l, m, n, o)           \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l), f(m), \
++        f(n), f(o)
++#  define FMT_MAP_15(f, a, b, c, d, e, g, h, i, j, k, l, m, n, o, p)        \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l), f(m), \
++        f(n), f(o), f(p)
++#  define FMT_MAP_16(f, a, b, c, d, e, g, h, i, j, k, l, m, n, o, p, q)     \
++    f(a), f(b), f(c), f(d), f(e), f(g), f(h), f(i), f(j), f(k), f(l), f(m), \
++        f(n), f(o), f(p), f(q)
++
++#  define FMT_MAP(f, ...) \
++    FMT_CAT(FMT_MAP_, FMT_NARG(__VA_ARGS__))(f, ##__VA_ARGS__)
++
++#  define fmt_format(buf, cap, fmt, ...)                                  \
++    fmt_vformat(                                                          \
++        buf, cap, fmt,                                                    \
++        (fmt_arg[]){{fmt_int}, FMT_MAP(FMT_MAKE_ARG, ##__VA_ARGS__)} + 1, \
++        FMT_NARG(__VA_ARGS__))
++
++#endif  // __cplusplus
++
++#endif  // FMT_C_H
+diff --git a/src/fmt-c.cc b/src/fmt-c.cc
+new file mode 100644
+index 00000000..b7e857da
+--- /dev/null
++++ b/src/fmt-c.cc
+@@ -0,0 +1,55 @@
++#include "fmt/fmt-c.h"
++
++#include <fmt/core.h>
++
++#include <cassert>
++
++extern "C" {
++
++using format_arg = fmt::basic_format_arg<fmt::format_context>;
++
++static bool populate_store(format_arg* out, const fmt_arg* c_args,
++                           size_t arg_count) {
++  if (arg_count > fmt_c_max_args) {
++    return false;
++  }
++
++  for (size_t i = 0; i < arg_count; ++i) {
++    switch (c_args[i].type) {
++    case fmt_int:         out[i] = c_args[i].value.i64; break;
++    case fmt_uint:        out[i] = c_args[i].value.u64; break;
++    case fmt_float:       out[i] = c_args[i].value.f32; break;
++    case fmt_double:      out[i] = c_args[i].value.f64; break;
++    case fmt_long_double: out[i] = c_args[i].value.f128; break;
++    case fmt_ptr:         out[i] = c_args[i].value.ptr; break;
++    case fmt_char:        out[i] = c_args[i].value.char_val; break;
++    case fmt_bool:        out[i] = c_args[i].value.bool_val; break;
++    case fmt_string:      out[i] = c_args[i].value.str; break;
++    default:              return false;
++    }
++  }
++  return true;
++}
++
++int fmt_vformat(char* buffer, size_t capacity, const char* format_str,
++                const fmt_arg* args, size_t arg_count) {
++  assert(format_str);
++
++  format_arg format_args[fmt_c_max_args];
++
++  if (arg_count > 0) {
++    assert(args);
++    if (!populate_store(format_args, args, arg_count)) {
++      return fmt_err_invalid_arg;
++    }
++  }
++
++  auto format_args_view = fmt::basic_format_args<fmt::format_context>(
++      format_args, static_cast<int>(arg_count));
++
++  auto result =
++      fmt::vformat_to_n(buffer, capacity, format_str, format_args_view);
++  return static_cast<int>(result.size);
++}
++
++}  // extern "C"
+diff --git a/test/test_c.c b/test/test_c.c
+new file mode 100644
+index 00000000..3ee83047
+--- /dev/null
++++ b/test/test_c.c
+@@ -0,0 +1,202 @@
++/* Test suite for fmt C API */
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "fmt/fmt-c.h"
++
++#define ASSERT_STR_EQ(actual, expected)                                   \
++  do {                                                                    \
++    if (strcmp(actual, expected) != 0) {                                  \
++      fprintf(stderr,                                                     \
++              "\nAssertion failed:\n  Expected: \"%s\"\n  Got: \"%s\"\n", \
++              expected, actual);                                          \
++      exit(1);                                                            \
++    }                                                                     \
++  } while (0)
++
++#define ASSERT_INT_EQ(actual, expected)                                   \
++  do {                                                                    \
++    if ((actual) != (expected)) {                                         \
++      fprintf(stderr, "\nAssertion failed:\n  Expected: %d\n  Got: %d\n", \
++              expected, actual);                                          \
++      exit(1);                                                            \
++    }                                                                     \
++  } while (0)
++
++#define ASSERT_TRUE(cond)                                 \
++  do {                                                    \
++    if (!(cond)) {                                        \
++      fprintf(stderr, "\nAssertion failed: %s\n", #cond); \
++      exit(1);                                            \
++    }                                                     \
++  } while (0)
++
++// Helper to manually null-terminate buffer after formatting
++void terminate(char* buf, int size, size_t capacity) {
++  if (size >= 0 && (size_t)size < capacity) {
++    buf[size] = '\0';
++  } else if (capacity > 0) {
++    buf[capacity - 1] = '\0';
++  }
++}
++
++void test_basic_integer(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "Number: {}", 42);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "Number: 42");
++  ASSERT_INT_EQ(ret, 10);
++}
++
++void test_multiple_integers(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "{} + {} = {}", 1, 2, 3);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "1 + 2 = 3");
++}
++
++void test_unsigned_integers(void) {
++  char buf[100];
++  unsigned int x = 4294967295U;
++  int ret = fmt_format(buf, sizeof(buf), "{}", x);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "4294967295");
++}
++
++void test_floating_point(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "Pi = {}", 3.14159);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_TRUE(strncmp(buf, "Pi = 3.14159", 12) == 0);
++}
++
++void test_float_type(void) {
++  char buf[100];
++  float f = 1.234f;
++  int ret = fmt_format(buf, sizeof(buf), "Float: {:.3f}", f);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "Float: 1.234");
++}
++
++void test_long_double_type(void) {
++  char buf[100];
++  long double ld = 12345.6789L;
++  int ret = fmt_format(buf, sizeof(buf), "{:.4f}", ld);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "12345.6789");
++}
++
++void test_mixed_floating_types(void) {
++  char buf[200];
++  float f = 1.5f;
++  double d = 2.5;
++  long double ld = 3.5L;
++
++  int ret = fmt_format(buf, sizeof(buf), "{} {} {}", f, d, ld);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "1.5 2.5 3.5");
++}
++
++void test_strings(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "Hello, {}!", "from fmt!");
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "Hello, from fmt!!");
++}
++
++void test_pointers(void) {
++  char buf[100];
++  void* ptr = (void*)0x12345678;
++  int ret = fmt_format(buf, sizeof(buf), "{}", ptr);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_TRUE(strstr(buf, "12345678") != NULL);
++}
++
++void test_booleans(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "{} {}", (bool)true, (bool)false);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "true false");
++}
++
++void test_characters(void) {
++  char buf[100];
++  int ret = fmt_format(buf, sizeof(buf), "Char: {}", (char)'A');
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "Char: A");
++}
++
++void test_mixed_types(void) {
++  char buf[100];
++  int ret =
++      fmt_format(buf, sizeof(buf), "{} {} {} {}", 42, 3.14, "text", (bool)true);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_TRUE(strstr(buf, "42") != NULL);
++  ASSERT_TRUE(strstr(buf, "3.14") != NULL);
++  ASSERT_TRUE(strstr(buf, "text") != NULL);
++  ASSERT_TRUE(strstr(buf, "true") != NULL);
++}
++
++void test_zero_arguments(void) {
++  char buf[100];
++  int ret = fmt_vformat(buf, sizeof(buf), "No arguments", NULL, 0);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "No arguments");
++}
++
++void test_buffer_size_query(void) {
++  int size = fmt_format(NULL, 0, "Test string: {}", 42);
++  ASSERT_INT_EQ(size, 15);
++}
++
++void test_long_strings(void) {
++  char buf[1000];
++  const char* long_str =
++      "This is a very long string that contains a lot of text "
++      "to test the buffer handling capabilities of the formatter";
++  int ret = fmt_format(buf, sizeof(buf), "Message: {}", long_str);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_TRUE(strstr(buf, long_str) != NULL);
++}
++
++void test_multiple_calls(void) {
++  char buf[100];
++
++  int ret = fmt_format(buf, sizeof(buf), "{} {}", 1, 2);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "1 2");
++
++  ret = fmt_format(buf, sizeof(buf), "{} {}", "hello", 3.14);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_TRUE(strstr(buf, "hello") != NULL);
++
++  ret = fmt_format(buf, sizeof(buf), "{}", (bool)true);
++  terminate(buf, ret, sizeof(buf));
++  ASSERT_STR_EQ(buf, "true");
++}
++
++int main(void) {
++  printf("=== Running fmt C API Tests ===\n\n");
++
++  test_basic_integer();
++  test_multiple_integers();
++  test_unsigned_integers();
++  test_floating_point();
++  test_float_type();
++  test_long_double_type();
++  test_mixed_floating_types();
++  test_strings();
++  test_pointers();
++  test_booleans();
++  test_characters();
++  test_mixed_types();
++  test_zero_arguments();
++  test_buffer_size_query();
++  test_long_strings();
++  test_multiple_calls();
++
++  printf("\n=== All tests passed! ===\n");
++  return 0;
++}

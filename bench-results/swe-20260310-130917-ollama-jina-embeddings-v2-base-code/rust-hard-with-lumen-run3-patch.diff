@@ -1,0 +1,26 @@
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b1..135b5d8 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -225,7 +225,7 @@ impl<'i> State<'i> {
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+         let mixed_table_types = parent_table.is_dotted() == path.is_empty();
+-        if mixed_table_types {
++        if mixed_table_types && !parent_table.is_implicit() {
+             let key_span = get_key_span(&key);
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             return;
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..6054bf3 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -308,7 +308,7 @@ impl State {
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+         let mixed_table_types = parent_table.is_dotted() == path.is_empty();
+-        if mixed_table_types {
++        if mixed_table_types && !parent_table.is_implicit() {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             return;

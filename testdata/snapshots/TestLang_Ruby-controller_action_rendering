@@ -1,12 +1,5 @@
-results: 10
-metal.rb:8-33  ActionController[1/12] (type)
-metal.rb:26-28  valid? (function)
-metal.rb:61-86  ActionController[3/12] (type)
-metal.rb:87-108  ActionController[4/12] (type)
-metal.rb:109-130  ActionController[5/12] (type)
-metal.rb:131-163  ActionController[6/12] (type)
-metal.rb:148-175  Metal[2/8] (type)
-metal.rb:164-190  ActionController[7/12] (type)
-metal.rb:191-226  ActionController[8/12] (type)
-metal.rb:207-245  Metal[4/8] (type)
+results: 3
+metal.rb:8-33  ActionController+valid? (type)
+metal.rb:51-265  ActionController+Metal+controller_name+make_response! (type)
+metal.rb:288-339  ActionController+Metal (type)
 

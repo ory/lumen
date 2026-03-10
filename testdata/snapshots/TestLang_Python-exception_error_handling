@@ -1,12 +1,6 @@
-results: 10
-django-exceptions.py:204-210  update_error_dict (function)
-django-exceptions.py:212-221  __iter__ (function)
-django-exceptions.py:225-247  ValidationError[5/5] (type)
-flask-app.py:830-848  handle_http_exception[1/2] (function)
-flask-app.py:849-863  handle_http_exception[2/2] (function)
-flask-app.py:855-871  Flask[41/81] (type)
-flask-app.py:865-882  handle_user_exception[1/2] (function)
-flask-app.py:929-952  Flask[45/81] (type)
-flask-app.py:930-948  handle_exception[3/3] (function)
-flask-helpers.py:642-667  _CollectErrors[1/2] (type)
+results: 4
+django-exceptions.py:148-247  ValidationError+__init__+message_dict+update_error_dict+__iter__ (function)
+flask-app.py:830-908  handle_http_exception+handle_user_exception+Flask (function)
+flask-app.py:935-948  handle_exception (function)
+flask-helpers.py:642-670  _CollectErrors+raise_any (type)
 

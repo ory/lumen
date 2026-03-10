@@ -1,0 +1,96 @@
+diff --git a/src/Tokenizer.ts b/src/Tokenizer.ts
+index d6d6ca86..c8d0c376 100644
+--- a/src/Tokenizer.ts
++++ b/src/Tokenizer.ts
+@@ -296,6 +296,7 @@ export class _Tokenizer<ParserOutput = string, RendererOutput = string> {
+           const fencesBeginRegex = this.rules.other.fencesBeginRegex(indent);
+           const headingBeginRegex = this.rules.other.headingBeginRegex(indent);
+           const htmlBeginRegex = this.rules.other.htmlBeginRegex(indent);
++          const blockquoteBeginRegex = this.rules.other.blockquoteBeginRegex(indent);
+ 
+           // Check if following lines should be included in List Item
+           while (src) {
+@@ -326,6 +327,11 @@ export class _Tokenizer<ParserOutput = string, RendererOutput = string> {
+               break;
+             }
+ 
++            // End list item if found start of blockquote
++            if (blockquoteBeginRegex.test(nextLine)) {
++              break;
++            }
++
+             // End list item if found start of new bullet
+             if (nextBulletRegex.test(nextLine)) {
+               break;
+diff --git a/src/rules.ts b/src/rules.ts
+index af663423..6d0846dd 100644
+--- a/src/rules.ts
++++ b/src/rules.ts
+@@ -85,6 +85,7 @@ export const other = {
+   fencesBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}(?:\`\`\`|~~~)`),
+   headingBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}#`),
+   htmlBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}<(?:[a-z].*>|!--)`, 'i'),
++  blockquoteBeginRegex: (indent: number) => new RegExp(`^ {0,${Math.min(3, indent - 1)}}>`),
+ };
+ 
+ /**
+diff --git a/test/specs/new/nested_blockquote_in_list.html b/test/specs/new/nested_blockquote_in_list.html
+new file mode 100644
+index 00000000..494be080
+--- /dev/null
++++ b/test/specs/new/nested_blockquote_in_list.html
+@@ -0,0 +1,34 @@
++<h3>Child</h3>
++<ul>
++<li>list item
++<ul>
++<li>nested list item
++<blockquote>
++<p>quoteblock</p>
++</blockquote>
++</li>
++</ul>
++</li>
++</ul>
++<h3>Sibling</h3>
++<ul>
++<li>list item
++<ul>
++<li>nested list item</li>
++</ul>
++<blockquote>
++<p>quoteblock</p>
++</blockquote>
++</li>
++</ul>
++<h3>Parent level</h3>
++<ul>
++<li>list item
++<ul>
++<li>nested list item</li>
++</ul>
++</li>
++</ul>
++<blockquote>
++<p>quote block</p>
++</blockquote>
+diff --git a/test/specs/new/nested_blockquote_in_list.md b/test/specs/new/nested_blockquote_in_list.md
+new file mode 100644
+index 00000000..a5edd5b9
+--- /dev/null
++++ b/test/specs/new/nested_blockquote_in_list.md
+@@ -0,0 +1,14 @@
++### Child
++- list item
++  - nested list item
++    > quoteblock
++
++### Sibling
++- list item
++  - nested list item
++  > quoteblock
++
++### Parent level
++- list item
++  - nested list item
++> quote block

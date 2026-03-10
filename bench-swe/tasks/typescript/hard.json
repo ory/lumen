@@ -1,0 +1,21 @@
+{
+  "id": "typescript-hard",
+  "language": "typescript",
+  "repo": "https://github.com/honojs/hono",
+  "base_commit": "50869562980628b2984f73e064bb80691e5286bc",
+  "fix_commit": "8217d9ece6f4d302e446b8dc353d1b3cbf51d92e",
+  "issue_url": "https://github.com/honojs/hono/issues/4789",
+  "issue_title": "link rel=canonical is silently removed when it shares the same href as link rel=alternate hreflang",
+  "issue_body": "When using jsxRenderer, a <link rel=\"canonical\"> tag is silently dropped from the rendered HTML if a <link rel=\"alternate\" hreflang=\"...\"> tag shares the same href.\n\nOn a localized EN page (e.g. /en/about), the canonical URL and the hreflang=\"en\" alternate URL are identical by design. When both are declared in the renderer:\n\n```tsx\n<link rel=\"canonical\" href=\"https://example.com/en/about\" />\n<link rel=\"alternate\" hreflang=\"en\" href=\"https://example.com/en/about\" />\n<link rel=\"alternate\" hreflang=\"ja\" href=\"https://example.com/ja/about\" />\n```\n\nThe rendered HTML becomes:\n\n```html\n<!-- canonical is missing -->\n<link rel=\"alternate\" hreflang=\"en\" href=\"https://example.com/en/about\" />\n<link rel=\"alternate\" hreflang=\"ja\" href=\"https://example.com/ja/about\" />\n```\n\nThe deduplication key for link elements currently uses only the href attribute. The deduplication logic uses OR semantics: if any key in the dedup keys matches an existing tag's props, the new tag is considered a duplicate. Because rel=\"canonical\" and rel=\"alternate\" hreflang=\"en\" share the same href, the canonical tag is treated as a duplicate of the already-registered alternate tag and removed from the buffer.\n\nTwo link elements should only be considered duplicates when all identifying attributes match. The current behavior incorrectly deduplicates link elements that have different rel attributes but the same href.\n\nAdditionally, React 19 only deduplicates link elements that are stylesheets with a precedence attribute. Other link types (canonical, alternate, preload, icon, preconnect, etc.) should not be subject to href-based deduplication at all. The fix should align Hono's JSX link hoisting/dedupe behavior with this model.\n\nThe bug affects both the server-side JSX renderer (src/jsx/intrinsic-element/) and the DOM renderer (src/jsx/dom/intrinsic-element/).\n\nEnvironment:\n- Hono: 4.11.9\n- Reproduction: placing <link rel=\"canonical\"> and <link rel=\"alternate\" hreflang> with the same href in jsxRenderer",
+  "gold_patch_file": "patches/typescript-hard.patch",
+  "expected_files": [
+    "src/jsx/dom/intrinsic-element/components.test.tsx",
+    "src/jsx/dom/intrinsic-element/components.ts",
+    "src/jsx/intrinsic-element/common.ts",
+    "src/jsx/intrinsic-element/components.test.tsx",
+    "src/jsx/intrinsic-element/components.ts"
+  ],
+  "setup_commands": ["npm install"],
+  "test_command": "npx vitest run src/jsx/intrinsic-element/components.test.tsx src/jsx/dom/intrinsic-element/components.test.tsx",
+  "timeout_s": 300
+}

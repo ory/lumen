@@ -1,12 +1,8 @@
-results: 10
-django-query.py:303-324  QuerySet[1/99] (type)
-django-query.py:306-321  __init__ (function)
-django-query.py:324-329  query (function)
-django-query.py:506-527  QuerySet[10/99] (type)
-django-query.py:1276-1279  in_bulk[6/6] (function)
-django-query.py:1615-1637  QuerySet[68/99] (type)
-django-query.py:1617-1622  all (function)
-django-query.py:1624-1630  filter (function)
-django-query.py:1660-1675  complex_filter (function)
+results: 6
+django-query.py:303-347  QuerySet+__init__+query (function)
+django-query.py:470-517  QuerySet+__or__ (type)
+django-query.py:1253-1276  QuerySet (type)
+django-query.py:1603-1690  QuerySet+all+filter+complex_filter (type)
+django-query.py:2051-2056  db (function)
 django-query.py:2221-2227  _has_filters (function)
 

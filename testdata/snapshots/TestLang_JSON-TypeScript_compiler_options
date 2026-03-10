@@ -1,12 +1,2 @@
-results: 10
-typescript-package.json:2-2  name (section)
-typescript-package.json:8-8  keywords (section)
-typescript-package.json:12-12  repository (section)
-typescript-package.json:17-17  typings (section)
-typescript-package.json:18-18  bin (section)
-typescript-package.json:45-45  devDependencies.@types/node (section)
-typescript-package.json:75-75  devDependencies.tslib (section)
-typescript-package.json:76-76  devDependencies.typescript (section)
-typescript-package.json:80-80  overrides (section)
-typescript-package.json:97-97  browser (section)
+results: 0
 

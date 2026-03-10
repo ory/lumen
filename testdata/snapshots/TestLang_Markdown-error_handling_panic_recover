@@ -1,12 +1,2 @@
-results: 10
-ch02-00-guessing-game-tutorial.md:255-264  Handling Potential Failure with `Result`[4/4] (section)
-ch09-01-unrecoverable-errors-with-panic.md:1-14  Unrecoverable Errors with `panic!`[1/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:15-33  Unrecoverable Errors with `panic!`[2/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:55-69  Unrecoverable Errors with `panic!`[4/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:86-103  Unrecoverable Errors with `panic!`[6/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:104-115  Unrecoverable Errors with `panic!`[7/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:116-133  Unrecoverable Errors with `panic!`[8/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:134-143  Unrecoverable Errors with `panic!`[9/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:144-158  Unrecoverable Errors with `panic!`[10/11] (section)
-ch09-01-unrecoverable-errors-with-panic.md:159-171  Unrecoverable Errors with `panic!`[11/11] (section)
+results: 0
 

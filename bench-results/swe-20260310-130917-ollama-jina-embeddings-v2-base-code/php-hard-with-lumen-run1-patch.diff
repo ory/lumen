@@ -1,0 +1,58 @@
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e..426bf4c 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -195,7 +195,11 @@ class JsonFormatter extends NormalizerFormatter
+             }
+ 
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (\Throwable) {
++                    return get_class($data);
++                }
+             }
+ 
+             if (\get_class($data) === '__PHP_Incomplete_Class') {
+diff --git a/tests/Monolog/Formatter/JsonFormatterTest.php b/tests/Monolog/Formatter/JsonFormatterTest.php
+index 56cef22..74080cb 100644
+--- a/tests/Monolog/Formatter/JsonFormatterTest.php
++++ b/tests/Monolog/Formatter/JsonFormatterTest.php
+@@ -338,6 +338,24 @@ class JsonFormatterTest extends MonologTestCase
+             $record
+         );
+     }
++
++    public function testFormatStringableWithThrowingToString()
++    {
++        $formatter = new JsonFormatter();
++
++        $record = $formatter->format($this->getRecord(
++            Level::Debug,
++            'Testing',
++            channel: 'test',
++            datetime: new \DateTimeImmutable('2022-02-22 00:00:00'),
++            context: [
++                'obj' => new TestJsonNormWithThrowingToString,
++            ],
++        ));
++
++        $decoded = json_decode($record, true);
++        $this->assertSame(TestJsonNormWithThrowingToString::class, $decoded['context']['obj']);
++    }
+ }
+ 
+ class TestJsonNormPublic
+@@ -370,3 +388,11 @@ class TestJsonNormWithToString
+         return 'stringified';
+     }
+ }
++
++class TestJsonNormWithThrowingToString
++{
++    public function __toString()
++    {
++        throw new \RuntimeException('Could not convert to string');
++    }
++}

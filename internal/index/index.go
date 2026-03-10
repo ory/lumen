@@ -228,6 +228,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		}
 
 		chunks = splitOversizedChunks(chunks, idx.maxChunkTokens)
+		chunks = mergeUndersizedChunks(chunks, minMergeTokens)
 
 		batch = append(batch, chunks...)
 

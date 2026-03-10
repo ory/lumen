@@ -20,130 +20,122 @@ import (
 	"testing"
 )
 
-func TestGenerateHookContent(t *testing.T) {
-	cases := []struct {
-		mcpName string
-		wantRef string
-	}{
-		{"lumen", "mcp__lumen__semantic_search"},
-		{"my-custom-server", "mcp__my-custom-server__semantic_search"},
+func TestGenerateSessionContext_NoIndex(t *testing.T) {
+	content := generateSessionContext("lumen", "/nonexistent/path")
+	if !strings.Contains(content, "mcp__lumen__semantic_search") {
+		t.Error("content should reference the semantic_search tool")
 	}
+	if strings.Contains(content, "EXTREMELY_IMPORTANT") {
+		t.Error("content should not contain EXTREMELY_IMPORTANT directives")
+	}
+}
 
-	for _, tc := range cases {
-		t.Run(tc.mcpName, func(t *testing.T) {
-			content := generateHookContent(tc.mcpName)
-			if !strings.HasPrefix(content, "<EXTREMELY_IMPORTANT>") {
-				t.Error("content should start with <EXTREMELY_IMPORTANT>")
+func TestEvaluateToolCall_GrepAlwaysSuggests(t *testing.T) {
+	cases := []string{
+		"error handling middleware",
+		"handleSemanticSearch",
+		`func\s+\w+Search.*context\.Context`,
+		"decodeStruct",
+		`structDecodeWithNullValue\|decodeStruct`,
+	}
+	for _, pattern := range cases {
+		t.Run(pattern, func(t *testing.T) {
+			input := preToolUseInput{
+				ToolName: "Grep",
+				Input:    map[string]any{"pattern": pattern},
 			}
-			if !strings.HasSuffix(content, "</EXTREMELY_IMPORTANT>") {
-				t.Error("content should end with </EXTREMELY_IMPORTANT>")
+			result := evaluateToolCall(input, "lumen")
+			if result == nil {
+				t.Fatal("expected suggestion for Grep, got nil")
 			}
-			if !strings.Contains(content, tc.wantRef) {
-				t.Errorf("expected %q in content, got: %s", tc.wantRef, content)
+			if result.HookSpecificOutput.PermissionDecision != "" {
+				t.Errorf("expected no permissionDecision, got %q", result.HookSpecificOutput.PermissionDecision)
 			}
-			if !strings.Contains(content, "Red Flags") {
-				t.Error("content should contain rationalization-blocking table")
+			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__lumen__semantic_search") {
+				t.Error("additionalContext should reference semantic_search tool")
 			}
 		})
 	}
 }
 
-func TestEvaluateToolCall_GrepNaturalLanguage(t *testing.T) {
-	input := preToolUseInput{
-		ToolName: "Grep",
-		Input:    map[string]any{"pattern": "how does the authentication middleware handle token refresh in this codebase"},
-	}
-	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "suggest" {
-		t.Errorf("expected suggest for natural language pattern, got %q", result.Decision)
-	}
-	if !strings.Contains(result.Reason, "mcp__lumen__semantic_search") {
-		t.Error("reason should reference semantic_search tool")
-	}
-}
-
-func TestEvaluateToolCall_GrepExactString(t *testing.T) {
-	input := preToolUseInput{
-		ToolName: "Grep",
-		Input:    map[string]any{"pattern": "handleSemanticSearch"},
-	}
-	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "approve" {
-		t.Errorf("expected approve for exact string pattern, got %q", result.Decision)
-	}
-}
-
-func TestEvaluateToolCall_GrepRegex(t *testing.T) {
-	input := preToolUseInput{
-		ToolName: "Grep",
-		Input:    map[string]any{"pattern": `func\s+\w+Search.*context\.Context`},
-	}
-	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "approve" {
-		t.Errorf("expected approve for regex pattern, got %q", result.Decision)
-	}
-}
-
-func TestEvaluateToolCall_GlobApproved(t *testing.T) {
+func TestEvaluateToolCall_GlobAlwaysSuggests(t *testing.T) {
 	input := preToolUseInput{
 		ToolName: "Glob",
 		Input:    map[string]any{"pattern": "**/*.go"},
 	}
 	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "approve" {
-		t.Errorf("expected approve for glob pattern, got %q", result.Decision)
+	if result == nil {
+		t.Fatal("expected suggestion for Glob, got nil")
+	}
+	if result.HookSpecificOutput.PermissionDecision != "" {
+		t.Errorf("expected no permissionDecision, got %q", result.HookSpecificOutput.PermissionDecision)
 	}
 }
 
-func TestEvaluateToolCall_OtherToolApproved(t *testing.T) {
+func TestEvaluateToolCall_OtherToolSilentAllow(t *testing.T) {
 	input := preToolUseInput{
 		ToolName: "Read",
 		Input:    map[string]any{"path": "/some/file.go"},
 	}
 	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "approve" {
-		t.Errorf("expected approve for non-Grep/Glob tool, got %q", result.Decision)
+	if result != nil {
+		t.Errorf("expected nil (silent allow) for Read, got suggestion")
 	}
 }
 
-func TestEvaluateToolCall_ShortPattern(t *testing.T) {
-	input := preToolUseInput{
-		ToolName: "Grep",
-		Input:    map[string]any{"pattern": "find this function"},
+func TestEvaluateToolCall_BashGrepSuggests(t *testing.T) {
+	cases := []string{
+		`grep -r "error handling middleware" ./cmd`,
+		`grep -n "handleSemanticSearch" .`,
+		`grep -n "decodeStruct\|structDecode" ./internal`,
 	}
-	result := evaluateToolCall(input, "lumen")
-	if result.Decision != "approve" {
-		t.Errorf("expected approve for short pattern (<=40 chars), got %q", result.Decision)
+	for _, cmd := range cases {
+		t.Run(cmd[:min(40, len(cmd))], func(t *testing.T) {
+			input := preToolUseInput{
+				ToolName: "Bash",
+				Input:    map[string]any{"command": cmd},
+			}
+			result := evaluateToolCall(input, "lumen")
+			if result == nil {
+				t.Fatal("expected suggestion for bash grep, got nil")
+			}
+			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__lumen__semantic_search") {
+				t.Error("additionalContext should reference semantic_search tool")
+			}
+		})
 	}
 }
 
-func TestLooksLikeNaturalLanguage(t *testing.T) {
-	cases := []struct {
-		pattern string
-		want    bool
-	}{
-		{"handleSemanticSearch", false}, // no spaces
-		{"find this", false},            // too short
-		{"how does the authentication system work in this project", true},
-		{`func\s+\w+`, false}, // regex
-		{"**/*.go", false},    // glob
-		{"where is the database connection pool configured and initialized", true},
-		{"1234567890 1234567890 1234567890 1234567890 12345", false}, // mostly digits
+func TestEvaluateToolCall_BashNonSearchSilentAllow(t *testing.T) {
+	cases := []string{
+		"go build ./...",
+		"go test ./...",
+		"git diff HEAD",
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.pattern, func(t *testing.T) {
-			got := looksLikeNaturalLanguage(tc.pattern)
-			if got != tc.want {
-				t.Errorf("looksLikeNaturalLanguage(%q) = %v, want %v", tc.pattern, got, tc.want)
+	for _, cmd := range cases {
+		t.Run(cmd, func(t *testing.T) {
+			input := preToolUseInput{
+				ToolName: "Bash",
+				Input:    map[string]any{"command": cmd},
+			}
+			result := evaluateToolCall(input, "lumen")
+			if result != nil {
+				t.Errorf("expected nil for non-search bash command %q, got suggestion", cmd)
 			}
 		})
 	}
 }
 
 func TestPreToolUseOutputJSON(t *testing.T) {
-	out := preToolUseOutput{Decision: "suggest", Reason: "try semantic search"}
-	data, err := json.Marshal(out)
+	result := evaluateToolCall(preToolUseInput{
+		ToolName: "Grep",
+		Input:    map[string]any{"pattern": "error handling middleware"},
+	}, "lumen")
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	data, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}
@@ -151,13 +143,20 @@ func TestPreToolUseOutputJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	if parsed["decision"] != "suggest" {
-		t.Errorf("expected decision=suggest, got %v", parsed["decision"])
+	hso, ok := parsed["hookSpecificOutput"].(map[string]any)
+	if !ok {
+		t.Fatal("missing hookSpecificOutput key")
+	}
+	if _, exists := hso["permissionDecision"]; exists {
+		t.Errorf("expected no permissionDecision field, got %v", hso["permissionDecision"])
+	}
+	if hso["hookEventName"] != "PreToolUse" {
+		t.Errorf("expected hookEventName=PreToolUse, got %v", hso["hookEventName"])
 	}
 }
 
 func TestHookOutputJSON(t *testing.T) {
-	content := generateHookContent("lumen")
+	content := generateSessionContext("lumen", "/nonexistent/path")
 	out := hookOutput{
 		HookSpecificOutput: hookSpecificOutput{
 			HookEventName:     "SessionStart",
@@ -183,7 +182,7 @@ func TestHookOutputJSON(t *testing.T) {
 		t.Errorf("hookEventName = %v, want SessionStart", hso["hookEventName"])
 	}
 	ctx, ok := hso["additionalContext"].(string)
-	if !ok || !strings.Contains(ctx, "EXTREMELY_IMPORTANT") {
-		t.Error("additionalContext should contain EXTREMELY_IMPORTANT")
+	if !ok || !strings.Contains(ctx, "mcp__lumen__semantic_search") {
+		t.Error("additionalContext should contain tool reference")
 	}
 }

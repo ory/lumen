@@ -1,12 +1,11 @@
-results: 10
-api.go:71-73  statusClientClosedConnection (const)
-api.go:391-416  API.Register[1/5] (method)
-api.go:1937-1948  API.serveWALReplayStatus (method)
-api.go:1950-1953  API.notifications (method)
-api.go:1955-1981  API.notificationsSSE[1/2] (method)
-api.go:2001-2008  API.remoteRead (method)
-api.go:2018-2024  API.otlpWrite (method)
-api.go:2130-2135  API.respond[2/2] (method)
-config.go:1136-1136  TracingClientHTTP (const)
+results: 9
+api.go:68-76  statusSuccess+statusError+statusClientClosedConnection+checkContextEveryNIterations (const)
+api.go:222-264  API (type)
+api.go:391-484  API.Register (method)
+api.go:1793-1799  API.serveRuntimeInfo (method)
+api.go:1937-2024  API.serveWALReplayStatus+API.notifications+API.notificationsSSE+API.remoteRead+API.remoteWrite+API.otlpWrite (method)
+api.go:2120-2135  API.respond (method)
+api.go:2186-2205  getDefaultErrorCode (function)
 scrape.go:677-683  scraper (interface)
+scrape.go:735-752  targetScraper.scrape (method)
 

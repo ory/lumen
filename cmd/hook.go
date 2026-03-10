@@ -20,9 +20,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"github.com/spf13/cobra"
+
+	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/store"
 )
 
 // NOTE: Hooks are now declared in hooks/hooks.json (plugin system).
@@ -52,8 +54,15 @@ type hookOutput struct {
 }
 
 type hookSpecificOutput struct {
-	HookEventName     string `json:"hookEventName"`
-	AdditionalContext string `json:"additionalContext"`
+	HookEventName            string `json:"hookEventName"`
+	AdditionalContext        string `json:"additionalContext,omitempty"`
+	PermissionDecision       string `json:"permissionDecision,omitempty"`
+	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
+}
+
+// sessionStartInput is the JSON structure Claude Code sends to SessionStart hooks.
+type sessionStartInput struct {
+	CWD string `json:"cwd"`
 }
 
 func runHookSessionStart(_ *cobra.Command, args []string) error {
@@ -62,7 +71,15 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 		mcpName = args[0]
 	}
 
-	content := generateHookContent(mcpName)
+	var input sessionStartInput
+	_ = json.NewDecoder(os.Stdin).Decode(&input)
+
+	cwd := input.CWD
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+
+	content := generateSessionContext(mcpName, cwd)
 
 	out := hookOutput{
 		HookSpecificOutput: hookSpecificOutput{
@@ -76,34 +93,52 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 	return enc.Encode(out)
 }
 
-// generateHookContent builds the EXTREMELY_IMPORTANT-wrapped directive for the
-// SessionStart hook. This is a stronger version of generateSnippet designed to
-// achieve near-100% tool trigger rate.
-func generateHookContent(mcpName string) string {
-	toolRef := "`mcp__" + mcpName + "__semantic_search`"
-	return "<EXTREMELY_IMPORTANT>\n" +
-		"# Lumen Semantic Search\n\n" +
-		"ALWAYS pass your current working directory as the `cwd` parameter when calling " + toolRef + ".\n\n" +
-		"ALWAYS use " + toolRef + " as the FIRST tool for code discovery.\n\n" +
-		"Before using Grep, Glob, Find, or Read for any search, stop and ask:\n" +
-		"\"Do I already know the exact literal string I'm searching for?\"\n" +
-		"If not, use " + toolRef + ".\n\n" +
-		"## Red Flags — if you think any of these, STOP:\n" +
-		"| Thought | Reality |\n" +
-		"|---------|--------|\n" +
-		fmt.Sprintf("| \"I'll just grep quickly\" | %s is faster for discovery |\n", toolRef) +
-		"| \"I know the file name\" | You might not know the best match |\n" +
-		"| \"Glob is faster for this\" | Only if you have an exact filename pattern |\n" +
-		"| \"This is a simple search\" | Simple searches benefit most from semantic |\n\n" +
-		"If semantic search is unavailable, Grep/Glob are acceptable fallbacks.\n" +
-		"</EXTREMELY_IMPORTANT>"
+// generateSessionContext builds concise context for the SessionStart hook.
+// If an index exists, it includes stats and top symbols to create a natural
+// data dependency — Claude sees useful data and wants more from the tool.
+func generateSessionContext(mcpName, cwd string) string {
+	toolRef := "mcp__" + mcpName + "__semantic_search"
+	directive := "Call " + toolRef + " first for any code discovery task — before Grep, Bash, or Read."
+
+	cfg, err := config.Load()
+	if err != nil {
+		return directive + " No index yet — auto-created on first call."
+	}
+
+	dbPath := config.DBPathForProject(cwd, cfg.Model)
+	if _, err := os.Stat(dbPath); err != nil {
+		return directive + " No index yet — auto-created on first call."
+	}
+
+	s, err := store.New(dbPath, cfg.Dims)
+	if err != nil {
+		return directive
+	}
+	defer func() { _ = s.Close() }()
+
+	stats, err := s.Stats()
+	if err != nil {
+		return directive
+	}
+
+	symbols, _ := s.TopSymbols(10)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Lumen index ready: %d files, %d chunks indexed.", stats.TotalFiles, stats.TotalChunks)
+	if len(symbols) > 0 {
+		sb.WriteString(" Top symbols: ")
+		sb.WriteString(strings.Join(symbols, ", "))
+		sb.WriteString(".")
+	}
+	sb.WriteString(" " + directive)
+	return sb.String()
 }
 
 // --- PreToolUse hook ---
 
 var hookPreToolUseCmd = &cobra.Command{
 	Use:   "pre-tool-use [mcp-name]",
-	Short: "Intercept Grep/Glob calls and suggest semantic search when appropriate",
+	Short: "Intercept Grep calls and suggest semantic search when appropriate",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runHookPreToolUse,
 }
@@ -114,12 +149,6 @@ type preToolUseInput struct {
 	Input    map[string]any `json:"tool_input"`
 }
 
-// preToolUseOutput is the JSON structure Claude Code expects from a PreToolUse hook.
-type preToolUseOutput struct {
-	Decision string `json:"decision"`
-	Reason   string `json:"reason,omitempty"`
-}
-
 func runHookPreToolUse(_ *cobra.Command, args []string) error {
 	mcpName := filepath.Base(os.Args[0])
 	if len(args) > 0 {
@@ -128,80 +157,45 @@ func runHookPreToolUse(_ *cobra.Command, args []string) error {
 
 	var input preToolUseInput
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
-		// If we can't parse input, approve silently to avoid blocking.
-		return json.NewEncoder(os.Stdout).Encode(preToolUseOutput{Decision: "approve"})
+		// Can't parse input — allow silently (exit 0, no stdout).
+		return nil
 	}
 
-	decision := evaluateToolCall(input, mcpName)
+	result := evaluateToolCall(input, mcpName)
+	if result == nil {
+		// Silent allow — exit 0 with no stdout.
+		return nil
+	}
 
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
-	return enc.Encode(decision)
+	return enc.Encode(result)
 }
 
-// evaluateToolCall determines whether a Grep/Glob call should be intercepted
+// evaluateToolCall determines whether a tool call should be intercepted
 // with a suggestion to use semantic search instead.
-func evaluateToolCall(input preToolUseInput, mcpName string) preToolUseOutput {
+// Returns nil for silent allow (no output), or a hookOutput with a suggestion.
+func evaluateToolCall(input preToolUseInput, mcpName string) *hookOutput {
 	switch input.ToolName {
 	case "Grep", "Glob":
-		pattern := extractPattern(input)
-		if pattern != "" && looksLikeNaturalLanguage(pattern) {
-			toolRef := "mcp__" + mcpName + "__semantic_search"
-			return preToolUseOutput{
-				Decision: "suggest",
-				Reason: fmt.Sprintf(
-					"This pattern looks like a natural language query. "+
-						"Consider using %s instead for better results. "+
-						"Grep/Glob work best with exact literal strings, "+
-						"while semantic search understands concepts and intent.",
-					toolRef,
-				),
-			}
+		// Always suggest semantic search for any file/code search.
+	case "Bash":
+		cmd, _ := input.Input["command"].(string)
+		if !strings.Contains(cmd, "grep") && !strings.Contains(cmd, "rg ") && !strings.Contains(cmd, "find ") {
+			return nil
 		}
+	default:
+		return nil
 	}
-	return preToolUseOutput{Decision: "approve"}
-}
 
-// extractPattern pulls the search pattern from a Grep or Glob tool input.
-func extractPattern(input preToolUseInput) string {
-	if p, ok := input.Input["pattern"].(string); ok {
-		return p
+	toolRef := "mcp__" + mcpName + "__semantic_search"
+	return &hookOutput{
+		HookSpecificOutput: hookSpecificOutput{
+			HookEventName: "PreToolUse",
+			AdditionalContext: fmt.Sprintf(
+				"Use %s instead of Grep/Glob/find/rg for significantly faster and better search results to reduce context window use and give better quality results.",
+				toolRef,
+			),
+		},
 	}
-	if p, ok := input.Input["query"].(string); ok {
-		return p
-	}
-	return ""
-}
-
-// looksLikeNaturalLanguage returns true if a pattern appears to be a natural
-// language query rather than an exact string or regex pattern. Heuristics:
-// - Contains spaces (multi-word)
-// - No regex metacharacters
-// - Longer than 40 characters
-// - Predominantly alphabetic characters
-func looksLikeNaturalLanguage(pattern string) bool {
-	if !strings.Contains(pattern, " ") {
-		return false
-	}
-	if len(pattern) <= 40 {
-		return false
-	}
-	// Regex metacharacters indicate an intentional pattern.
-	if strings.ContainsAny(pattern, `.*+?^${}()|[]\`) {
-		return false
-	}
-	// Check that the majority of non-space characters are letters.
-	var letters, total int
-	for _, r := range pattern {
-		if !unicode.IsSpace(r) {
-			total++
-			if unicode.IsLetter(r) {
-				letters++
-			}
-		}
-	}
-	if total == 0 {
-		return false
-	}
-	return float64(letters)/float64(total) > 0.7
 }

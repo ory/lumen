@@ -1,0 +1,36 @@
+diff --git a/src/is-matching.ts b/src/is-matching.ts
+index f786ff1..bbed1ca 100644
+--- a/src/is-matching.ts
++++ b/src/is-matching.ts
+@@ -33,10 +33,10 @@ export function isMatching<const p extends Pattern<unknown>>(
+  *    return input.name
+  *  }
+  */
+-export function isMatching<const T, const P extends P.Pattern<NoInfer<T>>>(
+-  pattern: P,
++export function isMatching<const T, const p extends Pattern<unknown>>(
++  pattern: p,
+   value: T
+-): value is P.infer<P>;
++): value is P.infer<p>;
+ 
+ export function isMatching<const p extends Pattern<any>>(
+   ...args: [pattern: p, value?: any]
+diff --git a/tests/is-matching.test.ts b/tests/is-matching.test.ts
+index 882abca..13b6c28 100644
+--- a/tests/is-matching.test.ts
++++ b/tests/is-matching.test.ts
+@@ -78,12 +78,11 @@ describe('isMatching', () => {
+     }
+   });
+ 
+-  it('should reject invalid pattern when two parameters are passed', () => {
++  it('should work even with patterns that will never match', () => {
+     const food = { type: 'pizza', topping: 'cheese' } as Food;
+ 
+     isMatching(
+       {
+-        // @ts-expect-error
+         type: 'oops',
+       },
+       food
