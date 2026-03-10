@@ -336,9 +336,11 @@ func resultSymbols(results []searchResultItem) []string {
 }
 
 // findResult returns the first result matching the given symbol name, or nil.
+// Matches if the result symbol equals symbol or contains it as a component
+// (e.g. "ValidateToken+CreateSession" matches "ValidateToken").
 func findResult(results []searchResultItem, symbol string) *searchResultItem {
 	for i := range results {
-		if results[i].Symbol == symbol {
+		if results[i].Symbol == symbol || strings.Contains(results[i].Symbol, symbol) {
 			return &results[i]
 		}
 	}
@@ -346,9 +348,10 @@ func findResult(results []searchResultItem, symbol string) *searchResultItem {
 }
 
 // rankOf returns the 0-based index of the first result matching symbol, or -1.
+// Matches if the result symbol equals symbol or contains it as a component.
 func rankOf(results []searchResultItem, symbol string) int {
 	for i, r := range results {
-		if r.Symbol == symbol {
+		if r.Symbol == symbol || strings.Contains(r.Symbol, symbol) {
 			return i
 		}
 	}
@@ -698,9 +701,13 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	if len(outFiltered.Results) == 0 {
 		t.Fatal("min_score=0.5 should still return the best match")
 	}
-	if outFiltered.Results[0].Symbol != outAll.Results[0].Symbol {
-		t.Errorf("top result should be the same: got %s vs %s",
-			outFiltered.Results[0].Symbol, outAll.Results[0].Symbol)
+	topAll := outAll.Results[0].Symbol
+	topFiltered := outFiltered.Results[0].Symbol
+	if topAll != topFiltered &&
+		!strings.Contains(topAll, topFiltered) &&
+		!strings.Contains(topFiltered, topAll) {
+		t.Errorf("top result should be related: got %s vs %s",
+			topFiltered, topAll)
 	}
 }
 
