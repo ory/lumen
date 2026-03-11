@@ -12,9 +12,7 @@
     "lib/grape/middleware/formatter.rb",
     "spec/grape/middleware/formatter_spec.rb"
   ],
-  "setup_commands": [
-    "bundle install"
-  ],
+  "setup_commands": ["bundle install"],
   "test_command": "bundle exec rspec spec/grape/middleware/formatter_spec.rb",
   "timeout_s": 900
 }

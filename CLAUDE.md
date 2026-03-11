@@ -147,10 +147,10 @@ system handles MCP registration, hooks, and skills declaratively via:
 - **Merkle tree for diffs**: Avoid re-indexing unchanged code
 - **Model name + IndexVersion in DB path**: Different models or index versions →
   separate indexes (SHA-256 hash of path + model name + `IndexVersion`).
-  `IndexVersion` is a hardcoded constant in `internal/config/version.go` — increment
-  it (and document why in the commit message) whenever a chunker, embedder, or
-  index-format change would make existing indexes incompatible. Do **not** use the
-  git commit hash; that forced a full re-index on every release.
+  `IndexVersion` is a hardcoded constant in `internal/config/version.go` —
+  increment it (and document why in the commit message) whenever a chunker,
+  embedder, or index-format change would make existing indexes incompatible. Do
+  **not** use the git commit hash; that forced a full re-index on every release.
 - **6-layer file filtering**: SkipDirs → SkipFiles → .gitignore → .lumenignore →
   .gitattributes → extension
 - **Chunk splitting at line boundaries**: Oversized chunks split at

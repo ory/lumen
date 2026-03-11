@@ -13,9 +13,7 @@
     "src/FluentValidation.Tests/ChildRulesTests.cs",
     "src/FluentValidation/DefaultValidatorExtensions.cs"
   ],
-  "setup_commands": [
-    "dotnet restore"
-  ],
+  "setup_commands": ["dotnet restore"],
   "test_command": "dotnet test src/FluentValidation.Tests/FluentValidation.Tests.csproj --filter ChildRules -v n",
   "timeout_s": 900
 }

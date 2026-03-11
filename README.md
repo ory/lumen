@@ -13,21 +13,21 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 5 languages and real GitHub
-bug-fix tasks, Lumen cuts output tokens by **52% on average**, reduces session
-time by **32%**, and cuts cost by **20%** with zero quality degradation. All
-verified with a
-[transparent, open-source benchmark framework](docs/BENCHMARKS.md) that you can
-run yourself.
+The payoff is measurable and reproducible: across 7 languages and real GitHub
+bug-fix tasks, Lumen cuts output tokens by **46%**, reduces session time by
+**27%**, and cuts cost by **22%** — with zero quality degradation. All verified
+with a [transparent, open-source benchmark framework](docs/BENCHMARKS.md) that
+you can run yourself.
 
-|                     | With Lumen                   | Baseline (no Lumen) |
-| ------------------- | ---------------------------- | ------------------- |
-| Output tokens (avg) | **3,274** (-52%)             | 6,754               |
-| Session time (avg)  | **93s** (-32%)               | 137s                |
-| Cost (avg)          | **$0.24** (-20%)             | $0.31               |
-| JavaScript (marked) | **$0.32, 119s** (-33%, -53%) | $0.48, 255s         |
-| PHP (monolog)       | **$0.14, 34s** (-27%, -34%)  | $0.19, 52s          |
-| Patch quality       | **Never degraded**           | —                   |
+|                        | With Lumen                   | Baseline (no Lumen) |
+| ---------------------- | ---------------------------- | ------------------- |
+| Output tokens (avg)    | **3,415** (-46%)             | 6,359               |
+| Session time (avg)     | **99s** (-27%)               | 136s                |
+| Cost (avg)             | **$0.25** (-22%)             | $0.33               |
+| JavaScript (marked)    | **$0.32, 119s** (-33%, -53%) | $0.48, 255s         |
+| PHP (monolog)          | **$0.14, 34s** (-27%, -34%)  | $0.19, 52s          |
+| TypeScript (commander) | **$0.14, 56s** (-27%, -33%)  | $0.19, 84s          |
+| Patch quality          | **Never degraded**           | —                   |
 
 ## Table of contents
 
@@ -124,40 +124,42 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 5 languages, hard difficulty, real GitHub issues
+**Key results** — 7 languages, hard difficulty, real GitHub issues
 (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
 | Language   | Output Token Reduction | Time Reduction | Cost Reduction | Quality                 |
 | ---------- | ---------------------- | -------------- | -------------- | ----------------------- |
 | JavaScript | **-66%** (14K → 5K)    | **-53%**       | **-33%**       | Perfect (both)          |
+| TypeScript | **-64%** (5K → 1.8K)   | **-33%**       | **-27%**       | Good (both)             |
 | PHP        | **-59%** (1.9K → 0.8K) | **-34%**       | **-27%**       | Good (both)             |
 | Python     | **-36%** (1.7K → 1.1K) | **-29%**       | **-20%**       | Perfect (both)          |
 | Go         | **-30%** (9K → 6K)     | -5%            | -4%            | Good (both), +test file |
+| Ruby       | -9% (6.1K → 5.6K)      | -11%           | **-24%**       | Good (both)             |
 | C++\*      | -11%                   | -14%           | +20%           | Good (both)             |
 
 \*C++ is a feature implementation task (not bug fix) — the only case where cost
 increased due to large codebase search overhead.
 
 The **output token reduction** is the most consistent signal — every bug-fix
-task shows Lumen helping Claude explore less and act more. JavaScript shows the
-most dramatic improvement: same Perfect-rated fix in half the time with
-two-thirds fewer tokens.
+task shows Lumen helping Claude explore less and act more. JavaScript and
+TypeScript show the most dramatic improvements: same quality fixes in a third
+less time with two-thirds fewer tokens.
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for per-language deep dives, judge
-rationales, and reproduce instructions.
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 7 per-language deep dives,
+judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **11 language families** with semantic chunking:
+Supports **11 language families** with semantic chunking (7 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                            |
 | ---------------- | ----------- | ----------------------------------------- | ------------------------------------------- |
 | Go               | Native AST  | `.go`                                     | Benchmarked: -30% output tokens, +test file |
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens   |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Supported                                   |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time         |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time         |
 | Rust             | tree-sitter | `.rs`                                     | Supported                                   |
-| Ruby             | tree-sitter | `.rb`                                     | Supported                                   |
+| Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time           |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time         |
 | Java             | tree-sitter | `.java`                                   | Supported                                   |
 | C#               | tree-sitter | `.cs`                                     | Supported                                   |

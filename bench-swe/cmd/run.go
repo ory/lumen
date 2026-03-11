@@ -165,10 +165,10 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 					} else if result != nil && result.Metrics != nil {
 						m := result.Metrics
 						durS := float64(m.DurationMS) / 1000.0
-						line = fmt.Sprintf("  %-20s %s done  [%5.1fs  $%.4f  in=%d+%dcr  out=%d]  workdir=%s\n",
-							t.ID, runLabel, durS, m.CostUSD, m.InputTokens, m.CacheRead, m.OutputTokens, result.Workdir)
+						line = fmt.Sprintf("  %-20s %s done  [%5.1fs  $%.4f  in=%d+%dcr  out=%d]\n",
+							t.ID, runLabel, durS, m.CostUSD, m.InputTokens, m.CacheRead, m.OutputTokens)
 					} else if result != nil {
-						line = fmt.Sprintf("  %-20s %s done  (no metrics)  workdir=%s\n", t.ID, runLabel, result.Workdir)
+						line = fmt.Sprintf("  %-20s %s done  (no metrics)\n", t.ID, runLabel)
 					}
 					lines = append(lines, line)
 					if result != nil {

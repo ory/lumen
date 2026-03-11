@@ -31,7 +31,6 @@ type RunResult struct {
 	PatchPath  string
 	RawPath    string
 	TestOutput string
-	Workdir    string
 }
 
 // Slug returns the file prefix for a given task, scenario, and run.
@@ -50,6 +49,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	if err != nil {
 		return nil, fmt.Errorf("creating temp dir: %w", err)
 	}
+	defer func() { _ = os.RemoveAll(workdir) }()
 	// Resolve symlinks so the DB path computed during indexing matches the CWD
 	// that Claude reports via os.Getwd() (e.g. /var/... vs /private/var/... on macOS).
 	if resolved, err := filepath.EvalSymlinks(workdir); err == nil {
@@ -184,7 +184,6 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 			Scenario: s,
 			RunIndex: runIndex,
 			RawPath:  rawPath,
-			Workdir:  workdir,
 		}, nil
 	}
 
@@ -216,7 +215,6 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 		PatchPath:  patchPath,
 		RawPath:    rawPath,
 		TestOutput: testOutput,
-		Workdir:    workdir,
 	}, nil
 }
 

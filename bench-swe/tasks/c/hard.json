@@ -10,6 +10,7 @@
   "gold_patch_file": "patches/c-hard.patch",
   "expected_files": ["src/jv_aux.c", "tests/jq.test"],
   "setup_commands": [
+    "git submodule update --init vendor/oniguruma",
     "autoreconf -i",
     "./configure --with-oniguruma=builtin",
     "make -j$(nproc)"

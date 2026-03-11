@@ -441,8 +441,8 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 	projectPath := sampleProjectPath(t)
 
 	out := callSearch(t, session, map[string]any{
-		"query": "authentication token validation",
-		"path":  projectPath,
+		"query":     "authentication token validation",
+		"path":      projectPath,
 		"n_results": 5,
 	})
 
@@ -517,8 +517,8 @@ func TestE2E_PlaintextContent(t *testing.T) {
 
 	// Get raw result to inspect Content (text) alongside StructuredContent.
 	result := callSearchRaw(t, session, map[string]any{
-		"query": "authentication token validation",
-		"path":  projectPath,
+		"query":     "authentication token validation",
+		"path":      projectPath,
 		"n_results": 3,
 	})
 
@@ -580,7 +580,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out := callSearch(t, session, map[string]any{
 		"query":     "HTTP request handler for health check endpoint",
 		"path":      projectPath,
-		"n_results":     50,
+		"n_results": 50,
 		"min_score": -1,
 	})
 	healthRank := rankOf(out.Results, "HandleHealth")
@@ -590,7 +590,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 		raw := callSearchRaw(t, session, map[string]any{
 			"query":     "HTTP request handler for health check endpoint",
 			"path":      projectPath,
-			"n_results":     50,
+			"n_results": 50,
 			"min_score": -1,
 		})
 		t.Logf("raw text:\n%s", getTextContent(t, raw))
@@ -608,7 +608,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "database query pagination",
 		"path":      projectPath,
-		"n_results":     50,
+		"n_results": 50,
 		"min_score": -1,
 	})
 	queryRank := rankOf(out2.Results, "QueryUsers")
@@ -670,7 +670,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outAll := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"n_results":     50,
+		"n_results": 50,
 		"min_score": -1,
 	})
 	if len(outAll.Results) == 0 {
@@ -681,7 +681,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outFiltered := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"n_results":     50,
+		"n_results": 50,
 		"min_score": 0.5,
 	})
 
