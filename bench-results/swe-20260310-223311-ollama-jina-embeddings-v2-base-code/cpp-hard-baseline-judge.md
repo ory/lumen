@@ -1,3 +1,0 @@
-## Rating: Good
-
-The candidate patch implements a valid C API for fmt using a different design pattern: an opaque `fmt_args` object with push functions and dynamic allocation, versus the gold patch's struct-based static approach with `_Generic` macros. Both correctly provide type-safe C bindings to fmt's formatting capabilities, but the candidate uses `fmt::dynamic_format_arg_store` and returns heap-allocated strings (requiring `fmt_free`), while the gold patch uses a fixed-size buffer approach. The candidate integrates into the main fmt library rather than a separate `fmt_c` target, and uses a C++ test file with gtest rather than a pure C test, so the files differ in structure and naming.
