@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/ory/lumen/compare/v0.0.10...v0.0.11) (2026-03-11)
+
+
+### Features
+
+* improved benchmarks and further tree sitter fixes ([67f9dd3](https://github.com/ory/lumen/commit/67f9dd38f82b3b8804e48c2d9602c5f0605f4fcc))
+
 ## [0.0.10](https://github.com/ory/lumen/compare/v0.0.9...v0.0.10) (2026-03-10)
 
 
