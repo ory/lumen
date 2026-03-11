@@ -1,0 +1,419 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 53afc51..e44394e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -299,10 +299,10 @@ endfunction()
+ 
+ # Define the fmt library, its includes and the needed defines.
+ set(FMT_HEADERS)
+-add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
+-                        format-inl.h os.h ostream.h printf.h ranges.h std.h
+-                        xchar.h)
+-set(FMT_SOURCES src/format.cc)
++add_headers(FMT_HEADERS args.h base.h c_api.h chrono.h color.h compile.h core.h
++                        format.h format-inl.h os.h ostream.h printf.h ranges.h
++                        std.h xchar.h)
++set(FMT_SOURCES src/format.cc src/c_api.cc)
+ 
+ add_module_library(fmt src/fmt.cc FALLBACK
+                    ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
+diff --git a/include/fmt/c_api.h b/include/fmt/c_api.h
+new file mode 100644
+index 0000000..21c5ec9
+--- /dev/null
++++ b/include/fmt/c_api.h
+@@ -0,0 +1,140 @@
++// Formatting library for C++ - C API
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#ifndef FMT_C_API_H_
++#define FMT_C_API_H_
++
++#include <stddef.h>
++
++#if !defined(FMT_HEADER_ONLY) && defined(_WIN32)
++#  if defined(FMT_LIB_EXPORT)
++#    define FMT_C_API __declspec(dllexport)
++#  elif defined(FMT_SHARED)
++#    define FMT_C_API __declspec(dllimport)
++#  endif
++#elif defined(FMT_LIB_EXPORT) || defined(FMT_SHARED)
++#  define FMT_C_API __attribute__((visibility("default")))
++#endif
++#ifndef FMT_C_API
++#  define FMT_C_API
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/**
++ * The type of a formatting argument passed to the C API.
++ *
++ * Unlike printf, the type is encoded explicitly in the argument struct rather
++ * than in the format string, which makes the interface type-safe even for
++ * runtime format strings.
++ */
++enum fmt_type {
++  FMT_INT,
++  FMT_UINT,
++  FMT_LONG_LONG,
++  FMT_ULONG_LONG,
++  FMT_BOOL,
++  FMT_CHAR,
++  FMT_FLOAT,
++  FMT_DOUBLE,
++  FMT_LONG_DOUBLE,
++  FMT_CSTRING,
++  FMT_STRING,
++  FMT_POINTER
++};
++
++/** A string argument with explicit length. */
++struct fmt_string_value {
++  const char* data;
++  size_t size;
++};
++
++/**
++ * A type-tagged formatting argument.
++ *
++ * Unlike printf format specifiers, the type is stored in the `type` field
++ * rather than encoded in the format string. This makes the API type-safe even
++ * for runtime format strings and avoids undefined behavior from type mismatches.
++ */
++struct fmt_arg {
++  enum fmt_type type;
++  union {
++    int int_value;
++    unsigned uint_value;
++    long long long_long_value;
++    unsigned long long ulong_long_value;
++    int bool_value; /**< 0 for false, non-zero for true */
++    char char_value;
++    float float_value;
++    double double_value;
++    long double long_double_value;
++    const char* cstring_value;
++    struct fmt_string_value string_value;
++    const void* pointer_value;
++  } value;
++};
++
++/**
++ * Formats arguments according to the format string and writes the result into
++ * the provided buffer.
++ *
++ * Behaves like snprintf: if `buf` is not null and `buf_size` is greater than
++ * zero, writes up to `buf_size - 1` characters followed by a null terminator.
++ * Returns the total number of characters that would be written if the buffer
++ * were large enough, not counting the null terminator, or -1 on error.
++ *
++ * **Example**:
++ *
++ *     char buf[64];
++ *     struct fmt_arg args[] = {FMT_ARG_INT(42), FMT_ARG_CSTRING("world")};
++ *     fmt_format_to(buf, sizeof(buf), "{} {}", args, 2);
++ *     // buf == "42 world"
++ */
++FMT_C_API int fmt_format_to(char* buf, size_t buf_size, const char* fmt,
++                             const struct fmt_arg* args, int num_args);
++
++/**
++ * Formats arguments according to the format string and writes the result to
++ * the standard output. Returns the number of characters written, or -1 on
++ * error.
++ */
++FMT_C_API int fmt_print(const char* fmt, const struct fmt_arg* args,
++                        int num_args);
++
++#ifdef __cplusplus
++}
++#endif
++
++/* Convenience macros for constructing fmt_arg values (C99). */
++#define FMT_ARG_INT(v) \
++  {FMT_INT, {.int_value = (v)}}
++#define FMT_ARG_UINT(v) \
++  {FMT_UINT, {.uint_value = (v)}}
++#define FMT_ARG_LONG_LONG(v) \
++  {FMT_LONG_LONG, {.long_long_value = (v)}}
++#define FMT_ARG_ULONG_LONG(v) \
++  {FMT_ULONG_LONG, {.ulong_long_value = (v)}}
++#define FMT_ARG_BOOL(v) \
++  {FMT_BOOL, {.bool_value = (int)(v)}}
++#define FMT_ARG_CHAR(v) \
++  {FMT_CHAR, {.char_value = (v)}}
++#define FMT_ARG_FLOAT(v) \
++  {FMT_FLOAT, {.float_value = (v)}}
++#define FMT_ARG_DOUBLE(v) \
++  {FMT_DOUBLE, {.double_value = (v)}}
++#define FMT_ARG_LONG_DOUBLE(v) \
++  {FMT_LONG_DOUBLE, {.long_double_value = (v)}}
++#define FMT_ARG_CSTRING(v) \
++  {FMT_CSTRING, {.cstring_value = (v)}}
++#define FMT_ARG_STRING(d, s) \
++  {FMT_STRING, {.string_value = {(d), (s)}}}
++#define FMT_ARG_POINTER(v) \
++  {FMT_POINTER, {.pointer_value = (v)}}
++
++#endif  // FMT_C_API_H_
+diff --git a/src/c_api.cc b/src/c_api.cc
+new file mode 100644
+index 0000000..f2713d5
+--- /dev/null
++++ b/src/c_api.cc
+@@ -0,0 +1,90 @@
++// Formatting library for C++ - C API implementation
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/c_api.h"
++
++#include <cstring>  // memcpy
++#include <vector>
++
++#define FMT_HEADER_ONLY
++#include "fmt/format.h"
++
++namespace {
++
++auto to_fmt_arg(const fmt_arg& arg) -> fmt::basic_format_arg<fmt::context> {
++  switch (arg.type) {
++  case FMT_INT:
++    return fmt::basic_format_arg<fmt::context>(arg.value.int_value);
++  case FMT_UINT:
++    return fmt::basic_format_arg<fmt::context>(arg.value.uint_value);
++  case FMT_LONG_LONG:
++    return fmt::basic_format_arg<fmt::context>(arg.value.long_long_value);
++  case FMT_ULONG_LONG:
++    return fmt::basic_format_arg<fmt::context>(arg.value.ulong_long_value);
++  case FMT_BOOL:
++    return fmt::basic_format_arg<fmt::context>(
++        static_cast<bool>(arg.value.bool_value));
++  case FMT_CHAR:
++    return fmt::basic_format_arg<fmt::context>(arg.value.char_value);
++  case FMT_FLOAT:
++    return fmt::basic_format_arg<fmt::context>(arg.value.float_value);
++  case FMT_DOUBLE:
++    return fmt::basic_format_arg<fmt::context>(arg.value.double_value);
++  case FMT_LONG_DOUBLE:
++    return fmt::basic_format_arg<fmt::context>(arg.value.long_double_value);
++  case FMT_CSTRING:
++    return fmt::basic_format_arg<fmt::context>(arg.value.cstring_value);
++  case FMT_STRING:
++    return fmt::basic_format_arg<fmt::context>(fmt::string_view(
++        arg.value.string_value.data, arg.value.string_value.size));
++  case FMT_POINTER:
++    return fmt::basic_format_arg<fmt::context>(arg.value.pointer_value);
++  }
++  return fmt::basic_format_arg<fmt::context>();
++}
++
++}  // namespace
++
++extern "C" {
++
++int fmt_format_to(char* buf, size_t buf_size, const char* fmt_str,
++                  const fmt_arg* args, int num_args) {
++  FMT_TRY {
++    std::vector<fmt::basic_format_arg<fmt::context>> cpp_args;
++    cpp_args.reserve(static_cast<size_t>(num_args));
++    for (int i = 0; i < num_args; ++i) cpp_args.push_back(to_fmt_arg(args[i]));
++    auto fa =
++        fmt::basic_format_args<fmt::context>(cpp_args.data(), num_args);
++    auto result = fmt::memory_buffer();
++    fmt::detail::vformat_to(result, fmt::string_view(fmt_str), fa);
++    if (buf && buf_size > 0) {
++      size_t copy_size =
++          result.size() < buf_size - 1 ? result.size() : buf_size - 1;
++      std::memcpy(buf, result.data(), copy_size);
++      buf[copy_size] = '\0';
++    }
++    return static_cast<int>(result.size());
++  }
++  FMT_CATCH(...) { return -1; }
++}
++
++int fmt_print(const char* fmt_str, const fmt_arg* args, int num_args) {
++  FMT_TRY {
++    std::vector<fmt::basic_format_arg<fmt::context>> cpp_args;
++    cpp_args.reserve(static_cast<size_t>(num_args));
++    for (int i = 0; i < num_args; ++i) cpp_args.push_back(to_fmt_arg(args[i]));
++    auto fa =
++        fmt::basic_format_args<fmt::context>(cpp_args.data(), num_args);
++    auto result = fmt::memory_buffer();
++    fmt::detail::vformat_to(result, fmt::string_view(fmt_str), fa);
++    std::fwrite(result.data(), 1, result.size(), stdout);
++    return static_cast<int>(result.size());
++  }
++  FMT_CATCH(...) { return -1; }
++}
++
++}  // extern "C"
+diff --git a/test/CMakeLists.txt b/test/CMakeLists.txt
+index 3f7d24a..eb0654d 100644
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -46,6 +46,7 @@ if (FMT_MODULE)
+ endif ()
+ 
+ add_fmt_test(args-test)
++add_fmt_test(c-api-test)
+ add_fmt_test(base-test)
+ add_fmt_test(assert-test)
+ add_fmt_test(chrono-test)
+diff --git a/test/c-api-test.cc b/test/c-api-test.cc
+new file mode 100644
+index 0000000..b637832
+--- /dev/null
++++ b/test/c-api-test.cc
+@@ -0,0 +1,140 @@
++// Formatting library for C++ - C API tests
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/c_api.h"
++
++#include <string.h>
++
++#include "gtest/gtest.h"
++
++TEST(c_api_test, no_args) {
++  char buf[64];
++  int n = fmt_format_to(buf, sizeof(buf), "hello", nullptr, 0);
++  EXPECT_EQ(5, n);
++  EXPECT_STREQ("hello", buf);
++}
++
++TEST(c_api_test, int_arg) {
++  char buf[64];
++  struct fmt_arg args[] = {FMT_ARG_INT(42)};
++  int n = fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_EQ(2, n);
++  EXPECT_STREQ("42", buf);
++}
++
++TEST(c_api_test, multiple_args) {
++  char buf[64];
++  struct fmt_arg args[] = {FMT_ARG_INT(1), FMT_ARG_CSTRING("foo"),
++                           FMT_ARG_DOUBLE(3.14)};
++  fmt_format_to(buf, sizeof(buf), "{} {} {:.2f}", args, 3);
++  EXPECT_STREQ("1 foo 3.14", buf);
++}
++
++TEST(c_api_test, uint_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_UINT(42u)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("42", buf);
++}
++
++TEST(c_api_test, long_long_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_LONG_LONG(1234567890123LL)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("1234567890123", buf);
++}
++
++TEST(c_api_test, ulong_long_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_ULONG_LONG(9876543210ULL)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("9876543210", buf);
++}
++
++TEST(c_api_test, bool_arg) {
++  char buf[16];
++  struct fmt_arg args[] = {FMT_ARG_BOOL(1)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("true", buf);
++
++  struct fmt_arg args2[] = {FMT_ARG_BOOL(0)};
++  fmt_format_to(buf, sizeof(buf), "{}", args2, 1);
++  EXPECT_STREQ("false", buf);
++}
++
++TEST(c_api_test, char_arg) {
++  char buf[16];
++  struct fmt_arg args[] = {FMT_ARG_CHAR('A')};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("A", buf);
++}
++
++TEST(c_api_test, float_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_FLOAT(1.5f)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("1.5", buf);
++}
++
++TEST(c_api_test, double_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_DOUBLE(2.5)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("2.5", buf);
++}
++
++TEST(c_api_test, cstring_arg) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_CSTRING("hello")};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("hello", buf);
++}
++
++TEST(c_api_test, string_arg) {
++  char buf[32];
++  const char* s = "hello world";
++  struct fmt_arg args[] = {FMT_ARG_STRING(s, 5)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("hello", buf);
++}
++
++TEST(c_api_test, pointer_arg) {
++  char buf[32];
++  void* p = nullptr;
++  struct fmt_arg args[] = {FMT_ARG_POINTER(p)};
++  fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_STREQ("0x0", buf);
++}
++
++TEST(c_api_test, returns_required_size) {
++  // buf_size is too small; returns what would be needed
++  char buf[4];
++  struct fmt_arg args[] = {FMT_ARG_INT(12345)};
++  int n = fmt_format_to(buf, sizeof(buf), "{}", args, 1);
++  EXPECT_EQ(5, n);
++  EXPECT_STREQ("123", buf);  // truncated but null-terminated
++}
++
++TEST(c_api_test, null_buf_returns_size) {
++  struct fmt_arg args[] = {FMT_ARG_CSTRING("hello")};
++  int n = fmt_format_to(nullptr, 0, "{}", args, 1);
++  EXPECT_EQ(5, n);
++}
++
++TEST(c_api_test, invalid_format_returns_minus_one) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_INT(1)};
++  int n = fmt_format_to(buf, sizeof(buf), "{", args, 1);
++  EXPECT_EQ(-1, n);
++}
++
++TEST(c_api_test, format_spec) {
++  char buf[32];
++  struct fmt_arg args[] = {FMT_ARG_INT(255)};
++  fmt_format_to(buf, sizeof(buf), "{:#x}", args, 1);
++  EXPECT_STREQ("0xff", buf);
++}

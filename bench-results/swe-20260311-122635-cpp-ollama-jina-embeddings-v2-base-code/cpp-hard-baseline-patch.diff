@@ -1,0 +1,476 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 53afc51..c34d565 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -299,10 +299,10 @@ endfunction()
+ 
+ # Define the fmt library, its includes and the needed defines.
+ set(FMT_HEADERS)
+-add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
++add_headers(FMT_HEADERS args.h base.h c.h chrono.h color.h compile.h core.h format.h
+                         format-inl.h os.h ostream.h printf.h ranges.h std.h
+                         xchar.h)
+-set(FMT_SOURCES src/format.cc)
++set(FMT_SOURCES src/format.cc src/fmt-c.cc)
+ 
+ add_module_library(fmt src/fmt.cc FALLBACK
+                    ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
+diff --git a/include/fmt/c.h b/include/fmt/c.h
+new file mode 100644
+index 0000000..958230d
+--- /dev/null
++++ b/include/fmt/c.h
+@@ -0,0 +1,120 @@
++// Formatting library for C++ - C API
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++/**
++ * A C API for the {fmt} library that provides type-safe formatting without
++ * requiring a C++ compiler. It builds on the type-erased `fmt::vformat`
++ * interface and `fmt::dynamic_format_arg_store`.
++ *
++ * Unlike printf, this API is fully type-safe: type information is encoded in
++ * the argument store, not in the format string itself.
++ *
++ * Example:
++ *
++ *     fmt_arg_store* args = fmt_arg_store_create();
++ *     fmt_arg_store_push_int(args, 42);
++ *     fmt_arg_store_push_cstring(args, "world");
++ *     char* result = fmt_vformat("answer={} name={}", args);
++ *     // result == "answer=42 name=world"
++ *     fmt_free(result);
++ *     fmt_arg_store_destroy(args);
++ */
++
++#ifndef FMT_C_H_
++#define FMT_C_H_
++
++#include <stddef.h>
++
++// Export macro for shared library builds.
++#ifndef FMT_C_API
++#  if defined(_WIN32) && !defined(FMT_HEADER_ONLY)
++#    if defined(FMT_LIB_EXPORT)
++#      define FMT_C_API __declspec(dllexport)
++#    elif defined(FMT_SHARED)
++#      define FMT_C_API __declspec(dllimport)
++#    else
++#      define FMT_C_API
++#    endif
++#  elif defined(FMT_LIB_EXPORT) || defined(FMT_SHARED)
++#    define FMT_C_API __attribute__((visibility("default")))
++#  else
++#    define FMT_C_API
++#  endif
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/**
++ * An opaque handle to a dynamic argument store. Use `fmt_arg_store_create` to
++ * create one and `fmt_arg_store_destroy` to release it.
++ */
++typedef struct fmt_arg_store_s fmt_arg_store;
++
++/** Creates a new, empty argument store. Returns NULL on allocation failure. */
++FMT_C_API fmt_arg_store* fmt_arg_store_create(void);
++
++/** Destroys an argument store created by `fmt_arg_store_create`. */
++FMT_C_API void fmt_arg_store_destroy(fmt_arg_store* store);
++
++/**
++ * Pushes a typed value into the argument store.
++ * For `push_cstring`, the pointed-to string must remain valid until
++ * `fmt_vformat` is called. For `push_string`, the string is copied.
++ */
++FMT_C_API void fmt_arg_store_push_int(fmt_arg_store* store, int value);
++FMT_C_API void fmt_arg_store_push_uint(fmt_arg_store* store,
++                                       unsigned int value);
++FMT_C_API void fmt_arg_store_push_long_long(fmt_arg_store* store,
++                                            long long value);
++FMT_C_API void fmt_arg_store_push_ulong_long(fmt_arg_store* store,
++                                             unsigned long long value);
++FMT_C_API void fmt_arg_store_push_float(fmt_arg_store* store, float value);
++FMT_C_API void fmt_arg_store_push_double(fmt_arg_store* store, double value);
++FMT_C_API void fmt_arg_store_push_long_double(fmt_arg_store* store,
++                                              long double value);
++/** Pushes a boolean value (0 = false, non-zero = true). */
++FMT_C_API void fmt_arg_store_push_bool(fmt_arg_store* store, int value);
++FMT_C_API void fmt_arg_store_push_char(fmt_arg_store* store, char value);
++/**
++ * Pushes a null-terminated C string. The pointer must remain valid until
++ * `fmt_vformat` is called.
++ */
++FMT_C_API void fmt_arg_store_push_cstring(fmt_arg_store* store,
++                                          const char* value);
++/**
++ * Pushes a string of the given length. The string is copied into the store, so
++ * the pointer does not need to remain valid after this call.
++ */
++FMT_C_API void fmt_arg_store_push_string(fmt_arg_store* store,
++                                         const char* value, size_t size);
++/** Pushes a pointer value (formatted as a hexadecimal address). */
++FMT_C_API void fmt_arg_store_push_pointer(fmt_arg_store* store,
++                                          const void* value);
++
++/**
++ * Formats a string according to `fmt` using the arguments in `store`.
++ *
++ * Returns a null-terminated heap-allocated string on success, or NULL if
++ * formatting failed (e.g. invalid format string) or memory allocation failed.
++ * The caller must release the result with `fmt_free`.
++ *
++ * The `store` argument may be NULL (equivalent to an empty store).
++ */
++FMT_C_API char* fmt_vformat(const char* fmt, fmt_arg_store* store);
++
++/**
++ * Releases memory returned by `fmt_vformat`. Passing NULL is a no-op.
++ */
++FMT_C_API void fmt_free(void* ptr);
++
++#ifdef __cplusplus
++}  // extern "C"
++#endif
++
++#endif  // FMT_C_H_
+diff --git a/src/fmt-c.cc b/src/fmt-c.cc
+new file mode 100644
+index 0000000..9655333
+--- /dev/null
++++ b/src/fmt-c.cc
+@@ -0,0 +1,117 @@
++// Formatting library for C++ - C API implementation
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/c.h"
++
++#include <cstdlib>
++#include <cstring>
++#include <new>
++
++#include "fmt/args.h"
++
++struct fmt_arg_store_s {
++  fmt::dynamic_format_arg_store<fmt::format_context> store;
++};
++
++extern "C" {
++
++FMT_C_API fmt_arg_store* fmt_arg_store_create(void) {
++  FMT_TRY { return new (std::nothrow) fmt_arg_store_s; }
++  FMT_CATCH(...) { return nullptr; }
++}
++
++FMT_C_API void fmt_arg_store_destroy(fmt_arg_store* store) { delete store; }
++
++FMT_C_API void fmt_arg_store_push_int(fmt_arg_store* store, int value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_uint(fmt_arg_store* store,
++                                       unsigned int value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_long_long(fmt_arg_store* store,
++                                            long long value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_ulong_long(fmt_arg_store* store,
++                                             unsigned long long value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_float(fmt_arg_store* store, float value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_double(fmt_arg_store* store, double value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_long_double(fmt_arg_store* store,
++                                              long double value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_bool(fmt_arg_store* store, int value) {
++  if (store) FMT_TRY { store->store.push_back(value != 0); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_char(fmt_arg_store* store, char value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_cstring(fmt_arg_store* store,
++                                          const char* value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_string(fmt_arg_store* store,
++                                         const char* value, size_t size) {
++  if (store && value)
++    FMT_TRY { store->store.push_back(std::string(value, size)); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API void fmt_arg_store_push_pointer(fmt_arg_store* store,
++                                          const void* value) {
++  if (store) FMT_TRY { store->store.push_back(value); }
++  FMT_CATCH(...) {}
++}
++
++FMT_C_API char* fmt_vformat(const char* format, fmt_arg_store* store) {
++  if (!format) return nullptr;
++  FMT_TRY {
++    std::string result;
++    if (store) {
++      result = fmt::vformat(format, store->store);
++    } else {
++      fmt::dynamic_format_arg_store<fmt::format_context> empty;
++      result = fmt::vformat(format, empty);
++    }
++    char* buf = static_cast<char*>(std::malloc(result.size() + 1));
++    if (!buf) return nullptr;
++    std::memcpy(buf, result.c_str(), result.size() + 1);
++    return buf;
++  }
++  FMT_CATCH(...) { return nullptr; }
++}
++
++FMT_C_API void fmt_free(void* ptr) { std::free(ptr); }
++
++}  // extern "C"
+diff --git a/test/CMakeLists.txt b/test/CMakeLists.txt
+index 3f7d24a..eb0654d 100644
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -46,6 +46,7 @@ if (FMT_MODULE)
+ endif ()
+ 
+ add_fmt_test(args-test)
++add_fmt_test(c-api-test)
+ add_fmt_test(base-test)
+ add_fmt_test(assert-test)
+ add_fmt_test(chrono-test)
+diff --git a/test/c-api-test.cc b/test/c-api-test.cc
+new file mode 100644
+index 0000000..fca20d2
+--- /dev/null
++++ b/test/c-api-test.cc
+@@ -0,0 +1,192 @@
++// Formatting library for C++ - C API tests
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/c.h"
++
++#include <string.h>
++
++#include "gtest/gtest.h"
++
++TEST(c_api_test, empty_format) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  char* result = fmt_vformat("no args", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "no args");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, null_store) {
++  char* result = fmt_vformat("hello", nullptr);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "hello");
++  fmt_free(result);
++}
++
++TEST(c_api_test, push_int) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_int(args, 42);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "42");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_uint) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_uint(args, 42u);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "42");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_long_long) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_long_long(args, -9000000000LL);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "-9000000000");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_ulong_long) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_ulong_long(args, 9000000000ULL);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "9000000000");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_double) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_double(args, 1.5);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "1.5");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_float) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_float(args, 1.5f);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "1.5");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_bool_true) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_bool(args, 1);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "true");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_bool_false) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_bool(args, 0);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "false");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_char) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_char(args, 'A');
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "A");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_cstring) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_cstring(args, "hello");
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "hello");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_string_with_length) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  const char* str = "hello world";
++  fmt_arg_store_push_string(args, str, 5);  // only "hello"
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "hello");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_pointer) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_pointer(args, nullptr);
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "0x0");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, multiple_args) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_int(args, 42);
++  fmt_arg_store_push_cstring(args, "world");
++  fmt_arg_store_push_double(args, 1.5);
++  char* result = fmt_vformat("{} {} {}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "42 world 1.5");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, format_spec) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  fmt_arg_store_push_int(args, 255);
++  char* result = fmt_vformat("{:x}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "ff");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, invalid_format_returns_null) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  // Too many placeholders for the number of arguments
++  char* result = fmt_vformat("{} {}", args);
++  EXPECT_EQ(result, nullptr);
++  fmt_arg_store_destroy(args);
++}
++
++TEST(c_api_test, push_string_is_copied) {
++  fmt_arg_store* args = fmt_arg_store_create();
++  char buf[] = "original";
++  fmt_arg_store_push_string(args, buf, strlen(buf));
++  // Mutate buf after pushing; result should still show "original"
++  buf[0] = 'X';
++  char* result = fmt_vformat("{}", args);
++  ASSERT_NE(result, nullptr);
++  EXPECT_STREQ(result, "original");
++  fmt_free(result);
++  fmt_arg_store_destroy(args);
++}

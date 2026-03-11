@@ -1,0 +1,15 @@
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..bd6956a 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -307,7 +307,9 @@ impl State {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        // Implicit tables (created as parents by nested headers like [a.b.c]) can be extended with dotted keys
++        let mixed_table_types =
++            parent_table.is_dotted() == path.is_empty() && !parent_table.is_implicit();
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));

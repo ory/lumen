@@ -1,3 +1,0 @@
-## Rating: Good
-
-The candidate patch implements a valid C API for fmt, but uses a fundamentally different design: an opaque `fmt_args` handle with individual push functions (requiring dynamic allocation) versus the gold patch's approach of a static array of tagged union args with `_Generic` macros for type-safe C usage. The candidate's API is more idiomatic for C (no macros needed, cleaner usage), uses `fmt::dynamic_format_arg_store`, and also adds `fmt_vprint`/`fmt_vfprint` which the gold lacks. However, the files differ (gold adds `include/fmt/fmt-c.h` + modifies root `CMakeLists.txt`; candidate adds `include/fmt/c-api.h` + modifies both root and `test/CMakeLists.txt`), and the implementations are architecturally distinct though both correctly solve the stated issue.

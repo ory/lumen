@@ -1,0 +1,51 @@
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..3439fcb 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -307,7 +307,9 @@ impl State {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        // Implicit tables (created as side effects of nested headers like [a.b.c]) can be extended
++        let mixed_table_types =
++            !parent_table.is_implicit() && (parent_table.is_dotted() == path.is_empty());
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+diff --git a/crates/toml_edit/tests/compliance/parse.rs b/crates/toml_edit/tests/compliance/parse.rs
+index 6ab6cae..9f3acdb 100644
+--- a/crates/toml_edit/tests/compliance/parse.rs
++++ b/crates/toml_edit/tests/compliance/parse.rs
+@@ -257,6 +257,31 @@ name = "plantain"
+     );
+ }
+ 
++#[test]
++fn dotted_key_extends_implicit_table_from_nested_header() {
++    // Regression test: dotted keys should be allowed to extend a table that was
++    // implicitly created by a nested header like [fruit.apple.texture].
++    // See: https://github.com/toml-lang/toml/issues/769
++    let table = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#
++    .parse::<crate::RustDocument>()
++    .unwrap();
++    assert_eq!(
++        table["fruit"]["apple"]["texture"]["smooth"].as_bool(),
++        Some(true)
++    );
++    assert_eq!(table["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(
++        table["fruit"]["apple"]["taste"]["sweet"].as_bool(),
++        Some(true)
++    );
++}
++
+ #[test]
+ fn blank_literal_string() {
+     let table = "foo = ''".parse::<crate::RustDocument>().unwrap();
