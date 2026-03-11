@@ -1,10 +1,16 @@
 title: Make Claude Code faster and cheaper in large codebases with Ory Lumen
+
 description: Ory Lumen adds local semantic code search to Claude Code via MCP.
 Index your codebase with local embeddings, cut runtime by up to 53% and API
-costs by up to 33%. slug: ory-lumen-semantic-search-claude-code meta-desc:
-Claude Code getting slower as your codebase grows? Ory Lumen is a local semantic
-search MCP server that makes Claude up to 2x faster and 33% cheaper. meta-title:
-Faster and Cheaper Claude Code with Ory Lumen | Ory
+costs by up to 33%. slug: ory-lumen-semantic-search-claude-code
+
+meta-desc: Claude Code getting slower as your codebase grows? Ory Lumen is a
+local semantic search MCP server that makes Claude up to 2x faster and 33%
+cheaper.
+
+meta-title: Faster and Cheaper Claude Code with Ory Lumen | Ory
+
+---
 
 [Ory Lumen](https://github.com/ory/lumen) makes Claude Code faster and cheaper
 with local semantic search via SQLite-vec.
@@ -137,3 +143,14 @@ want it to solve more benchmarks better and welcome anyone who wants to help
 make Claude Code faster and cheaper with local-first tooling! If you find
 something, please feel free to contribute on our
 [GitHub](https://github.com/ory/lumen)!
+
+## Don't vibe code auth, use Ory
+
+If you're thinking about login, user management, permissions, oauth2, oidc,
+sso - don't vibe code it. Instead, use Ory's open source technology that runs
+anywhere, integrates with any stack, and is built for security and reliability.
+Check out [Ory Kratos](https://www.ory.sh/kratos) for identity,
+[Ory Keto](https://www.ory.sh/keto) for permissions,
+[Ory Hydra](https://www.ory.sh/hydra) for oauth2 and oidc, and
+[Ory Oathkeeper](https://www.ory.sh/oathkeeper) for access control. Identity is
+infrastructure, not application code; use the right tools for the job!
