@@ -1,19 +1,25 @@
 diff --git a/decode.go b/decode.go
-index 72af5e2..ae4dc50 100644
+index 72af5e2..b49e97e 100644
 --- a/decode.go
 +++ b/decode.go
-@@ -990,6 +990,9 @@ func (d *Decoder) createDecodedNewValue(
+@@ -990,6 +990,15 @@ func (d *Decoder) createDecodedNewValue(
  		}
  	}
  	if node.Type() == ast.NullType {
-+		if defaultVal.IsValid() && typ.Kind() == reflect.Struct {
-+			return defaultVal, nil
++		if typ.Kind() == reflect.Struct && defaultVal.IsValid() {
++			dv := defaultVal
++			for dv.Kind() == reflect.Ptr {
++				dv = dv.Elem()
++			}
++			if dv.IsValid() && dv.Type() == typ {
++				return dv, nil
++			}
 +		}
  		return reflect.Zero(typ), nil
  	}
  	newValue := d.createDecodableValue(typ)
 diff --git a/decode_test.go b/decode_test.go
-index f0b0c08..7acbc2d 100644
+index f0b0c08..bcc50d1 100644
 --- a/decode_test.go
 +++ b/decode_test.go
 @@ -1945,6 +1945,33 @@ w: w_value
@@ -37,13 +43,13 @@ index f0b0c08..7acbc2d 100644
 +`
 +	test := Test{Defaults: Default{Key: "My default Value"}}
 +	if err := yaml.NewDecoder(strings.NewReader(yml)).Decode(&test); err != nil {
-+		t.Fatalf("parsing should succeed: %s", err)
++		t.Fatalf("unexpected error: %s", err)
 +	}
 +	if test.First != "Test" {
-+		t.Fatalf("test.First should be `Test`, got `%s`", test.First)
++		t.Fatalf("expected test.First to be `Test`, got `%s`", test.First)
 +	}
 +	if test.Defaults.Key != "My default Value" {
-+		t.Fatalf("test.Defaults.Key should be `My default Value`, got `%s`", test.Defaults.Key)
++		t.Fatalf("expected test.Defaults.Key to be `My default Value`, got `%s`", test.Defaults.Key)
 +	}
 +}
 +

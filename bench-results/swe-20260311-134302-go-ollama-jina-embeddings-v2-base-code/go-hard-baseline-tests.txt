@@ -13,11 +13,16 @@
 FAIL	github.com/goccy/go-yaml [build failed]
 testing: warning: no tests to run
 PASS
+<<<<<<<< HEAD:bench-results/swe-20260311-134302-go-ollama-jina-embeddings-v2-base-code/go-hard-baseline-tests.txt
 ok  	github.com/goccy/go-yaml/ast	0.152s [no tests to run]
+========
+ok  	github.com/goccy/go-yaml/ast	0.278s [no tests to run]
+>>>>>>>> origin/main:bench-results/swe-20260310-185423-ollama-jina-embeddings-v2-base-code/go-hard-with-lumen-tests.txt
 ?   	github.com/goccy/go-yaml/cmd/ycat	[no test files]
 ?   	github.com/goccy/go-yaml/internal/errors	[no test files]
 testing: warning: no tests to run
 PASS
+<<<<<<<< HEAD:bench-results/swe-20260311-134302-go-ollama-jina-embeddings-v2-base-code/go-hard-baseline-tests.txt
 ok  	github.com/goccy/go-yaml/lexer	0.279s [no tests to run]
 testing: warning: no tests to run
 PASS
@@ -29,4 +34,17 @@ ok  	github.com/goccy/go-yaml/printer	0.537s [no tests to run]
 testing: warning: no tests to run
 PASS
 ok  	github.com/goccy/go-yaml/token	0.401s [no tests to run]
+========
+ok  	github.com/goccy/go-yaml/lexer	0.165s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/parser	0.393s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/printer	0.497s [no tests to run]
+?   	github.com/goccy/go-yaml/scanner	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/token	0.604s [no tests to run]
+>>>>>>>> origin/main:bench-results/swe-20260310-185423-ollama-jina-embeddings-v2-base-code/go-hard-with-lumen-tests.txt
 FAIL
