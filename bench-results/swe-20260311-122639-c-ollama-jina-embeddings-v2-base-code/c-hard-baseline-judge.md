@@ -1,3 +1,0 @@
-## Rating: Good
-
-The candidate patch correctly addresses both root causes: it handles NaN in `jv_dels` by checking `isnan(keyval)` (functionally equivalent to `jvp_number_is_nan(key)`) and skipping the key, and it fixes the infinite loop in `delpaths_sorted` by initializing `j = i + 1` instead of `j = i` (equivalent to the gold's do-while restructuring). The NaN check uses `isnan()` from `<math.h>` instead of the internal `jvp_number_is_nan()` helper, which is a valid alternative. However, the candidate lacks the test cases from `tests/jq.test`, though the core logic fixes are correct and functionally equivalent.

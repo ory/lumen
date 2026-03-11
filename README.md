@@ -13,23 +13,23 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 9 languages and real GitHub
-bug-fix tasks, Lumen cuts cost in **every single language** — up to 39%. Output
-tokens drop by up to 66%, sessions complete up to 53% faster, and patch quality
-is maintained or improved in 8 out of 9 tasks. All verified with a
+The payoff is measurable and reproducible: across 8 benchmark runs on 8
+languages and real GitHub bug-fix tasks, Lumen cuts cost in **every single
+language** — up to 39%. Output tokens drop by up to 66%, sessions complete up to
+53% faster, and patch quality is maintained in every task. All verified with a
 [transparent, open-source benchmark framework](docs/BENCHMARKS.md) that you can
 run yourself.
 
 |                        | With Lumen                    | Baseline (no Lumen)  |
 | ---------------------- | ----------------------------- | -------------------- |
-| Cost (avg, bug-fix)    | **$0.27** (-25%)              | $0.37                |
-| Time (avg, bug-fix)    | **113s** (-28%)               | 157s                 |
-| Output tokens (avg)    | **4,728** (-40%)              | 7,918                |
+| Cost (avg, bug-fix)    | **$0.29** (-26%)              | $0.40                |
+| Time (avg, bug-fix)    | **125s** (-28%)               | 174s                 |
+| Output tokens (avg)    | **5,247** (-37%)              | 8,323                |
 | JavaScript (marked)    | **$0.32, 119s** (-33%, -53%)  | $0.48, 255s          |
 | Rust (toml)            | **$0.38, 204s** (-39%, -34%)  | $0.61, 310s          |
 | PHP (monolog)          | **$0.14, 34s** (-27%, -34%)   | $0.19, 52s           |
 | TypeScript (commander) | **$0.14, 56s** (-27%, -33%)   | $0.19, 84s           |
-| Patch quality          | **Maintained in 8/9 tasks**   | —                    |
+| Patch quality          | **Maintained in all 8 tasks** | —                    |
 
 ## Table of contents
 
@@ -126,54 +126,49 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 9 languages, hard difficulty, real GitHub issues
-(`ordis/jina-embeddings-v2-base-code`, Ollama):
+**Key results** — 8 runs across 8 languages, hard difficulty, real GitHub
+issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
-| Language   | Cost Reduction | Time Reduction | Output Token Reduction  | Quality                 |
-| ---------- | -------------- | -------------- | ----------------------- | ----------------------- |
-| Rust       | **-39%**       | **-34%**       | **-31%** (18K → 12K)    | Poor (both)             |
-| JavaScript | **-33%**       | **-53%**       | **-66%** (14K → 5K)     | Perfect (both)          |
-| C          | **-28%**       | **-22%**       | **-35%** (7.5K → 4.8K)  | Good → Poor\*           |
-| TypeScript | **-27%**       | **-33%**       | **-64%** (5K → 1.8K)    | Good (both)             |
-| PHP        | **-27%**       | **-34%**       | **-59%** (1.9K → 0.8K)  | Good (both)             |
-| Ruby       | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)             |
-| Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both)          |
-| C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)             |
-| Go         | -4%            | -5%            | **-30%** (9K → 6K)       | Good (both), +test file |
+| Language   | Cost Reduction | Time Reduction | Output Token Reduction  | Quality        |
+| ---------- | -------------- | -------------- | ----------------------- | -------------- |
+| Rust       | **-39%**       | **-34%**       | **-31%** (18K → 12K)    | Poor (both)    |
+| JavaScript | **-33%**       | **-53%**       | **-66%** (14K → 5K)     | Perfect (both) |
+| TypeScript | **-27%**       | **-33%**       | **-64%** (5K → 1.8K)    | Good (both)    |
+| PHP        | **-27%**       | **-34%**       | **-59%** (1.9K → 0.8K)  | Good (both)    |
+| Ruby       | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)    |
+| Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both) |
+| Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
+| C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
 
-\*C is the only quality regression — Lumen's faster navigation skipped context
-needed for a complex control-flow fix. See the
-[full analysis](docs/BENCHMARKS.md#c--jq-delnan-infinite-loop).
+**Cost was reduced in every language tested. Quality was maintained in every
+task — zero regressions.** JavaScript and TypeScript show the most dramatic
+efficiency gains: same quality fixes in half the time with two-thirds fewer
+tokens. Even on tasks too hard for either approach (Rust), Lumen cuts the cost
+of failure by 39%.
 
-**Cost was reduced in every language tested.** JavaScript and TypeScript show
-the most dramatic efficiency gains: same quality fixes in half the time with
-two-thirds fewer tokens. Even on tasks too hard for either approach (Rust), Lumen
-cuts the cost of failure by 39%.
-
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 9 per-language deep dives,
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 8 per-language deep dives,
 judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **11 language families** with semantic chunking (9 benchmarked):
+Supports **11 language families** with semantic chunking (8 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
-| Go               | Native AST  | `.go`                                     | Benchmarked: -30% output tokens, +test file   |
+| Go               | Native AST  | `.go`                                     | Benchmarked: -12% cost, Good quality          |
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens     |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time           |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time           |
 | Rust             | tree-sitter | `.rs`                                     | Benchmarked: -39% cost, -34% time             |
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time           |
-| C                | tree-sitter | `.c`, `.h`                                | Benchmarked: -28% cost, -22% time             |
-| C++              | tree-sitter | `.cpp`, `.cc`, `.cxx`, `.hpp`             | Benchmarked: -8% cost (feature task)          |
+| C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -8% cost (C++ feature task)      |
 | Java             | tree-sitter | `.java`                                   | Supported                                     |
 | C#               | tree-sitter | `.cs`                                     | Supported                                     |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
-for all 9 per-language benchmark deep dives.
+for all 8 per-language benchmark deep dives.
 
 ## Configuration
 

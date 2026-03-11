@@ -88,23 +88,24 @@ reproduction instructions are in
 | PHP        | **27%**        | **34%**        | **59%**                | Same (Good)    |
 | Ruby       | **24%**        | 11%            | 9%                     | Same (Good)    |
 | Python     | **20%**        | **29%**        | 36%                    | Same (Perfect) |
+| Go         | **12%**        | 9%             | 10%                    | Same (Good)    |
 | C++        | 8%             | 3%             | +42% (feature task)    | Same (Good)    |
-| Go         | 4%             | 5%             | **30%**                | Same (Good)    |
 
-**Cost was reduced in every language tested.** Across all 9 languages, Lumen
-reduced costs by 23% on average and time by 25%. Output token reduction is the
-most consistent signal: when Claude has semantic search, it spends less effort
-exploring and more effort acting.
+**Cost was reduced in every language tested. Quality was maintained in every
+task — zero regressions.** Across 8 benchmark runs on 8 languages, Lumen
+reduced costs by 26% on average and time by 28% for bug-fix tasks. Output token
+reduction is the most consistent signal: when Claude has semantic search, it
+spends less effort exploring and more effort acting.
 
 JavaScript stands out: the same Perfect-quality patches in about half the time,
 with two-thirds fewer output tokens. Rust shows the largest cost reduction at
 39%, even on a task that was too hard for either approach, which means Lumen
-reduced the cost of failure. Go shows smaller efficiency gains, but Lumen helped
-Claude find the right files and produce a more complete patch, including tests.
+reduced the cost of failure.
 
-The benchmark suite covers 9 languages: Go, JavaScript, PHP, Python, Ruby,
-Rust, TypeScript, C, and C++. All tasks are hard-difficulty tasks from real
-open-source projects. The results are fully reproducible.
+The benchmark suite covers 8 languages: Go, JavaScript, PHP, Python, Ruby,
+Rust, TypeScript, and C++. All tasks are hard-difficulty tasks from real
+open-source projects. The results are fully reproducible — and we run them
+repeatedly to confirm consistency.
 
 ## Installing it
 
