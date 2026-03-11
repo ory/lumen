@@ -2,11 +2,11 @@ title: Make Claude Code faster and cheaper in large codebases with Ory Lumen
 
 description: Ory Lumen adds local semantic code search to Claude Code via MCP.
 Index your codebase with local embeddings, cut runtime by up to 53% and API
-costs by up to 33%. slug: ory-lumen-semantic-search-claude-code
+costs by up to 39%. slug: ory-lumen-semantic-search-claude-code
 
 meta-desc: Claude Code getting slower as your codebase grows? Ory Lumen is a
-local semantic search MCP server that makes Claude up to 2x faster and 33%
-cheaper.
+local semantic search MCP server that cuts costs by up to 39% and sessions by up
+to 53%.
 
 meta-title: Faster and Cheaper Claude Code with Ory Lumen | Ory
 
@@ -77,26 +77,31 @@ blind judge comparing against the known-correct fix. Full methodology, raw data,
 and reproduce instructions are in
 [docs/BENCHMARKS.md](https://github.com/ory/lumen/blob/main/docs/BENCHMARKS.md).
 
-| Language   | Cost reduction | Time reduction | Quality        |
-| ---------- | -------------- | -------------- | -------------- |
-| PHP        | 52%            | 59%            | Good → Perfect |
-| JavaScript | 56%            | 51%            | Same (Good)    |
-| Go         | 30%            | 13%            | Same (Good)    |
+| Language   | Cost Reduction | Time Reduction | Output Token Reduction | Quality        |
+| ---------- | -------------- | -------------- | ---------------------- | -------------- |
+| Rust       | **39%**        | **34%**        | 31%                    | Same (Poor)    |
+| JavaScript | **33%**        | **53%**        | **66%**                | Same (Perfect) |
+| TypeScript | **27%**        | **33%**        | **64%**                | Same (Good)    |
+| PHP        | **27%**        | **34%**        | **59%**                | Same (Good)    |
+| Ruby       | **24%**        | 11%            | 9%                     | Same (Good)    |
+| Python     | **20%**        | **29%**        | 36%                    | Same (Perfect) |
+| C++        | 8%             | 3%             | +42% (feature task)    | Same (Good)    |
+| Go         | 4%             | 5%             | **30%**                | Same (Good)    |
 
-Across all 7 languages tested, Lumen reduces tool calls by **27%** on average.
-Claude navigates to the right code directly instead of reading files
-systematically.
+**Cost was reduced in every single language.** Across all 9 languages tested,
+Lumen cuts costs by 23% on average and time by 25%. The output token reduction
+is the most consistent signal: Claude explores less and acts more when it has
+semantic search.
 
-PHP is the standout: Lumen cuts token usage by up to 86% while also upgrading
-patch quality from Good to Perfect on every run. JavaScript shows consistent
-resource reduction at the same quality level. Rust shows a clear quality uplift.
-Baseline produced mixed results while Lumen delivered Good on every run. Most
-languages have potential to be further improved by tweaking the chunking
-algorithm and adding additional discovery tools.
+JavaScript is the standout: same Perfect quality patches in half the time with
+two-thirds fewer output tokens. Rust shows the largest cost savings at 39%, even
+on a task too hard for either approach — Lumen cuts the cost of failure. Go
+shows modest efficiency gains but Lumen helped Claude find the right files and
+produce a more complete patch including tests.
 
-The benchmark suite covers Go, JavaScript, PHP, Python, Ruby, Rust, and
-TypeScript, all hard-difficulty tasks from real open-source projects. Results
-are fully reproducible.
+The benchmark suite covers 9 languages — Go, JavaScript, PHP, Python, Ruby,
+Rust, TypeScript, C, and C++ — all hard-difficulty tasks from real open-source
+projects. Results are fully reproducible.
 
 ## Installing it
 

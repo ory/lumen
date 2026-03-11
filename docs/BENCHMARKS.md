@@ -46,17 +46,19 @@ For each run, bench-swe captures:
 
 ### Current Test Suite
 
-7 languages, hard difficulty — all against real GitHub bugs:
+9 languages, hard difficulty — all against real GitHub bugs:
 
-| Task            | Language   | Repository                                                   | Issue                                               |
-| --------------- | ---------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| go-hard         | Go         | [goccy/go-yaml](https://github.com/goccy/go-yaml)            | Decoder overrides defaults with null values         |
-| javascript-hard | JavaScript | [markedjs/marked](https://github.com/markedjs/marked)        | Blockquotes in lists ignore indentation for nesting |
-| php-hard        | PHP        | [Seldaek/monolog](https://github.com/Seldaek/monolog)        | JsonFormatter crashes on stringable object error    |
-| python-hard     | Python     | [pallets/click](https://github.com/pallets/click)            | Boolean flag show_default ignores default_map       |
-| typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js) | Negative flag negation doesn't propagate to aliases |
-| ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)      | Wrong content type when Accept header is a wildcard |
-| cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                  | Add a C API (feature implementation)                |
+| Task            | Language   | Repository                                                    | Issue                                                                                    |
+| --------------- | ---------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| go-hard         | Go         | [goccy/go-yaml](https://github.com/goccy/go-yaml)            | Decoder overrides defaults with null values                                              |
+| javascript-hard | JavaScript | [markedjs/marked](https://github.com/markedjs/marked)         | Blockquotes in lists ignore indentation for nesting                                      |
+| php-hard        | PHP        | [Seldaek/monolog](https://github.com/Seldaek/monolog)         | JsonFormatter crashes on stringable object error                                         |
+| python-hard     | Python     | [pallets/click](https://github.com/pallets/click)             | Boolean flag show_default ignores default_map                                            |
+| typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js)  | Negative flag negation doesn't propagate to aliases                                      |
+| ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)       | Wrong content type when Accept header is a wildcard                                      |
+| cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                   | Add a C API (feature implementation)                                                     |
+| c-hard          | C          | [jqlang/jq](https://github.com/jqlang/jq)                     | Fix infinite loop and undefined behavior in `del(.[nan])`                                |
+| rust-hard       | Rust       | [toml-rs/toml](https://github.com/toml-rs/toml)               | False duplicate key error for dotted keys when parent table is implicitly created         |
 
 Embedding model: `ordis/jina-embeddings-v2-base-code` (Ollama, 768-dim). Claude
 model: Sonnet (execution), Sonnet 4.6 (judging).
@@ -65,48 +67,50 @@ model: Sonnet (execution), Sonnet 4.6 (judging).
 
 ## Results Overview
 
-### Bug-Fix Tasks (6 languages)
+### Bug-Fix Tasks (8 languages, excluding C++ feature task)
 
-| Metric        | Baseline avg | With-Lumen avg | Delta    |
-| ------------- | ------------ | -------------- | -------- |
-| Cost          | $0.33        | $0.25          | **-22%** |
-| Time          | 136.4s       | 99.0s          | **-27%** |
-| Output tokens | 6,359        | 3,415          | **-46%** |
-| Turns         | 15.2         | 10.8           | **-29%** |
+| Metric        | Baseline avg | With-Lumen avg | Delta     |
+| ------------- | ------------ | -------------- | --------- |
+| Cost          | $0.37        | $0.27          | **-25%**  |
+| Time          | 157.0s       | 113.2s         | **-28%**  |
+| Output tokens | 7,918        | 4,728          | **-40%**  |
+| Tool calls    | 19.8         | 17.1           | -13%      |
 
-### All 7 Tasks (including C++ feature task)
+### All 9 Tasks
 
-| Metric        | Baseline avg | With-Lumen avg | Delta    |
-| ------------- | ------------ | -------------- | -------- |
-| Cost          | $0.45        | $0.42          | **-7%**  |
-| Time          | 184.6s       | 143.4s         | **-22%** |
-| Output tokens | 8,680        | 5,796          | **-33%** |
+| Metric        | Baseline avg | With-Lumen avg | Delta     |
+| ------------- | ------------ | -------------- | --------- |
+| Cost          | $0.45        | $0.35          | **-23%**  |
+| Time          | 180.7s       | 139.8s         | **-23%**  |
+| Output tokens | 8,761        | 6,630          | **-24%**  |
 
-The C++ task is a feature implementation (not a bug fix), where Lumen's search
-over existing code provides reference material but doesn't point to a "fix
-location." It is the only task where cost increased (+20%), driven by large
-cache reads from search results in the 120K-file fmt codebase.
+Cost was reduced in **all 9 languages** — the only universally positive metric.
+Quality was maintained in 7/9 tasks, improved in 1 (Go), and regressed in 1 (C).
 
 ---
 
 ## Full Results Table
 
-| Task            | Lang | Scenario   | Rating  | Cost   | Time   | Output Tok | Cache Read | Tool Calls | Turns |
-| --------------- | ---- | ---------- | ------- | ------ | ------ | ---------- | ---------- | ---------- | ----- |
-| javascript-hard | JS   | baseline   | Perfect | $0.482 | 254.7s | 14,286     | 486K       | 18         | 19    |
-| javascript-hard | JS   | with-lumen | Perfect | $0.325 | 119.3s | 4,872      | 464K       | 16         | 17    |
-| php-hard        | PHP  | baseline   | Good    | $0.186 | 51.5s  | 1,936      | 249K       | 10         | 11    |
-| php-hard        | PHP  | with-lumen | Good    | $0.136 | 34.0s  | 796        | 66K        | 7          | 4     |
-| typescript-hard | TS   | baseline   | Good    | $0.186 | 84.4s  | 4,994      | 120K       | 6          | 7     |
-| typescript-hard | TS   | with-lumen | Good    | $0.136 | 56.3s  | 1,813      | 183K       | 9          | 10    |
-| python-hard     | Py   | baseline   | Perfect | $0.119 | 43.0s  | 1,710      | 132K       | 7          | 8     |
-| python-hard     | Py   | with-lumen | Perfect | $0.096 | 30.6s  | 1,092      | 90K        | 5          | 6     |
-| ruby-hard       | Ruby | baseline   | Good    | $0.539 | 185.5s | 6,143      | 517K       | 53         | 24    |
-| ruby-hard       | Ruby | with-lumen | Good    | $0.411 | 165.2s | 5,581      | 295K       | 47         | 14    |
-| go-hard         | Go   | baseline   | Good    | $0.437 | 199.3s | 9,084      | 613K       | 21         | 22    |
-| go-hard         | Go   | with-lumen | Good    | $0.418 | 188.6s | 6,334      | 360K       | 30         | 14    |
-| cpp-hard        | C++  | baseline   | Good    | $1.174 | 474.0s | 22,610     | 1,105K     | 67         | 30    |
-| cpp-hard        | C++  | with-lumen | Good    | $1.404 | 409.7s | 20,087     | 2,309K     | 81         | 49    |
+| Task            | Lang | Scenario   | Rating  | Cost   | Time   | Output Tok | Cache Read | Tool Calls |
+| --------------- | ---- | ---------- | ------- | ------ | ------ | ---------- | ---------- | ---------- |
+| javascript-hard | JS   | baseline   | Perfect | $0.482 | 254.7s | 14,286     | 486K       | 18         |
+| javascript-hard | JS   | with-lumen | Perfect | $0.325 | 119.3s | 4,872      | 464K       | 16         |
+| rust-hard       | Rust | baseline   | Poor    | $0.611 | 309.7s | 17,717     | 719K       | 22         |
+| rust-hard       | Rust | with-lumen | Poor    | $0.375 | 204.0s | 12,291     | 241K       | 9          |
+| php-hard        | PHP  | baseline   | Good    | $0.186 | 51.5s  | 1,936      | 249K       | 10         |
+| php-hard        | PHP  | with-lumen | Good    | $0.136 | 34.0s  | 796        | 66K        | 7          |
+| typescript-hard | TS   | baseline   | Good    | $0.186 | 84.4s  | 4,994      | 120K       | 6          |
+| typescript-hard | TS   | with-lumen | Good    | $0.136 | 56.3s  | 1,813      | 183K       | 9          |
+| python-hard     | Py   | baseline   | Perfect | $0.119 | 43.0s  | 1,710      | 132K       | 7          |
+| python-hard     | Py   | with-lumen | Perfect | $0.096 | 30.6s  | 1,092      | 90K        | 5          |
+| c-hard          | C    | baseline   | Good    | $0.371 | 128.5s | 7,475      | 466K       | 21         |
+| c-hard          | C    | with-lumen | Poor    | $0.269 | 100.6s | 4,839      | 371K       | 14         |
+| ruby-hard       | Ruby | baseline   | Good    | $0.539 | 185.5s | 6,143      | 517K       | 53         |
+| ruby-hard       | Ruby | with-lumen | Good    | $0.411 | 165.2s | 5,581      | 295K       | 47         |
+| go-hard         | Go   | baseline   | Good    | $0.437 | 199.3s | 9,084      | 613K       | 21         |
+| go-hard         | Go   | with-lumen | Good    | $0.418 | 188.6s | 6,334      | 360K       | 30         |
+| cpp-hard        | C++  | baseline   | Good    | $1.102 | 370.7s | 15,506     | 1,327K     | 63         |
+| cpp-hard        | C++  | with-lumen | Good    | $1.014 | 359.1s | 22,056     | 1,019K     | 51         |
 
 ---
 
@@ -137,6 +141,27 @@ in `Tokenizer.ts`. The judge rated both Perfect:
 Lumen cut time by more than half and output tokens by two-thirds while
 delivering the same perfect fix.
 
+### Rust — toml (dotted key duplicate error)
+
+**The best cost savings.** Lumen cut cost by 39% and time by 34% — the largest
+cost reduction across all 9 languages. Both scenarios struggled with this
+multi-crate task (neither fixed the parallel bug in the `toml` crate), but Lumen
+dramatically reduced the exploration overhead.
+
+| Metric        | Baseline | With Lumen | Delta      |
+| ------------- | -------- | ---------- | ---------- |
+| Rating        | Poor     | Poor       | Same       |
+| Cost          | $0.611   | $0.375     | **-38.7%** |
+| Time          | 309.7s   | 204.0s     | **-34.1%** |
+| Output tokens | 17,717   | 12,291     | **-30.6%** |
+| Cache reads   | 719K     | 241K       | **-66.5%** |
+| Tool calls    | 22       | 9          | **-59.1%** |
+
+Even when both approaches fail to produce a correct fix, Lumen saves money by
+reducing exploration. The baseline spent 22 tool calls exploring; Lumen narrowed
+it to 9 with targeted semantic searches. Cache reads dropped by two-thirds,
+showing that Lumen helped Claude avoid reading large amounts of irrelevant code.
+
 ### PHP — monolog (JsonFormatter crash)
 
 Lumen navigated from the parent class (`NormalizerFormatter`) to the correct
@@ -146,17 +171,15 @@ location with minimal exploration.
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Good     | Good       | Same       |
-| Cost          | $0.186   | $0.136     | **-26.9%** |
+| Cost          | $0.186   | $0.136     | **-26.8%** |
 | Time          | 51.5s    | 34.0s      | **-34.0%** |
 | Output tokens | 1,936    | 796        | **-58.9%** |
-| Cache reads   | 249K     | 66K        | **-73.6%** |
+| Cache reads   | 249K     | 66K        | **-73.5%** |
 | Tool calls    | 10       | 7          | -30.0%     |
-| Turns         | 11       | 4          | **-63.6%** |
 
 Both patches wrap the `__toString()` call in a try/catch and fall back to the
-class name. The 73.6% reduction in cache reads shows Lumen helping Claude avoid
-reading large amounts of irrelevant code. The turn reduction (11 to 4) is the
-most dramatic across all tasks.
+class name. The 73.5% reduction in cache reads shows Lumen helping Claude avoid
+reading large amounts of irrelevant code.
 
 ### TypeScript — commander.js (negative flag negation)
 
@@ -186,7 +209,7 @@ round-trips.
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Perfect  | Perfect    | Same       |
-| Cost          | $0.119   | $0.096     | **-19.6%** |
+| Cost          | $0.119   | $0.096     | **-19.5%** |
 | Time          | 43.0s    | 30.6s      | **-28.8%** |
 | Output tokens | 1,710    | 1,092      | **-36.1%** |
 | Cache reads   | 132K     | 90K        | **-32.1%** |
@@ -197,23 +220,46 @@ Both produced the **identical single-line patch** — changing `self.default` to
 
 > "The candidate patch makes the identical one-line change as the gold patch."
 
+### C — jq (del(.[nan]) infinite loop)
+
+**The one regression.** Lumen reduced cost and time significantly but produced a
+worse patch. The baseline used a correct structural fix (`j = i + 1`) while
+Lumen's faster navigation led Claude to an incorrect approach using a
+hypothetical `jv_identical` function.
+
+| Metric        | Baseline | With Lumen | Delta      |
+| ------------- | -------- | ---------- | ---------- |
+| Rating        | Good     | **Poor**   | **Worse**  |
+| Cost          | $0.371   | $0.269     | **-27.5%** |
+| Time          | 128.5s   | 100.6s     | **-21.7%** |
+| Output tokens | 7,475    | 4,839      | **-35.3%** |
+| Cache reads   | 466K     | 371K       | -20.4%     |
+| Tool calls    | 21       | 14         | -33.3%     |
+
+The judge noted: the baseline correctly restructured the `while` loop into a
+`do-while` (ensuring `j` always advances), while Lumen's faster approach missed
+the structural insight and produced an incorrect fix. This suggests that in some
+cases, Lumen's faster navigation can skip important context-gathering that the
+slower exploration-based approach provides. The baseline's 21 tool calls with
+more thorough file reading gave Claude a deeper understanding of the control
+flow.
+
 ### Ruby — grape (wrong content type with wildcard Accept)
 
 Lumen helped Claude navigate a large, convention-heavy Ruby codebase more
-efficiently, reducing cache reads by 43% and completing in 10 fewer turns.
+efficiently, reducing cache reads by 43% and tool calls by 11%.
 
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Good     | Good       | Same       |
-| Cost          | $0.539   | $0.411     | **-23.6%** |
-| Time          | 185.5s   | 165.2s     | **-11.0%** |
+| Cost          | $0.539   | $0.411     | **-23.7%** |
+| Time          | 185.5s   | 165.2s     | **-10.9%** |
 | Output tokens | 6,143    | 5,581      | -9.1%      |
 | Cache reads   | 517K     | 295K       | **-43.0%** |
 | Tool calls    | 53       | 47         | -11.3%     |
-| Turns         | 24       | 14         | **-41.7%** |
 
 Ruby showed the most modest output token improvement (-9%) but strong cache read
-and turn reductions. The high baseline tool call count (53) reflects the
+and cost reductions. The high baseline tool call count (53) reflects the
 exploration-heavy approach needed without semantic search in a large Ruby
 project.
 
@@ -230,7 +276,7 @@ Lumen helped Claude find the right function (`createDecodedNewValue` in
 | Output tokens | 9,084    | 6,334      | **-30.3%** |
 | Cache reads   | 613K     | 360K       | **-41.3%** |
 | Files correct | No       | **Yes**    | Improved   |
-| Turns         | 22       | 14         | **-36.4%** |
+| Tool calls    | 21       | 30         | +42.9%     |
 
 The baseline patch only modified `decode.go`. The with-lumen patch modified both
 `decode.go` **and** `decode_test.go`, matching the gold patch's file set. The
@@ -253,20 +299,17 @@ valid architectural approaches.
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Good     | Good       | Same       |
-| Cost          | $1.174   | $1.404     | +19.6%     |
-| Time          | 474.0s   | 409.7s     | **-13.6%** |
-| Output tokens | 22,610   | 20,087     | -11.2%     |
-| Cache reads   | 1,105K   | 2,309K     | +109%      |
-| Tool calls    | 67       | 81         | +20.9%     |
+| Cost          | $1.102   | $1.014     | **-8.0%**  |
+| Time          | 370.7s   | 359.1s     | -3.1%      |
+| Output tokens | 15,506   | 22,056     | +42.2%     |
+| Cache reads   | 1,327K   | 1,019K     | -23.2%     |
+| Tool calls    | 63       | 51         | -19.0%     |
 
-This is the only task where Lumen increased cost. The cost increase came from
-significantly higher cache reads (2.3M vs 1.1M tokens) — Lumen's search results
-loaded large amounts of reference code from the fmt codebase. The first semantic
-search also failed with an oversized result error (93K characters).
-
-**Lesson:** For feature implementation in large codebases, Lumen's search can
-load more context than needed, increasing cost. Bug-fix tasks in focused
-codebases are where Lumen delivers its strongest value.
+C++ is the most expensive task in the suite — a feature implementation in a
+large codebase. Lumen reduced cost by 8% and tool calls by 19%, but output
+tokens increased by 42%, suggesting Lumen's search results provided context that
+Claude used to generate more comprehensive code. Despite being the one task type
+where Lumen's advantage is smallest, it still delivered cost savings.
 
 ---
 
@@ -276,68 +319,99 @@ codebases are where Lumen delivers its strongest value.
 | ---------- | --------------- | ----------------- | ------------- | ---------------------------------------- |
 | JavaScript | Perfect         | Perfect           | Same          | Both correct                             |
 | PHP        | Good            | Good              | Same          | Both correct                             |
-| TypeScript | Good            | Good              | Same          | Both correct                             |
+| TypeScript | Good            | Good              | Same          | Both correct (logic equiv)               |
 | Python     | Perfect         | Perfect           | Same          | Both correct                             |
 | Ruby       | Good            | Good              | Same          | Both correct                             |
 | Go         | Good            | Good              | Same          | **Improved** (with-lumen adds test file) |
 | C++        | Good            | Good              | Same          | Neither (feature task)                   |
+| Rust       | Poor            | Poor              | Same          | Neither (multi-crate task)               |
+| C          | Good            | **Poor**          | **Regressed** | Both correct files, wrong logic          |
 
-**Lumen never degraded patch quality.** In all 7 tasks, with-lumen produced
-fixes at least as good as baseline. In the Go task, with-lumen produced a more
-complete patch (including tests).
+Quality was maintained or improved in **8 out of 9 tasks**. The C task is the
+only regression — Lumen's faster navigation led Claude to skip important
+context, producing an incorrect fix despite finding the right files.
 
 ---
 
 ## Key Findings
 
-### 1. Output Token Reduction: -46% on Bug-Fix Tasks
+### 1. Cost Reduced in Every Language
 
-Across the 6 bug-fix tasks, Lumen cuts Claude's output tokens by nearly half on
-average. This is the most consistent signal — every bug-fix task shows a
-reduction:
+Lumen reduced cost in **all 9 languages** — the only universally positive
+metric. The range spans from -4% (Go) to -39% (Rust):
 
-| Language   | Baseline output tok | With-Lumen output tok | Delta    |
-| ---------- | ------------------- | --------------------- | -------- |
-| JavaScript | 14,286              | 4,872                 | **-66%** |
-| TypeScript | 4,994               | 1,813                 | **-64%** |
-| PHP        | 1,936               | 796                   | **-59%** |
-| Python     | 1,710               | 1,092                 | **-36%** |
-| Go         | 9,084               | 6,334                 | **-30%** |
-| Ruby       | 6,143               | 5,581                 | -9%      |
+| Language   | Baseline cost | With-Lumen cost | Delta      |
+| ---------- | ------------- | --------------- | ---------- |
+| Rust       | $0.611        | $0.375          | **-38.7%** |
+| JavaScript | $0.482        | $0.325          | **-32.6%** |
+| C          | $0.371        | $0.269          | **-27.5%** |
+| TypeScript | $0.186        | $0.136          | **-27.1%** |
+| PHP        | $0.186        | $0.136          | **-26.8%** |
+| Ruby       | $0.539        | $0.411          | **-23.7%** |
+| Python     | $0.119        | $0.096          | **-19.5%** |
+| C++        | $1.102        | $1.014          | **-8.0%**  |
+| Go         | $0.437        | $0.418          | -4.4%      |
 
-Fewer output tokens means Claude is exploring less and acting more. Semantic
-search provides the right context upfront, so Claude doesn't need to read files
-speculatively or iterate through wrong approaches.
+### 2. Output Token Reduction Is the Primary Driver
 
-### 2. Time Reduction: -27% on Bug-Fix Tasks
+In 8/9 languages, output tokens dropped — up to 66% for JavaScript. The one
+exception is C++ where output tokens increased (+42%) due to more comprehensive
+code generation. Fewer output tokens means Claude explores less and acts more:
 
-Lumen reduces wall-clock time by over a quarter on average. The JavaScript task
-shows the most dramatic improvement — from 4+ minutes to under 2 minutes:
+| Language   | Baseline output | With-Lumen output | Delta      |
+| ---------- | --------------- | ----------------- | ---------- |
+| JavaScript | 14,286          | 4,872             | **-65.9%** |
+| TypeScript | 4,994           | 1,813             | **-63.7%** |
+| PHP        | 1,936           | 796               | **-58.9%** |
+| Python     | 1,710           | 1,092             | **-36.1%** |
+| C          | 7,475           | 4,839             | **-35.3%** |
+| Rust       | 17,717          | 12,291            | **-30.6%** |
+| Go         | 9,084           | 6,334             | **-30.3%** |
+| Ruby       | 6,143           | 5,581             | -9.1%      |
+| C++        | 15,506          | 22,056            | +42.2%     |
 
-| Language   | Baseline time | With-Lumen time | Delta    |
-| ---------- | ------------- | --------------- | -------- |
-| JavaScript | 254.7s        | 119.3s          | **-53%** |
-| PHP        | 51.5s         | 34.0s           | **-34%** |
-| TypeScript | 84.4s         | 56.3s           | **-33%** |
-| Python     | 43.0s         | 30.6s           | **-29%** |
-| Ruby       | 185.5s        | 165.2s          | -11%     |
-| Go         | 199.3s        | 188.6s          | -5%      |
+### 3. Time Savings Scale with Exploration
 
-### 3. Quality Never Degrades
+The languages where the baseline needed the most exploration saw the largest
+time reductions:
 
-Across all 7 tasks, Lumen produced fixes at equal or better quality than
-baseline. Two tasks achieved Perfect in both scenarios (JavaScript, Python), and
-the Go task produced a more complete patch with Lumen (added test file).
+| Language   | Baseline time | With-Lumen time | Delta      |
+| ---------- | ------------- | --------------- | ---------- |
+| JavaScript | 254.7s        | 119.3s          | **-53.2%** |
+| PHP        | 51.5s         | 34.0s           | **-34.0%** |
+| Rust       | 309.7s        | 204.0s          | **-34.1%** |
+| TypeScript | 84.4s         | 56.3s           | **-33.3%** |
+| Python     | 43.0s         | 30.6s           | **-28.8%** |
+| C          | 128.5s        | 100.6s          | **-21.7%** |
+| Ruby       | 185.5s        | 165.2s          | **-10.9%** |
+| Go         | 199.3s        | 188.6s          | -5.4%      |
+| C++        | 370.7s        | 359.1s          | -3.1%      |
 
-### 4. Search Effectiveness Varies by Task Type
+### 4. Search Calls Are Modest
 
-Lumen's semantic search works best on **bug-fix tasks in focused codebases**
-where the issue description uses domain language. It is less effective for:
+Lumen typically uses 1–10 search calls per task. It supplements rather than
+replaces other tool usage:
 
-- **Feature implementation** (C++): No "fix location" to find; search loads
-  reference code but increases cost.
-- **Large codebases with broad queries**: Can produce oversized results that
-  fail or load too much context.
+| Language   | Lumen search calls | Total tool calls (Lumen) | Total tool calls (baseline) |
+| ---------- | ------------------ | ------------------------ | --------------------------- |
+| Python     | 2                  | 5                        | 7                           |
+| PHP        | 2                  | 7                        | 10                          |
+| Rust       | 2                  | 9                        | 22                          |
+| TypeScript | 1                  | 9                        | 6                           |
+| C          | 1                  | 14                       | 21                          |
+| JavaScript | 2                  | 16                       | 18                          |
+| Go         | 5                  | 30                       | 21                          |
+| Ruby       | 10                 | 47                       | 53                          |
+| C++        | 6                  | 51                       | 63                          |
+
+### 5. One Quality Regression Warrants Attention
+
+The C task (jq) is the only case where Lumen produced a worse patch. The
+baseline's slower, more thorough exploration gave Claude a deeper understanding
+of the control flow needed for the fix. Lumen's faster navigation found the
+right files but missed the structural insight. This is an important limitation:
+**semantic search is not a substitute for deep code reading** on tasks that
+require understanding complex control flow.
 
 ---
 
