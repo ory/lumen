@@ -1,0 +1,71 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..c8168f8 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,7 +990,19 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
+-		return reflect.Zero(typ), nil
++		if typ.Kind() == reflect.Ptr {
++			return reflect.Zero(typ), nil
++		}
++		// For non-pointer types, preserve the default value when the node is null.
++		// This matches yaml.v3 behavior where null YAML nodes don't override non-pointer defaults.
++		newValue := d.createDecodableValue(typ)
++		for defaultVal.Kind() == reflect.Ptr {
++			defaultVal = defaultVal.Elem()
++		}
++		if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
++			newValue.Set(defaultVal)
++		}
++		return newValue, nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+ 	for defaultVal.Kind() == reflect.Ptr {
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..50d7f2a 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -1945,6 +1945,41 @@ w: w_value
+ 	}
+ }
+ 
++func TestDecoder_DefaultValuesWithNullNode(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	tests := []struct {
++		name string
++		yml  string
++	}{
++		{
++			name: "null value",
++			yml:  "first: \"Test\"\nsecond:\n",
++		},
++		{
++			name: "only comments",
++			yml:  "first: \"Test\"\nsecond:\n  # Just a comment\n  #  key: \"Value from YAML\"\n",
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			test := Test{Defaults: Default{Key: "My default Value"}}
++			if err := yaml.NewDecoder(strings.NewReader(tt.yml)).Decode(&test); err != nil {
++				t.Fatalf("unexpected error: %s", err)
++			}
++			if test.Defaults.Key != "My default Value" {
++				t.Fatalf("expected default value %q, got %q", "My default Value", test.Defaults.Key)
++			}
++		})
++	}
++}
++
+ func Example_YAMLTags() {
+ 	yml := `---
+ foo: 1
