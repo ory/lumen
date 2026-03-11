@@ -6,7 +6,7 @@ event.ts:668-668  fromNodeEventEmitter.onFirstListenerAdd (function)
 event.ts:685-685  fromDOMEventEmitter.onFirstListenerAdd (function)
 event.ts:858-899  EmitterOptions (interface)
 event.ts:921-924  start (method)
-event.ts:1041-1045  constructor (method)
+event.ts:1205-1236  event (method)
 event.ts:1613-1616  onFirstListenerAdd (method)
 stream.ts:327-329  emitEnd (method)
 

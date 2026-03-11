@@ -1,0 +1,12 @@
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac35..264968a 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -139,6 +139,7 @@ module Grape
+       def format_from_header
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+         return if accept_header.blank?
++        return if Rack::Utils.q_values(accept_header).all? { |media_type, _| media_type == '*/*' }
+ 
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type

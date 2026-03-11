@@ -1,172 +1,43 @@
-diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
-index ed55c4b9..4eeb5504 100644
---- a/.github/workflows/test.yml
-+++ b/.github/workflows/test.yml
-@@ -71,7 +71,7 @@ jobs:
-         tilt:
-           - stable
-         # Due to https://github.com/actions/runner/issues/849, we have to use quotes for '3.0'
--        ruby: [2.6, 2.7, '3.0', 3.1, 3.2, truffleruby]
-+        ruby: [2.6, 2.7, '3.0', 3.1, 3.2, 3.3, truffleruby]
-         include:
-           # Puma
-           - { ruby: 3.1, rack: '~> 2', puma: '~> 5',   tilt: stable }
-diff --git a/Gemfile b/Gemfile
-index 24341b64..caf490ec 100644
---- a/Gemfile
-+++ b/Gemfile
-@@ -39,6 +39,7 @@ gem 'traces', '< 0.10.0' if RUBY_VERSION >= '2.6.0' && RUBY_VERSION < '2.7.0'
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac356..65ffe537 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -7,6 +7,8 @@ module Grape
+         default_format: :txt
+       }.freeze
  
- gem 'asciidoctor'
- gem 'builder'
-+gem 'childprocess'
- gem 'commonmarker', '~> 0.23.4', platforms: [:ruby]
- gem 'erubi'
- gem 'eventmachine'
-@@ -67,3 +68,4 @@ gem 'sass-embedded', '~> 1.54'
- gem 'simplecov', require: false
- gem 'slim', '~> 4'
- gem 'yajl-ruby', platforms: [:ruby]
-+gem 'zeitwerk'
-diff --git a/lib/sinatra/base.rb b/lib/sinatra/base.rb
-index 686d4d65..8fdfc935 100644
---- a/lib/sinatra/base.rb
-+++ b/lib/sinatra/base.rb
-@@ -1281,6 +1281,7 @@ module Sinatra
-         %r{/sinatra(/(base|main|show_exceptions))?\.rb$},   # all sinatra code
-         %r{lib/tilt.*\.rb$},                                # all tilt code
-         /^\(.*\)$/,                                         # generated code
-+        /\/bundled_gems.rb$/,                               # ruby >= 3.3 with bundler >= 2.5
-         %r{rubygems/(custom|core_ext/kernel)_require\.rb$}, # rubygems require hacks
-         /active_support/,                                   # active_support require hacks
-         %r{bundler(/(?:runtime|inline))?\.rb},              # bundler require hacks
-diff --git a/test/integration/simple_app.rb b/test/integration/simple_app.rb
-new file mode 100644
-index 00000000..61eab895
---- /dev/null
-+++ b/test/integration/simple_app.rb
-@@ -0,0 +1,6 @@
-+require "bundler/setup"
-+require "sinatra"
++      ALL_MEDIA_TYPES = '*/*'
 +
-+get "/" do
-+  "OK"
-+end
-diff --git a/test/integration/zeitwerk_app.rb b/test/integration/zeitwerk_app.rb
-new file mode 100644
-index 00000000..be218e99
---- /dev/null
-+++ b/test/integration/zeitwerk_app.rb
-@@ -0,0 +1,8 @@
-+require "bundler/setup"
-+# This needs to come first so that sinatra require goes through zeitwerk loader
-+require "zeitwerk"
-+require "sinatra"
-+
-+get "/" do
-+  "OK"
-+end
-diff --git a/test/integration_start_helper.rb b/test/integration_start_helper.rb
-new file mode 100644
-index 00000000..a502f696
---- /dev/null
-+++ b/test/integration_start_helper.rb
-@@ -0,0 +1,69 @@
-+require "childprocess"
-+require "expect"
-+require "minitest/autorun"
-+
-+# https://github.com/enkessler/childprocess/issues/172
-+# https://github.com/oracle/truffleruby/issues/1525
-+ENV["CHILDPROCESS_POSIX_SPAWN"] = "true" if %w(jruby truffleruby).include?(RUBY_ENGINE)
-+
-+module IntegrationStartHelper
-+  def command_for(app_file)
-+    [
-+      "ruby",
-+      app_file,
-+      "-p",
-+      "0", # any free port
-+      "-s",
-+      "puma",
-+    ]
-+  end
-+
-+  def with_process(command)
-+    process = ChildProcess.build(*command)
-+    process.leader = true # ensure entire process tree dies
-+    read_io, write_io = IO.pipe
-+    process.io.stdout = write_io
-+    process.io.stderr = write_io
-+    process.start
-+    # Close parent's copy of the write end of the pipe so when the (forked) child
-+    # process closes its write end of the pipe the parent receives EOF when
-+    # attempting to read from it. If the parent leaves its write end open, it
-+    # will not detect EOF.
-+    write_io.close
-+
-+    yield process, read_io
-+  ensure
-+    read_io.close
-+    process.stop
-+  end
-+
-+  def echo_output(read_io)
-+    Thread.new do
-+      begin
-+        loop { print read_io.readpartial(8192) }
-+      rescue EOFError
+       def before
+         negotiate_content_type
+         read_body_input
+@@ -138,7 +140,7 @@ module Grape
+ 
+       def format_from_header
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+-        return if accept_header.blank?
++        return if accept_header.blank? || accept_header == ALL_MEDIA_TYPES
+ 
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type
+diff --git a/spec/grape/middleware/formatter_spec.rb b/spec/grape/middleware/formatter_spec.rb
+index cb353aa4..dda26044 100644
+--- a/spec/grape/middleware/formatter_spec.rb
++++ b/spec/grape/middleware/formatter_spec.rb
+@@ -22,10 +22,14 @@ describe Grape::Middleware::Formatter do
+     context 'default format' do
+       let(:body) { ['foo'] }
+       let(:env) do
+-        { Rack::PATH_INFO => '/somewhere', 'HTTP_ACCEPT' => 'application/json' }
++        { Rack::PATH_INFO => '/somewhere', 'HTTP_ACCEPT' => '*/*' }
+       end
+ 
+-      it 'calls #to_json since default format is json' do
++      before do
++        subject.options[:default_format] = :json
 +      end
-+    end
-+  end
 +
-+  def debug?
-+    ENV.key?("DEBUG_START_PROCESS")
-+  end
-+
-+  def wait_timeout
-+    case RUBY_ENGINE
-+    when "jruby", "truffleruby"
-+      # takes some time to start the JVM
-+      10.0
-+    else
-+      3.0
-+    end
-+  end
-+
-+  def wait_for_output(read_io, matcher, timeout = wait_timeout)
-+    return true if read_io.expect(matcher, timeout).to_a.any?
-+
-+    raise "Waited for #{timeout} seconds, but received no output matching: " \
-+          "#{matcher.source}"
-+  end
-+end
-diff --git a/test/integration_start_test.rb b/test/integration_start_test.rb
-new file mode 100644
-index 00000000..1822ed6c
---- /dev/null
-+++ b/test/integration_start_test.rb
-@@ -0,0 +1,23 @@
-+require_relative "integration_start_helper"
-+
-+class IntegrationStartTest < Minitest::Test
-+  include IntegrationStartHelper
-+
-+  def test_classic_app_start
-+    app_file = File.join(__dir__, "integration", "simple_app.rb")
-+    command = command_for(app_file)
-+    with_process(command) do |process, read_io|
-+      echo_output(read_io) if debug? # will block
-+      assert wait_for_output(read_io, /Sinatra \(v.+\) has taken the stage/)
-+    end
-+  end
-+
-+  def test_classic_app_with_zeitwerk
-+    app_file = File.join(__dir__, "integration", "zeitwerk_app.rb")
-+    command = command_for(app_file)
-+    with_process(command) do |process, read_io|
-+      echo_output(read_io) if debug? # will block
-+      assert wait_for_output(read_io, /Sinatra \(v.+\) has taken the stage/)
-+    end
-+  end
-+end
++      it 'returns JSON' do
+         body.instance_eval do
+           def to_json(*_args)
+             '"bar"'

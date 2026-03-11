@@ -1,9 +1,11 @@
-results: 7
-CacheConfiguration.java:31-39  CacheConfiguration (type)
-OwnerController.java:59-62  setAllowedFields (method)
-PetClinicApplication.java:28-36  PetClinicApplication+main (type)
-PetController.java:46-111  PetController (type)
-VetController.java:35-78  VetController+vetRepository+showVetList+showResourcesVetList (function)
-VetRepository.java:44-46  findAll (method)
-VisitController.java:41-104  VisitController+setAllowedFields (type)
+results: 9
+OwnerRepository.java:24-46  OwnerRepository (interface)
+PetClinicApplication.java:23-36  PetClinicApplication+main (method)
+PetController.java:40-66  PetController (type)
+Vet.java:35-60  Vet (type)
+VetController.java:29-53  VetController+vetRepository (function)
+VetController.java:60-78  VetController+showResourcesVetList (method)
+VetRepository.java:27-58  VetRepository (interface)
+Vets.java:24-43  Vets (type)
+VisitController.java:33-104  VisitController+initNewVisitForm+processNewVisitForm (method)
 

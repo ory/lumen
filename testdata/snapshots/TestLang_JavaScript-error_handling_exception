@@ -1,12 +1,12 @@
 results: 10
-express-response.js:926-933  sendfile.onaborted (function)
+express-response.js:925-933  sendfile.onaborted (function)
+express-response.js:945-950  sendfile.onerror (function)
 node-events.js:377-396  emitUnhandledRejectionOrErr (function)
-node-events.js:963-983  once+once.errorListener (function)
+node-events.js:970-976  once.errorListener (function)
 node-events.js:995-999  once.abortListener (function)
 node-events.js:1073-1112  on+on.throw (method)
 node-events.js:1168-1170  on.abortListener (function)
 node-events.js:1180-1202  on+on.errorHandler (function)
 node-net.js:2043-2045  emitErrorNT (function)
-node-util.js:333-339  getSystemErrorMessage (function)
-node-util.js:345-375  getSystemErrorName+_errnoException+_exceptionWithHostPort (function)
+node-util.js:329-375  getSystemErrorMessage+getSystemErrorName+_errnoException+_exceptionWithHostPort (function)
 

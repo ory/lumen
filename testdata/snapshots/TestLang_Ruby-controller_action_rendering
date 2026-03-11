@@ -1,5 +1,5 @@
 results: 3
-metal.rb:8-33  ActionController+valid? (type)
-metal.rb:51-265  ActionController+Metal+controller_name+make_response! (type)
-metal.rb:288-339  ActionController+Metal (type)
+metal.rb:8-33  ActionController+Middleware.valid? (type)
+metal.rb:51-265  ActionController+ActionController.Metal+Metal.controller_name (type)
+metal.rb:288-339  ActionController.Metal (type)
 

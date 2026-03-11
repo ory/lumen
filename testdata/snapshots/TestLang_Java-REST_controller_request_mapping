@@ -1,8 +1,9 @@
-results: 6
-OwnerController.java:84-119  OwnerController+initFindForm+processFindForm (method)
-OwnerController.java:126-154  OwnerController (type)
-PetController.java:46-66  PetController (type)
-PetController.java:78-159  PetController+initCreationForm (type)
-VetController.java:35-78  VetController+showVetList+showResourcesVetList (method)
-VisitController.java:41-104  VisitController+initNewVisitForm+processNewVisitForm (type)
+results: 7
+CrashController.java:31-35  triggerException (method)
+OwnerController.java:74-119  OwnerController+processCreationForm+initFindForm+processFindForm (method)
+PetController.java:40-66  PetController (type)
+PetController.java:98-103  initCreationForm (method)
+PetController.java:127-130  initUpdateForm (method)
+VetController.java:29-78  VetController+showVetList+showResourcesVetList (method)
+VisitController.java:45-104  VisitController+loadPetWithVisit+initNewVisitForm+processNewVisitForm (method)
 

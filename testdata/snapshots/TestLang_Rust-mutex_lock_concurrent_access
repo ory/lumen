@@ -1,11 +1,12 @@
-results: 9
-tokio-mutex.rs:399-523  Mutex+lock+blocking_lock (type)
-tokio-mutex.rs:529-581  Mutex (type)
-tokio-mutex.rs:588-621  Mutex (type)
-tokio-mutex.rs:635-684  Mutex (type)
-tokio-mutex.rs:695-725  Mutex (type)
-tokio-mutex.rs:757-793  Mutex (type)
-tokio-mutex.rs:828-859  MutexGuard (type)
+results: 10
+tokio-mutex.rs:21-62  Mutex (type)
+tokio-mutex.rs:88-138  Mutex (type)
+tokio-mutex.rs:399-466  Mutex+lock (function)
+tokio-mutex.rs:501-523  Mutex (type)
+tokio-mutex.rs:550-581  Mutex (type)
+tokio-mutex.rs:588-653  lock_owned (function)
+tokio-mutex.rs:695-725  Mutex+get_mut (function)
 tokio-mutex.rs:959-961  mutex (function)
-tokio-mutex.rs:980-988  deref+deref_mut (function)
+tokio-rwlock.rs:48-85  RwLock (type)
+tokio-rwlock.rs:392-425  read (function)
 

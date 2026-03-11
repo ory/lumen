@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the regression by returning early from `format_from_header` when all media types in the Accept header are wildcards (`*/*`), which causes the code to fall back to the default format. The approach differs slightly from the gold patch — using `Rack::Utils.q_values` to parse and check all media types rather than a simple string equality check — but handles the same case correctly and is arguably more robust for headers like `*/*; q=0.5`. However, the candidate omits the test spec changes that the gold patch includes, which is a minor gap in completeness.

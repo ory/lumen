@@ -1,10 +1,10 @@
 results: 8
-application.rb:772-774  coerce_same_site_protection (function)
-base.rb:49-83  ActionCable (type)
+application.rb:772-774  Application.coerce_same_site_protection (function)
 base.rb:90-119  ActionCable (type)
-base.rb:300-339  Base+ActionCable+Channel+action_signature+parameter_filter (type)
+base.rb:197-206  Base.subscribe_to_channel (function)
+base.rb:300-339  Channel.Base+ActionCable+Base.action_signature+Base.parameter_filter (type)
 callbacks.rb:121-173  ActiveRecord (type)
-callbacks.rb:278-394  Callbacks+CALLBACKS (var)
-sinatra-base.rb:244-256  ExtendedRack (type)
-sinatra-base.rb:1055-1061  filter! (function)
+callbacks.rb:278-394  ActiveRecord.Callbacks+Callbacks.CALLBACKS (var)
+sinatra-base.rb:1053-1061  Base.filter! (function)
+sinatra-base.rb:1483-1495  Base.before+Base.after (function)
 

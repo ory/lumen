@@ -1,12 +1,10 @@
-results: 10
-node-events.js:119-129  lazyEventEmitterAsyncResource.constructor+lazyEventEmitterAsyncResource.eventEmitter (method)
-node-events.js:164-176  lazyEventEmitterAsyncResource.emit+lazyEventEmitterAsyncResource.emitDestroy (method)
+results: 8
+node-events.js:124-129  lazyEventEmitterAsyncResource.eventEmitter (method)
+node-events.js:171-176  EventEmitterAsyncResource.emitDestroy (method)
+node-events.js:203-210  EventEmitter (function)
 node-events.js:536-578  _addListener (function)
-node-events.js:895-917  getEventListeners (function)
-node-events.js:924-934  getMaxListeners (function)
-node-events.js:942-953  listenerCount (function)
-node-events.js:970-1005  once.errorListener+once.resolver+once.abortListener (function)
-node-events.js:1011-1033  eventTargetAgnosticRemoveListener+eventTargetAgnosticAddListener (function)
+node-events.js:888-1005  getEventListeners+getMaxListeners+listenerCount+once+once.errorListener+once.resolver+once.abortListener (function)
+node-events.js:1011-1051  eventTargetAgnosticRemoveListener+eventTargetAgnosticAddListener+on (function)
 node-events.js:1204-1218  listenersController+listenersController.addEventListener (method)
 node-net.js:2048-2052  emitListeningNT (function)
 

@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the core bug by returning early from `format_from_header` when the Accept header is `*/*`, which matches the gold patch's intent. The difference is minor: the gold patch extracts the constant `ALL_MEDIA_TYPES = '*/*'` for readability and modifies the existing early-return line, while the candidate adds a separate `return` statement with `.strip` for whitespace handling. The candidate's test also covers the fix but through a different test structure (integration-style at the bottom vs. modifying an existing unit test), but both validate the correct behavior.

@@ -199,6 +199,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(type_definition declarator: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(preproc_function_def name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(preproc_def name: (identifier) @name) @decl`, Kind: "const"},
+			// template_declaration wrappers
+			{Pattern: `(template_declaration (function_definition declarator: (function_declarator declarator: (identifier) @name))) @decl`, Kind: "function"},
+			{Pattern: `(template_declaration (function_definition declarator: (function_declarator declarator: (qualified_identifier name: (identifier) @name)))) @decl`, Kind: "method"},
+			{Pattern: `(template_declaration (function_definition declarator: (pointer_declarator declarator: (function_declarator declarator: (identifier) @name)))) @decl`, Kind: "function"},
+			{Pattern: `(template_declaration (class_specifier name: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(template_declaration (struct_specifier name: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(template_declaration (alias_declaration name: (type_identifier) @name)) @decl`, Kind: "type"},
 		},
 	})
 
@@ -251,7 +258,7 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".rb":   rb,
 		".java": java,
 		".c":    c,
-		".h":    c,
+		".h":    cpp,
 		".cpp":  cpp,
 		".cc":   cpp,
 		".cxx":  cpp,

@@ -52,7 +52,7 @@ type SemanticSearchInput struct {
 	Query        string   `json:"query" jsonschema:"Natural language search query"`
 	Path         string   `json:"path,omitempty" jsonschema:"Absolute path to search in. Defaults to cwd. When a subdirectory of cwd, results are filtered to that subtree."`
 	Cwd          string   `json:"cwd,omitempty" jsonschema:"The current working directory / project root. Used as index root when provided."`
-	Limit        int      `json:"limit,omitempty" jsonschema:"Max results to return, default 8"`
+	NResults     int      `json:"n_results,omitempty" jsonschema:"Max results to return, default 8"`
 	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default depends on embedding model. Use -1 to return all results."`
 	ForceReindex bool     `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
 	Summary      bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
@@ -271,7 +271,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 
 	// Over-fetch from KNN so that merging overlapping split chunks doesn't
 	// reduce the final result count below the requested limit.
-	fetchLimit := input.Limit * 2
+	fetchLimit := input.NResults * 2
 	results, err := idx.Search(ctx, effectiveRoot, queryVec, fetchLimit, maxDistance, pathPrefix)
 	if err != nil {
 		return nil, nil, fmt.Errorf("search: %w", err)
@@ -315,8 +315,8 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	})
 
 	// Cap to the originally requested limit after merging.
-	if len(items) > input.Limit {
-		items = items[:input.Limit]
+	if len(items) > input.NResults {
+		items = items[:input.NResults]
 	}
 
 	// Extract snippets for merged results.
@@ -363,8 +363,8 @@ func validateSearchInput(input *SemanticSearchInput) error {
 	if input.Query == "" {
 		return fmt.Errorf("query is required")
 	}
-	if input.Limit <= 0 {
-		input.Limit = 8
+	if input.NResults <= 0 {
+		input.NResults = 8
 	}
 	return nil
 }

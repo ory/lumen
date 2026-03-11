@@ -1,0 +1,251 @@
+DEPRECATION WARNING: ActiveSupport::Configurable is deprecated without replacement, and will be removed in Rails 8.2.
+
+You can emulate the previous behavior with `class_attribute`.
+ (called from <top (required)> at /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2159847090/repo/lib/grape.rb:6)
+
+Randomized with seed 55799
+
+Grape::Middleware::Formatter
+  inheritable formatters
+    returns response by invalid formatter
+  input
+    parses the chunked body from POST and copies values into rack.request.from_hash
+    rewinds IO
+    ignores multipart/form-data
+    ignores multipart/related
+    parses the chunked body from PATCH and copies values into rack.request.from_hash
+    ignores multipart/mixed
+    parses the body from an xml PUT and copies values into rack.request.from_hash
+    ignores multipart/related
+    parses the body from an xml DELETE and copies values into rack.request.from_hash
+    rewinds IO
+    ignores application/x-www-form-urlencoded
+    ignores multipart/mixed
+    ignores multipart/form-data
+    ignores multipart/form-data
+    ignores multipart/form-data
+    ignores application/x-www-form-urlencoded
+    parses the body from an xml POST and copies values into rack.request.from_hash
+    rewinds IO
+    parses the chunked body from DELETE and copies values into rack.request.from_hash
+    ignores application/x-www-form-urlencoded
+    ignores multipart/mixed
+    parses the body from an xml PATCH and copies values into rack.request.from_hash
+    ignores multipart/related
+    ignores multipart/mixed
+    rewinds IO
+    ignores multipart/related
+    parses the chunked body from PUT and copies values into rack.request.from_hash
+    ignores application/x-www-form-urlencoded
+    when body is nil
+      does not read and parse the body
+    application/json; charset=utf-8
+      parses the body from PATCH and copies values into rack.request.form_hash
+    when body is not nil or empty
+      when Content-Type is not supported
+        returns a 415 HTTP error status
+      when Content-Type is supported
+        parses the body from POST and copies values into rack.request.form_hash
+    when body is not nil or empty
+      when Content-Type is supported
+        parses the body from PATCH and copies values into rack.request.form_hash
+      when Content-Type is not supported
+        returns a 415 HTTP error status
+    when body is not nil or empty
+      when Content-Type is not supported
+        returns a 415 HTTP error status
+      when Content-Type is supported
+        parses the body from PUT and copies values into rack.request.form_hash
+    when body is not nil or empty
+      when Content-Type is supported
+        parses the body from DELETE and copies values into rack.request.form_hash
+      when Content-Type is not supported
+        returns a 415 HTTP error status
+    application/json
+      parses the body from PATCH and copies values into rack.request.form_hash
+    when body is empty
+      does not read and parse the body
+    application/json; charset=utf-8
+      parses the body from POST and copies values into rack.request.form_hash
+    when body is nil
+      does not read and parse the body
+    application/json
+      parses the body from PUT and copies values into rack.request.form_hash
+    application/json; charset=utf-8
+      parses the body from DELETE and copies values into rack.request.form_hash
+    when body is nil
+      does not read and parse the body
+    when body is nil
+      does not read and parse the body
+    when body is empty
+      does not read and parse the body
+    when body is empty
+      does not read and parse the body
+    application/json
+      parses the body from POST and copies values into rack.request.form_hash
+    application/json
+      parses the body from DELETE and copies values into rack.request.form_hash
+    when body is empty
+      does not read and parse the body
+    application/json; charset=utf-8
+      parses the body from PUT and copies values into rack.request.form_hash
+  no content responses
+    does not modify a 152 response
+    does not modify a 159 response
+    does not modify a 171 response
+    does not modify a 149 response
+    does not modify a 144 response
+    does not modify a 145 response
+    does not modify a 150 response
+    does not modify a 111 response
+    does not modify a 132 response
+    does not modify a 102 response
+    does not modify a 170 response
+    does not modify a 109 response
+    does not modify a 179 response
+    does not modify a 184 response
+    does not modify a 160 response
+    does not modify a 105 response
+    does not modify a 194 response
+    does not modify a 147 response
+    does not modify a 304 response
+    does not modify a 129 response
+    does not modify a 120 response
+    does not modify a 143 response
+    does not modify a 100 response
+    does not modify a 153 response
+    does not modify a 177 response
+    does not modify a 161 response
+    does not modify a 186 response
+    does not modify a 172 response
+    does not modify a 134 response
+    does not modify a 133 response
+    does not modify a 173 response
+    does not modify a 142 response
+    does not modify a 139 response
+    does not modify a 115 response
+    does not modify a 174 response
+    does not modify a 169 response
+    does not modify a 114 response
+    does not modify a 196 response
+    does not modify a 167 response
+    does not modify a 164 response
+    does not modify a 136 response
+    does not modify a 195 response
+    does not modify a 166 response
+    does not modify a 117 response
+    does not modify a 185 response
+    does not modify a 165 response
+    does not modify a 122 response
+    does not modify a 104 response
+    does not modify a 181 response
+    does not modify a 126 response
+    does not modify a 113 response
+    does not modify a 141 response
+    does not modify a 189 response
+    does not modify a 158 response
+    does not modify a 138 response
+    does not modify a 193 response
+    does not modify a 148 response
+    does not modify a 131 response
+    does not modify a 183 response
+    does not modify a 128 response
+    does not modify a 154 response
+    does not modify a 130 response
+    does not modify a 198 response
+    does not modify a 116 response
+    does not modify a 156 response
+    does not modify a 155 response
+    does not modify a 191 response
+    does not modify a 119 response
+    does not modify a 197 response
+    does not modify a 190 response
+    does not modify a 175 response
+    does not modify a 123 response
+    does not modify a 146 response
+    does not modify a 204 response
+    does not modify a 140 response
+    does not modify a 182 response
+    does not modify a 135 response
+    does not modify a 180 response
+    does not modify a 121 response
+    does not modify a 192 response
+    does not modify a 103 response
+    does not modify a 168 response
+    does not modify a 178 response
+    does not modify a 106 response
+    does not modify a 162 response
+    does not modify a 118 response
+    does not modify a 187 response
+    does not modify a 157 response
+    does not modify a 151 response
+    does not modify a 110 response
+    does not modify a 112 response
+    does not modify a 108 response
+    does not modify a 176 response
+    does not modify a 124 response
+    does not modify a 188 response
+    does not modify a 107 response
+    does not modify a 199 response
+    does not modify a 127 response
+    does not modify a 125 response
+    does not modify a 101 response
+    does not modify a 163 response
+    does not modify a 137 response
+  send file
+    returns a file response
+  serialization
+    looks at the bodies for possibly serializable data
+    xml
+      calls #to_xml if the content type is xml
+    default format
+      calls #to_json since default format is json
+  error handling
+    rescues formatter-specific exceptions
+caught error of type StandardError in after callback inside Grape::Middleware::Formatter : StandardError
+    does not rescue other exceptions
+  custom parser raises exception and rescue options are enabled for backtrace and original_exception
+    adds the backtrace and original_exception to the error output
+  content-type
+    is set for xml
+    is set for custom
+    is set for txt
+    is set for json
+    is set for vendored with registered type
+  detection
+    uses the default format if none is provided
+    uses the requested format if provided in headers
+    uses the file extension format if provided before headers
+    uses the json extension if one is provided
+    uses the xml extension if one is provided
+    uses the format parameter if one is provided
+    when path contains invalid byte sequence
+      does not raise an exception
+  format
+    uses custom formatter
+    uses custom json formatter
+    default
+      uses default json formatter
+  accept header detection
+    handles quality rankings mixed with nothing
+    handles quality rankings that have a default 1.0 value
+    ensures that a quality of 0 is less preferred than any other content type
+    parses headers with other attributes
+    detects from the Accept header
+    parses headers with symbols as hash keys
+    uses quality rankings to determine formats
+    when header contains invalid byte sequence
+      does not raise an exception
+    with custom vendored content types
+      when unregistered
+        returns the default content type text/plain
+      when registered
+        uses the custom type
+
+Finished in 0.07175 seconds (files took 0.28016 seconds to load)
+187 examples, 0 failures
+
+Randomized with seed 55799
+
+Coverage report generated for RSpec to /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2159847090/repo/coverage.
+Line Coverage: 50.23% (1722 / 3428)

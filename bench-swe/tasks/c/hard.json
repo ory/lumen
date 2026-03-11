@@ -1,0 +1,19 @@
+{
+  "id": "c-hard",
+  "language": "c",
+  "repo": "https://github.com/jqlang/jq",
+  "base_commit": "262f0b81c1d7f44cf85144b65dc584a4f520a934",
+  "fix_commit": "0df54c888ab731fbac059f8523c6c5fb3a901c99",
+  "issue_url": "https://github.com/jqlang/jq/pull/3490",
+  "issue_title": "Fix infinite loop and undefined behavior in `del(.[nan])`",
+  "issue_body": "When using the `del` builtin with `nan` as an array index, jq enters an infinite loop and never terminates. For example, the expression `[1,2,3] | del(.[nan])` hangs indefinitely instead of returning a result.\n\nThe root cause is that `nan` is a valid jq value of kind JV_KIND_NUMBER, but NaN comparisons violate normal numeric ordering assumptions. Specifically:\n\n1. In the `jv_dels` function (which handles deletion of array elements by index), when the index is NaN, the code attempts to classify it as negative or non-negative. Since NaN is neither less than zero nor greater than or equal to zero, NaN indices fall through to the string/object key deletion path where they do not belong, leading to undefined behavior.\n\n2. In the `delpaths_sorted` function, a `while` loop uses `jv_equal` to group consecutive paths with matching leading keys. When the key is NaN, `jv_equal(nan, nan)` returns false (per IEEE 754 semantics), so the loop counter `j` never advances past `i`, causing an infinite loop.\n\nExpected behavior:\n- `[1,2,3] | del(.[nan])` should return `[1,2,3]` unchanged (NaN is not a valid array index, so no element should be deleted).\n- `[1,2,3] | del(.[nan,nan])` should similarly return `[1,2,3]` unchanged.\n- The operation should complete in finite time without hanging or crashing.",
+  "gold_patch_file": "patches/c-hard.patch",
+  "expected_files": ["src/jv_aux.c", "tests/jq.test"],
+  "setup_commands": [
+    "autoreconf -i",
+    "./configure --with-oniguruma=builtin",
+    "make -j$(nproc)"
+  ],
+  "test_command": "make check",
+  "timeout_s": 600
+}

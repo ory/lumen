@@ -1,9 +1,10 @@
-results: 7
+results: 8
 tokio-builder.rs:423-460  Builder (type)
 tokio-builder.rs:507-540  Builder (type)
-tokio-builder.rs:555-870  Builder (type)
+tokio-builder.rs:583-870  Builder (type)
 tokio-builder.rs:950-985  Builder (type)
-tokio-builder.rs:1068-1097  Builder (type)
 tokio-builder.rs:1171-1198  Builder (type)
 tokio-mod.rs:1365-1397  Child (type)
+tokio-rwlock.rs:392-425  read (function)
+tokio-rwlock.rs:552-581  read_owned (function)
 

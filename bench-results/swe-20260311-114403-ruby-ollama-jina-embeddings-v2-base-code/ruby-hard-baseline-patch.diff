@@ -1,0 +1,31 @@
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac35..444f88e 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -139,6 +139,7 @@ module Grape
+       def format_from_header
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+         return if accept_header.blank?
++        return if accept_header.strip == '*/*'
+ 
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type
+diff --git a/spec/grape/middleware/formatter_spec.rb b/spec/grape/middleware/formatter_spec.rb
+index cb353aa..b997346 100644
+--- a/spec/grape/middleware/formatter_spec.rb
++++ b/spec/grape/middleware/formatter_spec.rb
+@@ -188,6 +188,14 @@ describe Grape::Middleware::Formatter do
+       subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => 'application/xml', system_time: '091293')
+       expect(subject.env[:system_time]).to eq('091293')
+     end
++
++    context 'when Accept header is a wildcard' do
++      it 'falls back to the configured default format' do
++        s = described_class.new(app, content_types: { xml: 'application/xml', json: 'application/json' }, default_format: :json)
++        _, headers, = s.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => '*/*')
++        expect(headers[Rack::CONTENT_TYPE]).to eq('application/json')
++      end
++    end
+   end
+ 
+   context 'content-type' do

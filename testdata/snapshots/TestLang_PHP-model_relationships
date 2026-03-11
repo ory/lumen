@@ -1,6 +1,11 @@
-results: 4
-BelongsTo.php:20-127  BelongsTo+addConstraints+addEagerConstraints (type)
-BelongsTo.php:142-234  BelongsTo+initRelation+match+associate (type)
-BelongsTo.php:280-383  BelongsTo+newRelatedInstanceFor (type)
-Model.php:1077-1106  Model+push (method)
+results: 9
+BelongsTo.php:14-52  BelongsTo+child+foreignKey+ownerKey+relationName (var)
+BelongsTo.php:105-116  addEagerConstraints (method)
+BelongsTo.php:142-234  BelongsTo+initRelation+match+associate+dissociate+touch (method)
+BelongsTo.php:268-288  relationHasIncrementingId+newRelatedInstanceFor (method)
+BelongsTo.php:350-359  getRelatedKeyFrom (method)
+Builder.php:844-861  eagerLoadRelation (method)
+Model.php:1077-1109  Model+push (method)
+Model.php:1538-1546  newQueryWithoutRelationships (method)
+Model.php:2328-2337  __isset (method)
 

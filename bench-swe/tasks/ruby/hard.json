@@ -1,27 +1,20 @@
 {
   "id": "ruby-hard",
   "language": "ruby",
-  "repo": "https://github.com/sinatra/sinatra",
-  "base_commit": "ca6b71c2e48f90ae0fe3b9cd54c4d2459c1bde7c",
-  "fix_commit": "1551ef7ffc9f937f8ae02d7adb23b250cfac109b",
-  "issue_url": "https://github.com/sinatra/sinatra/issues/1973",
-  "issue_title": "Classic Style Application without a config.ru does not work with Ruby 3.3 and Bundler 2.5",
-  "issue_body": "A classic-style Sinatra application (without a `config.ru`) silently exits immediately without starting the server when run with Ruby 3.3 and Bundler 2.5.\n\nSteps to reproduce:\n\n1. Create a simple Sinatra app:\n\n```ruby\n# my_app.rb\nrequire 'sinatra'\n\nget \"/ready\" do\n  \"ready\"\nend\n```\n\n2. Create a Gemfile:\n\n```ruby\nsource 'https://rubygems.org'\n\ngem \"sinatra\"\ngem \"webrick\"\n```\n\n3. Run:\n\n```shell\n$ bundle\n$ bundle exec ruby my_app.rb\n<No response, the application exits immediately>\n```\n\nEnvironment: Ruby 3.3.0, Bundler 2.5.3\n\nExpected behavior: The Sinatra application should start and listen on the default port.\n\nActual behavior: The application exits silently without starting the web server. No error message, no deprecation warning \u2014 it just returns to the shell prompt. The same app works fine on Ruby 3.2 with the same Bundler version, and also works if you wrap it in a `config.ru` and use `rackup` instead.",
+  "repo": "https://github.com/ruby-grape/grape",
+  "base_commit": "49e8e63d23e8ba29a60406beb938a6cd1ef3f678",
+  "fix_commit": "9e42c93f01f50aefd4857c8a6f11a9c1d188bfb1",
+  "issue_url": "https://github.com/ruby-grape/grape/issues/2579",
+  "issue_title": "Regression in Grape 2.4.0: wrong content type returned when Accept header is a wildcard",
+  "issue_body": "When upgrading from Grape 2.3.0 to 2.4.0, a regression was introduced in how the API resolves the response content type when the client sends a wildcard Accept header.\n\nIn version 2.3.0, when a Grape API was configured with multiple content types and a designated default format, a request with `Accept: */*` would correctly resolve to the configured default format. For example, given an API configured like this:\n\n```ruby\nclass MultipleFormatAPI < Grape::API\n  content_type :xml, 'application/xml'\n  content_type :json, 'application/json'\n\n  # json is the intended default\n  get :hello do\n    { hello: 'world' }\n  end\nend\n```\n\nA `GET /hello` request with `Accept: */*` should return a JSON response. Instead, since version 2.4.0, it returns XML (the first registered content type) rather than the configured default.\n\nReproduction steps:\n\n1. Configure a Grape API with multiple content types (e.g., XML and JSON) and set a specific default format.\n2. Send a request with the header `Accept: */*`.\n3. Observe the response Content-Type.\n\nExpected: The response uses the configured default format (e.g., `application/json`).\nActual: The response uses the first registered content type (e.g., `application/xml`), ignoring the configured default.\n\nThe wildcard Accept header (`*/*`) should be treated as \"I accept anything, use your default\" rather than being matched against the list of registered content types. Currently the wildcard is being matched as if it were a specific media type preference, which causes it to pick the first registered type instead of falling back to the default.\n\nThis is a breaking change from previous versions and contradicts the documented behavior in the README.",
   "gold_patch_file": "patches/ruby-hard.patch",
   "expected_files": [
-    ".github/workflows/test.yml",
-    "Gemfile",
-    "lib/sinatra/base.rb",
-    "test/integration/simple_app.rb",
-    "test/integration/zeitwerk_app.rb",
-    "test/integration_start_helper.rb",
-    "test/integration_start_test.rb"
+    "lib/grape/middleware/formatter.rb",
+    "spec/grape/middleware/formatter_spec.rb"
   ],
   "setup_commands": [
-    "rm -f Gemfile.lock",
-    "bundle config set --local path vendor/bundle",
     "bundle install"
   ],
-  "test_command": "bundle exec ruby test/integration_start_test.rb",
+  "test_command": "bundle exec rspec spec/grape/middleware/formatter_spec.rb",
   "timeout_s": 900
 }

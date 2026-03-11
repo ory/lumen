@@ -1,8 +1,8 @@
 results: 6
-concern.rb:3-217  ActiveSupport+Concern+append_features (type)
+concern.rb:3-217  ActiveSupport+ActiveSupport.Concern+Concern.append_features (type)
 engine.rb:397-424  Rails (type)
-engine.rb:490-524  Rails+helpers (function)
-metal.rb:40-42  INCLUDE+EXCLUDE+NULL (var)
-sinatra-base.rb:1291-1319  Base+CALLERS_TO_IGNORE (type)
-sinatra-base.rb:1541-1589  Base+helpers (type)
+engine.rb:490-524  Rails+Engine.helpers (function)
+metal.rb:40-42  MiddlewareStack.INCLUDE+MiddlewareStack.EXCLUDE+MiddlewareStack.NULL (var)
+sinatra-base.rb:1291-1319  Sinatra.Base+Base.CALLERS_TO_IGNORE (type)
+sinatra-base.rb:1541-1589  Sinatra.Base (type)
 

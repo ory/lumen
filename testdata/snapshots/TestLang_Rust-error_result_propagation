@@ -1,8 +1,7 @@
-results: 6
-rg-globset-lib.rs:243-269  Error+ErrorKind+fmt (type)
-rg-ignore-lib.rs:154-303  Error+from_walkdir (type)
-rg-ignore-lib.rs:322-351  Error (type)
-rg-ignore-lib.rs:361-402  Error+PartialErrorBuilder (type)
+results: 5
+rg-globset-lib.rs:254-269  ErrorKind+fmt (type)
+rg-ignore-lib.rs:154-303  Error+is_partial+io_error+into_io_error+from_walkdir (type)
+rg-ignore-lib.rs:361-365  Error (type)
 rg-matcher-lib.rs:470-41  NoCaptures+NoCaptures+NoError+NoError+Error+Output+Output+Captures+Error+interpolate (type)
 tokio-oneshot.rs:339-368  error+RecvError+RecvError (type)
 

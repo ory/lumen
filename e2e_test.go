@@ -443,7 +443,7 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 	out := callSearch(t, session, map[string]any{
 		"query": "authentication token validation",
 		"path":  projectPath,
-		"limit": 5,
+		"n_results": 5,
 	})
 
 	if !out.Reindexed {
@@ -519,7 +519,7 @@ func TestE2E_PlaintextContent(t *testing.T) {
 	result := callSearchRaw(t, session, map[string]any{
 		"query": "authentication token validation",
 		"path":  projectPath,
-		"limit": 3,
+		"n_results": 3,
 	})
 
 	if result.IsError {
@@ -580,7 +580,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out := callSearch(t, session, map[string]any{
 		"query":     "HTTP request handler for health check endpoint",
 		"path":      projectPath,
-		"limit":     50,
+		"n_results":     50,
 		"min_score": -1,
 	})
 	healthRank := rankOf(out.Results, "HandleHealth")
@@ -590,7 +590,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 		raw := callSearchRaw(t, session, map[string]any{
 			"query":     "HTTP request handler for health check endpoint",
 			"path":      projectPath,
-			"limit":     50,
+			"n_results":     50,
 			"min_score": -1,
 		})
 		t.Logf("raw text:\n%s", getTextContent(t, raw))
@@ -608,7 +608,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "database query pagination",
 		"path":      projectPath,
-		"limit":     50,
+		"n_results":     50,
 		"min_score": -1,
 	})
 	queryRank := rankOf(out2.Results, "QueryUsers")
@@ -625,40 +625,40 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	}
 }
 
-func TestE2E_LimitParameter(t *testing.T) {
+func TestE2E_NResultsParameter(t *testing.T) {
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
-	// limit=1 should return exactly 1. Use min_score=-1 to bypass score filtering.
+	// n_results=1 should return exactly 1. Use min_score=-1 to bypass score filtering.
 	out1 := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,
-		"limit":     1,
+		"n_results": 1,
 		"min_score": -1,
 	})
 	if len(out1.Results) != 1 {
-		t.Errorf("limit=1: expected exactly 1 result, got %d", len(out1.Results))
+		t.Errorf("n_results=1: expected exactly 1 result, got %d", len(out1.Results))
 	}
 
-	// limit=3 should return at most 3.
+	// n_results=3 should return at most 3.
 	out3 := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,
-		"limit":     3,
+		"n_results": 3,
 		"min_score": -1,
 	})
 	if len(out3.Results) > 3 {
-		t.Errorf("limit=3: expected at most 3 results, got %d", len(out3.Results))
+		t.Errorf("n_results=3: expected at most 3 results, got %d", len(out3.Results))
 	}
 
-	// No limit (omitted) should return results (default 20 kicks in).
+	// No n_results (omitted) should return results (default 8 kicks in).
 	outDefault := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,
 		"min_score": -1,
 	})
 	if len(outDefault.Results) == 0 {
-		t.Error("no limit: expected results with default limit")
+		t.Error("no n_results: expected results with default")
 	}
 }
 
@@ -670,7 +670,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outAll := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"limit":     50,
+		"n_results":     50,
 		"min_score": -1,
 	})
 	if len(outAll.Results) == 0 {
@@ -681,7 +681,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outFiltered := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"limit":     50,
+		"n_results":     50,
 		"min_score": 0.5,
 	})
 

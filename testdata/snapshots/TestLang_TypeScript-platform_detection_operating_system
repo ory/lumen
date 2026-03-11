@@ -1,6 +1,5 @@
 results: 10
-hash.ts:214-240  StringSHA1 (type)
-path.ts:233-270  win32+resolve (const)
+path.ts:233-270  win32 (const)
 path.ts:383-439  normalize+win32 (method)
 path.ts:453-467  isAbsolute (method)
 path.ts:713-731  toNamespacedPath (method)
@@ -8,5 +7,6 @@ path.ts:774-820  win32 (const)
 path.ts:1019-1058  parse (method)
 path.ts:1577-1589  normalize+isAbsolute+join+resolve+relative+dirname+basename+extname+format+parse+toNamespacedPath+sep+delimiter (const)
 platform.ts:37-49  INodeProcess (interface)
-platform.ts:123-281  PlatformName+Platform+OperatingSystem+PlatformToString+OS+isChrome+isFirefox+isSafari+isEdge+isAndroid+isTahoeOrNewer (function)
+platform.ts:123-281  PlatformName+Platform+OperatingSystem+PlatformToString+locale+platformLocale+OS+isChrome+isFirefox+isSafari+isEdge+isAndroid+isTahoeOrNewer (function)
+resources.ts:42-49  isEqualOrParent (method)
 
