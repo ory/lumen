@@ -1,73 +1,139 @@
 title: Make Claude Code faster and cheaper in large codebases with Ory Lumen
-description: Ory Lumen adds local semantic code search to Claude Code through MCP. It indexes your codebase with local embeddings and reduced runtime by up to 53% and API cost by up to 33% in our benchmarks.
-slug: ory-lumen-semantic-search-claude-code
-meta-desc: Claude Code slows down as codebases grow. Ory Lumen adds local semantic search through MCP and reduced runtime by up to 53% and API cost by up to 33% in our benchmarks.
-meta-title: Make Claude Code faster and cheaper with Ory Lumen | Ory
+description: Ory Lumen adds local semantic code search to Claude Code via MCP.
+Index your codebase with local embeddings, cut runtime by up to 53% and API
+costs by up to 33%. slug: ory-lumen-semantic-search-claude-code meta-desc:
+Claude Code getting slower as your codebase grows? Ory Lumen is a local semantic
+search MCP server that makes Claude up to 2x faster and 33% cheaper. meta-title:
+Faster and Cheaper Claude Code with Ory Lumen | Ory
 
-[Ory Lumen](https://github.com/ory/lumen) makes Claude Code faster and cheaper in larger codebases by adding local semantic code search through SQLite-vec.
+[Ory Lumen](https://github.com/ory/lumen) makes Claude Code faster and cheaper
+with local semantic search via SQLite-vec.
 
-As Ory's codebase grew, Claude Code got slower and more expensive to use. The main reason was code discovery. Claude mostly relies on grep, glob, and file reads. Those tools work well when you already know the exact file name, symbol name, or string to search for. They work less well when you only know what the code does.
+Ory's codebase is growing and over the past couple of weeks, I noticed Claude
+Code was getting slower and more expensive to work with as a result. The issue
+is simple: Claude's default to use grep/glob and find has limitations due to
+exact match requirements. More code means more surface area, and surface area
+means more tool use, higher token costs and slower task completion.
 
-That gap gets larger as the codebase grows. More files means more guesses, more tool calls, more file reads, more tokens, and more time spent finding the right place to edit.
+When you ask Claude to find a function or understand a module, it guesses file
+and function names to find what is relevant with an exact match. In a small
+codebase, this is fine. In a larger one, it becomes expensive, both in time and
+in API costs. This problem compounds as the codebase grows, which means it gets
+worse exactly when you need it to get better.
 
-With Ory Lumen, Claude can search by meaning instead of exact text. That cuts down on blind exploration and gets it to the relevant code faster.
+Want to try it out immediately? Jump to the README on
+https://github.com/ory/lumen and if you like it, leave a star!
 
-Want to try it now? The README is here: https://github.com/ory/lumen
+## The root cause
 
-## Why Claude Code slows down in larger repos
+I wrote about this dynamic in more depth recently: agents struggle to build and
+maintain a durable mental model of a codebase. They rediscover things repeatedly
+through guessing and file reads instead of building on what they already know.
+This is a fundamental constraint of how LLMs work today, not a bug that will get
+patched. Ory Lumen (https://github.com/ory/lumen) is a direct, practical
+response to that constraint which improves discoverability in code bases.
 
-Claude does not keep a stable working model of a large codebase. It reconstructs context as it goes. In practice, that means it often has to rediscover the same code by reading files, searching for symbols, and following references.
+## What is Ory Lumen?
 
-In a small repository, that cost is limited. In a large one, it adds up fast. Claude may look through several files before it finds the function, type, or module that actually matters. That increases latency and token usage, and it raises the chance that it edits the wrong place or misses a related file.
+**[Ory Lumen](https://github.com/ory/lumen)** is a local semantic code search
+engine that runs as an MCP server alongside Claude Code. It indexes your
+codebase using local embedding models and exposes a `semantic_search` tool that
+Claude calls instead of reading files directly. Claude can find relevant
+functions, types, and modules by meaning, without opening everything to look.
 
-Ory Lumen addresses that problem at the discovery step.
+How it works:
 
-## What Ory Lumen does
+1. On session start, Lumen walks your project and chunks each file into semantic
+   units: functions, methods, types. Go uses the native AST parser. All other
+   languages use tree-sitter grammars.
+2. Those chunks are embedded using a local model and stored in SQLite with
+   sqlite-vec for vectorization.
+3. When Claude needs to find relevant code, it calls `semantic_search` and gets
+   back the relevant chunks without touching the files.
 
-**[Ory Lumen](https://github.com/ory/lumen)** is a local semantic code search engine that runs as an MCP server next to Claude Code. It indexes your repository with local embedding models and exposes a `semantic_search` tool that Claude can call during a session.
+Everything runs on your machine. No API keys, no cloud, no external services.
+The embedding backend is [Ollama](https://ollama.com/) or
+[LM Studio](https://lmstudio.ai/). The index is stored at
+`~/.local/share/lumen/<hash>/index.db`, keyed by project path and model name.
+Nothing is added to your repo.
 
-Instead of opening many files to hunt for the right code, Claude can ask for code that matches the intent of the task. Lumen returns the most relevant chunks, such as functions, methods, and types.
+### Re-indexing stays fast
 
-The flow is simple:
+Lumen builds a Merkle tree over file hashes on the first run. On subsequent
+sessions, only changed files get re-chunked and re-embedded. For large
+codebases, re-indexing after the first run takes seconds.
 
-1. On session start, Lumen walks the project and splits files into semantic units. For Go, it uses the native AST parser. For other languages, it uses tree-sitter grammars.
-2. Lumen embeds those chunks with a local model and stores them in SQLite using sqlite-vec.
-3. When Claude needs relevant code, it calls `semantic_search` and gets back the highest-matching chunks.
+## The results
 
-Everything runs locally. There are no API keys, cloud services, or external embedding calls. The embedding backend is [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/). The index lives at `~/.local/share/lumen/<hash>/index.db`, keyed by project path and model name. Nothing is written into your repository.
+Lumen is evaluated using a SWE-bench-style harness: real GitHub bugs, real
+codebases, Claude fixing them with and without Lumen. Patches are rated by a
+blind judge comparing against the known-correct fix. Full methodology, raw data,
+and reproduce instructions are in
+[docs/BENCHMARKS.md](https://github.com/ory/lumen/blob/main/docs/BENCHMARKS.md).
 
-### Re-indexing is incremental
+| Language   | Cost reduction | Time reduction | Quality        |
+| ---------- | -------------- | -------------- | -------------- |
+| PHP        | 52%            | 59%            | Good → Perfect |
+| JavaScript | 56%            | 51%            | Same (Good)    |
+| Go         | 30%            | 13%            | Same (Good)    |
 
-The first run builds a Merkle tree over file hashes. After that, Lumen only re-chunks and re-embeds files that changed. In large codebases, re-indexing after the first run usually takes seconds.
+Across all 7 languages tested, Lumen reduces tool calls by **27%** on average.
+Claude navigates to the right code directly instead of reading files
+systematically.
 
-## Benchmark results
+PHP is the standout: Lumen cuts token usage by up to 86% while also upgrading
+patch quality from Good to Perfect on every run. JavaScript shows consistent
+resource reduction at the same quality level. Rust shows a clear quality uplift.
+Baseline produced mixed results while Lumen delivered Good on every run. Most
+languages have potential to be further improved by tweaking the chunking
+algorithm and adding additional discovery tools.
 
-We evaluated Lumen with a SWE-bench-style harness using real GitHub issues and real codebases. Claude solves the task once with Lumen and once without it. A blind judge compares both patches against the known-correct fix. The full method, raw data, and reproduction steps are in [docs/BENCHMARKS.md](https://github.com/ory/lumen/blob/main/docs/BENCHMARKS.md).
+The benchmark suite covers Go, JavaScript, PHP, Python, Ruby, Rust, and
+TypeScript, all hard-difficulty tasks from real open-source projects. Results
+are fully reproducible.
 
-| Language   | Cost reduction | Time reduction | Output token reduction | Quality        |
-| ---------- | -------------- | -------------- | ---------------------- | -------------- |
-| JavaScript | 33%            | 53%            | 66%                    | Perfect (both) |
-| TypeScript | 27%            | 33%            | 64%                    | Good (both)    |
-| PHP        | 27%            | 34%            | 59%                    | Good (both)    |
-| Python     | 20%            | 29%            | 36%                    | Perfect (both) |
-| Ruby       | 24%            | 11%            | 9%                     | Good (both)    |
-| Go         | 4%             | 5%             | 30%                    | Good (both)    |
-| C++\*      | -20%           | 14%            | 11%                    | Good (both)    |
+## Installing it
 
-\* The C++ task is a feature implementation task rather than a bug fix. It is the only case where cost increased.
+We launched an
+[Ory Claude plugin marketplace](https://github.com/ory/claude-plugins) alongside
+Lumen today. It is the first plugin in it. Inside Claude Code, run:
 
-Across the six bug-fix tasks, Lumen reduced output tokens by **46% on average**.
-
-The clearest gains were in JavaScript, TypeScript, and PHP. In those tasks, Claude spent less time exploring and reached the relevant code faster. Go showed smaller gains in time and cost, but Lumen still helped produce a more complete patch that included a test file the baseline missed.
-
-The current benchmark suite covers Go, JavaScript, PHP, Python, Ruby, TypeScript, and C++. All tasks are hard-difficulty tasks from real open source projects, and the results are reproducible.
-
-## Install Ory Lumen
-
-We also launched the [Ory Claude plugin marketplace](https://github.com/ory/claude-plugins). Lumen is the first plugin in it.
-
-Inside Claude Code, run:
-
-```bash
+```
 /plugin marketplace add ory/claude-plugins
 /plugin install lumen@ory
+```
+
+Lumen downloads its binary automatically from the latest GitHub release, indexes
+your project on the next session start, and registers the `semantic_search`
+tool. Claude picks it up without any additional configuration.
+
+**Prerequisites:**
+
+1. Install [Ollama](https://ollama.com/) and pull the default embedding model:
+
+```bash
+$ ollama pull ordis/jina-embeddings-v2-base-code
+```
+
+2. Have [Claude Code](https://code.claude.com/) installed.
+
+Two skills come with the plugin: `/lumen:doctor` for a health check, and
+`/lumen:reindex` to force a full re-index after a large refactor.
+
+## On keeping it local
+
+One constraint I was not willing to give up: your code stays on your machine.
+Sending source code to an external embedding API is a decision engineering teams
+should make deliberately, not by default. Lumen runs entirely on local hardware
+with open-source models. The embeddings never leave your network.
+
+This also makes it usable in air-gapped environments, which matters for the
+companies running Ory's self-hosted products.
+
+## Contributing
+
+Ory Lumen is a new project with rough edges, and it will improve over time. We
+want it to solve more benchmarks better and welcome anyone who wants to help
+make Claude Code faster and cheaper with local-first tooling! If you find
+something, please feel free to contribute on our
+[GitHub](https://github.com/ory/lumen)!
