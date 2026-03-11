@@ -1,103 +1,79 @@
-diff --git a/source/core/Ky.ts b/source/core/Ky.ts
-index 0f420a7..23b289f 100644
---- a/source/core/Ky.ts
-+++ b/source/core/Ky.ts
-@@ -215,6 +215,17 @@ export class Ky {
- 			this._options.headers.set('content-type', this._options.headers.get('content-type') ?? 'application/json');
- 		}
+diff --git a/src/_parser.ts b/src/_parser.ts
+index 5483e44..992c23d 100644
+--- a/src/_parser.ts
++++ b/src/_parser.ts
+@@ -142,9 +142,24 @@ export function parseRawArgs<T = Record<string, any>>(
+     (out as any)[key] = value;
+   }
  
-+		// To provide correct form boundary, Content-Type header should be deleted when creating Request from another Request with FormData/URLSearchParams body
-+		// Only delete if user didn't explicitly provide a custom content-type
-+		const userProvidedContentType = options.headers && new globalThis.Headers(options.headers as HeadersInit).has('content-type');
-+		if (
-+			this._input instanceof globalThis.Request
-+			&& ((supportsFormData && this._options.body instanceof globalThis.FormData) || this._options.body instanceof URLSearchParams)
-+			&& !userProvidedContentType
-+		) {
-+			this._options.headers.delete('content-type');
-+		}
+-  // Apply negated flags
++  // Apply negated flags (with alias resolution)
+   for (const [name] of Object.entries(negatedFlags)) {
++    // Set the flag itself
+     (out as any)[name] = false;
 +
- 		this.request = new globalThis.Request(this._input, this._options);
++    // Resolve to main option and apply there too (handles --no-alias)
++    const mainName = aliasToMain.get(name);
++    if (mainName) {
++      (out as any)[mainName] = false;
++    }
++
++    // Also apply to all aliases of this name (handles --no-main for aliases)
++    const aliases = mainToAliases.get(name);
++    if (aliases) {
++      for (const alias of aliases) {
++        (out as any)[alias] = false;
++      }
++    }
+   }
  
- 		if (hasSearchParameters(this._options.searchParams)) {
-@@ -226,14 +237,6 @@ export class Ky {
- 			const searchParams = '?' + textSearchParams;
- 			const url = this.request.url.replace(/(?:\?.*?)?(?=#|$)/, searchParams);
- 
--			// To provide correct form boundary, Content-Type header should be deleted each time when new Request instantiated from another one
--			if (
--				((supportsFormData && this._options.body instanceof globalThis.FormData)
--					|| this._options.body instanceof URLSearchParams) && !(this._options.headers && (this._options.headers as Record<string, string>)['content-type'])
--			) {
--				this.request.headers.delete('content-type');
--			}
--
- 			// The spread of `this.request` is required as otherwise it misses the `duplex` option for some reason and throws.
- 			this.request = new globalThis.Request(new globalThis.Request(url, {...this.request}), this._options as RequestInit);
- 		}
-diff --git a/test/formdata-searchparams.ts b/test/formdata-searchparams.ts
-index df08eed..fb8361f 100644
---- a/test/formdata-searchparams.ts
-+++ b/test/formdata-searchparams.ts
-@@ -55,3 +55,61 @@ test('FormData with searchParams and onUploadProgress', async t => {
- 
- 	await server.close();
+   // Propagate values between aliases
+diff --git a/test/parser.test.ts b/test/parser.test.ts
+index 79852dd..b1794c0 100644
+--- a/test/parser.test.ts
++++ b/test/parser.test.ts
+@@ -72,4 +72,44 @@ describe("parseRawArgs", () => {
+       _: [],
+     });
+   });
++
++  it("handles --no- negation on main option", () => {
++    const result = parseRawArgs(["--no-verbose"], {
++      boolean: ["verbose"],
++      default: { verbose: true },
++    });
++
++    expect(result).toEqual({
++      _: [],
++      verbose: false,
++    });
++  });
++
++  it("handles --no- negation on alias and propagates to main option", () => {
++    const result = parseRawArgs(["--no-v"], {
++      boolean: ["verbose"],
++      alias: { v: ["verbose"] },
++      default: { verbose: true },
++    });
++
++    expect(result).toEqual({
++      _: [],
++      v: false,
++      verbose: false,
++    });
++  });
++
++  it("handles --no- negation on main option and propagates to aliases", () => {
++    const result = parseRawArgs(["--no-verbose"], {
++      boolean: ["verbose"],
++      alias: { v: ["verbose"] },
++      default: { verbose: true },
++    });
++
++    expect(result).toEqual({
++      _: [],
++      v: false,
++      verbose: false,
++    });
++  });
  });
-+
-+test('retries with FormData in afterResponse hook maintains correct boundary', async t => {
-+	const server = await createHttpTestServer();
-+
-+	let requestCount = 0;
-+	const receivedBoundaries: string[] = [];
-+
-+	server.post('/', (request, response) => {
-+		requestCount++;
-+
-+		const contentType = request.headers['content-type'] ?? '';
-+		const boundaryMatch = /boundary=([^;]+)/.exec(contentType);
-+		const headerBoundary = boundaryMatch?.[1];
-+
-+		let body = '';
-+		request.on('data', chunk => {
-+			body += chunk.toString(); // eslint-disable-line @typescript-eslint/restrict-plus-operands
-+		});
-+
-+		request.on('end', () => {
-+			// Extract boundary from actual body content
-+			const bodyBoundaryMatch = /^--([^\r\n]+)/.exec(body);
-+			const bodyBoundary = bodyBoundaryMatch?.[1];
-+
-+			receivedBoundaries.push(`header:${headerBoundary},body:${bodyBoundary}`);
-+
-+			if (requestCount === 1) {
-+				// First request fails with 401
-+				response.status(401).end();
-+			} else {
-+				// Second request succeeds - verify boundary matches
-+				const boundariesMatch = headerBoundary === bodyBoundary;
-+				response.json({success: boundariesMatch});
-+			}
-+		});
-+	});
-+
-+	const formData = new FormData();
-+	formData.append('field', 'value');
-+
-+	const result = await ky.post(server.url, {
-+		body: formData,
-+		hooks: {
-+			afterResponse: [
-+				async (request, options, response) => {
-+					if (response.status === 401) {
-+						return ky(request, options);
-+					}
-+				},
-+			],
-+		},
-+	}).json<{success: boolean}>();
-+
-+	t.is(requestCount, 2, 'Should make 2 requests');
-+	t.true(result.success, 'Content-type boundary should match body boundary on retry');
-+
-+	await server.close();
-+});

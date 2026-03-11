@@ -1,18 +1,18 @@
 {
   "id": "typescript-hard",
   "language": "typescript",
-  "repo": "https://github.com/sindresorhus/ky",
-  "base_commit": "019e10ee06bbe62afca839f5a802ccf4c4c49378",
-  "fix_commit": "d02b6363e18e233dcdd29e4e1f987882c2fa18db",
-  "issue_url": "https://github.com/sindresorhus/ky/issues/594",
-  "issue_title": "New request in afterResponse hook with formData content",
-  "issue_body": "When using FormData with ky and retrying a request inside an afterResponse hook, the Content-Type header boundary becomes mismatched with the actual request body boundary.\n\nReproduction: Create a ky instance with an afterResponse hook that retries on 401 responses by calling ky(request, options). When the original request uses FormData as the body, the retry request inherits the Content-Type header from the original Request object. However, when a new Request is instantiated from an existing Request with a FormData body, the browser generates a new boundary for the body content, but the Content-Type header still contains the old boundary from the original request.\n\nThis causes the server to fail parsing the multipart form data because the boundary in the Content-Type header does not match the boundary used in the actual request body.\n\nExample:\n```ts\nconst formData = new FormData();\nformData.append('title', title);\nformData.append('uploadFile[file]', new Blob([fileContent]));\n\nreturn await api.post('endpoint', { body: formData }).json();\n```\n\nWith an afterResponse hook like:\n```js\nafterResponse: [\n  async (request, options, response) => {\n    if (response.status === 401) {\n      const token = await ky('https://example.com/token').text();\n      request.headers.set('Authorization', `token ${token}`);\n      return ky(request, options);\n    }\n  }\n]\n```\n\nThe call to ky(request, options) in the hook does not regenerate the Content-Type header, which creates a boundary mismatch between the header and the request content. The Content-Type header should be deleted when creating a new Request from an existing Request with a FormData or URLSearchParams body, so the browser can regenerate it with the correct boundary.\n\nNote that there is existing code that handles this for the searchParams code path, but it does not cover the general case where the input to ky is a Request object with a FormData body and no searchParams are involved.",
+  "repo": "https://github.com/unjs/citty",
+  "base_commit": "b7a18fa484979a0f8f9c10aa8a88a250c027fa20",
+  "fix_commit": "7393b4bb423e4cd02680c30dd94b9a5e43fea7fd",
+  "issue_url": "https://github.com/unjs/citty/issues/209",
+  "issue_title": "Negative flag (--no-) negation does not propagate to aliases or main option",
+  "issue_body": "When using the `--no-` prefix to negate a boolean flag that has aliases, the negation is not correctly propagated between the alias and the main option name.\n\nFor example, given a boolean argument `verbose` with default `true` and alias `v`:\n\n- Running with `--no-v` sets `v=false` but leaves `verbose=true` (the default), because the propagation logic only copies values when the target is `undefined`. Since `verbose` has a default of `true`, it is not `undefined`, so the negated value from the alias never overwrites it.\n\n- Similarly, running with `--no-verbose` sets `verbose=false` but does not propagate the negation to the alias `v`.\n\nReproduction:\n\n```ts\nimport { parseRawArgs } from 'citty';\n\n// Case 1: --no-alias should propagate to main option\nconst result1 = parseRawArgs(['--no-v'], {\n  boolean: ['verbose'],\n  alias: { v: ['verbose'] },\n  default: { verbose: true },\n});\nconsole.log(result1);\n// Actual:   { _: [], v: false, verbose: true }\n// Expected: { _: [], v: false, verbose: false }\n\n// Case 2: --no-main should propagate to aliases\nconst result2 = parseRawArgs(['--no-verbose'], {\n  boolean: ['verbose'],\n  alias: { v: ['verbose'] },\n  default: { verbose: true },\n});\nconsole.log(result2);\n// Actual:   { _: [], verbose: false }  (v is missing/undefined)\n// Expected: { _: [], v: false, verbose: false }\n```\n\nThe root cause is in the argument parser's handling of negated flags. When a `--no-` prefixed flag is encountered, the parser sets only the literal flag name to `false` without resolving it through the alias mapping. The negation needs to be resolved bidirectionally: if the negated name is an alias, the main option should also be set to `false`; if the negated name is the main option, all its aliases should also be set to `false`. This must happen before the general alias propagation step, which skips values that are already defined (non-undefined), so default values block the propagation of negated flags.",
   "gold_patch_file": "patches/typescript-hard.patch",
   "expected_files": [
-    "source/core/Ky.ts",
-    "test/formdata-searchparams.ts"
+    "src/_parser.ts",
+    "test/parser.test.ts"
   ],
   "setup_commands": ["npm install"],
-  "test_command": "npx ava test/formdata-searchparams.ts",
+  "test_command": "npx vitest run test/parser.test.ts",
   "timeout_s": 300
 }

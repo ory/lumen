@@ -525,15 +525,15 @@ func TestAdversarial_Ruby(t *testing.T) {
 
 	cs.mustHave("top_level_method", "function")
 	cs.mustHave("Animal", "type")
-	cs.mustHave("MY_CONST", "var")
-	cs.mustHave("speak", "function")
-	cs.mustHave("class_method", "function")
-	cs.mustHave("InnerClass", "type")
+	cs.mustHave("Animal.MY_CONST", "var")
+	cs.mustHave("Animal.speak", "function")
+	cs.mustHave("Animal.class_method", "function")
+	cs.mustHave("Animal.InnerClass", "type")
 	cs.mustHave("Utilities", "type")
-	cs.mustHave("util_method", "function")
+	cs.mustHave("Utilities.util_method", "function")
 	cs.mustHave("new_name", "function")
 	cs.mustHave("String", "type")
-	cs.mustHave("custom_method", "function")
+	cs.mustHave("String.custom_method", "function")
 
 	cs.mustNotHave("commented_method", "function")
 }
@@ -1162,7 +1162,7 @@ module LegacyModule {
 	// Functions inside namespace should be extracted
 	cs.mustHave("helper", "function")
 	cs.mustHave("Inner", "type")
-	cs.mustHave("legacy", "function")
+	cs.mustHave("LegacyModule.legacy", "function")
 }
 
 // ---------- JavaScript: let-based function expressions ----------

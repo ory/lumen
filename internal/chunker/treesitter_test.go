@@ -18,6 +18,10 @@ import (
 	"strings"
 	"testing"
 
+	sitter_c "github.com/smacker/go-tree-sitter/c"
+	sitter_cs "github.com/smacker/go-tree-sitter/csharp"
+	sitter_java "github.com/smacker/go-tree-sitter/java"
+	sitter_php "github.com/smacker/go-tree-sitter/php"
 	sitter_py "github.com/smacker/go-tree-sitter/python"
 	sitter_rs "github.com/smacker/go-tree-sitter/rust"
 	sitter_ts "github.com/smacker/go-tree-sitter/typescript/typescript"
@@ -544,7 +548,7 @@ func TestTreeSitterChunker_Ruby(t *testing.T) {
 
 	check("greet", "function")
 	check("Animal", "type")
-	check("speak", "function") // Ruby methods map to "function" kind
+	check("Animal.speak", "function") // Ruby methods map to "function" kind
 }
 
 var sampleJava = []byte(`public class Calculator {
@@ -1026,7 +1030,7 @@ func TestTreeSitterChunker_Ruby_Comprehensive(t *testing.T) {
 	check("greet", "function")
 	check("class_method", "function") // singleton_method
 	check("Animal", "type")
-	check("speak", "function")
+	check("Animal.speak", "function")
 	check("Utilities", "type")     // module
 	check("new_greet", "function") // alias
 }
@@ -1435,6 +1439,356 @@ func TestTreeSitterChunker_TypeScript_Comprehensive(t *testing.T) {
 	check("Direction", "type") // enum
 	check("MAX", "const")      // exported const
 	check("write", "method")   // method_signature in interface
+}
+
+// findChunk returns the first chunk with the given symbol from chunks.
+func findChunk(chunks []chunker.Chunk, symbol string) (chunker.Chunk, bool) {
+	for _, c := range chunks {
+		if c.Symbol == symbol {
+			return c, true
+		}
+	}
+	return chunker.Chunk{}, false
+}
+
+func TestTreeSitterChunker_LeadingComments(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+
+	// commentCase exercises a single comment-capture scenario.
+	type commentCase struct {
+		name          string
+		chunker       chunker.Chunker
+		filePath      string
+		src           string
+		symbol        string
+		wantStartLine int    // 1-based; 0 means "don't check"
+		wantInContent string // must appear in Content
+		wantMissing   string // must NOT appear in Content (empty = skip)
+	}
+
+	// Helpers that build ad-hoc chunkers for languages not exposed by DefaultLanguages
+	// at the extension level, so we can control the exact query.
+	mustC := func() chunker.Chunker {
+		c, err := chunker.NewTreeSitterChunker(chunker.LanguageDef{
+			Language: sitter_c.GetLanguage(),
+			Queries: []chunker.QueryDef{
+				{Pattern: `(function_definition declarator: (function_declarator declarator: (identifier) @name)) @decl`, Kind: "function"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("C chunker: %v", err)
+		}
+		return c
+	}()
+
+	mustCS := func() chunker.Chunker {
+		c, err := chunker.NewTreeSitterChunker(chunker.LanguageDef{
+			Language: sitter_cs.GetLanguage(),
+			Queries: []chunker.QueryDef{
+				{Pattern: `(method_declaration name: (identifier) @name) @decl`, Kind: "method"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("C# chunker: %v", err)
+		}
+		return c
+	}()
+
+	mustJava := func() chunker.Chunker {
+		c, err := chunker.NewTreeSitterChunker(chunker.LanguageDef{
+			Language: sitter_java.GetLanguage(),
+			Queries: []chunker.QueryDef{
+				{Pattern: `(method_declaration name: (identifier) @name) @decl`, Kind: "method"},
+				{Pattern: `(class_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Java chunker: %v", err)
+		}
+		return c
+	}()
+
+	mustPHP := func() chunker.Chunker {
+		c, err := chunker.NewTreeSitterChunker(chunker.LanguageDef{
+			Language: sitter_php.GetLanguage(),
+			Queries: []chunker.QueryDef{
+				{Pattern: `(function_definition name: (name) @name) @decl`, Kind: "function"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("PHP chunker: %v", err)
+		}
+		return c
+	}()
+
+	mustRS := func() chunker.Chunker {
+		c, err := chunker.NewTreeSitterChunker(chunker.LanguageDef{
+			Language: sitter_rs.GetLanguage(),
+			Queries: []chunker.QueryDef{
+				{Pattern: `(function_item name: (identifier) @name) @decl`, Kind: "function"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Rust chunker: %v", err)
+		}
+		return c
+	}()
+
+	cases := []commentCase{
+		// ── Ruby (comment node type: "comment") ──────────────────────────────
+		{
+			name:          "ruby: adjacent # comment captured",
+			chunker:       langs[".rb"],
+			filePath:      "f.rb",
+			src:           "# greets the user\ndef greet(name)\n  \"hello #{name}\"\nend\n",
+			symbol:        "greet",
+			wantStartLine: 1,
+			wantInContent: "# greets the user",
+		},
+		{
+			name:          "ruby: blank line prevents capture",
+			chunker:       langs[".rb"],
+			filePath:      "f.rb",
+			src:           "# unrelated\n\ndef other\nend\n",
+			symbol:        "other",
+			wantStartLine: 3,
+			wantMissing:   "# unrelated",
+		},
+		{
+			name:          "ruby: multiple consecutive comment lines all captured",
+			chunker:       langs[".rb"],
+			filePath:      "f.rb",
+			src:           "# line one\n# line two\n# line three\ndef multi\nend\n",
+			symbol:        "multi",
+			wantStartLine: 1,
+			wantInContent: "# line one",
+		},
+		{
+			name:          "ruby: no preceding comment — StartLine at decl",
+			chunker:       langs[".rb"],
+			filePath:      "f.rb",
+			src:           "def alone\nend\n",
+			symbol:        "alone",
+			wantStartLine: 1, // decl is on line 1
+		},
+		{
+			name:          "ruby: comment on previous sibling not captured for next decl",
+			chunker:       langs[".rb"],
+			filePath:      "f.rb",
+			src:           "# for greet\ndef greet\nend\ndef other\nend\n",
+			symbol:        "other",
+			wantStartLine: 4, // 'def other' is line 4
+			wantMissing:   "# for greet",
+		},
+
+		// ── JavaScript (comment: "comment") ──────────────────────────────────
+		{
+			name:          "js: adjacent // comment captured",
+			chunker:       langs[".js"],
+			filePath:      "f.js",
+			src:           "// adds two numbers\nfunction add(a, b) { return a + b; }\n",
+			symbol:        "add",
+			wantStartLine: 1,
+			wantInContent: "// adds two numbers",
+		},
+		{
+			name:          "js: adjacent /* block */ comment captured",
+			chunker:       langs[".js"],
+			filePath:      "f.js",
+			src:           "/* multiplies */\nfunction mul(a, b) { return a * b; }\n",
+			symbol:        "mul",
+			wantStartLine: 1,
+			wantInContent: "/* multiplies */",
+		},
+		{
+			name:          "js: blank line prevents // capture",
+			chunker:       langs[".js"],
+			filePath:      "f.js",
+			src:           "// old\n\nfunction sub(a, b) { return a - b; }\n",
+			symbol:        "sub",
+			wantStartLine: 3,
+			wantMissing:   "// old",
+		},
+
+		// ── TypeScript (comment: "comment") ───────────────────────────────────
+		{
+			name:          "ts: adjacent // comment captured",
+			chunker:       langs[".ts"],
+			filePath:      "f.ts",
+			src:           "// computes square\nfunction square(x: number): number { return x * x; }\n",
+			symbol:        "square",
+			wantStartLine: 1,
+			wantInContent: "// computes square",
+		},
+		{
+			name:          "ts: adjacent /** JSDoc */ captured",
+			chunker:       langs[".ts"],
+			filePath:      "f.ts",
+			src:           "/** @returns the cube */\nfunction cube(x: number): number { return x ** 3; }\n",
+			symbol:        "cube",
+			wantStartLine: 1,
+			wantInContent: "/** @returns the cube */",
+		},
+
+		// ── Python (comment: "comment") ───────────────────────────────────────
+		{
+			name:          "python: adjacent # comment captured",
+			chunker:       langs[".py"],
+			filePath:      "f.py",
+			src:           "# returns greeting\ndef greet(name):\n    return f\"hi {name}\"\n",
+			symbol:        "greet",
+			wantStartLine: 1,
+			wantInContent: "# returns greeting",
+		},
+		{
+			name:          "python: blank line prevents capture",
+			chunker:       langs[".py"],
+			filePath:      "f.py",
+			src:           "# unrelated\n\ndef other():\n    pass\n",
+			symbol:        "other",
+			wantStartLine: 3,
+			wantMissing:   "# unrelated",
+		},
+
+		// ── Rust (comment: "line_comment" / "block_comment") ─────────────────
+		{
+			name:          "rust: adjacent // comment captured (line_comment)",
+			chunker:       mustRS,
+			filePath:      "f.rs",
+			src:           "// adds two ints\nfn add(a: i32, b: i32) -> i32 { a + b }\n",
+			symbol:        "add",
+			wantStartLine: 1,
+			wantInContent: "// adds two ints",
+		},
+		{
+			name:          "rust: adjacent /// doc comment captured (line_comment)",
+			chunker:       mustRS,
+			filePath:      "f.rs",
+			src:           "/// squares a number\nfn square(x: i32) -> i32 { x * x }\n",
+			symbol:        "square",
+			wantStartLine: 1,
+			wantInContent: "/// squares a number",
+		},
+		{
+			name:          "rust: adjacent /* block */ comment captured (block_comment)",
+			chunker:       mustRS,
+			filePath:      "f.rs",
+			src:           "/* multiplies */\nfn mul(a: i32, b: i32) -> i32 { a * b }\n",
+			symbol:        "mul",
+			wantStartLine: 1,
+			wantInContent: "/* multiplies */",
+		},
+		{
+			name:          "rust: blank line prevents capture",
+			chunker:       mustRS,
+			filePath:      "f.rs",
+			src:           "// old\n\nfn sub(a: i32, b: i32) -> i32 { a - b }\n",
+			symbol:        "sub",
+			wantStartLine: 3,
+			wantMissing:   "// old",
+		},
+
+		// ── Java (comment: "line_comment" / "block_comment") ─────────────────
+		// Java class_declaration is not in findEnclosingSymbol, so methods are
+		// reported with their bare name (not class-qualified).
+		{
+			name:     "java: adjacent // comment captured (line_comment)",
+			chunker:  mustJava,
+			filePath: "f.java",
+			src: "public class Foo {\n" +
+				"    // computes sum\n" +
+				"    public int add(int a, int b) { return a + b; }\n" +
+				"}\n",
+			symbol:        "add",
+			wantStartLine: 2,
+			wantInContent: "// computes sum",
+		},
+		{
+			name:     "java: adjacent /** Javadoc */ captured (block_comment)",
+			chunker:  mustJava,
+			filePath: "f.java",
+			src: "public class Bar {\n" +
+				"    /** @return product */\n" +
+				"    public int mul(int a, int b) { return a * b; }\n" +
+				"}\n",
+			symbol:        "mul",
+			wantStartLine: 2,
+			wantInContent: "/** @return product */",
+		},
+
+		// ── C (comment: "comment") ────────────────────────────────────────────
+		{
+			name:          "c: adjacent // comment captured",
+			chunker:       mustC,
+			filePath:      "f.c",
+			src:           "// adds ints\nint add(int a, int b) { return a + b; }\n",
+			symbol:        "add",
+			wantStartLine: 1,
+			wantInContent: "// adds ints",
+		},
+		{
+			name:          "c: adjacent /* block */ comment captured",
+			chunker:       mustC,
+			filePath:      "f.c",
+			src:           "/* multiplies */\nint mul(int a, int b) { return a * b; }\n",
+			symbol:        "mul",
+			wantStartLine: 1,
+			wantInContent: "/* multiplies */",
+		},
+
+		// ── C# (comment: "comment") ───────────────────────────────────────────
+		// Top-level functions in C# are local_function_statements; methods require
+		// a class context to match (method_declaration).
+		{
+			name:     "csharp: adjacent // comment captured",
+			chunker:  mustCS,
+			filePath: "f.cs",
+			src: "class Calc {\n" +
+				"    // sums values\n" +
+				"    void Add(int a, int b) {}\n" +
+				"}\n",
+			symbol:        "Add",
+			wantStartLine: 2,
+			wantInContent: "// sums values",
+		},
+
+		// ── PHP (comment: "comment") ──────────────────────────────────────────
+		{
+			name:          "php: adjacent // comment captured",
+			chunker:       mustPHP,
+			filePath:      "f.php",
+			src:           "<?php\n// adds numbers\nfunction add($a, $b) { return $a + $b; }\n",
+			symbol:        "add",
+			wantStartLine: 2,
+			wantInContent: "// adds numbers",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chunks, err := tc.chunker.Chunk(tc.filePath, []byte(tc.src))
+			if err != nil {
+				t.Fatalf("Chunk: %v", err)
+			}
+			ch, ok := findChunk(chunks, tc.symbol)
+			if !ok {
+				var symbols []string
+				for _, c := range chunks {
+					symbols = append(symbols, c.Symbol)
+				}
+				t.Fatalf("missing chunk %q (got: %v)", tc.symbol, symbols)
+			}
+			if tc.wantStartLine != 0 && ch.StartLine != tc.wantStartLine {
+				t.Errorf("StartLine = %d, want %d", ch.StartLine, tc.wantStartLine)
+			}
+			if tc.wantInContent != "" && !strings.Contains(ch.Content, tc.wantInContent) {
+				t.Errorf("Content missing %q; got:\n%s", tc.wantInContent, ch.Content)
+			}
+			if tc.wantMissing != "" && strings.Contains(ch.Content, tc.wantMissing) {
+				t.Errorf("Content must not contain %q; got:\n%s", tc.wantMissing, ch.Content)
+			}
+		})
+	}
 }
 
 // mustPyChunker creates a Python TreeSitterChunker for use in tests.

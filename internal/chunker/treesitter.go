@@ -109,14 +109,60 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 				symbol = parent + "." + symbol
 			}
 			startLine := int(declNode.StartPoint().Row) + 1
+			startByte := declNode.StartByte()
+			if comment := findLeadingComments(declNode); comment != nil {
+				startLine = int(comment.StartPoint().Row) + 1
+				startByte = comment.StartByte()
+			}
 			endLine := int(declNode.EndPoint().Row) + 1
-			snippet := declNode.Content(content)
+			snippet := string(content[startByte:declNode.EndByte()])
 
 			chunks = append(chunks, makeChunk(filePath, symbol, rule.kind, startLine, endLine, snippet))
 		}
 	}
 
 	return chunks, nil
+}
+
+// isCommentNode reports whether t is any comment node type.
+// Tree-sitter grammars use "comment" (Python, TS, C, Ruby, PHP, C#),
+// "line_comment" (Rust, Java), or "block_comment" (Rust, Java) depending
+// on the grammar.
+func isCommentNode(t string) bool {
+	return t == "comment" || t == "line_comment" || t == "block_comment"
+}
+
+// findLeadingComments returns the earliest comment node immediately preceding
+// node with no blank line between them, or nil if none exist.
+func findLeadingComments(node *sitter.Node) *sitter.Node {
+	var earliest *sitter.Node
+	nextRow := node.StartPoint().Row
+	for sibling := node.PrevNamedSibling(); sibling != nil; sibling = sibling.PrevNamedSibling() {
+		if !isCommentNode(sibling.Type()) {
+			break
+		}
+		// Adjacency check: the comment must immediately precede nextRow with no
+		// blank line in between. Two cases:
+		//
+		// 1. Normal comments (// or #): EndPoint.Column > 0, meaning the end
+		//    position is mid-line. The comment is adjacent when it ends on the
+		//    line directly before nextRow: EndPoint.Row+1 == nextRow.
+		//
+		// 2. Rust /// doc comments: tree-sitter places their EndPoint at column 0
+		//    of the following line (the end byte includes the trailing newline).
+		//    In this case EndPoint.Row already equals nextRow when truly adjacent.
+		//    A blank line pushes the declaration further so EndPoint.Row < nextRow.
+		endRow := sibling.EndPoint().Row
+		endCol := sibling.EndPoint().Column
+		adjacent := endRow == nextRow || // doc-comment end-at-col-0 case
+			(endCol != 0 && endRow+1 == nextRow) // normal: end mid-line
+		if !adjacent {
+			break
+		}
+		earliest = sibling
+		nextRow = sibling.StartPoint().Row
+	}
+	return earliest
 }
 
 // findEnclosingSymbol walks up the AST from node and returns the name of the
@@ -139,6 +185,10 @@ func findEnclosingSymbol(node *sitter.Node, content []byte) string {
 				}
 			}
 		case "method_definition", "method_declaration":
+			if n := current.ChildByFieldName("name"); n != nil {
+				return n.Content(content)
+			}
+		case "method", "singleton_method", "class", "module":
 			if n := current.ChildByFieldName("name"); n != nil {
 				return n.Content(content)
 			}

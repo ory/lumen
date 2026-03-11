@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the core logic issue by propagating negated flags bidirectionally through both `aliasToMain` and `mainToAliases` maps, which is functionally equivalent to the gold patch. However, it includes a massive `package-lock.json` file (6400+ lines) that was not part of the gold patch, making the diff unnecessarily large. The logic in `src/_parser.ts` is slightly different in structure (combining alias lookup and iteration) but produces the same correct behavior for both cases: `--no-alias` propagating to main, and `--no-main` propagating to aliases.

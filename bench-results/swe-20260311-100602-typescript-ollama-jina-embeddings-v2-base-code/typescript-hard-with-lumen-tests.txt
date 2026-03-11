@@ -1,0 +1,13 @@
+[33mTesting types with tsc and vue-tsc is an experimental feature.
+Breaking changes might not follow SemVer, please pin Vitest's version when using it.[39m
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90m/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-822991944/repo[39m
+
+ [32m✓[39m test/parser.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m7 passed[39m[22m[90m (7)[39m
+[2mType Errors [22m [2mno errors[22m
+[2m   Start at [22m 10:09:25
+[2m   Duration [22m 70ms[2m (transform 15ms, setup 0ms, import 20ms, tests 2ms, environment 0ms)[22m
+
