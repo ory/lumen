@@ -2,17 +2,17 @@
   "id": "java-hard",
   "language": "java",
   "repo": "https://github.com/jhy/jsoup",
-  "base_commit": "6c0c2d4514278a82eb0868c5d978612a79c6d058",
-  "fix_commit": "385219da0dea81918ffc285b42cca51f9c8d9df9",
-  "issue_url": "https://github.com/jhy/jsoup/pull/2114",
-  "issue_title": "NullPointerException in W3CDom when a custom document is passed",
-  "issue_body": "When providing a custom output Document to W3CDom#convert, a NullPointerException is thrown in the W3CBuilder constructor.\n\nThe W3CBuilder constructor retrieves the context element via doc.getUserData(ContextProperty). When converting with a custom output Document (e.g., one created via DocumentBuilderFactory.newDocumentBuilder().newDocument()), the context element is null because no context property has been set on the custom document. The code then unconditionally calls contextElement.ownerDocument() without checking for null first, causing the NPE.\n\nStacktrace:\n```\njava.lang.NullPointerException: Cannot invoke \"org.jsoup.nodes.Element.ownerDocument()\" because \"this.contextElement\" is null\n\n\tat org.jsoup.helper.W3CDom$W3CBuilder.<init>(W3CDom.java:364)\n\tat org.jsoup.helper.W3CDom.convert(W3CDom.java:250)\n\tat org.jsoup.helper.W3CDom.convert(W3CDom.java:238)\n```\n\nReproduction steps:\n1. Parse an HTML string using Jsoup.parse()\n2. Create a custom W3C Document via DocumentBuilderFactory.newDocumentBuilder().newDocument()\n3. Call new W3CDom().convert(jsoupDoc, customDocument)\n4. Observe the NullPointerException\n\nExpected behavior: The conversion should succeed when a custom output Document is provided. The contextElement null case should be handled gracefully, as it is a valid scenario when users supply their own output Document.",
+  "base_commit": "6bdfd486a2e36f715f9b0ff624f6d7740f5c2bc9",
+  "fix_commit": "582aaa0d725a161e3f993acfa8ab2d73a6563303",
+  "issue_url": "https://github.com/jhy/jsoup/issues/2380",
+  "issue_title": "`*=` trims its argument",
+  "issue_body": "The CSS attribute selector `*=` (contains) incorrectly trims whitespace from its argument value, causing it to match elements that it should not match according to the CSS specification.\n\nFor example, given the HTML:\n```html\n<body>\n  <article xxx=\"xpaywalled\"></article>\n</body>\n```\n\nThe selector `article[xxx*=\"paywalled\"]` correctly matches the element (the attribute value contains \"paywalled\").\n\nHowever, the selector `article[xxx*=\" paywalled \"]` (with leading and trailing spaces in the value) also matches the element, which is incorrect. The browser's native `document.querySelectorAll` respects the spaces and does not match, because the attribute value \"xpaywalled\" does not contain the substring \" paywalled \" (with spaces).\n\nThis trimming behavior affects multiple attribute selectors including exact match (`=`), starts-with (`^=`), ends-with (`$=`), and contains (`*=`). Quoted attribute values should preserve their whitespace exactly as specified, consistent with browser CSS selector behavior.\n\nAdditionally, selectors with empty attribute values like `div[data='']` or `div[data^='']` should be valid and match elements with empty or present attributes, but currently fail with a validation error because the value is rejected as empty after trimming.",
   "gold_patch_file": "patches/java-hard.patch",
   "expected_files": [
-    "src/main/java/org/jsoup/helper/W3CDom.java",
-    "src/test/java/org/jsoup/helper/W3CDomTest.java"
+    "src/main/java/org/jsoup/select/Evaluator.java",
+    "src/test/java/org/jsoup/select/SelectorTest.java"
   ],
   "setup_commands": [],
-  "test_command": "mvn test -pl . -Dtest=org.jsoup.helper.W3CDomTest#canConvertToCustomDocument -DfailIfNoTests=false -q",
+  "test_command": "mvn test -pl . -Dtest=org.jsoup.select.SelectorTest#attributeSelectorQuotedWhitespace+canSelectBlankAttribute -DfailIfNoTests=false -q",
   "timeout_s": 900
 }

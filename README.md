@@ -13,8 +13,8 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 6 languages and real GitHub
-bug-fix tasks, Lumen cuts output tokens by **50% on average**, reduces session
+The payoff is measurable and reproducible: across 5 languages and real GitHub
+bug-fix tasks, Lumen cuts output tokens by **52% on average**, reduces session
 time by **32%**, and cuts cost by **20%** with zero quality degradation. All
 verified with a
 [transparent, open-source benchmark framework](docs/BENCHMARKS.md) that you can
@@ -22,9 +22,9 @@ run yourself.
 
 |                     | With Lumen                   | Baseline (no Lumen) |
 | ------------------- | ---------------------------- | ------------------- |
-| Output tokens (avg) | **2,774** (-50%)             | 5,608               |
-| Session time (avg)  | **78s** (-32%)               | 115s                |
-| Cost (avg)          | **$0.21** (-20%)             | $0.26               |
+| Output tokens (avg) | **3,274** (-52%)             | 6,754               |
+| Session time (avg)  | **93s** (-32%)               | 137s                |
+| Cost (avg)          | **$0.24** (-20%)             | $0.31               |
 | JavaScript (marked) | **$0.32, 119s** (-33%, -53%) | $0.48, 255s         |
 | PHP (monolog)       | **$0.14, 34s** (-27%, -34%)  | $0.19, 52s          |
 | Patch quality       | **Never degraded**           | —                   |
@@ -124,7 +124,7 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 6 languages, hard difficulty, real GitHub issues
+**Key results** — 5 languages, hard difficulty, real GitHub issues
 (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
 | Language   | Output Token Reduction | Time Reduction | Cost Reduction | Quality                 |
@@ -133,7 +133,6 @@ streams, patch diffs, and judge ratings are committed to this repository.
 | PHP        | **-59%** (1.9K → 0.8K) | **-34%**       | **-27%**       | Good (both)             |
 | Python     | **-36%** (1.7K → 1.1K) | **-29%**       | **-20%**       | Perfect (both)          |
 | Go         | **-30%** (9K → 6K)     | -5%            | -4%            | Good (both), +test file |
-| Java       | -24%                   | -33%           | -12%           | Good (both)             |
 | C++\*      | -11%                   | -14%           | +20%           | Good (both)             |
 
 \*C++ is a feature implementation task (not bug fix) — the only case where cost
@@ -160,7 +159,7 @@ Supports **11 language families** with semantic chunking:
 | Rust             | tree-sitter | `.rs`                                     | Supported                                   |
 | Ruby             | tree-sitter | `.rb`                                     | Supported                                   |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time         |
-| Java             | tree-sitter | `.java`                                   | Benchmarked: -24% tokens                    |
+| Java             | tree-sitter | `.java`                                   | Supported                                   |
 | C#               | tree-sitter | `.cs`                                     | Supported                                   |
 | C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -11% tokens (feature task)     |
 

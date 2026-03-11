@@ -1,3 +1,0 @@
-## Rating: Good
-
-The candidate patch fixes the NPE by adding a null check for `contextElement` before calling `.ownerDocument()`, using a ternary operator. This is logically equivalent to the gold patch's approach of wrapping the block in an `if (contextElement != null)` guard — both result in `inDoc` being null when `contextElement` is null, and the subsequent `if (namespaceAware && inDoc != null && ...)` check already handles the null case. The candidate patch is slightly more concise but lacks the test case added in the gold patch; however, test additions don't affect the correctness rating of the fix itself.

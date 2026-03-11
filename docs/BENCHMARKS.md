@@ -45,7 +45,7 @@ For each run, bench-swe captures:
 
 ### Current Test Suite
 
-6 languages, hard difficulty — all against real GitHub bugs:
+5 languages, hard difficulty — all against real GitHub bugs:
 
 | Task            | Language   | Repository                                            | Issue                                               |
 | --------------- | ---------- | ----------------------------------------------------- | --------------------------------------------------- |
@@ -53,7 +53,6 @@ For each run, bench-swe captures:
 | javascript-hard | JavaScript | [markedjs/marked](https://github.com/markedjs/marked) | Blockquotes in lists ignore indentation for nesting |
 | php-hard        | PHP        | [Seldaek/monolog](https://github.com/Seldaek/monolog) | JsonFormatter crashes on stringable object error    |
 | python-hard     | Python     | [pallets/click](https://github.com/pallets/click)     | Boolean flag show_default ignores default_map       |
-| java-hard       | Java       | [jhy/jsoup](https://github.com/jhy/jsoup)             | NullPointerException in W3CDom with custom document |
 | cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)           | Add a C API (feature implementation)                |
 
 Embedding model: `ordis/jina-embeddings-v2-base-code` (Ollama, 768-dim). Claude
@@ -63,21 +62,21 @@ model: Sonnet (execution), Sonnet 4.6 (judging).
 
 ## Results Overview
 
-### Efficiency Gains (5 bug-fix tasks, excluding C++ feature task)
+### Efficiency Gains (4 bug-fix tasks, excluding C++ feature task)
 
 | Metric        | Baseline avg | With-Lumen avg | Delta      |
 | ------------- | ------------ | -------------- | ---------- |
-| Cost          | $0.26        | $0.21          | **-19.8%** |
-| Time          | 115.3s       | 78.3s          | **-32.1%** |
-| Output tokens | 5,608        | 2,774          | **-50.5%** |
+| Cost          | $0.31        | $0.24          | **-20.4%** |
+| Time          | 137.1s       | 93.1s          | **-32.1%** |
+| Output tokens | 6,754        | 3,274          | **-51.5%** |
 
-### All 6 tasks
+### All 5 tasks
 
 | Metric        | Baseline avg | With-Lumen avg | Delta      |
 | ------------- | ------------ | -------------- | ---------- |
-| Cost          | $0.42        | $0.41          | -1.4%      |
-| Time          | 175.1s       | 133.5s         | **-23.7%** |
-| Output tokens | 8,442        | 5,660          | **-32.9%** |
+| Cost          | $0.48        | $0.48          | -0.8%      |
+| Time          | 204.5s       | 156.4s         | **-23.5%** |
+| Output tokens | 9,925        | 6,636          | **-33.1%** |
 
 The C++ task is a feature implementation (not a bug fix), where Lumen's search
 over existing code provides reference material but doesn't point to a "fix
@@ -170,28 +169,6 @@ judge noted:
 > gold patch handles all types generically; however, for the reported issue
 > (nested struct defaults), the candidate patch is functionally correct."
 
-### Java — jsoup (W3CDom NPE)
-
-This task included the exact stack trace with file and line number in the issue
-description. Claude solved it in 3-4 tool calls without needing semantic search
-in either scenario — it's a case where the issue itself provides a map.
-
-| Metric        | Baseline | With Lumen | Delta  |
-| ------------- | -------- | ---------- | ------ |
-| Rating        | Good     | Good\*     | Same   |
-| Cost          | $0.09    | $0.08      | -11.6% |
-| Time          | 28.0s    | 18.9s      | -32.5% |
-| Output tokens | 1,023    | 778        | -24.0% |
-
-\*Rated INVALID for benchmark purposes because Lumen's `semantic_search` was
-never called — Claude solved the bug directly from the stack trace. Both
-scenarios produced **identical patches** (null-check ternary on
-`contextElement`).
-
-This demonstrates that Lumen adds no overhead even when unused: the with-lumen
-scenario was still faster, likely because the system prompt guidance improved
-Claude's search strategy even when semantic search wasn't invoked.
-
 ### C++ — fmt (C API feature)
 
 The only **feature implementation** task (not a bug fix). Both scenarios
@@ -225,10 +202,9 @@ codebases are where Lumen delivers its strongest value.
 | PHP        | Good            | Good              | Same          | Both correct                             |
 | Python     | Perfect         | Perfect           | Same          | Both correct                             |
 | Go         | Good            | Good              | Same          | **Improved** (with-lumen adds test file) |
-| Java       | Good            | Good              | Same          | Baseline correct                         |
 | C++        | Good            | Good              | Same          | Neither (feature task)                   |
 
-**Lumen never degraded patch quality.** In all 6 tasks, with-lumen produced
+**Lumen never degraded patch quality.** In all 5 tasks, with-lumen produced
 fixes at least as good as baseline. In the Go task, with-lumen produced a more
 complete patch (including tests).
 
@@ -246,21 +222,16 @@ complete patch (including tests).
 | php-hard        | PHP  | with-lumen | Good    | $0.136 | 34.0s  | 796        | 66K        |
 | python-hard     | Py   | baseline   | Perfect | $0.119 | 43.0s  | 1,710      | 132K       |
 | python-hard     | Py   | with-lumen | Perfect | $0.096 | 30.6s  | 1,092      | 90K        |
-| java-hard       | Java | baseline   | Good    | $0.088 | 28.0s  | 1,023      | 84K        |
-| java-hard       | Java | with-lumen | Good\*  | $0.078 | 18.9s  | 778        | 67K        |
 | cpp-hard        | C++  | baseline   | Good    | $1.174 | 474.0s | 22,610     | 1,105K     |
 | cpp-hard        | C++  | with-lumen | Good    | $1.404 | 409.7s | 20,087     | 2,309K     |
-
-\*Rated INVALID for benchmark purposes (Lumen not invoked), but patch quality
-was Good.
 
 ---
 
 ## Key Findings
 
-### 1. Output Token Reduction: -50% on Bug-Fix Tasks
+### 1. Output Token Reduction: -52% on Bug-Fix Tasks
 
-Across the 5 bug-fix tasks, Lumen cuts Claude's output tokens by half on
+Across the 4 bug-fix tasks, Lumen cuts Claude's output tokens by half on
 average. This is the most consistent signal — every bug-fix task shows a
 reduction:
 
@@ -270,7 +241,6 @@ reduction:
 | PHP        | 1,936               | 796                   | **-59%** |
 | Python     | 1,710               | 1,092                 | **-36%** |
 | Go         | 9,084               | 6,334                 | **-30%** |
-| Java       | 1,023               | 778                   | **-24%** |
 
 Fewer output tokens means Claude is exploring less and acting more. Semantic
 search provides the right context upfront, so Claude doesn't need to read files
@@ -285,13 +255,12 @@ the most dramatic improvement — from 4+ minutes to under 2 minutes:
 | ---------- | ------------- | --------------- | -------- |
 | JavaScript | 254.7s        | 119.3s          | **-53%** |
 | PHP        | 51.5s         | 34.0s           | **-34%** |
-| Java       | 28.0s         | 18.9s           | **-33%** |
 | Python     | 43.0s         | 30.6s           | **-29%** |
 | Go         | 199.3s        | 188.6s          | -5%      |
 
 ### 3. Quality Never Degrades
 
-Across all 6 tasks, Lumen produced fixes at equal or better quality than
+Across all 5 tasks, Lumen produced fixes at equal or better quality than
 baseline. Two tasks achieved Perfect in both scenarios (JavaScript, Python), and
 the Go task produced a more complete patch with Lumen (added test file).
 
@@ -302,8 +271,6 @@ where the issue description uses domain language. It is less effective for:
 
 - **Feature implementation** (C++): No "fix location" to find; search loads
   reference code but increases cost.
-- **Tasks with exact stack traces** (Java): Claude already has a map; semantic
-  search adds no value but also no overhead.
 - **Large codebases with broad queries**: Can produce oversized results that
   fail or load too much context.
 
