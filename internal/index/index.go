@@ -309,6 +309,21 @@ func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limi
 	return idx.store.Search(queryVec, limit, maxDistance, pathPrefix)
 }
 
+// SearchChunkSummaries searches the chunk summary vector index.
+func (idx *Indexer) SearchChunkSummaries(queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+	return idx.store.SearchChunkSummaries(queryVec, limit, maxDistance, pathPrefix)
+}
+
+// SearchFileSummaries searches the file summary vector index.
+func (idx *Indexer) SearchFileSummaries(queryVec []float32, limit int, maxDistance float64) ([]store.FileSummaryResult, error) {
+	return idx.store.SearchFileSummaries(queryVec, limit, maxDistance)
+}
+
+// TopChunksByFile returns the top n chunks from a file by raw-code distance.
+func (idx *Indexer) TopChunksByFile(filePath string, queryVec []float32, n int) ([]store.SearchResult, error) {
+	return idx.store.TopChunksByFile(filePath, queryVec, n)
+}
+
 // Status returns information about the current index state for a project.
 // All values are read from the database; no filesystem walk is performed.
 func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {

@@ -19,6 +19,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/merkle"
+	"github.com/ory/lumen/internal/store"
 	"github.com/ory/lumen/internal/summarizer"
 	"github.com/spf13/cobra"
 )
@@ -71,12 +73,19 @@ type SearchResultItem struct {
 	Content   string  `json:"content,omitempty"`
 }
 
+// RelevantFile represents a file-level summary search hit returned in MCP responses.
+type RelevantFile struct {
+	FilePath string  `json:"file_path"`
+	Score    float64 `json:"score"`
+}
+
 // SemanticSearchOutput is the structured output of the semantic_search tool.
 type SemanticSearchOutput struct {
-	Results      []SearchResultItem `json:"results"`
-	Reindexed    bool               `json:"reindexed"`
-	IndexedFiles int                `json:"indexed_files,omitempty"`
-	FilteredHint string             `json:"filtered_hint,omitempty"`
+	Results       []SearchResultItem `json:"results"`
+	RelevantFiles []RelevantFile     `json:"relevant_files,omitempty"`
+	Reindexed     bool               `json:"reindexed"`
+	IndexedFiles  int                `json:"indexed_files,omitempty"`
+	FilteredHint  string             `json:"filtered_hint,omitempty"`
 }
 
 // IndexStatusInput defines the parameters for the index_status tool.
@@ -296,6 +305,46 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		}
 	}
 
+	// Summary index fan-out (when summaries are enabled).
+	summaryQueryVec, summaryEmbedErr := ic.embedSummaryQuery(ctx, input.Query)
+	if summaryEmbedErr != nil {
+		log.Printf("warning: embed summary query: %v", summaryEmbedErr)
+	}
+
+	var relevantFiles []RelevantFile
+	if summaryQueryVec != nil {
+		summaryMinScore := embedder.DimensionAwareMinScore(ic.cfg.SummaryEmbedDims)
+		if spec, ok := embedder.KnownModels[ic.cfg.SummaryEmbedModel]; ok {
+			summaryMinScore = spec.MinScore
+		}
+		summaryMaxDistance := 1.0 - summaryMinScore
+
+		// Search chunk summaries and merge with raw results.
+		if chunkSumResults, err := idx.SearchChunkSummaries(queryVec, fetchLimit, summaryMaxDistance, pathPrefix); err != nil {
+			log.Printf("warning: search chunk summaries: %v", err)
+		} else {
+			results = mergeSearchResults(results, chunkSumResults)
+		}
+
+		// Search file summaries and expand to top chunks.
+		if fileSumResults, err := idx.SearchFileSummaries(summaryQueryVec, input.NResults, summaryMaxDistance); err != nil {
+			log.Printf("warning: search file summaries: %v", err)
+		} else {
+			for _, fr := range fileSumResults {
+				relPath := fr.FilePath
+				relevantFiles = append(relevantFiles, RelevantFile{
+					FilePath: relPath,
+					Score:    1.0 - fr.Distance,
+				})
+				if topChunks, err := idx.TopChunksByFile(fr.FilePath, queryVec, 4); err != nil {
+					log.Printf("warning: top chunks for %s: %v", fr.FilePath, err)
+				} else {
+					results = append(results, topChunks...)
+				}
+			}
+		}
+	}
+
 	// Convert store results to SearchResultItems with boosted scores.
 	items := make([]SearchResultItem, len(results))
 	for i, r := range results {
@@ -329,6 +378,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	}
 
 	out.Results = items
+	out.RelevantFiles = relevantFiles
 	text := formatSearchResults(input.Path, out)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
@@ -418,6 +468,22 @@ func (ic *indexerCache) embedQuery(ctx context.Context, query string) ([]float32
 	}
 	if len(vecs) == 0 {
 		return nil, fmt.Errorf("embedder returned no vectors")
+	}
+	return vecs[0], nil
+}
+
+// embedSummaryQuery embeds a query using the summary embedder.
+// Returns nil, nil when no summary embedder is configured.
+func (ic *indexerCache) embedSummaryQuery(ctx context.Context, query string) ([]float32, error) {
+	if ic.summaryEmbedder == nil {
+		return nil, nil
+	}
+	vecs, err := ic.summaryEmbedder.Embed(ctx, []string{query})
+	if err != nil {
+		return nil, fmt.Errorf("embed summary query: %w", err)
+	}
+	if len(vecs) == 0 {
+		return nil, fmt.Errorf("summary embedder returned no vectors")
 	}
 	return vecs[0], nil
 }
@@ -621,6 +687,34 @@ func mergeOverlappingResults(items []SearchResultItem) []SearchResultItem {
 	return merged
 }
 
+// mergeSearchResults merges two result slices by (filePath, symbol, startLine) key,
+// keeping the entry with the lower distance for duplicates.
+func mergeSearchResults(a, b []store.SearchResult) []store.SearchResult {
+	type key struct {
+		filePath  string
+		symbol    string
+		startLine int
+	}
+	seen := make(map[key]int, len(a))
+	result := make([]store.SearchResult, len(a))
+	copy(result, a)
+	for i, r := range result {
+		seen[key{r.FilePath, r.Symbol, r.StartLine}] = i
+	}
+	for _, r := range b {
+		k := key{r.FilePath, r.Symbol, r.StartLine}
+		if idx, ok := seen[k]; ok {
+			if r.Distance < result[idx].Distance {
+				result[idx] = r
+			}
+		} else {
+			seen[k] = len(result)
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
 // fillSnippets reads source files and populates Content for each result item.
 func fillSnippets(projectPath string, items []SearchResultItem, maxLines int) {
 	// Group by file to read each file once.
@@ -793,6 +887,14 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 			b.WriteString("  </result:chunk>\n")
 		}
 		b.WriteString("</result:file>")
+	}
+
+	if len(out.RelevantFiles) > 0 {
+		b.WriteString("\n<relevant_files>\n")
+		for _, rf := range out.RelevantFiles {
+			fmt.Fprintf(&b, "  <file path=%q score=\"%.2f\"/>\n", rf.FilePath, rf.Score)
+		}
+		b.WriteString("</relevant_files>")
 	}
 
 	return b.String()

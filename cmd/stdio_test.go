@@ -786,6 +786,40 @@ func TestScoreIsNotDistance(t *testing.T) {
 	}
 }
 
+func TestFormatSearchResults_RelevantFiles(t *testing.T) {
+	out := SemanticSearchOutput{
+		Results: []SearchResultItem{
+			{FilePath: "/proj/auth.go", Symbol: "ValidateToken", Kind: "function", StartLine: 1, EndLine: 10, Score: 0.91},
+		},
+		RelevantFiles: []RelevantFile{
+			{FilePath: "auth.go", Score: 0.91},
+			{FilePath: "token.go", Score: 0.87},
+		},
+	}
+	text := formatSearchResults("/proj", out)
+	if !strings.Contains(text, "<relevant_files>") {
+		t.Fatal("expected <relevant_files> section in output")
+	}
+	if !strings.Contains(text, `path="auth.go"`) {
+		t.Fatal("expected auth.go in relevant_files")
+	}
+	if !strings.Contains(text, `score="0.91"`) {
+		t.Fatal("expected score in relevant_files")
+	}
+}
+
+func TestFormatSearchResults_NoRelevantFiles_NoSection(t *testing.T) {
+	out := SemanticSearchOutput{
+		Results: []SearchResultItem{
+			{FilePath: "/proj/main.go", Symbol: "Main", Kind: "function", StartLine: 1, EndLine: 5, Score: 0.80},
+		},
+	}
+	text := formatSearchResults("/proj", out)
+	if strings.Contains(text, "<relevant_files>") {
+		t.Fatal("expected no <relevant_files> section when RelevantFiles is empty")
+	}
+}
+
 func TestIsTestFile(t *testing.T) {
 	tests := []struct {
 		path string
