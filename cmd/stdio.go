@@ -320,7 +320,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		summaryMaxDistance := 1.0 - summaryMinScore
 
 		// Search chunk summaries and merge with raw results.
-		if chunkSumResults, err := idx.SearchChunkSummaries(queryVec, fetchLimit, summaryMaxDistance, pathPrefix); err != nil {
+		if chunkSumResults, err := idx.SearchChunkSummaries(summaryQueryVec, fetchLimit, summaryMaxDistance, pathPrefix); err != nil {
 			log.Printf("warning: search chunk summaries: %v", err)
 		} else {
 			results = mergeSearchResults(results, chunkSumResults)
@@ -331,15 +331,15 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 			log.Printf("warning: search file summaries: %v", err)
 		} else {
 			for _, fr := range fileSumResults {
-				relPath := fr.FilePath
 				relevantFiles = append(relevantFiles, RelevantFile{
-					FilePath: relPath,
+					FilePath: fr.FilePath,
 					Score:    1.0 - fr.Distance,
 				})
-				if topChunks, err := idx.TopChunksByFile(fr.FilePath, queryVec, 4); err != nil {
+				if topChunks, err := idx.TopChunksByFile(fr.FilePath, queryVec, maxDistance, 4); err != nil {
 					log.Printf("warning: top chunks for %s: %v", fr.FilePath, err)
 				} else {
-					results = append(results, topChunks...)
+					// Merge to deduplicate against already-fetched results.
+					results = mergeSearchResults(results, topChunks)
 				}
 			}
 		}
@@ -892,7 +892,7 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if len(out.RelevantFiles) > 0 {
 		b.WriteString("\n<relevant_files>\n")
 		for _, rf := range out.RelevantFiles {
-			fmt.Fprintf(&b, "  <file path=%q score=\"%.2f\"/>\n", rf.FilePath, rf.Score)
+			fmt.Fprintf(&b, "  <file path=\"%s\" score=\"%.2f\"/>\n", xmlEscaper.Replace(rf.FilePath), rf.Score)
 		}
 		b.WriteString("</relevant_files>")
 	}

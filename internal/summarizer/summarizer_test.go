@@ -104,6 +104,11 @@ func lmstudioChatHandler(t *testing.T, wantSubstring string) http.HandlerFunc {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		if len(req.Messages) == 0 {
+			t.Error("expected at least one message, got empty slice")
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		userContent := req.Messages[len(req.Messages)-1].Content
 		if !strings.Contains(userContent, wantSubstring) {
 			t.Errorf("expected prompt to contain %q, got:\n%s", wantSubstring, userContent)

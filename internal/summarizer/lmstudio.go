@@ -64,11 +64,11 @@ func (s *LMStudioSummarizer) chat(ctx context.Context, prompt string) (string, e
 	}
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("lmstudio chat: status %d: %s", resp.StatusCode, string(body))
-	}
 	if readErr != nil {
 		return "", fmt.Errorf("read lmstudio response: %w", readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("lmstudio chat: status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp lmstudioChatResponse
@@ -77,6 +77,9 @@ func (s *LMStudioSummarizer) chat(ctx context.Context, prompt string) (string, e
 	}
 	if len(chatResp.Choices) == 0 {
 		return "", fmt.Errorf("lmstudio returned no choices")
+	}
+	if chatResp.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("lmstudio returned empty response content")
 	}
 	return chatResp.Choices[0].Message.Content, nil
 }

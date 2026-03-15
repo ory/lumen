@@ -64,16 +64,19 @@ func (s *OllamaSummarizer) chat(ctx context.Context, prompt string) (string, err
 	}
 	body, readErr := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama chat: status %d: %s", resp.StatusCode, string(body))
-	}
 	if readErr != nil {
 		return "", fmt.Errorf("read ollama response: %w", readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama chat: status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ollamaChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
 		return "", fmt.Errorf("unmarshal ollama response: %w", err)
+	}
+	if chatResp.Message.Content == "" {
+		return "", fmt.Errorf("ollama returned empty response content")
 	}
 	return chatResp.Message.Content, nil
 }

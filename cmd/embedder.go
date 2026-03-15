@@ -58,7 +58,11 @@ func newSummaryEmbedder(cfg config.Config) (embedder.Embedder, error) {
 	}
 	switch cfg.Backend {
 	case config.BackendOllama:
-		return embedder.NewOllama(cfg.SummaryEmbedModel, cfg.SummaryEmbedDims, 0, cfg.OllamaHost)
+		ctxLen := 0
+		if spec, ok := embedder.KnownModels[cfg.SummaryEmbedModel]; ok {
+			ctxLen = spec.CtxLength
+		}
+		return embedder.NewOllama(cfg.SummaryEmbedModel, cfg.SummaryEmbedDims, ctxLen, cfg.OllamaHost)
 	case config.BackendLMStudio:
 		return embedder.NewLMStudio(cfg.SummaryEmbedModel, cfg.SummaryEmbedDims, cfg.LMStudioHost)
 	default:

@@ -320,8 +320,8 @@ func (idx *Indexer) SearchFileSummaries(queryVec []float32, limit int, maxDistan
 }
 
 // TopChunksByFile returns the top n chunks from a file by raw-code distance.
-func (idx *Indexer) TopChunksByFile(filePath string, queryVec []float32, n int) ([]store.SearchResult, error) {
-	return idx.store.TopChunksByFile(filePath, queryVec, n)
+func (idx *Indexer) TopChunksByFile(filePath string, queryVec []float32, maxDistance float64, n int) ([]store.SearchResult, error) {
+	return idx.store.TopChunksByFile(filePath, queryVec, maxDistance, n)
 }
 
 // Status returns information about the current index state for a project.

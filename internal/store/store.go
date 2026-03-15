@@ -778,8 +778,9 @@ func (s *Store) SearchFileSummaries(queryVec []float32, limit int, maxDistance f
 }
 
 // TopChunksByFile returns the top n chunks from filePath ranked by distance to queryVec.
-func (s *Store) TopChunksByFile(filePath string, queryVec []float32, n int) ([]SearchResult, error) {
-	return s.Search(queryVec, n, 0, filePath)
+// maxDistance is the cosine distance ceiling (pass 0 for no filter).
+func (s *Store) TopChunksByFile(filePath string, queryVec []float32, maxDistance float64, n int) ([]SearchResult, error) {
+	return s.Search(queryVec, n, maxDistance, filePath)
 }
 
 // ChunksByFile returns chunk metadata for all chunks belonging to a file.

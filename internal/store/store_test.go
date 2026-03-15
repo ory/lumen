@@ -578,7 +578,7 @@ func TestStore_TopChunksByFile(t *testing.T) {
 	}
 
 	queryVec := []float32{1, 0, 0, 0}
-	results, err := s.TopChunksByFile("main.go", queryVec, 2)
+	results, err := s.TopChunksByFile("main.go", queryVec, 0, 2)
 	if err != nil {
 		t.Fatalf("TopChunksByFile: %v", err)
 	}
