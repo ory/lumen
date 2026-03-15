@@ -121,11 +121,12 @@ type cacheEntry struct {
 // indexerCache manages one *index.Indexer per project path, creating them
 // lazily with a shared embedder.
 type indexerCache struct {
-	mu       sync.RWMutex
-	cache    map[string]cacheEntry
-	embedder embedder.Embedder
-	model    string
-	cfg      config.Config
+	mu                sync.RWMutex
+	cache             map[string]cacheEntry
+	embedder          embedder.Embedder
+	model             string
+	summaryEmbedModel string
+	cfg               config.Config
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -142,7 +143,7 @@ func (ic *indexerCache) findEffectiveRoot(path string) string {
 			if _, ok := ic.cache[candidate]; ok {
 				return candidate
 			}
-			if _, err := os.Stat(config.DBPathForProject(candidate, ic.model)); err == nil {
+			if _, err := os.Stat(config.DBPathForProject(candidate, ic.model, ic.summaryEmbedModel)); err == nil {
 				return candidate
 			}
 		}
@@ -217,7 +218,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		}
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
+	dbPath := config.DBPathForProject(effectiveRoot, ic.model, ic.summaryEmbedModel)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, "", fmt.Errorf("create db directory: %w", err)
 	}
@@ -822,7 +823,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create embedder: %w", err)
 	}
 
-	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg}
+	indexers := &indexerCache{embedder: emb, model: cfg.Model, summaryEmbedModel: cfg.SummaryEmbedModel, cfg: cfg}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",

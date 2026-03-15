@@ -105,7 +105,7 @@ func generateSessionContext(mcpName, cwd string) string {
 		return directive + " No index yet — auto-created on first call."
 	}
 
-	dbPath := config.DBPathForProject(cwd, cfg.Model)
+	dbPath := config.DBPathForProject(cwd, cfg.Model, cfg.SummaryEmbedModel)
 	if _, err := os.Stat(dbPath); err != nil {
 		return directive + " No index yet — auto-created on first call."
 	}

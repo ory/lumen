@@ -120,7 +120,7 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
 		// Create the DB file that would exist for /project with our model.
-		parentDBPath := config.DBPathForProject("/project", model)
+		parentDBPath := config.DBPathForProject("/project", model, "")
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
 		// Simulate a parent index at /project.
-		parentDBPath := config.DBPathForProject("/project", model)
+		parentDBPath := config.DBPathForProject("/project", model, "")
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}

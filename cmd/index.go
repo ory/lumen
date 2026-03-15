@@ -98,7 +98,7 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 		return nil, fmt.Errorf("create embedder: %w", err)
 	}
 
-	dbPath := config.DBPathForProject(projectPath, cfg.Model)
+	dbPath := config.DBPathForProject(projectPath, cfg.Model, cfg.SummaryEmbedModel)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
