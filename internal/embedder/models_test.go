@@ -25,6 +25,11 @@ func TestKnownModels(t *testing.T) {
 		"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 		"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
 		"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
+		"text-embedding-3-small":             {Dims: 1536, CtxLength: 8191, Backend: "openai", MinScore: 0.20},
+		"text-embedding-3-large":             {Dims: 3072, CtxLength: 8191, Backend: "openai", MinScore: 0.15},
+		"text-embedding-ada-002":             {Dims: 1536, CtxLength: 8191, Backend: "openai", MinScore: 0.20},
+		"voyage-code-3":                      {Dims: 1024, CtxLength: 32000, Backend: "openai", MinScore: 0.25},
+		"voyage-3-large":                     {Dims: 1024, CtxLength: 32000, Backend: "openai", MinScore: 0.25},
 	}
 
 	for name, want := range expected {
@@ -58,6 +63,12 @@ func TestDefaultOllamaModelInRegistry(t *testing.T) {
 func TestDefaultLMStudioModelInRegistry(t *testing.T) {
 	if _, ok := KnownModels[DefaultLMStudioModel]; !ok {
 		t.Errorf("DefaultLMStudioModel %q is not in KnownModels", DefaultLMStudioModel)
+	}
+}
+
+func TestDefaultOpenAIModelInRegistry(t *testing.T) {
+	if _, ok := KnownModels[DefaultOpenAIModel]; !ok {
+		t.Errorf("DefaultOpenAIModel %q is not in KnownModels", DefaultOpenAIModel)
 	}
 }
 

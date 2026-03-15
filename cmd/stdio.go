@@ -481,11 +481,20 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 
 // handleHealthCheck pings the configured embedding service and reports status.
 func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRequest, _ HealthCheckInput) (*mcp.CallToolResult, any, error) {
-	host := ic.cfg.OllamaHost
-	probeURL := host + "/api/tags"
-	if ic.cfg.Backend == config.BackendLMStudio {
+	var host, probeURL string
+	switch ic.cfg.Backend {
+	case config.BackendOllama:
+		host = ic.cfg.OllamaHost
+		probeURL = host + "/api/tags"
+	case config.BackendLMStudio:
 		host = ic.cfg.LMStudioHost
 		probeURL = host + "/v1/models"
+	case config.BackendOpenAI:
+		host = ic.cfg.OpenAIBaseURL
+		probeURL = host + "/v1/models"
+	default:
+		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
+			fmt.Sprintf("unknown backend %q", ic.cfg.Backend)), nil, nil
 	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -497,6 +506,10 @@ func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRe
 			fmt.Sprintf("failed to create request: %v", err)), nil, nil
 	}
 
+	if ic.cfg.Backend == config.BackendOpenAI && ic.cfg.OpenAIAPIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+ic.cfg.OpenAIAPIKey)
+	}
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
@@ -504,6 +517,10 @@ func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRe
 	}
 	_ = resp.Body.Close()
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
+			"service reachable but API key is invalid"), nil, nil
+	}
 	if resp.StatusCode >= 500 {
 		return healthResult(ic.cfg.Backend, host, ic.cfg.Model, false,
 			fmt.Sprintf("service returned HTTP %d", resp.StatusCode)), nil, nil
