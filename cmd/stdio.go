@@ -32,6 +32,7 @@ import (
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/merkle"
+	"github.com/ory/lumen/internal/summarizer"
 	"github.com/spf13/cobra"
 )
 
@@ -124,6 +125,8 @@ type indexerCache struct {
 	mu                sync.RWMutex
 	cache             map[string]cacheEntry
 	embedder          embedder.Embedder
+	summaryEmbedder   embedder.Embedder     // nil when summaries disabled
+	summarizer        summarizer.Summarizer // nil when summaries disabled
 	model             string
 	summaryEmbedModel string
 	cfg               config.Config
@@ -223,7 +226,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		return nil, "", fmt.Errorf("create db directory: %w", err)
 	}
 
-	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens, ic.cfg.SummaryEmbedDims, nil, nil)
+	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens, ic.cfg.SummaryEmbedDims, ic.summarizer, ic.summaryEmbedder)
 	if err != nil {
 		return nil, "", fmt.Errorf("create indexer: %w", err)
 	}
@@ -823,7 +826,24 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create embedder: %w", err)
 	}
 
-	indexers := &indexerCache{embedder: emb, model: cfg.Model, summaryEmbedModel: cfg.SummaryEmbedModel, cfg: cfg}
+	sumr, err := newSummarizer(cfg)
+	if err != nil {
+		return fmt.Errorf("create summarizer: %w", err)
+	}
+
+	summaryEmb, err := newSummaryEmbedder(cfg)
+	if err != nil {
+		return fmt.Errorf("create summary embedder: %w", err)
+	}
+
+	indexers := &indexerCache{
+		embedder:          emb,
+		summaryEmbedder:   summaryEmb,
+		summarizer:        sumr,
+		model:             cfg.Model,
+		summaryEmbedModel: cfg.SummaryEmbedModel,
+		cfg:               cfg,
+	}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",
