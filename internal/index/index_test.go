@@ -71,7 +71,7 @@ func Goodbye(name string) {
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func F%d() {}
 	}
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func B() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func Hello() {}
 `)
 
 	emb := &mockEmbedder{dims: 4, model: "test-model"}
-	idx, err := NewIndexer(":memory:", emb, 0, 0)
+	idx, err := NewIndexer(":memory:", emb, 0, 0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

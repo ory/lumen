@@ -103,7 +103,7 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens, cfg.SummaryEmbedDims)
+	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens, cfg.SummaryEmbedDims, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}
