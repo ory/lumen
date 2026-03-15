@@ -24,6 +24,7 @@ import (
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
+	"github.com/ory/lumen/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -60,20 +61,17 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Indexing %s (model: %s, dims: %d)\n", projectPath, cfg.Model, cfg.Dims)
-
-	progress := func(current, total int, message string) {
-		fmt.Fprintf(os.Stderr, "  [%d/%d] %s\n", current, total, message)
-	}
+	p := tui.NewProgress(os.Stderr)
+	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, cfg.Model, cfg.Dims))
 
 	start := time.Now()
-	stats, err := performIndexing(cmd, idx, projectPath, progress)
+	stats, err := performIndexing(cmd, idx, projectPath, p)
 	if err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "Done. Indexed %d files, %d chunks in %s.\n",
-		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond))
+	p.Complete(fmt.Sprintf("Done. Indexed %d files, %d chunks in %s.",
+		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond)))
 	return nil
 }
 
@@ -110,8 +108,11 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 	return idx, nil
 }
 
-func performIndexing(cmd *cobra.Command, idx *index.Indexer, projectPath string, progress index.ProgressFunc) (index.Stats, error) {
+func performIndexing(cmd *cobra.Command, idx *index.Indexer, projectPath string, p *tui.Progress) (index.Stats, error) {
 	force, _ := cmd.Flags().GetBool("force")
+
+	progress := p.AsProgressFunc()
+
 	if force {
 		return idx.Index(context.Background(), projectPath, true, progress)
 	}
@@ -122,7 +123,7 @@ func performIndexing(cmd *cobra.Command, idx *index.Indexer, projectPath string,
 	}
 
 	if !reindexed {
-		_, _ = fmt.Fprintln(os.Stdout, "Index is already up to date.")
+		p.UpToDate()
 	}
 
 	return stats, nil
