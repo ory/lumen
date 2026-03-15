@@ -110,7 +110,7 @@ func generateSessionContext(mcpName, cwd string) string {
 		return directive + " No index yet — auto-created on first call."
 	}
 
-	s, err := store.New(dbPath, cfg.Dims)
+	s, err := store.New(dbPath, cfg.Dims, cfg.SummaryEmbedDims)
 	if err != nil {
 		return directive
 	}

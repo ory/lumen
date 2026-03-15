@@ -66,8 +66,9 @@ type Indexer struct {
 // NewIndexer creates a new Indexer backed by a SQLite store at dsn,
 // using the given embedder for vector generation. maxChunkTokens controls
 // the maximum estimated token count per chunk before splitting; 0 disables splitting.
-func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer, error) {
-	s, err := store.New(dsn, emb.Dimensions())
+// summaryDims is the dimensionality of the summary embedding vectors (0 = no summary vec tables).
+func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int, summaryDims int) (*Indexer, error) {
+	s, err := store.New(dsn, emb.Dimensions(), summaryDims)
 	if err != nil {
 		return nil, fmt.Errorf("create store: %w", err)
 	}

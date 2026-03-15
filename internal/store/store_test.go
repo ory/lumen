@@ -22,7 +22,7 @@ import (
 )
 
 func TestNewStore_CreatesSchema(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestNewStore_CreatesSchema(t *testing.T) {
 }
 
 func TestStore_SetGetMeta(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestStore_SetGetMeta(t *testing.T) {
 }
 
 func TestStore_UpsertAndSearchVectors(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestStore_UpsertAndSearchVectors(t *testing.T) {
 }
 
 func TestStore_DeleteFileChunks(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestStore_DeleteFileChunks(t *testing.T) {
 }
 
 func TestStore_GetFileHashes(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestStore_GetFileHashes(t *testing.T) {
 }
 
 func TestStore_Stats(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestStore_Stats(t *testing.T) {
 }
 
 func TestStore_Pragmas(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestStore_Pragmas(t *testing.T) {
 }
 
 func TestStore_ChunkIndexesExist(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestStore_ChunkIndexesExist(t *testing.T) {
 }
 
 func TestStore_GetMetaBatch(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestStore_DimensionMismatchRecreatesTable(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
 	// Create store with 4 dimensions and insert data.
-	s1, err := New(dbPath, 4)
+	s1, err := New(dbPath, 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestStore_DimensionMismatchRecreatesTable(t *testing.T) {
 	}
 
 	// Reopen with different dimensions — should reset data.
-	s2, err := New(dbPath, 8)
+	s2, err := New(dbPath, 8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestStore_DimensionMismatchRecreatesTable(t *testing.T) {
 }
 
 func TestStore_SearchWithPathPrefix(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestStore_SearchWithPathPrefix(t *testing.T) {
 }
 
 func TestStore_SearchPathPrefixNoFalsePositives(t *testing.T) {
-	s, err := New(":memory:", 4)
+	s, err := New(":memory:", 4, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,5 +404,208 @@ func TestStore_SearchPathPrefixNoFalsePositives(t *testing.T) {
 	}
 	if results[0].FilePath != "internal/store/store.go" {
 		t.Fatalf("expected internal/store/store.go, got %s", results[0].FilePath)
+	}
+}
+
+func TestStore_SummaryTables_CreatedWhenDimsPositive(t *testing.T) {
+	s, err := New(":memory:", 4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	for _, tbl := range []string{"chunk_summaries", "file_summaries"} {
+		var count int
+		if err := s.db.QueryRow("SELECT count(*) FROM " + tbl).Scan(&count); err != nil {
+			t.Fatalf("table %q missing or unreadable: %v", tbl, err)
+		}
+	}
+	for _, tbl := range []string{"vec_chunk_summaries", "vec_file_summaries"} {
+		var count int
+		if err := s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(&count); err != nil || count == 0 {
+			t.Fatalf("expected virtual table %q to exist", tbl)
+		}
+	}
+}
+
+func TestStore_SummaryTables_NotCreatedWhenDimsZero(t *testing.T) {
+	s, err := New(":memory:", 4, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	for _, tbl := range []string{"vec_chunk_summaries", "vec_file_summaries"} {
+		var count int
+		if err := s.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", tbl).Scan(&count); err != nil {
+			t.Fatalf("query failed for %q: %v", tbl, err)
+		}
+		if count != 0 {
+			t.Fatalf("expected virtual table %q to NOT exist when summaryDims=0, but it does", tbl)
+		}
+	}
+}
+
+func TestStore_InsertChunkSummaries_And_SearchChunkSummaries(t *testing.T) {
+	const dims = 4
+	s, err := New(":memory:", dims, dims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.UpsertFile("auth.go", "hash1"); err != nil {
+		t.Fatal(err)
+	}
+	chunks := []chunker.Chunk{
+		{ID: "c1", FilePath: "auth.go", Symbol: "ValidateToken", Kind: "function", StartLine: 1, EndLine: 10},
+	}
+	codeVecs := [][]float32{{1, 0, 0, 0}}
+	if err := s.InsertChunks(chunks, codeVecs); err != nil {
+		t.Fatal(err)
+	}
+
+	summaryVecs := [][]float32{{0, 1, 0, 0}}
+	if err := s.InsertChunkSummaries([]string{"c1"}, []string{"Validates JWT tokens."}, summaryVecs); err != nil {
+		t.Fatalf("InsertChunkSummaries: %v", err)
+	}
+
+	query := []float32{0, 1, 0, 0}
+	results, err := s.SearchChunkSummaries(query, 5, 0, "")
+	if err != nil {
+		t.Fatalf("SearchChunkSummaries: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Symbol != "ValidateToken" {
+		t.Fatalf("expected symbol ValidateToken, got %q", results[0].Symbol)
+	}
+}
+
+func TestStore_InsertFileSummary_And_SearchFileSummaries(t *testing.T) {
+	const dims = 4
+	s, err := New(":memory:", dims, dims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.UpsertFile("auth.go", "hash1"); err != nil {
+		t.Fatal(err)
+	}
+
+	summaryVec := []float32{0, 0, 1, 0}
+	if err := s.InsertFileSummary("auth.go", "Handles authentication logic.", summaryVec); err != nil {
+		t.Fatalf("InsertFileSummary: %v", err)
+	}
+
+	query := []float32{0, 0, 1, 0}
+	results, err := s.SearchFileSummaries(query, 5, 0)
+	if err != nil {
+		t.Fatalf("SearchFileSummaries: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].FilePath != "auth.go" {
+		t.Fatalf("expected auth.go, got %q", results[0].FilePath)
+	}
+}
+
+func TestStore_DeleteFileChunks_CleansUpSummaryTables(t *testing.T) {
+	const dims = 4
+	s, err := New(":memory:", dims, dims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.UpsertFile("auth.go", "hash1"); err != nil {
+		t.Fatal(err)
+	}
+	chunks := []chunker.Chunk{
+		{ID: "c1", FilePath: "auth.go", Symbol: "F", Kind: "function", StartLine: 1, EndLine: 5},
+	}
+	if err := s.InsertChunks(chunks, [][]float32{{1, 0, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertChunkSummaries([]string{"c1"}, []string{"summary"}, [][]float32{{0, 1, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertFileSummary("auth.go", "file summary", []float32{0, 0, 1, 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteFileChunks("auth.go"); err != nil {
+		t.Fatalf("DeleteFileChunks: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow("SELECT count(*) FROM chunk_summaries").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 chunk_summaries after delete, got %d", count)
+	}
+	if err := s.db.QueryRow("SELECT count(*) FROM file_summaries").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 file_summaries after delete, got %d", count)
+	}
+}
+
+func TestStore_TopChunksByFile(t *testing.T) {
+	const dims = 4
+	s, err := New(":memory:", dims, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.UpsertFile("main.go", "hash1"); err != nil {
+		t.Fatal(err)
+	}
+	chunks := []chunker.Chunk{
+		{ID: "c1", FilePath: "main.go", Symbol: "A", Kind: "function", StartLine: 1, EndLine: 5},
+		{ID: "c2", FilePath: "main.go", Symbol: "B", Kind: "function", StartLine: 6, EndLine: 10},
+		{ID: "c3", FilePath: "main.go", Symbol: "C", Kind: "function", StartLine: 11, EndLine: 15},
+	}
+	vecs := [][]float32{{1, 0, 0, 0}, {0.9, 0.1, 0, 0}, {0, 0, 1, 0}}
+	if err := s.InsertChunks(chunks, vecs); err != nil {
+		t.Fatal(err)
+	}
+
+	queryVec := []float32{1, 0, 0, 0}
+	results, err := s.TopChunksByFile("main.go", queryVec, 2)
+	if err != nil {
+		t.Fatalf("TopChunksByFile: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+}
+
+func TestStore_DimensionMismatch_DropsSummaryTablesOnReset(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := New(dbPath, 4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+
+	s2, err := New(dbPath, 8, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s2.Close() }()
+
+	var count int
+	if err := s2.db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name='vec_chunk_summaries'").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("expected vec_chunk_summaries to be recreated after reset")
 	}
 }

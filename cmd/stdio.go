@@ -223,7 +223,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		return nil, "", fmt.Errorf("create db directory: %w", err)
 	}
 
-	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens)
+	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens, ic.cfg.SummaryEmbedDims)
 	if err != nil {
 		return nil, "", fmt.Errorf("create indexer: %w", err)
 	}
