@@ -116,6 +116,7 @@ func runLangTest(t *testing.T, lang string, queries []string) {
 }
 
 func TestLang_Go(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "go", []string{
 		"HTTP request handler",
 		"authentication token validation",
@@ -127,6 +128,7 @@ func TestLang_Go(t *testing.T) {
 }
 
 func TestLang_Java(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "java", []string{
 		"pet owner repository database",
 		"REST controller request mapping",
@@ -137,6 +139,7 @@ func TestLang_Java(t *testing.T) {
 }
 
 func TestLang_PHP(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "php", []string{
 		"HTTP request handling middleware",
 		"database query builder",
@@ -147,6 +150,7 @@ func TestLang_PHP(t *testing.T) {
 }
 
 func TestLang_JavaScript(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "js", []string{
 		"HTTP router middleware",
 		"request response object",
@@ -157,6 +161,7 @@ func TestLang_JavaScript(t *testing.T) {
 }
 
 func TestLang_TypeScript(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "ts", []string{
 		"event listener registration",
 		"async operation with cancellation",
@@ -167,6 +172,7 @@ func TestLang_TypeScript(t *testing.T) {
 }
 
 func TestLang_Ruby(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "ruby", []string{
 		"route matching URL",
 		"controller action rendering",
@@ -177,6 +183,7 @@ func TestLang_Ruby(t *testing.T) {
 }
 
 func TestLang_Python(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "python", []string{
 		"HTTP route handler decorator",
 		"database model query filter",
@@ -187,6 +194,7 @@ func TestLang_Python(t *testing.T) {
 }
 
 func TestLang_Rust(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "rust", []string{
 		"async runtime executor spawn",
 		"file search pattern match",
@@ -197,6 +205,7 @@ func TestLang_Rust(t *testing.T) {
 }
 
 func TestLang_YAML(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "yaml", []string{
 		"Kubernetes deployment replicas",
 		"CI pipeline build steps",
@@ -206,6 +215,7 @@ func TestLang_YAML(t *testing.T) {
 }
 
 func TestLang_Markdown(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "md", []string{
 		"installation setup guide",
 		"ownership borrowing memory",
@@ -215,6 +225,7 @@ func TestLang_Markdown(t *testing.T) {
 }
 
 func TestLang_JSON(t *testing.T) {
+	t.Parallel()
 	runLangTest(t, "json", []string{
 		"build scripts commands",
 		"TypeScript compiler options",

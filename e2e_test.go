@@ -380,6 +380,7 @@ var validChunkKinds = map[string]bool{
 // --- Tests ---
 
 func TestE2E_ToolDiscovery(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 
 	ctx := context.Background()
@@ -437,6 +438,7 @@ func TestE2E_ToolDiscovery(t *testing.T) {
 }
 
 func TestE2E_IndexAndSearchResults(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -512,6 +514,7 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 }
 
 func TestE2E_PlaintextContent(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -572,6 +575,7 @@ func TestE2E_PlaintextContent(t *testing.T) {
 }
 
 func TestE2E_SearchRelevanceRanking(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -626,6 +630,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 }
 
 func TestE2E_NResultsParameter(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -663,6 +668,7 @@ func TestE2E_NResultsParameter(t *testing.T) {
 }
 
 func TestE2E_MinScoreFilter(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -712,6 +718,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 }
 
 func TestE2E_IncrementalIndex(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 
 	tmpDir := t.TempDir()
@@ -817,6 +824,7 @@ func VerifyCredentials(username, password string) error {
 }
 
 func TestE2E_IndexStatus(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -875,6 +883,7 @@ func TestE2E_IndexStatus(t *testing.T) {
 }
 
 func TestE2E_ForceReindex(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
@@ -911,6 +920,7 @@ func TestE2E_ForceReindex(t *testing.T) {
 }
 
 func TestE2E_ProgressNotifications(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var notifications []mcp.ProgressNotificationParams
 
@@ -1025,6 +1035,7 @@ func TestE2E_ProgressNotifications(t *testing.T) {
 }
 
 func TestE2E_ErrorHandling(t *testing.T) {
+	t.Parallel()
 	session := startServer(t)
 
 	// Non-existent project path should return IsError=true.
@@ -1048,6 +1059,7 @@ func TestE2E_ErrorHandling(t *testing.T) {
 }
 
 func TestE2E_SubdirFastPathNoDoubleIndex(t *testing.T) {
+	t.Parallel()
 	// Regression: when a subdirectory search hits the fast path (second call),
 	// the correct effectiveRoot must be used — not the subdirectory path.
 	// A wrong effectiveRoot causes spurious re-indexing and broken snippets.

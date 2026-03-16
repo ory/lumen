@@ -77,8 +77,14 @@ func Load() (Config, error) {
 // fresh index automatically. Including IndexVersion ensures that incompatible
 // chunker/index format changes never share an index with older data.
 func DBPathForProject(projectPath, model string) string {
+	return DBPathForProjectBase(XDGDataDir(), projectPath, model)
+}
+
+// DBPathForProjectBase returns the SQLite database path for a given project
+// using an explicit data directory instead of reading XDG_DATA_HOME from the
+// environment. Safe to call from parallel goroutines.
+func DBPathForProjectBase(dataDir, projectPath, model string) string {
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+IndexVersion)))
-	dataDir := XDGDataDir()
 	return filepath.Join(dataDir, "lumen", hash[:16], "index.db")
 }
 
