@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.13](https://github.com/ory/lumen/compare/v0.0.12...v0.0.13) (2026-03-16)
+
+
+### Features
+
+* **embedder:** add manutic/nomic-embed-code:7b to known models ([#42](https://github.com/ory/lumen/issues/42)) ([b2b8e40](https://github.com/ory/lumen/commit/b2b8e401e54ff2bcd52f7dbfdc05170a7648a8a0))
+
 ## [0.0.12](https://github.com/ory/lumen/compare/v0.0.11...v0.0.12) (2026-03-16)
 
 
