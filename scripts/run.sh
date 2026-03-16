@@ -13,6 +13,10 @@ case "$ARCH" in
   aarch64) ARCH="arm64" ;;
 esac
 
+# npm naming differs from Go: amd64→x64, windows→win32
+case "$ARCH" in amd64) NPM_ARCH="x64" ;; *) NPM_ARCH="$ARCH" ;; esac
+case "$OS" in windows) NPM_OS="win32" ;; *) NPM_OS="$OS" ;; esac
+
 # Environment defaults
 export LUMEN_BACKEND="${LUMEN_BACKEND:-ollama}"
 export LUMEN_EMBED_MODEL="${LUMEN_EMBED_MODEL:-ordis/jina-embeddings-v2-base-code}"
@@ -21,7 +25,8 @@ export LUMEN_EMBED_MODEL="${LUMEN_EMBED_MODEL:-ordis/jina-embeddings-v2-base-cod
 BINARY=""
 for candidate in \
   "${PLUGIN_ROOT}/bin/lumen" \
-  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"; do
+  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}" \
+  "${PLUGIN_ROOT}/../lumen-${NPM_OS}-${NPM_ARCH}/bin/lumen"; do
   if [ -x "$candidate" ]; then
     BINARY="$candidate"
     break
