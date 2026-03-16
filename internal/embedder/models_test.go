@@ -25,6 +25,7 @@ func TestKnownModels(t *testing.T) {
 		"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 		"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
 		"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
+		"manutic/nomic-embed-code:7b":        {Dims: 3584, CtxLength: 32768, Backend: "ollama", MinScore: 0.15},
 	}
 
 	for name, want := range expected {
