@@ -21,17 +21,20 @@ import (
 )
 
 var (
-	flagEmbedModel    string
-	flagClaudeModel   string
-	flagLanguage      []string
-	flagScenario      string
-	flagParallel      int
-	flagRuns          int
-	flagResultsDir    string
-	flagSkipJudge     bool
-	flagSkipPreflight bool
-	flagVerbose       bool
-	flagOutput        string
+	flagEmbedModel        string
+	flagClaudeModel       string
+	flagLanguage          []string
+	flagScenario          string
+	flagParallel          int
+	flagRuns              int
+	flagResultsDir        string
+	flagSkipJudge         bool
+	flagSkipPreflight     bool
+	flagVerbose           bool
+	flagOutput            string
+	flagSummaries         bool
+	flagSummaryModel      string
+	flagSummaryEmbedModel string
 )
 
 var runCmd = &cobra.Command{
@@ -52,6 +55,9 @@ func init() {
 	runCmd.Flags().BoolVar(&flagSkipPreflight, "skip-preflight", false, "Skip preflight checks")
 	runCmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "Print overview table to stdout after completion")
 	runCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "Write overview table to this file path")
+	runCmd.Flags().BoolVar(&flagSummaries, "summaries", false, "Enable semantic summaries (LUMEN_SUMMARIES=true)")
+	runCmd.Flags().StringVar(&flagSummaryModel, "summary-model", "qwen2.5-coder:7b", "LLM for generating summaries")
+	runCmd.Flags().StringVar(&flagSummaryEmbedModel, "summary-embed-model", "nomic-embed-text", "Embedding model for summaries")
 }
 
 func runBenchmarks(cmd *cobra.Command, args []string) error {
@@ -133,13 +139,16 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 
 	// Run tasks
 	runCfg := &runner.Config{
-		LumenBinary: lumenBinary,
-		RepoRoot:    repoRoot,
-		ResultsDir:  resultsDir,
-		Backend:     backend,
-		EmbedModel:  flagEmbedModel,
-		ClaudeModel: flagClaudeModel,
-		TotalRuns:   totalRuns,
+		LumenBinary:       lumenBinary,
+		RepoRoot:          repoRoot,
+		ResultsDir:        resultsDir,
+		Backend:           backend,
+		EmbedModel:        flagEmbedModel,
+		ClaudeModel:       flagClaudeModel,
+		TotalRuns:         totalRuns,
+		Summaries:         flagSummaries,
+		SummaryModel:      flagSummaryModel,
+		SummaryEmbedModel: flagSummaryEmbedModel,
 	}
 
 	var mu sync.Mutex

@@ -1,0 +1,65 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..79f0ff4 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,7 +990,20 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
+-		return reflect.Zero(typ), nil
++		if typ.Kind() == reflect.Ptr {
++			return reflect.Zero(typ), nil
++		}
++		// For non-pointer types, preserve the default value if available.
++		// A null node means "no value" and should not zero out pre-initialized defaults.
++		newValue := d.createDecodableValue(typ)
++		dv := defaultVal
++		for dv.Kind() == reflect.Ptr {
++			dv = dv.Elem()
++		}
++		if dv.IsValid() && dv.Type().AssignableTo(newValue.Type()) {
++			newValue.Set(dv)
++		}
++		return newValue, nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+ 	for defaultVal.Kind() == reflect.Ptr {
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..0b8fdd5 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -1945,6 +1945,34 @@ w: w_value
+ 	}
+ }
+ 
++func TestDecoder_DefaultValuesWithNullNode(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	// YAML where "second" is present but has only comments (parsed as null node)
++	yml := `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`
++	test := Test{Defaults: Default{Key: "My default Value"}}
++	d := yaml.NewDecoder(strings.NewReader(yml))
++	if err := d.Decode(&test); err != nil {
++		t.Fatalf("failed to decode: %v", err)
++	}
++	if test.First != "Test" {
++		t.Fatalf("test.First should be `Test`, got `%s`", test.First)
++	}
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("test.Defaults.Key should be `My default Value`, got `%s`", test.Defaults.Key)
++	}
++}
++
+ func Example_YAMLTags() {
+ 	yml := `---
+ foo: 1

@@ -18,6 +18,7 @@ package config
 import (
 	"crypto/sha256"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -30,6 +31,15 @@ const (
 	BackendOllama = "ollama"
 	// BackendLMStudio is the backend identifier for LM Studio.
 	BackendLMStudio = "lmstudio"
+
+	// DefaultSummaryModel is the LLM used for generating summaries.
+	DefaultSummaryModel = "gemma3:4b"
+	// DefaultSummaryEmbedModelOllama is the embedding model for summaries on Ollama.
+	DefaultSummaryEmbedModelOllama = "nomic-embed-text"
+	// DefaultSummaryEmbedModelLMStudio is the embedding model for summaries on LM Studio.
+	DefaultSummaryEmbedModelLMStudio = "nomic-ai/nomic-embed-text-GGUF"
+	// DefaultSummaryEmbedDims is the fallback dimensionality for unknown summary embed models.
+	DefaultSummaryEmbedDims = 768
 )
 
 // Config holds the resolved configuration for the lumen process.
@@ -41,6 +51,12 @@ type Config struct {
 	OllamaHost     string
 	Backend        string
 	LMStudioHost   string
+
+	// Summaries fields — only populated when LUMEN_SUMMARIES=true.
+	Summaries         bool
+	SummaryModel      string
+	SummaryEmbedModel string
+	SummaryEmbedDims  int
 }
 
 // Load reads configuration from environment variables and the model registry.
@@ -60,7 +76,8 @@ func Load() (Config, error) {
 	if !ok {
 		return Config{}, fmt.Errorf("unknown embedding model %q", model)
 	}
-	return Config{
+
+	cfg := Config{
 		Model:          model,
 		Dims:           spec.Dims,
 		CtxLength:      spec.CtxLength,
@@ -68,16 +85,35 @@ func Load() (Config, error) {
 		OllamaHost:     EnvOrDefault("OLLAMA_HOST", "http://localhost:11434"),
 		Backend:        backend,
 		LMStudioHost:   EnvOrDefault("LM_STUDIO_HOST", "http://localhost:1234"),
-	}, nil
+	}
+
+	if EnvOrDefault("LUMEN_SUMMARIES", "") == "true" {
+		cfg.Summaries = true
+		cfg.SummaryModel = EnvOrDefault("LUMEN_SUMMARY_MODEL", DefaultSummaryModel)
+
+		defaultSummaryEmbedModel := DefaultSummaryEmbedModelOllama
+		if backend == BackendLMStudio {
+			defaultSummaryEmbedModel = DefaultSummaryEmbedModelLMStudio
+		}
+		cfg.SummaryEmbedModel = EnvOrDefault("LUMEN_SUMMARY_EMBED_MODEL", defaultSummaryEmbedModel)
+
+		if sumSpec, ok := embedder.KnownModels[cfg.SummaryEmbedModel]; ok {
+			cfg.SummaryEmbedDims = sumSpec.Dims
+		} else {
+			log.Printf("warning: unknown summary embed model %q, using fallback %d dims", cfg.SummaryEmbedModel, DefaultSummaryEmbedDims)
+			cfg.SummaryEmbedDims = DefaultSummaryEmbedDims
+		}
+	}
+
+	return cfg, nil
 }
 
 // DBPathForProject returns the SQLite database path for a given project,
-// derived from a SHA-256 hash of the project path, embedding model name, and
-// IndexVersion. Including the model ensures that switching models creates a
-// fresh index automatically. Including IndexVersion ensures that incompatible
-// chunker/index format changes never share an index with older data.
-func DBPathForProject(projectPath, model string) string {
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+IndexVersion)))
+// derived from a SHA-256 hash of the project path, code embedding model name,
+// summary embedding model name (empty string when summaries disabled), and
+// IndexVersion.
+func DBPathForProject(projectPath, codeEmbedModel, summaryEmbedModel string) string {
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+codeEmbedModel+"\x00"+summaryEmbedModel+"\x00"+IndexVersion)))
 	dataDir := XDGDataDir()
 	return filepath.Join(dataDir, "lumen", hash[:16], "index.db")
 }

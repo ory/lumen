@@ -104,7 +104,7 @@ func probeScenarios(ctx context.Context, cfg *Config) error {
 }
 
 func probeBaseline(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.Baseline, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.Baseline, &runner.Config{LumenBinary: cfg.LumenBinary, Backend: cfg.Backend, EmbedModel: cfg.EmbedModel})
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func probeBaseline(ctx context.Context, cfg *Config) error {
 }
 
 func probeWithLumen(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, &runner.Config{LumenBinary: cfg.LumenBinary, Backend: cfg.Backend, EmbedModel: cfg.EmbedModel})
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func probeWithLumen(ctx context.Context, cfg *Config) error {
 // natural-language Grep call and redirects Claude to mcp__lumen__semantic_search
 // in with-lumen (where Grep/Glob are available alongside lumen).
 func probeHookFiringWithLumen(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, &runner.Config{LumenBinary: cfg.LumenBinary, Backend: cfg.Backend, EmbedModel: cfg.EmbedModel})
 	if err != nil {
 		return err
 	}

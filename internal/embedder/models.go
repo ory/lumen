@@ -62,6 +62,7 @@ var KnownModels = map[string]ModelSpec{
 	"ordis/jina-embeddings-v2-base-code": {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.35},
 	"nomic-embed-text":                   {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.30},
 	"nomic-ai/nomic-embed-code-GGUF":     {Dims: 3584, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.15},
+	"nomic-ai/nomic-embed-text-GGUF":     {Dims: 768, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.30},
 	"qwen3-embedding:8b":                 {Dims: 4096, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 	"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 	"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},

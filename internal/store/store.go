@@ -49,14 +49,16 @@ type StoreStats struct { //nolint:revive // StoreStats is intentionally named to
 // Store manages SQLite + sqlite-vec storage for code chunks and their
 // embedding vectors.
 type Store struct {
-	db         *sql.DB
-	dimensions int
+	db          *sql.DB
+	dimensions  int
+	summaryDims int
 }
 
 // New opens (or creates) a SQLite database at dsn, enables WAL mode and
 // foreign keys, and creates the schema tables if they do not exist.
 // dimensions specifies the size of the embedding vectors.
-func New(dsn string, dimensions int) (*Store, error) {
+// summaryDims specifies the size of the summary embedding vectors (0 = no summary vec tables).
+func New(dsn string, dimensions int, summaryDims int) (*Store, error) {
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -79,15 +81,15 @@ func New(dsn string, dimensions int) (*Store, error) {
 		}
 	}
 
-	if err := createSchema(db, dimensions); err != nil {
+	if err := createSchema(db, dimensions, summaryDims); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
 
-	return &Store{db: db, dimensions: dimensions}, nil
+	return &Store{db: db, dimensions: dimensions, summaryDims: summaryDims}, nil
 }
 
-func createSchema(db *sql.DB, dimensions int) error {
+func createSchema(db *sql.DB, dimensions int, summaryDims int) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS files (
 			path TEXT PRIMARY KEY,
@@ -106,6 +108,14 @@ func createSchema(db *sql.DB, dimensions int) error {
 			end_line   INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_chunks_file_path ON chunks(file_path)`,
+		`CREATE TABLE IF NOT EXISTS chunk_summaries (
+			chunk_id TEXT PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+			summary  TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS file_summaries (
+			file_path TEXT PRIMARY KEY REFERENCES files(path) ON DELETE CASCADE,
+			summary   TEXT NOT NULL
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -116,7 +126,7 @@ func createSchema(db *sql.DB, dimensions int) error {
 	// Handle vec_chunks dimension mismatch: if the table exists with
 	// different dimensions, drop it and all associated data so it gets
 	// recreated with the correct size.
-	if err := ensureVecDimensions(db, dimensions); err != nil {
+	if err := ensureVecDimensions(db, dimensions, summaryDims); err != nil {
 		return err
 	}
 
@@ -124,23 +134,100 @@ func createSchema(db *sql.DB, dimensions int) error {
 }
 
 // ensureVecDimensions creates the vec_chunks virtual table, or recreates it
-// if the existing table has a different number of dimensions.
-func ensureVecDimensions(db *sql.DB, dimensions int) error {
+// if the existing table has a different number of dimensions. Also handles
+// summary vec tables atomically.
+func ensureVecDimensions(db *sql.DB, dimensions int, summaryDims int) error {
 	tableExists, err := checkTableExists(db, "vec_chunks")
 	if err != nil {
 		return err
 	}
 
 	if !tableExists {
-		return createVecTable(db, dimensions)
+		if err := createVecTable(db, dimensions); err != nil {
+			return err
+		}
+		if summaryDims > 0 {
+			return createSummaryVecTables(db, summaryDims)
+		}
+		return nil
 	}
 
 	storedDims, err := getStoredDimensions(db)
 	if err == nil && storedDims == dimensions {
-		return nil
+		return ensureSummaryVecDimensions(db, summaryDims)
 	}
 
-	return resetAndRecreateVecTable(db, dimensions)
+	return resetAndRecreateVecTable(db, dimensions, summaryDims)
+}
+
+func ensureSummaryVecDimensions(db *sql.DB, summaryDims int) error {
+	if summaryDims == 0 {
+		return nil
+	}
+	exists, err := checkTableExists(db, "vec_chunk_summaries")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return createSummaryVecTables(db, summaryDims)
+	}
+	storedSummaryDims, err := getStoredSummaryDimensions(db)
+	if err == nil && storedSummaryDims == summaryDims {
+		return nil
+	}
+	return resetAndRecreateSummaryVecTables(db, summaryDims)
+}
+
+func createSummaryVecTables(db *sql.DB, summaryDims int) error {
+	stmts := []string{
+		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunk_summaries USING vec0(
+			id TEXT PRIMARY KEY,
+			embedding float[%d] distance_metric=cosine
+		)`, summaryDims),
+		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_file_summaries USING vec0(
+			id TEXT PRIMARY KEY,
+			embedding float[%d] distance_metric=cosine
+		)`, summaryDims),
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			return fmt.Errorf("create summary vec table: %w", err)
+		}
+	}
+	return storeSummaryDimensions(db, summaryDims)
+}
+
+func resetAndRecreateSummaryVecTables(db *sql.DB, summaryDims int) error {
+	stmts := []string{
+		"DROP TABLE IF EXISTS vec_chunk_summaries",
+		"DROP TABLE IF EXISTS vec_file_summaries",
+		"DELETE FROM chunk_summaries",
+		"DELETE FROM file_summaries",
+	}
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			return fmt.Errorf("reset summary vec tables %q: %w", s, err)
+		}
+	}
+	return createSummaryVecTables(db, summaryDims)
+}
+
+func getStoredSummaryDimensions(db *sql.DB) (int, error) {
+	var dims int
+	err := db.QueryRow("SELECT value FROM project_meta WHERE key = 'vec_summary_dimensions'").Scan(&dims)
+	return dims, err
+}
+
+func storeSummaryDimensions(db *sql.DB, summaryDims int) error {
+	_, err := db.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('vec_summary_dimensions', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		fmt.Sprintf("%d", summaryDims),
+	)
+	if err != nil {
+		return fmt.Errorf("store vec_summary_dimensions: %w", err)
+	}
+	return nil
 }
 
 func checkTableExists(db *sql.DB, tableName string) (bool, error) {
@@ -180,9 +267,13 @@ func storeDimensions(db *sql.DB, dimensions int) error {
 	return nil
 }
 
-func resetAndRecreateVecTable(db *sql.DB, dimensions int) error {
+func resetAndRecreateVecTable(db *sql.DB, dimensions int, summaryDims int) error {
 	stmts := []string{
 		"DROP TABLE IF EXISTS vec_chunks",
+		"DROP TABLE IF EXISTS vec_chunk_summaries",
+		"DROP TABLE IF EXISTS vec_file_summaries",
+		"DELETE FROM chunk_summaries",
+		"DELETE FROM file_summaries",
 		"DELETE FROM chunks",
 		"DELETE FROM files",
 		"DELETE FROM project_meta",
@@ -192,18 +283,13 @@ func resetAndRecreateVecTable(db *sql.DB, dimensions int) error {
 			return fmt.Errorf("reset for dimension change %q: %w", s, err)
 		}
 	}
-
-	createVec := fmt.Sprintf(
-		`CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
-			id TEXT PRIMARY KEY,
-			embedding float[%d] distance_metric=cosine
-		)`, dimensions)
-
-	if _, err := db.Exec(createVec); err != nil {
-		return fmt.Errorf("recreate vec_chunks: %w", err)
+	if err := createVecTable(db, dimensions); err != nil {
+		return err
 	}
-
-	return storeDimensions(db, dimensions)
+	if summaryDims > 0 {
+		return createSummaryVecTables(db, summaryDims)
+	}
+	return nil
 }
 
 // SetMeta upserts a key-value pair in the project_meta table.
@@ -357,24 +443,53 @@ func (s *Store) DeleteFileChunks(filePath string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Delete vec_chunks entries for chunks belonging to this file.
-	_, err = tx.Exec(
-		`DELETE FROM vec_chunks WHERE id IN (SELECT id FROM chunks WHERE file_path = ?)`,
-		filePath,
-	)
+	// Phase 1: Collect chunk IDs before deletion.
+	rows, err := tx.Query(`SELECT id FROM chunks WHERE file_path = ?`, filePath)
 	if err != nil {
-		return fmt.Errorf("delete vec_chunks: %w", err)
+		return fmt.Errorf("fetch chunk ids: %w", err)
+	}
+	var chunkIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan chunk id: %w", err)
+		}
+		chunkIDs = append(chunkIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate chunk ids: %w", err)
+	}
+	_ = rows.Close()
+
+	// Phase 2: Explicit vec deletes (sqlite-vec does not support FK cascades).
+	if len(chunkIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(chunkIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		args := make([]any, len(chunkIDs))
+		for i, id := range chunkIDs {
+			args[i] = id
+		}
+		if s.summaryDims > 0 {
+			if _, err := tx.Exec(`DELETE FROM vec_chunk_summaries WHERE id IN (`+placeholders+`)`, args...); err != nil {
+				return fmt.Errorf("delete vec_chunk_summaries: %w", err)
+			}
+		}
+		if _, err := tx.Exec(`DELETE FROM vec_chunks WHERE id IN (`+placeholders+`)`, args...); err != nil {
+			return fmt.Errorf("delete vec_chunks: %w", err)
+		}
+	}
+	if s.summaryDims > 0 {
+		if _, err := tx.Exec(`DELETE FROM vec_file_summaries WHERE id = ?`, filePath); err != nil {
+			return fmt.Errorf("delete vec_file_summaries: %w", err)
+		}
 	}
 
-	// Delete chunks.
-	_, err = tx.Exec(`DELETE FROM chunks WHERE file_path = ?`, filePath)
-	if err != nil {
+	// Phase 3: Row deletes (FK cascades handle chunk_summaries and file_summaries).
+	if _, err := tx.Exec(`DELETE FROM chunks WHERE file_path = ?`, filePath); err != nil {
 		return fmt.Errorf("delete chunks: %w", err)
 	}
-
-	// Delete file record.
-	_, err = tx.Exec(`DELETE FROM files WHERE path = ?`, filePath)
-	if err != nil {
+	if _, err := tx.Exec(`DELETE FROM files WHERE path = ?`, filePath); err != nil {
 		return fmt.Errorf("delete file: %w", err)
 	}
 
@@ -498,4 +613,195 @@ func (s *Store) TopSymbols(n int) ([]string, error) {
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// InsertChunkSummaries upserts summary text and vectors for a batch of chunks.
+func (s *Store) InsertChunkSummaries(chunkIDs []string, summaries []string, vectors [][]float32) error {
+	if len(chunkIDs) != len(summaries) || len(chunkIDs) != len(vectors) {
+		return fmt.Errorf("length mismatch: ids=%d summaries=%d vectors=%d", len(chunkIDs), len(summaries), len(vectors))
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for i, id := range chunkIDs {
+		if _, err := tx.Exec(
+			`INSERT INTO chunk_summaries (chunk_id, summary) VALUES (?, ?)
+			 ON CONFLICT(chunk_id) DO UPDATE SET summary = excluded.summary`,
+			id, summaries[i],
+		); err != nil {
+			return fmt.Errorf("upsert chunk_summary %s: %w", id, err)
+		}
+		blob, err := sqlite_vec.SerializeFloat32(vectors[i])
+		if err != nil {
+			return fmt.Errorf("serialize summary vector %d: %w", i, err)
+		}
+		// sqlite-vec virtual tables do not support ON CONFLICT upsert; delete then insert.
+		if _, err := tx.Exec(`DELETE FROM vec_chunk_summaries WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("delete vec_chunk_summary %s: %w", id, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO vec_chunk_summaries (id, embedding) VALUES (?, ?)`,
+			id, blob,
+		); err != nil {
+			return fmt.Errorf("insert vec_chunk_summary %s: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// InsertFileSummary upserts the summary text and vector for a file.
+func (s *Store) InsertFileSummary(filePath, summary string, vector []float32) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(
+		`INSERT INTO file_summaries (file_path, summary) VALUES (?, ?)
+		 ON CONFLICT(file_path) DO UPDATE SET summary = excluded.summary`,
+		filePath, summary,
+	); err != nil {
+		return fmt.Errorf("upsert file_summary: %w", err)
+	}
+	blob, err := sqlite_vec.SerializeFloat32(vector)
+	if err != nil {
+		return fmt.Errorf("serialize file summary vector: %w", err)
+	}
+	// sqlite-vec virtual tables do not support ON CONFLICT upsert; delete then insert.
+	if _, err := tx.Exec(`DELETE FROM vec_file_summaries WHERE id = ?`, filePath); err != nil {
+		return fmt.Errorf("delete vec_file_summary: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO vec_file_summaries (id, embedding) VALUES (?, ?)`,
+		filePath, blob,
+	); err != nil {
+		return fmt.Errorf("insert vec_file_summary: %w", err)
+	}
+	return tx.Commit()
+}
+
+// FileSummaryResult represents a file-level summary search hit.
+type FileSummaryResult struct {
+	FilePath string
+	Distance float64
+}
+
+// SearchChunkSummaries performs a KNN search against vec_chunk_summaries.
+func (s *Store) SearchChunkSummaries(queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]SearchResult, error) {
+	blob, err := sqlite_vec.SerializeFloat32(queryVec)
+	if err != nil {
+		return nil, fmt.Errorf("serialize query: %w", err)
+	}
+
+	knn := limit
+	if pathPrefix != "" {
+		knn = min(limit*3, 300)
+	}
+
+	whereClauses := []string{"v.embedding MATCH ?", "v.k = ?"}
+	args := []any{blob, knn}
+	if maxDistance > 0 {
+		whereClauses = append(whereClauses, "v.distance < ?")
+		args = append(args, maxDistance)
+	}
+	if pathPrefix != "" {
+		whereClauses = append(whereClauses, "(c.file_path = ? OR c.file_path LIKE ? || '/%')")
+		args = append(args, pathPrefix, pathPrefix)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT c.file_path, c.symbol, c.kind, c.start_line, c.end_line, v.distance
+		FROM vec_chunk_summaries v
+		JOIN chunks c ON v.id = c.id
+		WHERE %s
+		ORDER BY v.distance
+		LIMIT %d
+	`, strings.Join(whereClauses, " AND "), limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search chunk summaries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.FilePath, &r.Symbol, &r.Kind, &r.StartLine, &r.EndLine, &r.Distance); err != nil {
+			return nil, fmt.Errorf("scan chunk summary result: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// SearchFileSummaries performs a KNN search against vec_file_summaries.
+func (s *Store) SearchFileSummaries(queryVec []float32, limit int, maxDistance float64) ([]FileSummaryResult, error) {
+	blob, err := sqlite_vec.SerializeFloat32(queryVec)
+	if err != nil {
+		return nil, fmt.Errorf("serialize query: %w", err)
+	}
+
+	whereClauses := []string{"v.embedding MATCH ?", "v.k = ?"}
+	args := []any{blob, limit}
+	if maxDistance > 0 {
+		whereClauses = append(whereClauses, "v.distance < ?")
+		args = append(args, maxDistance)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT v.id, v.distance
+		FROM vec_file_summaries v
+		WHERE %s
+		ORDER BY v.distance
+	`, strings.Join(whereClauses, " AND "))
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search file summaries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []FileSummaryResult
+	for rows.Next() {
+		var r FileSummaryResult
+		if err := rows.Scan(&r.FilePath, &r.Distance); err != nil {
+			return nil, fmt.Errorf("scan file summary result: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// TopChunksByFile returns the top n chunks from filePath ranked by distance to queryVec.
+// maxDistance is the cosine distance ceiling (pass 0 for no filter).
+func (s *Store) TopChunksByFile(filePath string, queryVec []float32, maxDistance float64, n int) ([]SearchResult, error) {
+	return s.Search(queryVec, n, maxDistance, filePath)
+}
+
+// ChunksByFile returns chunk metadata for all chunks belonging to a file.
+// Content is NOT stored in the DB; callers must read source files separately.
+func (s *Store) ChunksByFile(filePath string) ([]chunker.Chunk, error) {
+	rows, err := s.db.Query(
+		`SELECT id, file_path, symbol, kind, start_line, end_line FROM chunks WHERE file_path = ?`,
+		filePath,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query chunks by file: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var chunks []chunker.Chunk
+	for rows.Next() {
+		var c chunker.Chunk
+		if err := rows.Scan(&c.ID, &c.FilePath, &c.Symbol, &c.Kind, &c.StartLine, &c.EndLine); err != nil {
+			return nil, fmt.Errorf("scan chunk: %w", err)
+		}
+		chunks = append(chunks, c)
+	}
+	return chunks, rows.Err()
 }

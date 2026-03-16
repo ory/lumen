@@ -1,0 +1,158 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..aef7d25 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,10 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		// If a default value is provided, preserve it instead of returning zero
++		if defaultVal.IsValid() {
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..251674f 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -1945,7 +1945,7 @@ w: w_value
+ 	}
+ }
+ 
+-func Example_YAMLTags() {
++func Example_yamlTags() {
+ 	yml := `---
+ foo: 1
+ bar: c
+@@ -2125,7 +2125,7 @@ map: &map
+ 	})
+ }
+ 
+-func Example_JSONTags() {
++func Example_jsonTags() {
+ 	yml := `---
+ foo: 1
+ bar: c
+@@ -2144,7 +2144,7 @@ bar: c
+ 	// c
+ }
+ 
+-func Example_DisallowUnknownField() {
++func Example_disallowUnknownField() {
+ 	var v struct {
+ 		A string `yaml:"simple"`
+ 		C string `yaml:"complicated"`
+@@ -2165,7 +2165,7 @@ complecated: string
+ 	//            ^
+ }
+ 
+-func Example_Unmarshal_Node() {
++func Example_unmarshal_Node() {
+ 	f, err := parser.ParseBytes([]byte("text: node example"), 0)
+ 	if err != nil {
+ 		panic(err)
+@@ -3027,3 +3027,31 @@ func TestMapKeyCustomUnmarshaler(t *testing.T) {
+ 		t.Fatalf("expected to have value \"value\", but got %q", val)
+ 	}
+ }
++
++func TestDecodePreservesNestedStructDefaults(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	yml := `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`
++
++	test := Test{Defaults: Default{Key: "My default Value"}}
++	d := yaml.NewDecoder(strings.NewReader(yml))
++	err := d.Decode(&test)
++	if err != nil {
++		t.Fatalf("failed to decode: %v", err)
++	}
++
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("expected nested struct default to be preserved, but got %q", test.Defaults.Key)
++	}
++}
+diff --git a/encode_test.go b/encode_test.go
+index 74388b9..005945b 100644
+--- a/encode_test.go
++++ b/encode_test.go
+@@ -1290,7 +1290,7 @@ func TestEncoder_MultipleDocuments(t *testing.T) {
+ 	}
+ }
+ 
+-func Example_Marshal_Node() {
++func Example_marshal_Node() {
+ 	type T struct {
+ 		Text ast.Node `yaml:"text"`
+ 	}
+@@ -1307,7 +1307,7 @@ func Example_Marshal_Node() {
+ 	// text: node example
+ }
+ 
+-func Example_Marshal_ExplicitAnchorAlias() {
++func Example_marshal_ExplicitAnchorAlias() {
+ 	type T struct {
+ 		A int
+ 		B string
+@@ -1330,7 +1330,7 @@ func Example_Marshal_ExplicitAnchorAlias() {
+ 	// d: *x
+ }
+ 
+-func Example_Marshal_ImplicitAnchorAlias() {
++func Example_marshal_ImplicitAnchorAlias() {
+ 	type T struct {
+ 		I int
+ 		S string
+@@ -1455,7 +1455,7 @@ func (t TextMarshaler) MarshalText() ([]byte, error) {
+ 	return []byte(strconv.FormatInt(int64(t), 8)), nil
+ }
+ 
+-func Example_MarshalYAML() {
++func Example_marshalYAML() {
+ 	var slow SlowMarshaler
+ 	slow.A = "Hello slow poke"
+ 	slow.B = 100
+diff --git a/path_test.go b/path_test.go
+index 8a4d6b5..ba91e63 100644
+--- a/path_test.go
++++ b/path_test.go
+@@ -603,7 +603,7 @@ building:
+ 	}
+ }
+ 
+-func ExamplePath_AnnotateSource() {
++func example_Path_AnnotateSource() {
+ 	yml := `
+ a: 1
+ b: "hello"
+@@ -634,7 +634,7 @@ b: "hello"
+ 	//    3 | b: "hello"
+ }
+ 
+-func ExamplePath_AnnotateSourceWithComment() {
++func example_Path_AnnotateSourceWithComment() {
+ 	yml := `
+ # This is my document
+ doc:
+@@ -665,7 +665,7 @@ doc:
+ 	//   10 |
+ }
+ 
+-func ExamplePath_PathString() {
++func example_Path_PathString() {
+ 	yml := `
+ store:
+   book:

@@ -1,0 +1,61 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..21cc794 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,14 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		// Preserve the default value when the node is null
++		derefDefaultVal := defaultVal
++		for derefDefaultVal.Kind() == reflect.Ptr {
++			derefDefaultVal = derefDefaultVal.Elem()
++		}
++		if derefDefaultVal.IsValid() && derefDefaultVal.Type().AssignableTo(typ) {
++			return derefDefaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..b44706f 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -3027,3 +3027,37 @@ func TestMapKeyCustomUnmarshaler(t *testing.T) {
+ 		t.Fatalf("expected to have value \"value\", but got %q", val)
+ 	}
+ }
++
++func TestDecoder_DefaultValuesWithNullNode(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++
++	test := Test{Defaults: Default{Key: "My default Value"}}
++
++	yml := `first: "Test"
++second:
++  # Just want to document the fields of the nested struct
++#  key: "Value from YAML"
++`
++
++	d := yaml.NewDecoder(strings.NewReader(yml))
++	err := d.Decode(&test)
++
++	if err != nil {
++		t.Fatalf("Decode failed: %v", err)
++	}
++
++	if test.First != "Test" {
++		t.Errorf("Expected test.First to be 'Test', got '%s'", test.First)
++	}
++
++	if test.Defaults.Key != "My default Value" {
++		t.Errorf("Expected test.Defaults.Key to be 'My default Value', got '%s'", test.Defaults.Key)
++	}
++}

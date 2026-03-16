@@ -1,0 +1,122 @@
+package summarizer
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+// LMStudioSummarizer calls the LM Studio /v1/chat/completions endpoint.
+type LMStudioSummarizer struct {
+	model   string
+	baseURL string
+	client  *http.Client
+}
+
+// NewLMStudio creates a new LMStudioSummarizer.
+func NewLMStudio(model, baseURL string) *LMStudioSummarizer {
+	return &LMStudioSummarizer{
+		model:   model,
+		baseURL: baseURL,
+		client:  &http.Client{Timeout: 10 * time.Minute},
+	}
+}
+
+type lmstudioChatRequest struct {
+	Model          string                      `json:"model"`
+	Messages       []lmstudioChatMessage       `json:"messages"`
+	ResponseFormat *lmstudioResponseFormat     `json:"response_format,omitempty"`
+}
+
+type lmstudioResponseFormat struct {
+	Type string `json:"type"` // "json_object" forces JSON output
+}
+
+type lmstudioChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type lmstudioChatResponse struct {
+	Choices []struct {
+		Message lmstudioChatMessage `json:"message"`
+	} `json:"choices"`
+}
+
+func (s *LMStudioSummarizer) chat(ctx context.Context, prompt string) (string, error) {
+	return s.chatWithFormat(ctx, prompt, nil)
+}
+
+func (s *LMStudioSummarizer) chatWithFormat(ctx context.Context, prompt string, format *lmstudioResponseFormat) (string, error) {
+	reqBody := lmstudioChatRequest{
+		Model:          s.model,
+		Messages:       []lmstudioChatMessage{{Role: "user", Content: prompt}},
+		ResponseFormat: format,
+	}
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal chat request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/v1/chat/completions", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("lmstudio chat request: %w", err)
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return "", fmt.Errorf("read lmstudio response: %w", readErr)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("lmstudio chat: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp lmstudioChatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("unmarshal lmstudio response: %w", err)
+	}
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("lmstudio returned no choices")
+	}
+	if chatResp.Choices[0].Message.Content == "" {
+		return "", fmt.Errorf("lmstudio returned empty response content")
+	}
+	return chatResp.Choices[0].Message.Content, nil
+}
+
+// SummarizeChunk generates a natural-language summary for a code chunk.
+func (s *LMStudioSummarizer) SummarizeChunk(ctx context.Context, chunk ChunkInfo) (string, error) {
+	return s.chat(ctx, chunkPrompt(chunk))
+}
+
+// SummarizeChunks summarizes all chunks in a single LLM call using LM Studio's
+// JSON object response format. Falls back to individual calls if the model
+// returns an unexpected structure.
+func (s *LMStudioSummarizer) SummarizeChunks(ctx context.Context, chunks []ChunkInfo) ([]string, error) {
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	raw, err := s.chatWithFormat(ctx, batchChunkPrompt(chunks), &lmstudioResponseFormat{Type: "json_object"})
+	if err != nil {
+		return nil, err
+	}
+	if summaries := parseBatchSummaries(raw, len(chunks)); summaries != nil {
+		return summaries, nil
+	}
+	return SummarizeChunksByOne(ctx, s, chunks)
+}
+
+// SummarizeFile generates a file-level summary from its chunk summaries.
+func (s *LMStudioSummarizer) SummarizeFile(ctx context.Context, chunkSummaries []string) (string, error) {
+	return s.chat(ctx, filePrompt(chunkSummaries))
+}

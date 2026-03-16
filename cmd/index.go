@@ -98,12 +98,22 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 		return nil, fmt.Errorf("create embedder: %w", err)
 	}
 
-	dbPath := config.DBPathForProject(projectPath, cfg.Model)
+	sumr, err := newSummarizer(*cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create summarizer: %w", err)
+	}
+
+	summaryEmb, err := newSummaryEmbedder(*cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create summary embedder: %w", err)
+	}
+
+	dbPath := config.DBPathForProject(projectPath, cfg.Model, cfg.SummaryEmbedModel)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens)
+	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens, cfg.SummaryEmbedDims, sumr, summaryEmb)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}

@@ -1,0 +1,59 @@
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e..00a1deb 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -195,7 +195,12 @@ class JsonFormatter extends NormalizerFormatter
+             }
+ 
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (Throwable) {
++                    // If __toString() throws an exception, use the class name as fallback
++                    return $data::class;
++                }
+             }
+ 
+             if (\get_class($data) === '__PHP_Incomplete_Class') {
+diff --git a/tests/Monolog/Formatter/JsonFormatterTest.php b/tests/Monolog/Formatter/JsonFormatterTest.php
+index 56cef22..ba73215 100644
+--- a/tests/Monolog/Formatter/JsonFormatterTest.php
++++ b/tests/Monolog/Formatter/JsonFormatterTest.php
+@@ -338,6 +338,24 @@ class JsonFormatterTest extends MonologTestCase
+             $record
+         );
+     }
++
++    public function testFormatStringableObjectWithThrowingToString()
++    {
++        $formatter = new JsonFormatter();
++
++        $record = $formatter->format($this->getRecord(
++            Level::Debug,
++            'Testing',
++            channel: 'test',
++            datetime: new \DateTimeImmutable('2022-02-22 00:00:00'),
++            context: [
++                'throwingStringable' => new TestJsonNormWithThrowingToString,
++            ],
++        ));
++
++        $parsed = json_decode($record, true);
++        $this->assertSame('Monolog\Formatter\TestJsonNormWithThrowingToString', $parsed['context']['throwingStringable']);
++    }
+ }
+ 
+ class TestJsonNormPublic
+@@ -370,3 +388,11 @@ class TestJsonNormWithToString
+         return 'stringified';
+     }
+ }
++
++class TestJsonNormWithThrowingToString
++{
++    public function __toString()
++    {
++        throw new \RuntimeException('Failed to convert to string');
++    }
++}

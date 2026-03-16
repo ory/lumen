@@ -21,6 +21,7 @@ func TestKnownModels(t *testing.T) {
 		"ordis/jina-embeddings-v2-base-code": {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.35},
 		"nomic-embed-text":                   {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.30},
 		"nomic-ai/nomic-embed-code-GGUF":     {Dims: 3584, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.15},
+		"nomic-ai/nomic-embed-text-GGUF":     {Dims: 768, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.30},
 		"qwen3-embedding:8b":                 {Dims: 4096, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 		"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 		"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
@@ -58,6 +59,22 @@ func TestDefaultOllamaModelInRegistry(t *testing.T) {
 func TestDefaultLMStudioModelInRegistry(t *testing.T) {
 	if _, ok := KnownModels[DefaultLMStudioModel]; !ok {
 		t.Errorf("DefaultLMStudioModel %q is not in KnownModels", DefaultLMStudioModel)
+	}
+}
+
+func TestKnownModels_NomicEmbedTextGGUF(t *testing.T) {
+	spec, ok := KnownModels["nomic-ai/nomic-embed-text-GGUF"]
+	if !ok {
+		t.Fatal("nomic-ai/nomic-embed-text-GGUF missing from KnownModels")
+	}
+	if spec.Dims != 768 {
+		t.Fatalf("expected 768 dims, got %d", spec.Dims)
+	}
+	if spec.Backend != "lmstudio" {
+		t.Fatalf("expected lmstudio backend, got %q", spec.Backend)
+	}
+	if spec.MinScore != 0.30 {
+		t.Fatalf("expected MinScore 0.30, got %f", spec.MinScore)
 	}
 }
 

@@ -19,9 +19,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +31,7 @@ import (
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/merkle"
 	"github.com/ory/lumen/internal/store"
+	"github.com/ory/lumen/internal/summarizer"
 )
 
 // ProgressFunc is an optional callback for reporting indexing progress.
@@ -59,6 +62,8 @@ type Indexer struct {
 	mu             sync.Mutex
 	store          *store.Store
 	emb            embedder.Embedder
+	summaryEmb     embedder.Embedder     // nil when summaries disabled
+	sumr           summarizer.Summarizer // nil when summaries disabled
 	chunker        chunker.Chunker
 	maxChunkTokens int
 }
@@ -66,14 +71,18 @@ type Indexer struct {
 // NewIndexer creates a new Indexer backed by a SQLite store at dsn,
 // using the given embedder for vector generation. maxChunkTokens controls
 // the maximum estimated token count per chunk before splitting; 0 disables splitting.
-func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer, error) {
-	s, err := store.New(dsn, emb.Dimensions())
+// summaryDims is the dimensionality of the summary embedding vectors (0 = no summary vec tables).
+// sumr and summaryEmb are optional; pass nil to disable summary generation.
+func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int, summaryDims int, sumr summarizer.Summarizer, summaryEmb embedder.Embedder) (*Indexer, error) {
+	s, err := store.New(dsn, emb.Dimensions(), summaryDims)
 	if err != nil {
 		return nil, fmt.Errorf("create store: %w", err)
 	}
 	return &Indexer{
 		store:          s,
 		emb:            emb,
+		summaryEmb:     summaryEmb,
+		sumr:           sumr,
 		chunker:        chunker.NewMultiChunker(chunker.DefaultLanguages(maxChunkTokens)),
 		maxChunkTokens: maxChunkTokens,
 	}, nil
@@ -243,6 +252,13 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		return stats, err
 	}
 
+	// Run summary passes when summarizer is configured.
+	if idx.sumr != nil && idx.summaryEmb != nil && len(filesToIndex) > 0 {
+		if err := idx.runSummaryPasses(ctx, projectDir, filesToIndex, progress); err != nil {
+			log.Printf("warning: summary passes failed: %v", err)
+		}
+	}
+
 	if progress != nil && len(filesToIndex) > 0 {
 		progress(len(filesToIndex), len(filesToIndex),
 			fmt.Sprintf("Indexing complete: %d files, %d chunks", len(filesToIndex), totalChunks))
@@ -293,6 +309,21 @@ func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limi
 	return idx.store.Search(queryVec, limit, maxDistance, pathPrefix)
 }
 
+// SearchChunkSummaries searches the chunk summary vector index.
+func (idx *Indexer) SearchChunkSummaries(queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+	return idx.store.SearchChunkSummaries(queryVec, limit, maxDistance, pathPrefix)
+}
+
+// SearchFileSummaries searches the file summary vector index.
+func (idx *Indexer) SearchFileSummaries(queryVec []float32, limit int, maxDistance float64) ([]store.FileSummaryResult, error) {
+	return idx.store.SearchFileSummaries(queryVec, limit, maxDistance)
+}
+
+// TopChunksByFile returns the top n chunks from a file by raw-code distance.
+func (idx *Indexer) TopChunksByFile(filePath string, queryVec []float32, maxDistance float64, n int) ([]store.SearchResult, error) {
+	return idx.store.TopChunksByFile(filePath, queryVec, maxDistance, n)
+}
+
 // Status returns information about the current index state for a project.
 // All values are read from the database; no filesystem walk is performed.
 func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
@@ -317,4 +348,113 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	}
 
 	return info, nil
+}
+
+// runSummaryPasses generates per-chunk and per-file summaries for the given
+// files, embeds them via summaryEmb, and stores them in the summary tables.
+func (idx *Indexer) runSummaryPasses(ctx context.Context, projectDir string, files []string, progress ProgressFunc) error {
+	const summaryEmbedBatchSize = 32
+
+	if progress != nil {
+		progress(0, len(files), fmt.Sprintf("Generating summaries for %d files", len(files)))
+	}
+
+	fileSummaryInputs := make(map[string][]string)
+	var pendingChunkIDs []string
+	var pendingSummaries []string
+
+	flushChunkSummaries := func() error {
+		if len(pendingChunkIDs) == 0 {
+			return nil
+		}
+		vecs, err := idx.summaryEmb.Embed(ctx, pendingSummaries)
+		if err != nil {
+			return fmt.Errorf("embed chunk summaries: %w", err)
+		}
+		if err := idx.store.InsertChunkSummaries(pendingChunkIDs, pendingSummaries, vecs); err != nil {
+			return fmt.Errorf("store chunk summaries: %w", err)
+		}
+		pendingChunkIDs = pendingChunkIDs[:0]
+		pendingSummaries = pendingSummaries[:0]
+		return nil
+	}
+
+	for fileIdx, relPath := range files {
+		if progress != nil {
+			progress(fileIdx, len(files), fmt.Sprintf("Summarizing chunks %d/%d: %s", fileIdx+1, len(files), relPath))
+		}
+
+		absPath := filepath.Join(projectDir, relPath)
+		fileContent, err := os.ReadFile(absPath)
+		if err != nil {
+			log.Printf("warning: read file %s for summarization: %v", relPath, err)
+			continue
+		}
+		chunks, err := idx.store.ChunksByFile(relPath)
+		if err != nil {
+			log.Printf("warning: fetch chunks for %s: %v", relPath, err)
+			continue
+		}
+		lines := strings.Split(string(fileContent), "\n")
+		for _, c := range chunks {
+			if c.EndLine-c.StartLine < 2 {
+				continue
+			}
+			start := max(c.StartLine-1, 0)
+			end := min(c.EndLine, len(lines))
+			content := strings.Join(lines[start:end], "\n")
+
+			summary, err := idx.sumr.SummarizeChunk(ctx, summarizer.ChunkInfo{
+				Kind:    c.Kind,
+				Symbol:  c.Symbol,
+				Content: content,
+			})
+			if err != nil {
+				log.Printf("warning: summarize chunk %s: %v", c.ID, err)
+				continue
+			}
+			pendingChunkIDs = append(pendingChunkIDs, c.ID)
+			pendingSummaries = append(pendingSummaries, summary)
+			fileSummaryInputs[relPath] = append(fileSummaryInputs[relPath], summary)
+
+			if len(pendingChunkIDs) >= summaryEmbedBatchSize {
+				if err := flushChunkSummaries(); err != nil {
+					log.Printf("warning: flush chunk summaries: %v", err)
+				}
+			}
+		}
+	}
+	if err := flushChunkSummaries(); err != nil {
+		log.Printf("warning: final flush chunk summaries: %v", err)
+	}
+
+	if progress != nil {
+		progress(len(files), len(files), fmt.Sprintf("Generating file-level summaries for %d files", len(fileSummaryInputs)))
+	}
+
+	fileIdx := 0
+	for _, relPath := range files {
+		chunkSummaries := fileSummaryInputs[relPath]
+		if len(chunkSummaries) == 0 {
+			continue
+		}
+		fileIdx++
+		if progress != nil {
+			progress(fileIdx, len(fileSummaryInputs), fmt.Sprintf("Summarizing file %d/%d: %s", fileIdx, len(fileSummaryInputs), relPath))
+		}
+		fileSummary, err := idx.sumr.SummarizeFile(ctx, chunkSummaries)
+		if err != nil {
+			log.Printf("warning: summarize file %s: %v", relPath, err)
+			continue
+		}
+		vecs, err := idx.summaryEmb.Embed(ctx, []string{fileSummary})
+		if err != nil {
+			log.Printf("warning: embed file summary %s: %v", relPath, err)
+			continue
+		}
+		if err := idx.store.InsertFileSummary(relPath, fileSummary, vecs[0]); err != nil {
+			log.Printf("warning: store file summary %s: %v", relPath, err)
+		}
+	}
+	return nil
 }
