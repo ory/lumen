@@ -33,7 +33,7 @@ const (
 	BackendLMStudio = "lmstudio"
 
 	// DefaultSummaryModel is the LLM used for generating summaries.
-	DefaultSummaryModel = "qwen2.5-coder:7b"
+	DefaultSummaryModel = "gemma3:4b"
 	// DefaultSummaryEmbedModelOllama is the embedding model for summaries on Ollama.
 	DefaultSummaryEmbedModelOllama = "nomic-embed-text"
 	// DefaultSummaryEmbedModelLMStudio is the embedding model for summaries on LM Studio.

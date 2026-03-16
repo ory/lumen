@@ -36,9 +36,13 @@ func newEmbedder(cfg config.Config) (embedder.Embedder, error) {
 
 // newSummarizer creates a Summarizer for the configured backend and summary model.
 // Returns nil, nil when cfg.Summaries is false.
+// When cfg.SummaryModel is "_mock", returns a MockSummarizer for testing.
 func newSummarizer(cfg config.Config) (summarizer.Summarizer, error) {
 	if !cfg.Summaries {
 		return nil, nil
+	}
+	if cfg.SummaryModel == "_mock" {
+		return &summarizer.MockSummarizer{}, nil
 	}
 	switch cfg.Backend {
 	case config.BackendOllama:

@@ -123,8 +123,8 @@ func TestLoad_SummaryConfig_Enabled_Ollama(t *testing.T) {
 	if !cfg.Summaries {
 		t.Fatal("expected Summaries=true")
 	}
-	if cfg.SummaryModel != "qwen2.5-coder:7b" {
-		t.Fatalf("expected default SummaryModel=qwen2.5-coder:7b, got %q", cfg.SummaryModel)
+	if cfg.SummaryModel != "gemma3:4b" {
+		t.Fatalf("expected default SummaryModel=gemma3:4b, got %q", cfg.SummaryModel)
 	}
 	if cfg.SummaryEmbedModel != "nomic-embed-text" {
 		t.Fatalf("expected default SummaryEmbedModel=nomic-embed-text for ollama, got %q", cfg.SummaryEmbedModel)

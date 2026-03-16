@@ -1,0 +1,21 @@
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml	0.656s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/ast	0.881s [no tests to run]
+?   	github.com/goccy/go-yaml/cmd/ycat	[no test files]
+?   	github.com/goccy/go-yaml/internal/errors	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/lexer	0.765s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/parser	0.513s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/printer	0.163s [no tests to run]
+?   	github.com/goccy/go-yaml/scanner	[no test files]
+testing: warning: no tests to run
+PASS
+ok  	github.com/goccy/go-yaml/token	0.275s [no tests to run]

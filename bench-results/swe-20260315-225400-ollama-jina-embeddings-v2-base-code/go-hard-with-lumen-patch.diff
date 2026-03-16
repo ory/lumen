@@ -1,0 +1,14 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..733c0fd 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,9 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		if typ.Kind() == reflect.Struct && defaultVal.IsValid() {
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)

@@ -14,13 +14,16 @@ import (
 )
 
 type Config struct {
-	LumenBinary string
-	RepoRoot    string
-	ResultsDir  string
-	Backend     string
-	EmbedModel  string
-	ClaudeModel string
-	TotalRuns   int
+	LumenBinary       string
+	RepoRoot          string
+	ResultsDir        string
+	Backend           string
+	EmbedModel        string
+	ClaudeModel       string
+	TotalRuns         int
+	Summaries         bool
+	SummaryModel      string
+	SummaryEmbedModel string
 }
 
 type RunResult struct {
@@ -109,6 +112,13 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 			"LUMEN_BACKEND="+cfg.Backend,
 			"LUMEN_EMBED_MODEL="+cfg.EmbedModel,
 		)
+		if cfg.Summaries {
+			cmd.Env = append(cmd.Env,
+				"LUMEN_SUMMARIES=true",
+				"LUMEN_SUMMARY_MODEL="+cfg.SummaryModel,
+				"LUMEN_SUMMARY_EMBED_MODEL="+cfg.SummaryEmbedModel,
+			)
+		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			fmt.Printf("  %-20s %-10s index FAILED (%v): %s\n", t.ID, string(s), err, out)
 		} else {
@@ -117,7 +127,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	}
 
 	// Write MCP config
-	mcpPath, cleanup, err := WriteMCPConfig(s, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := WriteMCPConfig(s, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("writing MCP config: %w", err)
 	}

@@ -39,10 +39,16 @@ import (
 // These mirror cmd.SemanticSearchInput etc. but are intentionally
 // decoupled so the E2E tests don't depend on cmd internals.
 
+type relevantFileItem struct {
+	FilePath string  `json:"file_path"`
+	Score    float64 `json:"score"`
+}
+
 type semanticSearchOutput struct {
-	Results      []searchResultItem `json:"results"`
-	Reindexed    bool               `json:"reindexed"`
-	IndexedFiles int                `json:"indexed_files,omitempty"`
+	Results       []searchResultItem `json:"results"`
+	RelevantFiles []relevantFileItem `json:"relevant_files,omitempty"`
+	Reindexed     bool               `json:"reindexed"`
+	IndexedFiles  int                `json:"indexed_files,omitempty"`
 }
 
 type searchResultItem struct {
@@ -114,6 +120,12 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 	}
+	// Forward optional summary env vars when set in the test process (e.g. via t.Setenv).
+	for _, key := range []string{"LUMEN_SUMMARIES", "LUMEN_SUMMARY_MODEL", "LUMEN_SUMMARY_EMBED_MODEL"} {
+		if v := os.Getenv(key); v != "" {
+			cmd.Env = append(cmd.Env, key+"="+v)
+		}
+	}
 
 	transport := &mcp.CommandTransport{Command: cmd}
 	client := mcp.NewClient(&mcp.Implementation{
@@ -149,6 +161,9 @@ func getTextContent(t *testing.T, result *mcp.CallToolResult) string {
 
 // fileRe matches <result:file filename="..."> opening tags.
 var fileRe = regexp.MustCompile(`^<result:file filename="([^"]+)">$`)
+
+// relevantFileRe matches <file path="..." score="X.XX"/> lines inside <relevant_files>.
+var relevantFileRe = regexp.MustCompile(`^\s*<file path="([^"]+)" score="(-?\d+\.\d+)"/>$`)
 
 // chunkRe matches <result:chunk ...> opening tags like:
 //
@@ -189,7 +204,27 @@ func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 		contentLines = nil
 	}
 
+	inRelevantFiles := false
 	for _, line := range lines {
+		if line == "<relevant_files>" {
+			flushChunk()
+			inRelevantFiles = true
+			continue
+		}
+		if line == "</relevant_files>" {
+			inRelevantFiles = false
+			continue
+		}
+		if inRelevantFiles {
+			if m := relevantFileRe.FindStringSubmatch(line); m != nil {
+				score, _ := strconv.ParseFloat(m[2], 64)
+				out.RelevantFiles = append(out.RelevantFiles, relevantFileItem{
+					FilePath: m[1],
+					Score:    score,
+				})
+			}
+			continue
+		}
 		if m := fileRe.FindStringSubmatch(line); m != nil {
 			flushChunk()
 			currentFile = m[1]
@@ -375,6 +410,29 @@ var validChunkKinds = map[string]bool{
 	"interface": true,
 	"const":     true,
 	"var":       true,
+}
+
+// startServerWithSummaries launches an MCP server with the mock summarizer enabled.
+// Uses LUMEN_SUMMARY_MODEL=_mock so no real LLM is required.
+func startServerWithSummaries(t *testing.T) *mcp.ClientSession {
+	t.Helper()
+	t.Setenv("LUMEN_SUMMARIES", "true")
+	t.Setenv("LUMEN_SUMMARY_MODEL", "_mock")
+	t.Setenv("LUMEN_SUMMARY_EMBED_MODEL", "all-minilm")
+	return startServer(t)
+}
+
+// uniqueFilePaths extracts deduplicated file paths from a result list.
+func uniqueFilePaths(results []searchResultItem) []string {
+	seen := make(map[string]bool)
+	var paths []string
+	for _, r := range results {
+		if !seen[r.FilePath] {
+			seen[r.FilePath] = true
+			paths = append(paths, r.FilePath)
+		}
+	}
+	return paths
 }
 
 // --- Tests ---
@@ -1137,5 +1195,235 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	if found.Score > 0.3 && findResult(out4.Results, "HandleHealth") == nil {
 		t.Errorf("call 4: HandleHealth (score=%.2f) should pass min_score=0.3 filter", found.Score)
+	}
+}
+
+// --- Summary Tests ---
+
+func TestE2E_SummaryDisabledByDefault(t *testing.T) {
+	session := startServer(t)
+	projectPath := sampleProjectPath(t)
+
+	out := callSearch(t, session, map[string]any{
+		"query":     "authentication token validation",
+		"path":      projectPath,
+		"n_results": 5,
+	})
+
+	if len(out.RelevantFiles) != 0 {
+		t.Errorf("expected no relevant_files when summaries disabled, got %d entry(ies): %v", len(out.RelevantFiles), out.RelevantFiles)
+	}
+}
+
+func TestE2E_SummaryRelevantFilesPopulated(t *testing.T) {
+	session := startServerWithSummaries(t)
+	projectPath := sampleProjectPath(t)
+
+	out := callSearch(t, session, map[string]any{
+		"query":     "authentication token validation",
+		"path":      projectPath,
+		"n_results": 5,
+	})
+
+	if len(out.RelevantFiles) == 0 {
+		t.Fatal("expected non-empty relevant_files when summaries enabled")
+	}
+
+	// Each entry should have a .go file path and a valid score.
+	for i, rf := range out.RelevantFiles {
+		if !strings.HasSuffix(rf.FilePath, ".go") {
+			t.Errorf("relevant_files[%d]: expected .go path, got %q", i, rf.FilePath)
+		}
+		if rf.Score <= 0 || rf.Score > 1 {
+			t.Errorf("relevant_files[%d] %q: score %f not in (0, 1]", i, rf.FilePath, rf.Score)
+		}
+	}
+
+	// Scores should be in descending order.
+	for i := 1; i < len(out.RelevantFiles); i++ {
+		if out.RelevantFiles[i].Score > out.RelevantFiles[i-1].Score {
+			t.Errorf("relevant_files not descending: [%d]=%f > [%d]=%f",
+				i, out.RelevantFiles[i].Score, i-1, out.RelevantFiles[i-1].Score)
+		}
+	}
+
+	// auth.go should appear in relevant_files for an auth-related query.
+	authFound := false
+	for _, rf := range out.RelevantFiles {
+		if strings.HasSuffix(rf.FilePath, "auth.go") {
+			authFound = true
+			break
+		}
+	}
+	if !authFound {
+		t.Errorf("expected auth.go in relevant_files, got: %v", out.RelevantFiles)
+	}
+}
+
+func TestE2E_SummaryFanOutMergesChunkResults(t *testing.T) {
+	session := startServerWithSummaries(t)
+	projectPath := sampleProjectPath(t)
+
+	minScore := -1.0
+	out := callSearch(t, session, map[string]any{
+		"query":     "database query operations",
+		"path":      projectPath,
+		"n_results": 10,
+		"min_score": minScore,
+	})
+
+	if len(out.Results) == 0 {
+		t.Fatal("expected results from fan-out search")
+	}
+
+	// Results should include chunks from database.go.
+	dbFound := false
+	for _, r := range out.Results {
+		if strings.HasSuffix(r.FilePath, "database.go") {
+			dbFound = true
+			break
+		}
+	}
+	if !dbFound {
+		t.Errorf("expected database.go chunks in results, got file paths: %v", uniqueFilePaths(out.Results))
+	}
+
+	// relevant_files should contain database.go.
+	dbFileFound := false
+	for _, rf := range out.RelevantFiles {
+		if strings.HasSuffix(rf.FilePath, "database.go") {
+			dbFileFound = true
+			break
+		}
+	}
+	if !dbFileFound {
+		t.Errorf("expected database.go in relevant_files, got: %v", out.RelevantFiles)
+	}
+}
+
+func TestE2E_SummaryIncrementalUpdateRefreshesSummaries(t *testing.T) {
+	session := startServerWithSummaries(t)
+
+	// Copy sample project to a temp dir so we can modify it.
+	tmpDir := t.TempDir()
+	copyDir(t, sampleProjectPath(t), tmpDir)
+
+	// First search triggers indexing with summaries.
+	out1 := callSearch(t, session, map[string]any{
+		"query": "authentication token validation",
+		"path":  tmpDir,
+	})
+	if !out1.Reindexed {
+		t.Error("first search: expected Reindexed=true")
+	}
+
+	// Modify auth.go to trigger a re-index.
+	authPath := filepath.Join(tmpDir, "auth.go")
+	content, err := os.ReadFile(authPath)
+	if err != nil {
+		t.Fatalf("read auth.go: %v", err)
+	}
+	modified := strings.ReplaceAll(string(content), "ValidateToken", "VerifyToken")
+	if err := os.WriteFile(authPath, []byte(modified), 0o644); err != nil {
+		t.Fatalf("write auth.go: %v", err)
+	}
+
+	// Second search: should re-index due to changed file.
+	out2 := callSearch(t, session, map[string]any{
+		"query": "authentication token validation",
+		"path":  tmpDir,
+	})
+	if !out2.Reindexed {
+		t.Error("after modifying auth.go: expected Reindexed=true")
+	}
+
+	// Summary index should be refreshed — auth.go still relevant.
+	authFound := false
+	for _, rf := range out2.RelevantFiles {
+		if strings.HasSuffix(rf.FilePath, "auth.go") {
+			authFound = true
+			break
+		}
+	}
+	if !authFound {
+		t.Errorf("after re-index: expected auth.go in relevant_files, got: %v", out2.RelevantFiles)
+	}
+
+	// Third search: no changes, should not re-index.
+	out3 := callSearch(t, session, map[string]any{
+		"query": "authentication token validation",
+		"path":  tmpDir,
+	})
+	if out3.Reindexed {
+		t.Error("third search (no changes): expected Reindexed=false")
+	}
+}
+
+func TestE2E_SummaryProgressNotificationsIncludeSummaryStep(t *testing.T) {
+	var mu sync.Mutex
+	var notifications []mcp.ProgressNotificationParams
+
+	opts := &mcp.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
+			mu.Lock()
+			defer mu.Unlock()
+			notifications = append(notifications, *req.Params)
+		},
+	}
+
+	t.Setenv("LUMEN_SUMMARIES", "true")
+	t.Setenv("LUMEN_SUMMARY_MODEL", "_mock")
+	t.Setenv("LUMEN_SUMMARY_EMBED_MODEL", "all-minilm")
+	session := startServerWithOpts(t, opts)
+	projectPath := sampleProjectPath(t)
+
+	ctx := context.Background()
+	params := &mcp.CallToolParams{
+		Name:      "semantic_search",
+		Arguments: mustJSON(t, map[string]any{"query": "authentication", "path": projectPath}),
+		Meta:      mcp.Meta{"progressToken": "test-summary-progress"},
+	}
+
+	result, err := session.CallTool(ctx, params)
+	if err != nil {
+		t.Fatalf("CallTool failed: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CallTool returned error: %+v", result.Content)
+	}
+
+	mu.Lock()
+	got := make([]mcp.ProgressNotificationParams, len(notifications))
+	copy(got, notifications)
+	mu.Unlock()
+
+	if len(got) == 0 {
+		t.Fatal("expected progress notifications with summaries enabled, got none")
+	}
+
+	// All notifications should carry our progress token.
+	for i, n := range got {
+		if n.ProgressToken != "test-summary-progress" {
+			t.Errorf("notification[%d]: expected ProgressToken='test-summary-progress', got %v", i, n.ProgressToken)
+		}
+	}
+
+	// Indexing should complete successfully (last notification is completion message).
+	hasComplete := false
+	for _, n := range got {
+		if strings.Contains(n.Message, "Indexing complete") {
+			hasComplete = true
+			break
+		}
+	}
+	if !hasComplete {
+		t.Errorf("expected 'Indexing complete' notification with summaries enabled; got messages: %v",
+			func() []string {
+				msgs := make([]string, len(got))
+				for i, n := range got {
+					msgs[i] = n.Message
+				}
+				return msgs
+			}())
 	}
 }

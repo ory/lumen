@@ -42,22 +42,28 @@ type mcpServer struct {
 
 // WriteMCPConfig writes a temp MCP config JSON file.
 // Returns path to the temp file and a cleanup function.
-func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, func(), error) {
-	var cfg mcpConfig
+func WriteMCPConfig(s Scenario, cfg *Config) (string, func(), error) {
+	var mcpCfg mcpConfig
 
 	switch s {
 	case Baseline:
-		cfg = mcpConfig{MCPServers: map[string]mcpServer{}}
+		mcpCfg = mcpConfig{MCPServers: map[string]mcpServer{}}
 	case WithLumen:
-		cfg = mcpConfig{
+		env := map[string]string{
+			"LUMEN_BACKEND":     cfg.Backend,
+			"LUMEN_EMBED_MODEL": cfg.EmbedModel,
+		}
+		if cfg.Summaries {
+			env["LUMEN_SUMMARIES"] = "true"
+			env["LUMEN_SUMMARY_MODEL"] = cfg.SummaryModel
+			env["LUMEN_SUMMARY_EMBED_MODEL"] = cfg.SummaryEmbedModel
+		}
+		mcpCfg = mcpConfig{
 			MCPServers: map[string]mcpServer{
 				"lumen": {
-					Command: lumenBinary,
+					Command: cfg.LumenBinary,
 					Args:    []string{"stdio"},
-					Env: map[string]string{
-						"LUMEN_BACKEND":     backend,
-						"LUMEN_EMBED_MODEL": model,
-					},
+					Env:     env,
 				},
 			},
 		}
@@ -65,7 +71,7 @@ func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, fun
 		return "", nil, fmt.Errorf("unknown scenario: %s", s)
 	}
 
-	data, err := json.Marshal(cfg)
+	data, err := json.Marshal(mcpCfg)
 	if err != nil {
 		return "", nil, err
 	}

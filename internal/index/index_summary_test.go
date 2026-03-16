@@ -48,6 +48,10 @@ func (s *stubSummarizer) SummarizeChunk(_ context.Context, chunk summarizer.Chun
 	return "summary of " + chunk.Symbol, nil
 }
 
+func (s *stubSummarizer) SummarizeChunks(ctx context.Context, chunks []summarizer.ChunkInfo) ([]string, error) {
+	return summarizer.SummarizeChunksByOne(ctx, s, chunks)
+}
+
 func (s *stubSummarizer) SummarizeFile(_ context.Context, _ []string) (string, error) {
 	s.fileCalls++
 	return "file summary", nil

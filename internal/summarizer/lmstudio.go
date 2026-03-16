@@ -27,8 +27,13 @@ func NewLMStudio(model, baseURL string) *LMStudioSummarizer {
 }
 
 type lmstudioChatRequest struct {
-	Model    string                `json:"model"`
-	Messages []lmstudioChatMessage `json:"messages"`
+	Model          string                      `json:"model"`
+	Messages       []lmstudioChatMessage       `json:"messages"`
+	ResponseFormat *lmstudioResponseFormat     `json:"response_format,omitempty"`
+}
+
+type lmstudioResponseFormat struct {
+	Type string `json:"type"` // "json_object" forces JSON output
 }
 
 type lmstudioChatMessage struct {
@@ -43,9 +48,14 @@ type lmstudioChatResponse struct {
 }
 
 func (s *LMStudioSummarizer) chat(ctx context.Context, prompt string) (string, error) {
+	return s.chatWithFormat(ctx, prompt, nil)
+}
+
+func (s *LMStudioSummarizer) chatWithFormat(ctx context.Context, prompt string, format *lmstudioResponseFormat) (string, error) {
 	reqBody := lmstudioChatRequest{
-		Model:    s.model,
-		Messages: []lmstudioChatMessage{{Role: "user", Content: prompt}},
+		Model:          s.model,
+		Messages:       []lmstudioChatMessage{{Role: "user", Content: prompt}},
+		ResponseFormat: format,
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -87,6 +97,23 @@ func (s *LMStudioSummarizer) chat(ctx context.Context, prompt string) (string, e
 // SummarizeChunk generates a natural-language summary for a code chunk.
 func (s *LMStudioSummarizer) SummarizeChunk(ctx context.Context, chunk ChunkInfo) (string, error) {
 	return s.chat(ctx, chunkPrompt(chunk))
+}
+
+// SummarizeChunks summarizes all chunks in a single LLM call using LM Studio's
+// JSON object response format. Falls back to individual calls if the model
+// returns an unexpected structure.
+func (s *LMStudioSummarizer) SummarizeChunks(ctx context.Context, chunks []ChunkInfo) ([]string, error) {
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	raw, err := s.chatWithFormat(ctx, batchChunkPrompt(chunks), &lmstudioResponseFormat{Type: "json_object"})
+	if err != nil {
+		return nil, err
+	}
+	if summaries := parseBatchSummaries(raw, len(chunks)); summaries != nil {
+		return summaries, nil
+	}
+	return SummarizeChunksByOne(ctx, s, chunks)
 }
 
 // SummarizeFile generates a file-level summary from its chunk summaries.

@@ -18,6 +18,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"flag"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/store"
 )
 
 var updateGolden = flag.Bool("update-golden", false, "update golden test files")
@@ -858,4 +860,340 @@ func TestIsTestFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMergeSearchResults(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        []store.SearchResult
+		b        []store.SearchResult
+		wantLen  int
+		validate func(t *testing.T, got []store.SearchResult)
+	}{
+		{
+			name:    "both empty",
+			a:       nil,
+			b:       nil,
+			wantLen: 0,
+		},
+		{
+			name: "b appends to a — no overlap",
+			a: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.3},
+			},
+			b: []store.SearchResult{
+				{FilePath: "token.go", Symbol: "Bar", StartLine: 5, Distance: 0.2},
+			},
+			wantLen: 2,
+			validate: func(t *testing.T, got []store.SearchResult) {
+				t.Helper()
+				paths := map[string]bool{}
+				for _, r := range got {
+					paths[r.FilePath] = true
+				}
+				if !paths["auth.go"] || !paths["token.go"] {
+					t.Errorf("expected both auth.go and token.go in results; got %v", got)
+				}
+			},
+		},
+		{
+			name: "duplicate: a wins when a has lower distance",
+			a: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.2},
+			},
+			b: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.4},
+			},
+			wantLen: 1,
+			validate: func(t *testing.T, got []store.SearchResult) {
+				t.Helper()
+				if got[0].Distance != 0.2 {
+					t.Errorf("expected distance=0.2 (a wins), got %v", got[0].Distance)
+				}
+			},
+		},
+		{
+			name: "duplicate: b wins when b has lower distance",
+			a: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.4},
+			},
+			b: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.2},
+			},
+			wantLen: 1,
+			validate: func(t *testing.T, got []store.SearchResult) {
+				t.Helper()
+				if got[0].Distance != 0.2 {
+					t.Errorf("expected distance=0.2 (b wins), got %v", got[0].Distance)
+				}
+			},
+		},
+		{
+			name: "same symbol different startLine — not a duplicate",
+			a: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 10, Distance: 0.3},
+			},
+			b: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "Foo", StartLine: 50, Distance: 0.3},
+			},
+			wantLen: 2,
+		},
+		{
+			name: "partial overlap — mixed unique and duplicate",
+			a: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "ValidateToken", StartLine: 10, Distance: 0.3},
+				{FilePath: "router.go", Symbol: "HandleRoute", StartLine: 20, Distance: 0.4},
+			},
+			b: []store.SearchResult{
+				{FilePath: "auth.go", Symbol: "ValidateToken", StartLine: 10, Distance: 0.2},
+				{FilePath: "store.go", Symbol: "Query", StartLine: 5, Distance: 0.35},
+			},
+			wantLen: 3,
+			validate: func(t *testing.T, got []store.SearchResult) {
+				t.Helper()
+				for _, r := range got {
+					if r.FilePath == "auth.go" && r.Symbol == "ValidateToken" {
+						if r.Distance != 0.2 {
+							t.Errorf("ValidateToken: expected distance=0.2, got %v", r.Distance)
+						}
+					}
+				}
+				paths := map[string]bool{}
+				for _, r := range got {
+					paths[r.FilePath] = true
+				}
+				if !paths["auth.go"] || !paths["router.go"] || !paths["store.go"] {
+					t.Errorf("expected all three files in results; got %v", got)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeSearchResults(tt.a, tt.b)
+			if len(got) != tt.wantLen {
+				t.Fatalf("expected len=%d, got %d: %v", tt.wantLen, len(got), got)
+			}
+			if tt.validate != nil {
+				tt.validate(t, got)
+			}
+		})
+	}
+}
+
+// runRankingPipeline replicates the ranking pipeline from handleSemanticSearch:
+// merge raw + summary results → convert to SearchResultItem + boostedScore →
+// mergeOverlappingResults → sort by score desc → cap to nResults.
+func runRankingPipeline(raw, summary []store.SearchResult, nResults int) []SearchResultItem {
+	merged := mergeSearchResults(raw, summary)
+
+	items := make([]SearchResultItem, 0, len(merged))
+	for _, r := range merged {
+		score := float32(1.0 - r.Distance)
+		items = append(items, SearchResultItem{
+			FilePath:  r.FilePath,
+			Symbol:    r.Symbol,
+			Kind:      r.Kind,
+			StartLine: r.StartLine,
+			EndLine:   r.EndLine,
+			Score:     boostedScore(score, r.Kind, r.FilePath),
+		})
+	}
+
+	items = mergeOverlappingResults(items)
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Score > items[j].Score
+	})
+
+	if nResults > 0 && len(items) > nResults {
+		items = items[:nResults]
+	}
+	return items
+}
+
+func TestRankingPipeline_Scenarios(t *testing.T) {
+	t.Run("scenario A: production code beats test file with same raw distance", func(t *testing.T) {
+		// Both have dist=0.35 → score=0.65 before boost.
+		// middleware.go (function): 0.65 * 1.15 = 0.7475
+		// middleware_test.go (function): 0.65 * 1.15 * 0.75 = 0.560...
+		raw := []store.SearchResult{
+			{FilePath: "auth/middleware.go", Symbol: "ValidateToken", Kind: "function", StartLine: 10, EndLine: 30, Distance: 0.35},
+			{FilePath: "auth/middleware_test.go", Symbol: "TestValidateToken", Kind: "function", StartLine: 5, EndLine: 20, Distance: 0.35},
+		}
+		items := runRankingPipeline(raw, nil, 10)
+		if len(items) < 2 {
+			t.Fatalf("expected at least 2 results, got %d", len(items))
+		}
+		if items[0].FilePath != "auth/middleware.go" {
+			t.Errorf("expected middleware.go first (production code), got %s", items[0].FilePath)
+		}
+		if items[0].Score <= items[1].Score {
+			t.Errorf("expected middleware.go score (%.4f) > test score (%.4f)", items[0].Score, items[1].Score)
+		}
+	})
+
+	t.Run("scenario B: summary hit rescues result raw KNN missed", func(t *testing.T) {
+		// Raw only has router.go at dist=0.40; auth.go was too far for raw (dist=0.50 excluded).
+		// Summary chunk for auth.go has dist=0.25 → enters via summary fan-out.
+		raw := []store.SearchResult{
+			{FilePath: "router.go", Symbol: "HandleRoute", Kind: "function", StartLine: 1, EndLine: 20, Distance: 0.40},
+		}
+		summary := []store.SearchResult{
+			{FilePath: "auth.go", Symbol: "ValidateToken", Kind: "function", StartLine: 1, EndLine: 15, Distance: 0.25},
+		}
+		items := runRankingPipeline(raw, summary, 10)
+		if len(items) != 2 {
+			t.Fatalf("expected 2 results, got %d", len(items))
+		}
+		// auth.go has better distance so it should rank first.
+		if items[0].FilePath != "auth.go" {
+			t.Errorf("expected auth.go first (better summary hit), got %s", items[0].FilePath)
+		}
+	})
+
+	t.Run("scenario C: deduplication — same chunk in raw + summary, keep best distance", func(t *testing.T) {
+		raw := []store.SearchResult{
+			{FilePath: "store.go", Symbol: "Query", Kind: "function", StartLine: 10, EndLine: 30, Distance: 0.45},
+		}
+		summary := []store.SearchResult{
+			{FilePath: "store.go", Symbol: "Query", Kind: "function", StartLine: 10, EndLine: 30, Distance: 0.28},
+		}
+		merged := mergeSearchResults(raw, summary)
+		if len(merged) != 1 {
+			t.Fatalf("expected 1 result after merge, got %d", len(merged))
+		}
+		if merged[0].Distance != 0.28 {
+			t.Errorf("expected best distance=0.28, got %v", merged[0].Distance)
+		}
+	})
+
+	t.Run("scenario D: NResults cap respected after summary fan-out inflates results", func(t *testing.T) {
+		// 5 raw + 8 summary distinct = 13 total; cap at 8.
+		raw := make([]store.SearchResult, 5)
+		for i := range raw {
+			raw[i] = store.SearchResult{
+				FilePath:  "raw.go",
+				Symbol:    "RawFunc",
+				Kind:      "function",
+				StartLine: (i + 1) * 100,
+				EndLine:   (i+1)*100 + 10,
+				Distance:  0.3 + float64(i)*0.01,
+			}
+		}
+		summary := make([]store.SearchResult, 8)
+		for i := range summary {
+			summary[i] = store.SearchResult{
+				FilePath:  "summary.go",
+				Symbol:    "SumFunc",
+				Kind:      "function",
+				StartLine: (i + 1) * 100,
+				EndLine:   (i+1)*100 + 10,
+				Distance:  0.2 + float64(i)*0.01,
+			}
+		}
+		items := runRankingPipeline(raw, summary, 8)
+		if len(items) != 8 {
+			t.Fatalf("expected 8 results (cap), got %d", len(items))
+		}
+		// Verify sorted by score descending.
+		for i := 1; i < len(items); i++ {
+			if items[i].Score > items[i-1].Score {
+				t.Errorf("results not sorted: items[%d].Score=%.4f > items[%d].Score=%.4f", i, items[i].Score, i-1, items[i-1].Score)
+			}
+		}
+	})
+
+	t.Run("scenario E: find DB connection code — kind boost ranks types above comments", func(t *testing.T) {
+		// type at dist=0.38 → score=0.62 * 1.15 = 0.713
+		// comment at dist=0.32 → score=0.68 (no source boost for comment kind)
+		// Lines are kept far apart so mergeOverlappingResults does not combine them.
+		raw := []store.SearchResult{
+			{FilePath: "db/pool.go", Symbol: "Pool", Kind: "type", StartLine: 100, EndLine: 120, Distance: 0.38},
+			{FilePath: "db/pool.go", Symbol: "pool size comment", Kind: "comment", StartLine: 1, EndLine: 3, Distance: 0.32},
+		}
+		items := runRankingPipeline(raw, nil, 10)
+		if len(items) < 2 {
+			t.Fatalf("expected at least 2 results, got %d", len(items))
+		}
+		if items[0].Symbol != "Pool" {
+			t.Errorf("expected Pool (type) first despite higher raw distance; got %s (score=%.4f)", items[0].Symbol, items[0].Score)
+		}
+	})
+
+	t.Run("scenario F: RelevantFiles populated and chunks appear in results", func(t *testing.T) {
+		// This scenario validates the data contract: chunks returned by TopChunksByFile
+		// merge into results and the corresponding file is tracked as relevant.
+		// We simulate the fan-out manually (as handleSemanticSearch does).
+
+		// Raw search returned one result.
+		raw := []store.SearchResult{
+			{FilePath: "router.go", Symbol: "HandleRoute", Kind: "function", StartLine: 1, EndLine: 10, Distance: 0.40},
+		}
+
+		// File summary matched auth/auth.go → TopChunksByFile returned 3 chunks.
+		topChunks := []store.SearchResult{
+			{FilePath: "auth/auth.go", Symbol: "ValidateToken", Kind: "function", StartLine: 5, EndLine: 20, Distance: 0.22},
+			{FilePath: "auth/auth.go", Symbol: "RevokeToken", Kind: "function", StartLine: 22, EndLine: 35, Distance: 0.28},
+			{FilePath: "auth/auth.go", Symbol: "ParseClaims", Kind: "function", StartLine: 37, EndLine: 55, Distance: 0.30},
+		}
+
+		// Simulate merging raw + top-chunks (no chunk summary duplicates here).
+		merged := mergeSearchResults(raw, topChunks)
+		items := make([]SearchResultItem, 0, len(merged))
+		for _, r := range merged {
+			score := float32(1.0 - r.Distance)
+			items = append(items, SearchResultItem{
+				FilePath:  r.FilePath,
+				Symbol:    r.Symbol,
+				Kind:      r.Kind,
+				StartLine: r.StartLine,
+				EndLine:   r.EndLine,
+				Score:     boostedScore(score, r.Kind, r.FilePath),
+			})
+		}
+		items = mergeOverlappingResults(items)
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].Score > items[j].Score
+		})
+
+		// Build RelevantFiles from file summary hit (dist=0.20 → score=0.80).
+		relevantFiles := []RelevantFile{
+			{FilePath: "auth/auth.go", Score: 1.0 - 0.20},
+		}
+
+		out := SemanticSearchOutput{Results: items, RelevantFiles: relevantFiles}
+
+		// Verify chunks from auth.go appear in results.
+		authChunks := 0
+		for _, item := range out.Results {
+			if item.FilePath == "auth/auth.go" {
+				authChunks++
+			}
+		}
+		if authChunks == 0 {
+			t.Error("expected auth/auth.go chunks in results after TopChunksByFile fan-out")
+		}
+
+		// Verify RelevantFiles is populated.
+		if len(out.RelevantFiles) != 1 {
+			t.Fatalf("expected 1 relevant file, got %d", len(out.RelevantFiles))
+		}
+		if out.RelevantFiles[0].FilePath != "auth/auth.go" {
+			t.Errorf("expected auth/auth.go as relevant file, got %s", out.RelevantFiles[0].FilePath)
+		}
+		if out.RelevantFiles[0].Score != 0.80 {
+			t.Errorf("expected score=0.80, got %v", out.RelevantFiles[0].Score)
+		}
+
+		// Verify formatSearchResults includes the relevant_files block.
+		text := formatSearchResults("/proj", out)
+		if !strings.Contains(text, "<relevant_files>") {
+			t.Error("expected <relevant_files> block in formatted output")
+		}
+		if !strings.Contains(text, "auth/auth.go") {
+			t.Error("expected auth/auth.go in formatted output")
+		}
+	})
 }

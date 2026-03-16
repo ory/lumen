@@ -30,6 +30,7 @@ type ollamaChatRequest struct {
 	Model    string              `json:"model"`
 	Messages []ollamaChatMessage `json:"messages"`
 	Stream   bool                `json:"stream"`
+	Format   string              `json:"format,omitempty"` // "json" forces JSON output
 }
 
 type ollamaChatMessage struct {
@@ -42,10 +43,15 @@ type ollamaChatResponse struct {
 }
 
 func (s *OllamaSummarizer) chat(ctx context.Context, prompt string) (string, error) {
+	return s.chatWithFormat(ctx, prompt, "")
+}
+
+func (s *OllamaSummarizer) chatWithFormat(ctx context.Context, prompt, format string) (string, error) {
 	reqBody := ollamaChatRequest{
 		Model:    s.model,
 		Messages: []ollamaChatMessage{{Role: "user", Content: prompt}},
 		Stream:   false,
+		Format:   format,
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -84,6 +90,24 @@ func (s *OllamaSummarizer) chat(ctx context.Context, prompt string) (string, err
 // SummarizeChunk generates a natural-language summary for a code chunk.
 func (s *OllamaSummarizer) SummarizeChunk(ctx context.Context, chunk ChunkInfo) (string, error) {
 	return s.chat(ctx, chunkPrompt(chunk))
+}
+
+// SummarizeChunks summarizes all chunks in a single LLM call using Ollama's
+// JSON format mode. Falls back to individual calls if the model returns an
+// unexpected structure.
+func (s *OllamaSummarizer) SummarizeChunks(ctx context.Context, chunks []ChunkInfo) ([]string, error) {
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	raw, err := s.chatWithFormat(ctx, batchChunkPrompt(chunks), "json")
+	if err != nil {
+		return nil, err
+	}
+	if summaries := parseBatchSummaries(raw, len(chunks)); summaries != nil {
+		return summaries, nil
+	}
+	// Model didn't follow the JSON format — fall back to individual calls.
+	return SummarizeChunksByOne(ctx, s, chunks)
 }
 
 // SummarizeFile generates a file-level summary from its chunk summaries.

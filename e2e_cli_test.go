@@ -242,7 +242,15 @@ func TestE2E_CLI_IndexForceReindex(t *testing.T) {
 }
 
 // openIndexDB opens the SQLite index database for a given project path and dataHome.
+// Uses empty summaryEmbedModel (no summaries).
 func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
+	t.Helper()
+	return openIndexDBWithModel(t, dataHome, projectPath, "")
+}
+
+// openIndexDBWithModel opens the SQLite index database for a given project path,
+// dataHome, and summary embed model (empty string when summaries disabled).
+func openIndexDBWithModel(t *testing.T, dataHome, projectPath, summaryEmbedModel string) *sql.DB {
 	t.Helper()
 	sqlite_vec.Auto()
 
@@ -250,7 +258,7 @@ func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
 	// correct path inside our test data home.
 	orig := os.Getenv("XDG_DATA_HOME")
 	os.Setenv("XDG_DATA_HOME", dataHome)
-	dbPath := config.DBPathForProject(projectPath, "all-minilm")
+	dbPath := config.DBPathForProject(projectPath, "all-minilm", summaryEmbedModel)
 	os.Setenv("XDG_DATA_HOME", orig)
 
 	db, err := sql.Open("sqlite3", dbPath)
@@ -259,6 +267,35 @@ func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+// runCLIWithSummaries runs the lumen binary with summaries enabled via the mock summarizer.
+func runCLIWithSummaries(t *testing.T, dataHome string, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+
+	ollamaHost := os.Getenv("OLLAMA_HOST")
+	if ollamaHost == "" {
+		ollamaHost = "http://localhost:11434"
+	}
+
+	cmd := exec.Command(serverBinary, args...)
+	cmd.Env = []string{
+		"OLLAMA_HOST=" + ollamaHost,
+		"LUMEN_EMBED_MODEL=all-minilm",
+		"LUMEN_SUMMARIES=true",
+		"LUMEN_SUMMARY_MODEL=_mock",
+		"LUMEN_SUMMARY_EMBED_MODEL=all-minilm",
+		"XDG_DATA_HOME=" + dataHome,
+		"HOME=" + os.Getenv("HOME"),
+		"PATH=" + os.Getenv("PATH"),
+	}
+
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err = cmd.Run()
+	return outBuf.String(), errBuf.String(), err
 }
 
 func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
@@ -659,5 +696,270 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	`).Scan(&orphans)
 	if orphans != 0 {
 		t.Errorf("found %d orphan chunks after file deletion", orphans)
+	}
+}
+
+// --- Summary Schema Tests ---
+
+func TestE2E_CLI_SQLVerifySchemaWithSummaries(t *testing.T) {
+	projectPath := sampleProjectPath(t)
+	dataHome := t.TempDir()
+
+	// Index with mock summarizer.
+	_, stderr, err := runCLIWithSummaries(t, dataHome, "index", projectPath)
+	if err != nil {
+		t.Fatalf("index with summaries failed: %v\nstderr: %s", err, stderr)
+	}
+
+	db := openIndexDBWithModel(t, dataHome, projectPath, "all-minilm")
+
+	// --- Verify summary tables exist ---
+	for _, table := range []string{"chunk_summaries", "file_summaries", "vec_chunk_summaries", "vec_file_summaries"} {
+		var count int
+		if err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name = ?", table).Scan(&count); err != nil {
+			t.Fatalf("query sqlite_master for %s: %v", table, err)
+		}
+		if count == 0 {
+			t.Errorf("expected table %q to exist", table)
+		}
+	}
+
+	// --- Verify chunk_summaries ---
+	var chunkSumCount int
+	if err := db.QueryRow("SELECT count(*) FROM chunk_summaries").Scan(&chunkSumCount); err != nil {
+		t.Fatalf("count chunk_summaries: %v", err)
+	}
+	if chunkSumCount < 10 {
+		t.Errorf("expected at least 10 chunk summaries (short chunks skipped), got %d", chunkSumCount)
+	}
+
+	// All chunk_id values must reference valid chunks.
+	var orphanChunkSums int
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_summaries cs
+		LEFT JOIN chunks c ON cs.chunk_id = c.id
+		WHERE c.id IS NULL
+	`).Scan(&orphanChunkSums); err != nil {
+		t.Fatalf("query orphan chunk summaries: %v", err)
+	}
+	if orphanChunkSums != 0 {
+		t.Errorf("found %d chunk_summaries with invalid chunk_id", orphanChunkSums)
+	}
+
+	// All summaries must be non-empty.
+	var emptySummaries int
+	if err := db.QueryRow("SELECT count(*) FROM chunk_summaries WHERE summary = ''").Scan(&emptySummaries); err != nil {
+		t.Fatalf("count empty chunk summaries: %v", err)
+	}
+	if emptySummaries != 0 {
+		t.Errorf("found %d chunk_summaries with empty summary text", emptySummaries)
+	}
+
+	// --- Verify file_summaries ---
+	var fileSumCount int
+	if err := db.QueryRow("SELECT count(*) FROM file_summaries").Scan(&fileSumCount); err != nil {
+		t.Fatalf("count file_summaries: %v", err)
+	}
+	if fileSumCount != 5 {
+		t.Errorf("expected 5 file summaries (one per file), got %d", fileSumCount)
+	}
+
+	// All file_path values must reference valid files.
+	var orphanFileSums int
+	if err := db.QueryRow(`
+		SELECT count(*) FROM file_summaries fs
+		LEFT JOIN files f ON fs.file_path = f.path
+		WHERE f.path IS NULL
+	`).Scan(&orphanFileSums); err != nil {
+		t.Fatalf("query orphan file summaries: %v", err)
+	}
+	if orphanFileSums != 0 {
+		t.Errorf("found %d file_summaries with invalid file_path", orphanFileSums)
+	}
+
+	// All file summaries must be non-empty.
+	var emptyFileSums int
+	if err := db.QueryRow("SELECT count(*) FROM file_summaries WHERE summary = ''").Scan(&emptyFileSums); err != nil {
+		t.Fatalf("count empty file summaries: %v", err)
+	}
+	if emptyFileSums != 0 {
+		t.Errorf("found %d file_summaries with empty summary text", emptyFileSums)
+	}
+
+	// --- Verify vec tables have 1:1 counts ---
+	var vecChunkSumCount int
+	if err := db.QueryRow("SELECT count(*) FROM vec_chunk_summaries").Scan(&vecChunkSumCount); err != nil {
+		t.Fatalf("count vec_chunk_summaries: %v", err)
+	}
+	if vecChunkSumCount != chunkSumCount {
+		t.Errorf("vec_chunk_summaries count (%d) should match chunk_summaries count (%d)",
+			vecChunkSumCount, chunkSumCount)
+	}
+
+	var vecFileSumCount int
+	if err := db.QueryRow("SELECT count(*) FROM vec_file_summaries").Scan(&vecFileSumCount); err != nil {
+		t.Fatalf("count vec_file_summaries: %v", err)
+	}
+	if vecFileSumCount != fileSumCount {
+		t.Errorf("vec_file_summaries count (%d) should match file_summaries count (%d)",
+			vecFileSumCount, fileSumCount)
+	}
+}
+
+func TestE2E_CLI_SQLVerifySummaryCascadeDelete(t *testing.T) {
+	dataHome := t.TempDir()
+	tmpDir := t.TempDir()
+	copyDir(t, sampleProjectPath(t), tmpDir)
+
+	// Index with summaries.
+	_, _, err := runCLIWithSummaries(t, dataHome, "index", tmpDir)
+	if err != nil {
+		t.Fatalf("first index with summaries failed: %v", err)
+	}
+
+	db := openIndexDBWithModel(t, dataHome, tmpDir, "all-minilm")
+
+	// Record initial counts.
+	var initFileSums, initChunkSums, initVecChunkSums, initVecFileSums int
+	db.QueryRow("SELECT count(*) FROM file_summaries").Scan(&initFileSums)
+	db.QueryRow("SELECT count(*) FROM chunk_summaries").Scan(&initChunkSums)
+	db.QueryRow("SELECT count(*) FROM vec_chunk_summaries").Scan(&initVecChunkSums)
+	db.QueryRow("SELECT count(*) FROM vec_file_summaries").Scan(&initVecFileSums)
+
+	if initFileSums != 5 {
+		t.Fatalf("expected 5 file summaries before delete, got %d", initFileSums)
+	}
+
+	// Close DB before re-indexing.
+	db.Close()
+
+	// Delete database.go and re-index.
+	if err := os.Remove(filepath.Join(tmpDir, "database.go")); err != nil {
+		t.Fatalf("remove database.go: %v", err)
+	}
+	_, _, err = runCLIWithSummaries(t, dataHome, "index", tmpDir)
+	if err != nil {
+		t.Fatalf("second index with summaries failed: %v", err)
+	}
+
+	db = openIndexDBWithModel(t, dataHome, tmpDir, "all-minilm")
+
+	// file_summaries should drop by 1 (CASCADE from files).
+	var newFileSums int
+	if err := db.QueryRow("SELECT count(*) FROM file_summaries").Scan(&newFileSums); err != nil {
+		t.Fatalf("count file_summaries: %v", err)
+	}
+	if newFileSums != 4 {
+		t.Errorf("expected 4 file_summaries after deleting database.go, got %d", newFileSums)
+	}
+
+	// chunk_summaries should decrease (CASCADE via chunks).
+	var newChunkSums int
+	if err := db.QueryRow("SELECT count(*) FROM chunk_summaries").Scan(&newChunkSums); err != nil {
+		t.Fatalf("count chunk_summaries: %v", err)
+	}
+	if newChunkSums >= initChunkSums {
+		t.Errorf("expected fewer chunk_summaries after deleting database.go: before=%d, after=%d",
+			initChunkSums, newChunkSums)
+	}
+
+	// vec_chunk_summaries should stay in sync with chunk_summaries.
+	var newVecChunkSums int
+	if err := db.QueryRow("SELECT count(*) FROM vec_chunk_summaries").Scan(&newVecChunkSums); err != nil {
+		t.Fatalf("count vec_chunk_summaries: %v", err)
+	}
+	if newVecChunkSums != newChunkSums {
+		t.Errorf("vec_chunk_summaries (%d) out of sync with chunk_summaries (%d)",
+			newVecChunkSums, newChunkSums)
+	}
+
+	// vec_file_summaries should be 4.
+	var newVecFileSums int
+	if err := db.QueryRow("SELECT count(*) FROM vec_file_summaries").Scan(&newVecFileSums); err != nil {
+		t.Fatalf("count vec_file_summaries: %v", err)
+	}
+	if newVecFileSums != 4 {
+		t.Errorf("expected 4 vec_file_summaries after deleting database.go, got %d", newVecFileSums)
+	}
+}
+
+func TestE2E_CLI_SQLVerifySummaryKNN(t *testing.T) {
+	projectPath := sampleProjectPath(t)
+	dataHome := t.TempDir()
+
+	// Index with mock summarizer.
+	_, stderr, err := runCLIWithSummaries(t, dataHome, "index", projectPath)
+	if err != nil {
+		t.Fatalf("index with summaries failed: %v\nstderr: %s", err, stderr)
+	}
+
+	db := openIndexDBWithModel(t, dataHome, projectPath, "all-minilm")
+
+	// Grab a stored chunk summary vector and use it as the query to verify KNN ordering.
+	var chunkID string
+	if err := db.QueryRow(`
+		SELECT cs.chunk_id FROM chunk_summaries cs
+		JOIN chunks c ON cs.chunk_id = c.id
+		WHERE c.symbol = 'ValidateToken'
+		LIMIT 1
+	`).Scan(&chunkID); err != nil {
+		t.Fatalf("get ValidateToken chunk summary id: %v", err)
+	}
+
+	var vecBlob []byte
+	if err := db.QueryRow("SELECT embedding FROM vec_chunk_summaries WHERE id = ?", chunkID).Scan(&vecBlob); err != nil {
+		t.Fatalf("get ValidateToken summary embedding: %v", err)
+	}
+
+	// Run KNN query against vec_chunk_summaries.
+	rows, err := db.Query(`
+		SELECT c.symbol, v.distance
+		FROM vec_chunk_summaries v
+		JOIN chunk_summaries cs ON v.id = cs.chunk_id
+		JOIN chunks c ON cs.chunk_id = c.id
+		WHERE v.embedding MATCH ?
+		AND v.k = 5
+		ORDER BY v.distance
+		LIMIT 5
+	`, vecBlob)
+	if err != nil {
+		t.Fatalf("KNN query on vec_chunk_summaries: %v", err)
+	}
+	defer rows.Close()
+
+	type knnRow struct {
+		symbol   string
+		distance float64
+	}
+	var results []knnRow
+	for rows.Next() {
+		var r knnRow
+		if err := rows.Scan(&r.symbol, &r.distance); err != nil {
+			t.Fatalf("scan KNN row: %v", err)
+		}
+		results = append(results, r)
+	}
+
+	if len(results) == 0 {
+		t.Fatal("KNN query on vec_chunk_summaries returned no results")
+	}
+
+	// First result should be ValidateToken itself with distance ≈ 0.
+	if results[0].symbol != "ValidateToken" {
+		t.Errorf("expected top KNN result to be ValidateToken, got %s", results[0].symbol)
+	}
+	if results[0].distance > 0.01 {
+		t.Errorf("self-similarity distance should be ≈ 0, got %f", results[0].distance)
+	}
+
+	// All distances should be non-negative and ordered ascending.
+	for i, r := range results {
+		if r.distance < 0 {
+			t.Errorf("result[%d] %s: distance should be >= 0, got %f", i, r.symbol, r.distance)
+		}
+		if i > 0 && r.distance < results[i-1].distance {
+			t.Errorf("results not ordered by distance: %s(%f) < %s(%f)",
+				r.symbol, r.distance, results[i-1].symbol, results[i-1].distance)
+		}
 	}
 }

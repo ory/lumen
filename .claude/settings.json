@@ -1,3 +1,8 @@
 {
-  "skills": [".claude/skills/add-benchmark.md"]
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": false
+  },
+  "skills": [
+    ".claude/skills/add-benchmark.md"
+  ]
 }

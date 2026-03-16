@@ -350,10 +350,14 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	return info, nil
 }
 
-// runSummaryPasses generates per-chunk and per-file summaries for the given files,
-// embeds them via summaryEmb, and stores them in the summary tables.
-func (idx *Indexer) runSummaryPasses(ctx context.Context, projectDir string, files []string, _ ProgressFunc) error {
+// runSummaryPasses generates per-chunk and per-file summaries for the given
+// files, embeds them via summaryEmb, and stores them in the summary tables.
+func (idx *Indexer) runSummaryPasses(ctx context.Context, projectDir string, files []string, progress ProgressFunc) error {
 	const summaryEmbedBatchSize = 32
+
+	if progress != nil {
+		progress(0, len(files), fmt.Sprintf("Generating summaries for %d files", len(files)))
+	}
 
 	fileSummaryInputs := make(map[string][]string)
 	var pendingChunkIDs []string
@@ -375,7 +379,11 @@ func (idx *Indexer) runSummaryPasses(ctx context.Context, projectDir string, fil
 		return nil
 	}
 
-	for _, relPath := range files {
+	for fileIdx, relPath := range files {
+		if progress != nil {
+			progress(fileIdx, len(files), fmt.Sprintf("Summarizing chunks %d/%d: %s", fileIdx+1, len(files), relPath))
+		}
+
 		absPath := filepath.Join(projectDir, relPath)
 		fileContent, err := os.ReadFile(absPath)
 		if err != nil {
@@ -420,9 +428,19 @@ func (idx *Indexer) runSummaryPasses(ctx context.Context, projectDir string, fil
 		log.Printf("warning: final flush chunk summaries: %v", err)
 	}
 
-	for relPath, chunkSummaries := range fileSummaryInputs {
+	if progress != nil {
+		progress(len(files), len(files), fmt.Sprintf("Generating file-level summaries for %d files", len(fileSummaryInputs)))
+	}
+
+	fileIdx := 0
+	for _, relPath := range files {
+		chunkSummaries := fileSummaryInputs[relPath]
 		if len(chunkSummaries) == 0 {
 			continue
+		}
+		fileIdx++
+		if progress != nil {
+			progress(fileIdx, len(fileSummaryInputs), fmt.Sprintf("Summarizing file %d/%d: %s", fileIdx, len(fileSummaryInputs), relPath))
 		}
 		fileSummary, err := idx.sumr.SummarizeFile(ctx, chunkSummaries)
 		if err != nil {

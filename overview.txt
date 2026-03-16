@@ -1,0 +1,96 @@
+=== Run: 2026-03-15 21:43:54 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=haiku ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+php-hard                        php       baseline    1     Perfect   $0.1760   66.8s    1145549        27           YES  
+php-hard                        php       with-lumen  1     Good      $0.1964   74.0s    942376         20           YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 1  Good: 1  Poor: 0  Invalid: 0  Total cost: $0.3724
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.176 (baseline) vs 0.1964 (lumen) → 12% more expensive
+Time:       66.84 (baseline) vs 74.05 (lumen) → 11% slower
+Tokens:     1.146e+06 (baseline) vs 9.424e+05 (lumen) → 18% fewer tokens
+Tool calls: 27 (baseline) vs 20 (lumen) → 26% fewer tool calls
+Rating:     Perfect (baseline) vs Good (lumen)
+
+=== Run: 2026-03-15 21:44:51 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=haiku ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+javascript-hard                 javascript  baseline    1     Perfect   $0.2348   111.6s   1354832        22           YES  
+javascript-hard                 javascript  with-lumen  1     Good      $0.2426   96.4s    1391318        22           YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 1  Good: 1  Poor: 0  Invalid: 0  Total cost: $0.4774
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.2348 (baseline) vs 0.2426 (lumen) → 3% more expensive
+Time:       111.6 (baseline) vs 96.44 (lumen) → 14% faster
+Tokens:     1.355e+06 (baseline) vs 1.391e+06 (lumen) → 3% more tokens
+Tool calls: 22 (baseline) vs 22 (lumen) → 0% fewer tool calls
+Rating:     Perfect (baseline) vs Good (lumen)
+
+=== Run: 2026-03-15 21:47:47 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=haiku ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+go-hard                         go        baseline    1     Good      $0.5966   221.9s   3835450        67           YES  
+go-hard                         go        with-lumen  1     Good      $0.4227   176.6s   2736660        41           YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 0  Good: 2  Poor: 0  Invalid: 0  Total cost: $1.0194
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.5966 (baseline) vs 0.4227 (lumen) → 29% cheaper
+Time:       221.9 (baseline) vs 176.6 (lumen) → 20% faster
+Tokens:     3.835e+06 (baseline) vs 2.737e+06 (lumen) → 29% fewer tokens
+Tool calls: 67 (baseline) vs 41 (lumen) → 39% fewer tool calls
+Rating:     Good (baseline) vs Good (lumen)
+
+=== Run: 2026-03-15 21:57:27 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=sonnet ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+php-hard                        php       baseline    1     Good      $0.1965   72.4s    197936         19           YES  
+php-hard                        php       with-lumen  1     Good      $0.1250   46.0s    161169         8            YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 0  Good: 2  Poor: 0  Invalid: 0  Total cost: $0.3215
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.1965 (baseline) vs 0.125 (lumen) → 36% cheaper
+Time:       72.41 (baseline) vs 45.98 (lumen) → 36% faster
+Tokens:     1.979e+05 (baseline) vs 1.612e+05 (lumen) → 19% fewer tokens
+Tool calls: 19 (baseline) vs 8 (lumen) → 58% fewer tool calls
+Rating:     Good (baseline) vs Good (lumen)
+
+=== Run: 2026-03-15 22:01:35 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=sonnet ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+go-hard                         go        baseline    1     Good      $0.6500   253.0s   462911         50           YES  
+go-hard                         go        with-lumen  1     Poor      $0.4151   154.5s   285165         30           YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 0  Good: 1  Poor: 1  Invalid: 0  Total cost: $1.0651
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.65 (baseline) vs 0.4151 (lumen) → 36% cheaper
+Time:       253 (baseline) vs 154.5 (lumen) → 39% faster
+Tokens:     4.629e+05 (baseline) vs 2.852e+05 (lumen) → 38% fewer tokens
+Tool calls: 50 (baseline) vs 30 (lumen) → 40% fewer tool calls
+Rating:     Good (baseline) vs Poor (lumen)
+
+=== Run: 2026-03-15 22:04:10 UTC | embed=ordis/jina-embeddings-v2-base-code | claude=sonnet ===
+
+Task                            Lang      Scenario    Run   Rating    Cost      Time     Total Tokens   Tool Calls   Valid
+------------------------------------------------------------------------------------------------------------------------
+javascript-hard                 javascript  baseline    1     Good      $0.8064   303.3s   1161862        56           YES  
+javascript-hard                 javascript  with-lumen  1     Good      $0.4471   244.8s   354762         20           YES  
+------------------------------------------------------------------------------------------------------------------------
+Perfect: 0  Good: 2  Poor: 0  Invalid: 0  Total cost: $1.2535
+
+--- Comparison: worst baseline vs best with-lumen ---
+Cost:       0.8064 (baseline) vs 0.4471 (lumen) → 45% cheaper
+Time:       303.3 (baseline) vs 244.8 (lumen) → 19% faster
+Tokens:     1.162e+06 (baseline) vs 3.548e+05 (lumen) → 69% fewer tokens
+Tool calls: 56 (baseline) vs 20 (lumen) → 64% fewer tool calls
+Rating:     Good (baseline) vs Good (lumen)
+

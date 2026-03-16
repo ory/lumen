@@ -69,7 +69,7 @@ func TestWriteMCPConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, cleanup, err := WriteMCPConfig(tt.scenario, "/usr/local/bin/lumen", "ollama", "test-model")
+			path, cleanup, err := WriteMCPConfig(tt.scenario, &Config{LumenBinary: "/usr/local/bin/lumen", Backend: "ollama", EmbedModel: "test-model"})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestWriteMCPConfig(t *testing.T) {
 }
 
 func TestWriteMCPConfig_UnknownScenario(t *testing.T) {
-	_, _, err := WriteMCPConfig(Scenario("unknown"), "/bin/lumen", "ollama", "model")
+	_, _, err := WriteMCPConfig(Scenario("unknown"), &Config{LumenBinary: "/bin/lumen", Backend: "ollama", EmbedModel: "model"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
