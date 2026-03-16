@@ -30,6 +30,8 @@ const (
 	BackendOllama = "ollama"
 	// BackendLMStudio is the backend identifier for LM Studio.
 	BackendLMStudio = "lmstudio"
+	// BackendOpenAI is the backend identifier for OpenAI-compatible APIs.
+	BackendOpenAI = "openai"
 )
 
 // Config holds the resolved configuration for the lumen process.
@@ -41,18 +43,23 @@ type Config struct {
 	OllamaHost     string
 	Backend        string
 	LMStudioHost   string
+	OpenAIBaseURL  string
+	OpenAIAPIKey   string
 }
 
 // Load reads configuration from environment variables and the model registry.
 func Load() (Config, error) {
 	backend := EnvOrDefault("LUMEN_BACKEND", BackendOllama)
-	if backend != BackendOllama && backend != BackendLMStudio {
-		return Config{}, fmt.Errorf("unknown backend %q: must be %q or %q", backend, BackendOllama, BackendLMStudio)
+	if backend != BackendOllama && backend != BackendLMStudio && backend != BackendOpenAI {
+		return Config{}, fmt.Errorf("unknown backend %q: must be %q, %q, or %q", backend, BackendOllama, BackendLMStudio, BackendOpenAI)
 	}
 
 	defaultModel := embedder.DefaultOllamaModel
-	if backend == BackendLMStudio {
+	switch backend {
+	case BackendLMStudio:
 		defaultModel = embedder.DefaultLMStudioModel
+	case BackendOpenAI:
+		defaultModel = embedder.DefaultOpenAIModel
 	}
 
 	model := EnvOrDefault("LUMEN_EMBED_MODEL", defaultModel)
@@ -60,6 +67,11 @@ func Load() (Config, error) {
 	if !ok {
 		return Config{}, fmt.Errorf("unknown embedding model %q", model)
 	}
+	openAIAPIKey := os.Getenv("OPENAI_API_KEY")
+	if backend == BackendOpenAI && openAIAPIKey == "" {
+		return Config{}, fmt.Errorf("OPENAI_API_KEY environment variable is required for the %q backend", BackendOpenAI)
+	}
+
 	return Config{
 		Model:          model,
 		Dims:           spec.Dims,
@@ -68,6 +80,8 @@ func Load() (Config, error) {
 		OllamaHost:     EnvOrDefault("OLLAMA_HOST", "http://localhost:11434"),
 		Backend:        backend,
 		LMStudioHost:   EnvOrDefault("LM_STUDIO_HOST", "http://localhost:1234"),
+		OpenAIBaseURL:  EnvOrDefault("OPENAI_BASE_URL", "https://api.openai.com"),
+		OpenAIAPIKey:   openAIAPIKey,
 	}, nil
 }
 

@@ -28,6 +28,9 @@ const DefaultOllamaModel = "ordis/jina-embeddings-v2-base-code"
 // DefaultLMStudioModel is the default model when using the LM Studio backend.
 const DefaultLMStudioModel = "nomic-ai/nomic-embed-code-GGUF"
 
+// DefaultOpenAIModel is the default model when using the OpenAI-compatible backend.
+const DefaultOpenAIModel = "text-embedding-3-small"
+
 // DefaultModel is an alias for DefaultOllamaModel for backward compatibility.
 const DefaultModel = DefaultOllamaModel
 
@@ -66,4 +69,9 @@ var KnownModels = map[string]ModelSpec{
 	"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
 	"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
 	"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
+	"text-embedding-3-small":             {Dims: 1536, CtxLength: 8191, Backend: "openai", MinScore: 0.20},
+	"text-embedding-3-large":             {Dims: 3072, CtxLength: 8191, Backend: "openai", MinScore: 0.15},
+	"text-embedding-ada-002":             {Dims: 1536, CtxLength: 8191, Backend: "openai", MinScore: 0.20},
+	"voyage-code-3":                      {Dims: 1024, CtxLength: 32000, Backend: "openai", MinScore: 0.25},
+	"voyage-3-large":                     {Dims: 1024, CtxLength: 32000, Backend: "openai", MinScore: 0.25},
 }

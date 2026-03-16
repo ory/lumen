@@ -69,7 +69,7 @@ marketplace.
 | ---------------------------- | ----------------------------------- | ------------------------------- |
 | SQLite                       | Vector storage + schema persistence | Uses sqlite-vec for KNN search  |
 | MCP (Model Context Protocol) | Agent integration                   | stdio transport                 |
-| Ollama/LM Studio             | Embeddings generation               | Local models, configurable      |
+| Ollama/LM Studio/OpenAI API  | Embeddings generation               | Local + cloud, configurable     |
 | Go AST                       | Code parsing into semantic chunks   | Functions, types, methods, etc. |
 | Cobra                        | CLI framework                       | Subcommands: index, stdio       |
 
@@ -106,16 +106,19 @@ system handles MCP registration, hooks, and skills declaratively via:
 
 ## Environment Variables
 
-| Variable                 | Default                  | Description                                |
-| ------------------------ | ------------------------ | ------------------------------------------ |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
-| `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
-| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
-| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting      |
+| Variable                 | Default                    | Description                                             |
+| ------------------------ | -------------------------- | ------------------------------------------------------- |
+| `LUMEN_BACKEND`          | `ollama`                   | Embedding backend (`ollama`, `lmstudio`, or `openai`)   |
+| `LUMEN_EMBED_MODEL`      | see note ¹                 | Embedding model (must be in registry)                   |
+| `OLLAMA_HOST`            | `http://localhost:11434`   | Ollama server URL                                       |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`    | LM Studio server URL                                    |
+| `OPENAI_API_KEY`         | (none)                     | API key for `openai` backend (required)                 |
+| `OPENAI_BASE_URL`        | `https://api.openai.com`   | Base URL for `openai` backend (Voyage AI, Azure, etc.)  |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`                      | Max tokens per chunk before splitting                   |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
-`nomic-ai/nomic-embed-code-GGUF` (LM Studio)
+`nomic-ai/nomic-embed-code-GGUF` (LM Studio),
+`text-embedding-3-small` (OpenAI)
 
 ## Project Structure
 

@@ -28,6 +28,8 @@ func newEmbedder(cfg config.Config) (embedder.Embedder, error) {
 		return embedder.NewOllama(cfg.Model, cfg.Dims, cfg.CtxLength, cfg.OllamaHost)
 	case config.BackendLMStudio:
 		return embedder.NewLMStudio(cfg.Model, cfg.Dims, cfg.LMStudioHost)
+	case config.BackendOpenAI:
+		return embedder.NewOpenAI(cfg.Model, cfg.Dims, cfg.OpenAIBaseURL, cfg.OpenAIAPIKey)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", cfg.Backend)
 	}
