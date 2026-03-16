@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/ory/lumen/compare/v0.0.11...v0.0.12) (2026-03-16)
+
+
+### Features
+
+* add PTerm-based TUI progress output for index command ([#38](https://github.com/ory/lumen/issues/38)) ([7fee513](https://github.com/ory/lumen/commit/7fee5136cb9a33c4328394937b92305e4ea21163))
+
 ## [0.0.11](https://github.com/ory/lumen/compare/v0.0.10...v0.0.11) (2026-03-11)
 
 
