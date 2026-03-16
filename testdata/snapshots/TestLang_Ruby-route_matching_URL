@@ -3,10 +3,10 @@ application.rb:162-173  Application.reload_routes!+Application.reload_routes_unl
 engine.rb:525-529  Engine.endpoint (function)
 engine.rb:542-548  Engine.routes (function)
 engine.rb:685-687  Engine.routes? (function)
+metal.rb:229-232  Metal.url_for (function)
 sinatra-base.rb:343-344  Helpers.url+Helpers.to (function)
 sinatra-base.rb:1033-1038  Base.pass (function)
 sinatra-base.rb:1074-1086  Base.route! (function)
-sinatra-base.rb:1131-1140  Base.route_missing (function)
 sinatra-base.rb:1510-1514  Base.condition (function)
 sinatra-base.rb:1551-1553  Base.link+Base.unlink (function)
 
