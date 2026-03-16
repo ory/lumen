@@ -21,8 +21,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -65,140 +63,8 @@ func runCLIWithDataHome(t *testing.T, dataHome string, args ...string) (stdout, 
 	return outBuf.String(), errBuf.String(), err
 }
 
-func TestE2E_CLI_IndexAndSearch(t *testing.T) {
-	t.Skip("search is now MCP-only, CLI command removed")
-
-	projectPath := sampleProjectPath(t)
-	dataHome := t.TempDir()
-
-	// Index the sample project.
-	stdout, stderr, err := runCLIWithDataHome(t, dataHome, "index", projectPath)
-	if err != nil {
-		t.Fatalf("index failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Stderr should show progress.
-	if !strings.Contains(stderr, "Indexing") {
-		t.Errorf("expected stderr to contain 'Indexing', got: %s", stderr)
-	}
-
-	// Stdout should show completion stats.
-	if !strings.Contains(stdout, "Done.") {
-		t.Errorf("expected stdout to contain 'Done.', got: %s", stdout)
-	}
-	if !strings.Contains(stdout, "5 files") {
-		t.Errorf("expected stdout to mention '5 files', got: %s", stdout)
-	}
-
-	// Search for something semantically relevant.
-	stdout, stderr, err = runCLIWithDataHome(t, dataHome, "search", "authentication token validation", projectPath)
-	if err != nil {
-		t.Fatalf("search failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Should contain result headers with ── delimiters.
-	if !strings.Contains(stdout, "──") {
-		t.Fatalf("expected search output to contain '──' result headers, got stdout=%q stderr=%q", stdout, stderr)
-	}
-	if t.Failed() {
-		return
-	}
-
-	// ValidateToken should appear in results.
-	if !strings.Contains(stdout, "ValidateToken") {
-		t.Errorf("expected ValidateToken in search results, got: %s", stdout)
-	}
-
-	// Should contain actual code snippets.
-	if !strings.Contains(stdout, "func ") {
-		t.Errorf("expected code snippets with 'func ' in output, got: %s", stdout)
-	}
-
-	// Should start with "Found N results".
-	if !strings.Contains(stdout, "Found") || !strings.Contains(stdout, "results") {
-		t.Errorf("expected 'Found N results' header, got: %s", stdout[:min(len(stdout), 200)])
-	}
-
-	// Parse result headers to extract scores.
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	headerRe := regexp.MustCompile(`^── .+:(\d+)-(\d+)\s+.+?\s+\(\w+\)\s+\[(-?\d+\.\d+)\] ──$`)
-	var scores []float64
-	for _, line := range lines {
-		m := headerRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		score, _ := strconv.ParseFloat(m[3], 64)
-		scores = append(scores, score)
-
-		startLine, _ := strconv.Atoi(m[1])
-		endLine, _ := strconv.Atoi(m[2])
-		if startLine <= 0 {
-			t.Errorf("start line should be > 0: %s", line)
-		}
-		if endLine < startLine {
-			t.Errorf("end line should be >= start line: %s", line)
-		}
-		if score <= 0 || score > 1 {
-			t.Errorf("score should be in (0, 1]: %s", line)
-		}
-	}
-
-	if len(scores) == 0 {
-		t.Fatal("no result headers found in search output")
-	}
-
-	// Scores should be descending.
-	for i := 1; i < len(scores); i++ {
-		if scores[i] > scores[i-1] {
-			t.Errorf("scores not descending: %f > %f", scores[i], scores[i-1])
-		}
-	}
-}
-
-func TestE2E_CLI_SearchLimit(t *testing.T) {
-	t.Skip("search is now MCP-only, CLI command removed")
-
-	projectPath := sampleProjectPath(t)
-	dataHome := t.TempDir()
-
-	// Index first.
-	_, stderr, err := runCLIWithDataHome(t, dataHome, "index", projectPath)
-	if err != nil {
-		t.Fatalf("index failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Search with limit=2. Use --min-score -1 to bypass score filtering (testing limit behavior).
-	stdout, _, err := runCLIWithDataHome(t, dataHome, "search", "--limit", "2", "--min-score", "-1", "user", projectPath)
-	if err != nil {
-		t.Fatalf("search failed: %v", err)
-	}
-
-	headerRe := regexp.MustCompile(`^── .+ ──$`)
-	var count int
-	for _, line := range strings.Split(stdout, "\n") {
-		if headerRe.MatchString(line) {
-			count++
-		}
-	}
-	if count != 2 {
-		t.Errorf("expected 2 results with --limit 2, got %d\noutput: %s", count, stdout)
-	}
-}
-
-func TestE2E_CLI_SearchNoIndex(t *testing.T) {
-	t.Skip("search is now MCP-only, CLI command removed")
-
-	tmpDir := t.TempDir()
-
-	// Search without indexing first — should fail with helpful error.
-	_, _, err := runCLI(t, "search", "anything", tmpDir)
-	if err == nil {
-		t.Fatal("expected error when searching without an index")
-	}
-}
-
 func TestE2E_CLI_IndexIdempotent(t *testing.T) {
+	t.Parallel()
 	projectPath := sampleProjectPath(t)
 	dataHome := t.TempDir()
 
@@ -219,6 +85,7 @@ func TestE2E_CLI_IndexIdempotent(t *testing.T) {
 }
 
 func TestE2E_CLI_IndexForceReindex(t *testing.T) {
+	t.Parallel()
 	projectPath := sampleProjectPath(t)
 	dataHome := t.TempDir()
 
@@ -245,14 +112,7 @@ func TestE2E_CLI_IndexForceReindex(t *testing.T) {
 func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
 	t.Helper()
 	sqlite_vec.Auto()
-
-	// Temporarily override XDG_DATA_HOME so DBPathForProject computes the
-	// correct path inside our test data home.
-	orig := os.Getenv("XDG_DATA_HOME")
-	os.Setenv("XDG_DATA_HOME", dataHome)
-	dbPath := config.DBPathForProject(projectPath, "all-minilm")
-	os.Setenv("XDG_DATA_HOME", orig)
-
+	dbPath := config.DBPathForProjectBase(dataHome, projectPath, "all-minilm")
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("open index db: %v", err)
@@ -262,6 +122,7 @@ func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
 }
 
 func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
+	t.Parallel()
 	projectPath := sampleProjectPath(t)
 	dataHome := t.TempDir()
 
@@ -461,6 +322,7 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 }
 
 func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
+	t.Parallel()
 	projectPath := sampleProjectPath(t)
 	dataHome := t.TempDir()
 
@@ -547,6 +409,7 @@ func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
 }
 
 func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
+	t.Parallel()
 	dataHome := t.TempDir()
 	tmpDir := t.TempDir()
 	copyDir(t, sampleProjectPath(t), tmpDir)

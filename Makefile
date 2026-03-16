@@ -4,7 +4,7 @@ GOFLAGS  := -tags=$(GOTAGS)
 
 XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
-.PHONY: build build-local build-bench-swe test e2e lint vet tidy clean format plugin-dev
+.PHONY: build build-local build-bench-swe test e2e e2e-lang lint vet tidy clean format plugin-dev
 
 build:
 	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
@@ -21,7 +21,10 @@ test:
 	CGO_ENABLED=1 $(GO) test $(GOFLAGS) ./...
 
 e2e:
-	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 ./...
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=10m -v -count=1 -run 'TestE2E_' ./...
+
+e2e-lang:
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 -run 'TestLang_' ./...
 
 lint:
 	golangci-lint run
