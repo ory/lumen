@@ -17,8 +17,10 @@ package tui
 
 import (
 	"io"
+	"os"
 
 	"github.com/pterm/pterm"
+	"golang.org/x/term"
 )
 
 // Progress wraps PTerm components to display indexing progress, status
@@ -34,7 +36,17 @@ type Progress struct {
 }
 
 // NewProgress creates a new Progress that writes to w.
+// When w is not a terminal, PTerm styling is disabled to prevent ANSI
+// escape sequences (including cursor hide/show) from leaking to stdout
+// via PTerm's global output writer.
 func NewProgress(w io.Writer) *Progress {
+	f, isFile := w.(*os.File)
+	if !isFile || !term.IsTerminal(int(f.Fd())) {
+		pterm.DisableStyling()
+	}
+	// Redirect PTerm's global output (used for cursor control etc.) to w
+	// so nothing escapes to the default os.Stdout.
+	pterm.SetDefaultOutput(w)
 	return &Progress{
 		writer:  w,
 		info:    *pterm.Info.WithWriter(w),
