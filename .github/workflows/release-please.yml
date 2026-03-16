@@ -61,4 +61,4 @@ jobs:
       - name: Publish
         run: bash scripts/npm-publish.sh "${{ needs.release-please.outputs.tag_name }}"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_AENEASR }}
