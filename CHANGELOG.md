@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/ory/lumen/compare/v0.0.14...v0.0.15) (2026-03-17)
+
+
+### Features
+
+* **bench-swe:** add PTerm-based TUI progress component ([#43](https://github.com/ory/lumen/issues/43)) ([edb13dc](https://github.com/ory/lumen/commit/edb13dc5fb5b669fa32c54ff90579393e96f21aa))
+
 ## [0.0.14](https://github.com/ory/lumen/compare/v0.0.13...v0.0.14) (2026-03-16)
 
 
