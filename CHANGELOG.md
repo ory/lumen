@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.17](https://github.com/ory/lumen/compare/v0.0.16...v0.0.17) (2026-03-17)
+
+
+### Features
+
+* **index:** seed worktree indexes from sibling to skip full re-embedding ([#52](https://github.com/ory/lumen/issues/52)) ([76809bd](https://github.com/ory/lumen/commit/76809bddbd2cc6ee8d071758d3185d64a6775f1d))
+
 ## [0.0.16](https://github.com/ory/lumen/compare/v0.0.15...v0.0.16) (2026-03-17)
 
 
