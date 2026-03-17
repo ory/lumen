@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/aeneasr/lumen/bench-swe/internal/task"
+	"github.com/aeneasr/lumen/bench-swe/internal/tui"
 )
 
 const grepScoreThreshold = 0.5
@@ -41,10 +42,14 @@ func runValidate(_ *cobra.Command, args []string) error {
 		return err
 	}
 
+	p := tui.NewProgress(os.Stderr)
+
 	tasks, err := task.LoadTasks(tasksDir, nil)
 	if err != nil {
 		return err
 	}
+
+	p.Info(fmt.Sprintf("Validating %d tasks from %s", len(tasks), tasksDir))
 
 	type result struct {
 		t      task.Task
@@ -79,27 +84,28 @@ func runValidate(_ *cobra.Command, args []string) error {
 	var failed int
 	for _, r := range results {
 		if r.err != "" {
-			fmt.Printf("ERROR  %s: %s\n", r.t.ID, r.err)
+			p.Error(fmt.Sprintf("%s: %s", r.t.ID, r.err))
 			failed++
 			continue
 		}
-		label := "OK    "
-		if r.score >= grepScoreThreshold {
-			label = "REJECT"
-			failed++
-		} else if r.score > 0 {
-			label = "WARN  "
-		}
-		fmt.Printf("%s %s  grep_score=%.0f%%", label, r.t.ID, r.score*100)
+		msg := fmt.Sprintf("%s  grep_score=%.0f%%", r.t.ID, r.score*100)
 		if len(r.leaked) > 0 {
-			fmt.Printf("  leaked=%v", r.leaked)
+			msg += fmt.Sprintf("  leaked=%v", r.leaked)
 		}
-		fmt.Println()
+		switch {
+		case r.score >= grepScoreThreshold:
+			p.Error("REJECT " + msg)
+			failed++
+		case r.score > 0:
+			p.Warn("WARN   " + msg)
+		default:
+			p.Info("OK     " + msg)
+		}
 	}
 
 	if failed > 0 {
 		return fmt.Errorf("%d task(s) failed validation", failed)
 	}
-	fmt.Printf("\nAll %d tasks passed.\n", len(results))
+	p.Complete(fmt.Sprintf("All %d tasks passed.", len(results)))
 	return nil
 }

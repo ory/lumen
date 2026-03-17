@@ -18,6 +18,7 @@ import (
 	"github.com/aeneasr/lumen/bench-swe/internal/report"
 	"github.com/aeneasr/lumen/bench-swe/internal/runner"
 	"github.com/aeneasr/lumen/bench-swe/internal/task"
+	"github.com/aeneasr/lumen/bench-swe/internal/tui"
 )
 
 var (
@@ -58,6 +59,8 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
+	p := tui.NewProgress(os.Stderr)
+
 	// Resolve paths
 	benchDir, err := findBenchDir()
 	if err != nil {
@@ -90,6 +93,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 
 	// Preflight
 	if !flagSkipPreflight {
+		p.StartSpinner("Running preflight checks...")
 		pfCfg := &preflight.Config{
 			RepoRoot:    repoRoot,
 			LumenBinary: lumenBinary,
@@ -97,13 +101,17 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 			EmbedModel:  flagEmbedModel,
 			OllamaHost:  os.Getenv("OLLAMA_HOST"),
 		}
-		if err := preflight.Validate(ctx, pfCfg); err != nil {
-			return fmt.Errorf("preflight failed: %w", err)
+		pfErr := preflight.Validate(ctx, pfCfg)
+		p.StopSpinner()
+		if pfErr != nil {
+			return fmt.Errorf("preflight failed: %w", pfErr)
 		}
 	}
 
 	// Load tasks
+	p.StartSpinner("Loading tasks...")
 	tasks, err := task.LoadTasks(tasksDir, flagLanguage)
+	p.StopSpinner()
 	if err != nil {
 		return err
 	}
@@ -122,13 +130,14 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	}
 
 	totalRuns := max(flagRuns, 1)
+	total := len(tasks) * len(scenarios) * totalRuns
 
 	if totalRuns > 1 {
-		fmt.Printf("\nRunning %d tasks x %d scenarios x %d runs (parallel=%d)\n\n",
-			len(tasks), len(scenarios), totalRuns, flagParallel)
+		p.Info(fmt.Sprintf("Running %d tasks × %d scenarios × %d runs (parallel=%d)",
+			len(tasks), len(scenarios), totalRuns, flagParallel))
 	} else {
-		fmt.Printf("\nRunning %d tasks x %d scenarios (parallel=%d)\n\n",
-			len(tasks), len(scenarios), flagParallel)
+		p.Info(fmt.Sprintf("Running %d tasks × %d scenarios (parallel=%d)",
+			len(tasks), len(scenarios), flagParallel))
 	}
 
 	// Run tasks
@@ -144,96 +153,123 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 
 	var mu sync.Mutex
 	var results []runner.RunResult
+	var runRows [][]string
+	completed := 0
+
+	p.Start("Running", total)
 
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(flagParallel)
 
 	for _, t := range tasks {
 		g.Go(func() error {
-			var lines []string
 			var taskResults []runner.RunResult
+			var taskRows [][]string
 			for _, s := range scenarios {
 				for run := 1; run <= totalRuns; run++ {
 					result, err := runner.Run(gCtx, runCfg, t, s, run)
-					runLabel := fmt.Sprintf("%-10s", s)
+					runLabel := string(s)
 					if totalRuns > 1 {
-						runLabel = fmt.Sprintf("%-10s run%d", s, run)
+						runLabel = fmt.Sprintf("%s run%d", s, run)
 					}
-					var line string
+					var row []string
 					if err != nil {
-						line = fmt.Sprintf("  %-20s %s ERROR: %v\n", t.ID, runLabel, err)
+						row = []string{t.ID, runLabel, "—", "—", "—", "ERROR: " + err.Error()}
 					} else if result != nil && result.Metrics != nil {
 						m := result.Metrics
-						durS := float64(m.DurationMS) / 1000.0
-						line = fmt.Sprintf("  %-20s %s done  [%5.1fs  $%.4f  in=%d+%dcr  out=%d]\n",
-							t.ID, runLabel, durS, m.CostUSD, m.InputTokens, m.CacheRead, m.OutputTokens)
-					} else if result != nil {
-						line = fmt.Sprintf("  %-20s %s done  (no metrics)\n", t.ID, runLabel)
+						row = []string{
+							t.ID,
+							runLabel,
+							fmt.Sprintf("%.1fs", float64(m.DurationMS)/1000.0),
+							fmt.Sprintf("$%.4f", m.CostUSD),
+							fmt.Sprintf("%d+%dcr/%d", m.InputTokens, m.CacheRead, m.OutputTokens),
+							"done",
+						}
+					} else {
+						row = []string{t.ID, runLabel, "—", "—", "—", "done (no metrics)"}
 					}
-					lines = append(lines, line)
+					taskRows = append(taskRows, row)
 					if result != nil {
 						taskResults = append(taskResults, *result)
 					}
 				}
 			}
 			mu.Lock()
-			defer mu.Unlock()
-			for _, l := range lines {
-				fmt.Print(l)
-			}
+			completed += len(taskRows)
+			p.Update(completed, t.ID)
+			runRows = append(runRows, taskRows...)
 			results = append(results, taskResults...)
+			mu.Unlock()
 			return nil
 		})
 	}
 
 	if err := g.Wait(); err != nil {
+		p.Stop()
 		return err
 	}
+	p.Stop()
+
+	p.PrintTable([]string{"Task", "Scenario", "Time", "Cost", "Tokens (in+cr/out)", "Status"}, runRows)
 
 	// Judge (fresh context so a canceled run phase doesn't block judging)
 	if !flagSkipJudge {
-		fmt.Println("\nJudging results...")
+		p.Info("Judging results...")
 		judgeCtx, judgeCancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer judgeCancel()
+
 		var judgeMu sync.Mutex
+		var judgeRows [][]string
+		judgeCompleted := 0
+		judgeTotal := len(tasks) * len(scenarios) * totalRuns
+
+		p.Start("Judging", judgeTotal)
+
 		judgeG, judgeCtx := errgroup.WithContext(judgeCtx)
 		judgeG.SetLimit(flagParallel)
 
 		for _, t := range tasks {
 			judgeG.Go(func() error {
-				var lines []string
+				var taskRows [][]string
 				for _, s := range scenarios {
 					for run := 1; run <= totalRuns; run++ {
 						slug := runner.Slug(t.ID, s, run, totalRuns)
 						result, err := judgeTask(judgeCtx, benchDir, runCfg, t, s, slug)
-						runLabel := fmt.Sprintf("%-10s", s)
+						runLabel := string(s)
 						if totalRuns > 1 {
-							runLabel = fmt.Sprintf("%-10s run%d", s, run)
+							runLabel = fmt.Sprintf("%s run%d", s, run)
 						}
-						var line string
+						var row []string
 						if err != nil {
-							line = fmt.Sprintf("  %-20s %s error: %v\n", t.ID, runLabel, err)
+							row = []string{t.ID, runLabel, "ERROR: " + err.Error()}
 						} else if result != nil {
-							line = fmt.Sprintf("  %-20s %s %s\n", t.ID, runLabel, result.Rating)
+							row = []string{t.ID, runLabel, string(result.Rating)}
+						} else {
+							row = []string{t.ID, runLabel, "—"}
 						}
-						lines = append(lines, line)
+						taskRows = append(taskRows, row)
 					}
 				}
 				judgeMu.Lock()
-				defer judgeMu.Unlock()
-				for _, l := range lines {
-					fmt.Print(l)
-				}
+				judgeCompleted += len(taskRows)
+				p.Update(judgeCompleted, t.ID)
+				judgeRows = append(judgeRows, taskRows...)
+				judgeMu.Unlock()
 				return nil
 			})
 		}
+
 		if err := judgeG.Wait(); err != nil {
-			fmt.Printf("  Judge error: %v\n", err)
+			p.Stop()
+			p.Error(fmt.Sprintf("Judge error: %v", err))
+		} else {
+			p.Stop()
 		}
+		p.PrintTable([]string{"Task", "Scenario", "Rating"}, judgeRows)
 	}
 
 	// Reports
-	fmt.Println("\nGenerating reports...")
+	p.Info("Generating reports...")
 	rptCfg := &report.Config{
 		ResultsDir:  resultsDir,
 		EmbedModel:  flagEmbedModel,
@@ -251,7 +287,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("\nResults: %s\n", resultsDir)
+	p.Complete("Results: " + resultsDir)
 	return nil
 }
 
