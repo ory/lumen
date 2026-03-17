@@ -36,7 +36,11 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 	}
 
 	// Checkpoint the WAL so the main DB file is self-contained.
-	db, err := sql.Open("sqlite3", donorPath+"?mode=ro")
+	// Opened read-write because wal_checkpoint(TRUNCATE) needs write access.
+	// Best-effort: if checkpoint fails (e.g. donor is locked), the copy still
+	// contains all committed data from the main DB file; any missing WAL
+	// writes will be caught and re-indexed by the subsequent merkle diff.
+	db, err := sql.Open("sqlite3", donorPath)
 	if err != nil {
 		return false, fmt.Errorf("open donor: %w", err)
 	}
