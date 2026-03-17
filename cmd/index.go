@@ -70,8 +70,8 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	p.Complete(fmt.Sprintf("Done. Indexed %d files, %d chunks in %s.",
-		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond)))
+	fmt.Printf("Done. Indexed %d files, %d chunks in %s.\n",
+		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond))
 	return nil
 }
 
@@ -123,7 +123,7 @@ func performIndexing(cmd *cobra.Command, idx *index.Indexer, projectPath string,
 	}
 
 	if !reindexed {
-		p.UpToDate()
+		fmt.Println("Index is already up to date.")
 	}
 
 	return stats, nil
