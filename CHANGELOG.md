@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.14](https://github.com/ory/lumen/compare/v0.0.13...v0.0.14) (2026-03-16)
+
+
+### Features
+
+* distribute lumen binary via npm optional dependencies ([#47](https://github.com/ory/lumen/issues/47)) ([6c382af](https://github.com/ory/lumen/commit/6c382af75e2c79199910edd265cb61892284bf80))
+
+
+### Performance Improvements
+
+* **e2e:** parallelize all E2E tests and fix openIndexDB race ([#45](https://github.com/ory/lumen/issues/45)) ([1ae2993](https://github.com/ory/lumen/commit/1ae29934166c0943e8c82da29865929e75a73c17))
+
 ## [0.0.13](https://github.com/ory/lumen/compare/v0.0.12...v0.0.13) (2026-03-16)
 
 
