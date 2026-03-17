@@ -107,6 +107,9 @@ func generateSessionContext(mcpName, cwd string) string {
 
 	dbPath := config.DBPathForProject(cwd, cfg.Model)
 	if _, err := os.Stat(dbPath); err != nil {
+		if donorPath := config.FindDonorIndex(cwd, cfg.Model); donorPath != "" {
+			return directive + " Sibling worktree index found — fast incremental re-index on first search."
+		}
 		return directive + " No index yet — auto-created on first call."
 	}
 

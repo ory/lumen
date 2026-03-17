@@ -98,6 +98,9 @@ Two skills are also available: `/lumen:doctor` (health check) and
   re-index in seconds after the first run
 - **11 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
   Java, PHP, C/C++, C#
+- **Git worktree support** — worktrees share index data automatically; a new
+  worktree seeds from a sibling's index and only re-indexes changed files,
+  turning minutes of embedding into seconds
 - **Zero cloud** — embeddings stay on your machine; no data leaves your network
 - **Ollama and LM Studio** — works with either local embedding backend
 
@@ -242,6 +245,12 @@ needed.
 
 You can safely delete the entire `lumen` directory to clear all indexes, or use
 `lumen purge` to do it automatically.
+
+**Git worktrees** are detected automatically. When you create a new worktree
+(`git worktree add` or `claude --worktree`), Lumen finds a sibling worktree's
+existing index and copies it as a seed. The Merkle tree diff then re-indexes
+only the files that actually differ — typically a handful of files instead of
+the entire codebase. No configuration needed; it just works.
 
 ## CLI Reference
 
