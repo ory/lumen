@@ -51,7 +51,7 @@ if [ -z "$BINARY" ]; then
   echo "Downloading lumen ${VERSION} for ${OS}/${ARCH}..." >&2
   mkdir -p "$(dirname "$BINARY")"
 
-  curl -sfL "$URL" -o "$BINARY"
+  curl -fL --progress-bar --max-time 300 --retry 3 --retry-delay 2 "$URL" -o "$BINARY"
   chmod +x "$BINARY"
   echo "Installed lumen to ${BINARY}" >&2
 fi
