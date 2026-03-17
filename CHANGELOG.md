@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.16](https://github.com/ory/lumen/compare/v0.0.15...v0.0.16) (2026-03-17)
+
+
+### Reverts
+
+* distribute lumen binary via npm optional dependencies ([#47](https://github.com/ory/lumen/issues/47)) ([#50](https://github.com/ory/lumen/issues/50)) ([4ea2314](https://github.com/ory/lumen/commit/4ea23147406455d7aa1894fd77f4753c551f5758))
+
 ## [0.0.15](https://github.com/ory/lumen/compare/v0.0.14...v0.0.15) (2026-03-17)
 
 
