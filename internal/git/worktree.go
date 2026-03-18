@@ -63,6 +63,36 @@ func CommonDir(projectPath string) (string, error) {
 	return dir, nil
 }
 
+// InternalWorktreePaths returns the relative paths (relative to projectPath)
+// of any sibling worktrees that are checked out inside projectPath. These
+// should be excluded from indexing to avoid double-counting their files.
+// Returns nil if git is unavailable, projectPath is not a repo, or no
+// worktrees are nested inside it.
+func InternalWorktreePaths(projectPath string) []string {
+	worktrees, err := ListWorktrees(projectPath)
+	if err != nil {
+		return nil
+	}
+
+	resolvedRoot := projectPath
+	if r, err := filepath.EvalSymlinks(projectPath); err == nil {
+		resolvedRoot = r
+	}
+
+	var result []string
+	for _, wt := range worktrees {
+		if wt == resolvedRoot {
+			continue
+		}
+		rel, err := filepath.Rel(resolvedRoot, wt)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		result = append(result, rel)
+	}
+	return result
+}
+
 // ListWorktrees returns the absolute paths of all worktrees (including the
 // main working tree) for the repository containing projectPath. Returns nil
 // if git is not available or projectPath is not inside a git repository.

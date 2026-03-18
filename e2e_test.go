@@ -1151,3 +1151,228 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("call 4: HandleHealth (score=%.2f) should pass min_score=0.3 filter", found.Score)
 	}
 }
+
+// TestE2E_WorktreeIndexesChangedFile verifies that when working inside a git
+// worktree that has a modified file, searching from the worktree path triggers
+// indexing and returns the worktree's version of the file — not the main repo's.
+func TestE2E_WorktreeIndexesChangedFile(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	t.Parallel()
+	session := startServer(t)
+
+	// Set up a main repo with auth.go committed.
+	repoDir := t.TempDir()
+	gitE2ERun(t, repoDir, "init")
+	authPath := filepath.Join(repoDir, "auth.go")
+	if err := os.WriteFile(authPath, []byte(`package main
+
+// ValidateToken checks whether a token is valid.
+func ValidateToken(token string) bool {
+	return token != ""
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitE2ERun(t, repoDir, "add", "auth.go")
+	gitE2ERun(t, repoDir, "commit", "-m", "add auth")
+
+	// Create a worktree INSIDE the repo dir.
+	wtDir := filepath.Join(repoDir, ".worktrees", "feature")
+	gitE2ERun(t, repoDir, "worktree", "add", wtDir)
+
+	// In the worktree, replace ValidateToken with ValidateTokenV2.
+	wtAuthPath := filepath.Join(wtDir, "auth.go")
+	if err := os.WriteFile(wtAuthPath, []byte(`package main
+
+// ValidateTokenV2 checks whether a token is valid using the v2 algorithm.
+func ValidateTokenV2(token string) bool {
+	return len(token) >= 32
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Search from the worktree — first call triggers indexing.
+	out1 := callSearch(t, session, map[string]any{
+		"query":     "token validation",
+		"path":      wtDir,
+		"cwd":       wtDir,
+		"n_results": 10,
+		"min_score": -1,
+	})
+	if !out1.Reindexed {
+		t.Error("expected Reindexed=true on first search in worktree")
+	}
+	if out1.IndexedFiles == 0 {
+		t.Error("expected at least one file indexed in worktree")
+	}
+
+	// The worktree's version of the symbol should appear.
+	v2 := findResult(out1.Results, "ValidateTokenV2")
+	if v2 == nil {
+		t.Fatalf("expected ValidateTokenV2 in worktree search results, got: %v", resultSymbols(out1.Results))
+	}
+
+	// The snippet must reflect the worktree file content (v2 algorithm).
+	if !strings.Contains(v2.Content, "ValidateTokenV2") {
+		t.Errorf("snippet should contain 'ValidateTokenV2', got: %s", v2.Content)
+	}
+	if strings.Contains(v2.Content, "ValidateToken(") {
+		t.Errorf("snippet should not contain old 'ValidateToken(' from main repo, got: %s", v2.Content)
+	}
+
+	// The old symbol (exact name) must not appear — it was replaced in the worktree.
+	for _, r := range out1.Results {
+		if r.Symbol == "ValidateToken" {
+			t.Errorf("ValidateToken (main-repo-only symbol) should not appear in worktree index, but got result: %+v", r)
+		}
+	}
+
+	// Second search — no file changes — must NOT re-index.
+	out2 := callSearch(t, session, map[string]any{
+		"query":     "token validation",
+		"path":      wtDir,
+		"cwd":       wtDir,
+		"min_score": -1,
+	})
+	if out2.Reindexed {
+		t.Error("second search in worktree (no changes): expected Reindexed=false")
+	}
+}
+
+// gitE2ERun runs a git command in dir, failing the test on error.
+func gitE2ERun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
+// TestE2E_InternalWorktreeFilesExcludedFromIndex verifies that files inside a
+// git worktree checked out under the project root are not counted or returned
+// by the main-repo index.
+func TestE2E_InternalWorktreeFilesExcludedFromIndex(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	t.Parallel()
+	session := startServer(t)
+
+	// Set up a git repo with one .go file.
+	repoDir := t.TempDir()
+	gitE2ERun(t, repoDir, "init")
+	gitE2ERun(t, repoDir, "commit", "--allow-empty", "-m", "init")
+	if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte(`package main
+
+// Run starts the application.
+func Run() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a worktree INSIDE the repo dir with different symbols.
+	wtDir := filepath.Join(repoDir, ".worktrees", "feature")
+	gitE2ERun(t, repoDir, "worktree", "add", wtDir)
+	if err := os.WriteFile(filepath.Join(wtDir, "feature.go"), []byte(`package main
+
+// FeatureFlag controls the feature rollout.
+func FeatureFlag() bool { return false }
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Index the main repo.
+	out1 := callSearch(t, session, map[string]any{
+		"query": "application startup",
+		"path":  repoDir,
+		"cwd":   repoDir,
+	})
+	if !out1.Reindexed {
+		t.Error("expected Reindexed=true on first search")
+	}
+
+	// Only main.go should have been indexed — not the worktree file.
+	if out1.IndexedFiles != 1 {
+		t.Errorf("expected IndexedFiles=1 (main.go only), got %d — worktree files are leaking into the index", out1.IndexedFiles)
+	}
+
+	// A symbol that only exists in the worktree should not be findable.
+	out2 := callSearch(t, session, map[string]any{
+		"query":     "feature flag rollout",
+		"path":      repoDir,
+		"cwd":       repoDir,
+		"n_results": 10,
+		"min_score": -1,
+	})
+	if findResult(out2.Results, "FeatureFlag") != nil {
+		t.Error("FeatureFlag (worktree-only symbol) should not appear in main repo index")
+	}
+}
+
+// TestE2E_InternalWorktreeSearchNoReindex verifies that searching with a path
+// prefix inside the internal worktree directory does not trigger a re-index.
+func TestE2E_InternalWorktreeSearchNoReindex(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	t.Parallel()
+	session := startServer(t)
+
+	// Set up a git repo with one .go file and an internal worktree.
+	repoDir := t.TempDir()
+	gitE2ERun(t, repoDir, "init")
+	gitE2ERun(t, repoDir, "commit", "--allow-empty", "-m", "init")
+	if err := os.WriteFile(filepath.Join(repoDir, "server.go"), []byte(`package main
+
+// ServeHTTP handles incoming HTTP requests.
+func ServeHTTP() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wtDir := filepath.Join(repoDir, ".worktrees", "fix")
+	gitE2ERun(t, repoDir, "worktree", "add", wtDir)
+
+	// Call 1: index the repo.
+	out1 := callSearch(t, session, map[string]any{
+		"query": "HTTP server",
+		"path":  repoDir,
+		"cwd":   repoDir,
+	})
+	if !out1.Reindexed {
+		t.Error("call 1: expected Reindexed=true on first search")
+	}
+
+	// Call 2: search again — no changes, must NOT reindex.
+	out2 := callSearch(t, session, map[string]any{
+		"query": "HTTP server",
+		"path":  repoDir,
+		"cwd":   repoDir,
+	})
+	if out2.Reindexed {
+		t.Error("call 2: expected Reindexed=false (no changes)")
+	}
+
+	// Call 3: search with path pointing INTO the worktree directory.
+	// Should use the parent index (no re-index) and return no results
+	// (worktree files were excluded from the index).
+	out3 := callSearch(t, session, map[string]any{
+		"query":     "anything",
+		"path":      wtDir,
+		"cwd":       repoDir,
+		"min_score": -1,
+	})
+	if out3.Reindexed {
+		t.Error("call 3 (path inside worktree): unexpected re-index triggered")
+	}
+}

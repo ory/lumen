@@ -90,17 +90,21 @@ func (p *Progress) Stop() {
 }
 
 // AsProgressFunc returns a callback compatible with index.ProgressFunc.
-// The progress bar is started on the first call and stopped when
-// current reaches total.
+// Calls with total=0 print an info line; the progress bar is started on
+// the first call with total>0 and stopped when current reaches total.
 func (p *Progress) AsProgressFunc() func(current, total int, message string) {
 	started := false
 	return func(current, total int, message string) {
+		if total == 0 {
+			p.Info(message)
+			return
+		}
 		if !started {
 			p.Start("Indexing", total)
 			started = true
 		}
 		p.Update(current, message)
-		if total > 0 && current >= total {
+		if current >= total {
 			p.Stop()
 			started = false
 		}

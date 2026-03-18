@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -365,13 +366,17 @@ func checkFirstCall(t *testing.T, first progressCall) {
 	if first.current != 0 {
 		t.Errorf("first call: expected current=0, got %d", first.current)
 	}
-	if first.total != 2 {
-		t.Errorf("first call: expected total=2, got %d", first.total)
+	if !strings.Contains(first.message, "Scanning") {
+		t.Errorf("first call: expected scanning message, got %q", first.message)
 	}
 }
 
 func checkAllCalls(t *testing.T, calls []progressCall) {
 	for i, c := range calls {
+		// Scanning-phase calls report total=0 (unknown at that point).
+		if c.total == 0 {
+			continue
+		}
 		if c.total != 2 {
 			t.Errorf("call[%d]: expected total=2, got %d (message: %s)", i, c.total, c.message)
 		}
@@ -411,6 +416,60 @@ func checkLastCall(t *testing.T, last progressCall) {
 	}
 	if last.current != last.total {
 		t.Errorf("last call: expected current == total, got current=%d total=%d", last.current, last.total)
+	}
+}
+
+func TestIndexer_SkipsInternalWorktrees(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	// Create a real git repo with one .go file.
+	main := t.TempDir()
+	gitRun(t, main, "git", "init")
+	gitRun(t, main, "git", "commit", "--allow-empty", "-m", "init")
+	writeGoFile(t, main, "main.go", "package main\nfunc Main() {}\n")
+
+	// Add a worktree INSIDE the repo directory with its own .go files.
+	internalWt := filepath.Join(main, ".worktrees", "feature")
+	gitRun(t, main, "git", "worktree", "add", internalWt)
+	writeGoFile(t, internalWt, "feature.go", "package main\nfunc Feature() {}\n")
+	writeGoFile(t, internalWt, "extra.go", "package main\nfunc Extra() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	stats, err := idx.Index(context.Background(), main, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Only main.go should be indexed; worktree files must be excluded.
+	if stats.TotalFiles != 1 {
+		t.Errorf("expected TotalFiles=1 (main.go only), got %d", stats.TotalFiles)
+	}
+	if stats.IndexedFiles != 1 {
+		t.Errorf("expected IndexedFiles=1, got %d", stats.IndexedFiles)
+	}
+}
+
+func gitRun(t *testing.T, dir, name string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test",
+		"GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test",
+		"GIT_COMMITTER_EMAIL=test@test.com",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %v failed: %v\n%s", name, args, err, out)
 	}
 }
 
