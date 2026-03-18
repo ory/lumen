@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.20](https://github.com/ory/lumen/compare/v0.0.19...v0.0.20) (2026-03-18)
+
+
+### Bug Fixes
+
+* **index:** cap parent index walk at git repo boundary + store perf improvements ([#58](https://github.com/ory/lumen/issues/58)) ([c5074e2](https://github.com/ory/lumen/commit/c5074e24409d0b81e9393a87501017c0a61f4f7d))
+
 ## [0.0.19](https://github.com/ory/lumen/compare/v0.0.18...v0.0.19) (2026-03-18)
 
 
