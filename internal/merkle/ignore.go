@@ -90,8 +90,9 @@ type dirIgnore struct {
 // IgnoreTree manages hierarchical ignore rules, lazily loading them as
 // filepath.WalkDir traverses directories. It is safe for concurrent use.
 type IgnoreTree struct {
-	rootDir string
-	extSet  map[string]bool
+	rootDir      string
+	extSet       map[string]bool
+	extraSkipDirs map[string]bool // relative paths of directories to always skip
 
 	mu   sync.Mutex
 	dirs map[string]*dirIgnore // keyed by relative dir path ("" = root)
@@ -142,6 +143,9 @@ func (t *IgnoreTree) loadDir(dirRel string) *dirIgnore {
 func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
 	base := filepath.Base(relPath)
 	if isDir && SkipDirs[base] {
+		return true
+	}
+	if isDir && t.extraSkipDirs[relPath] {
 		return true
 	}
 	if !isDir && SkipFiles[base] {
@@ -244,6 +248,20 @@ func parseLinguistGenerated(path string) *ignore.GitIgnore {
 		return nil
 	}
 	return ignore.CompileIgnoreLines(patterns...)
+}
+
+// MakeSkipWithExtra is like MakeSkip but also skips directories whose relative
+// paths are listed in extraSkipDirs. This is used to exclude git worktrees
+// that are checked out inside the project root directory.
+func MakeSkipWithExtra(rootDir string, exts []string, extraSkipDirs []string) SkipFunc {
+	tree := NewIgnoreTree(rootDir, exts)
+	if len(extraSkipDirs) > 0 {
+		tree.extraSkipDirs = make(map[string]bool, len(extraSkipDirs))
+		for _, p := range extraSkipDirs {
+			tree.extraSkipDirs[filepath.Clean(p)] = true
+		}
+	}
+	return tree.shouldSkip
 }
 
 // MakeSkip returns a SkipFunc that layers six filters:

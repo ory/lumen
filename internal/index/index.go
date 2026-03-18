@@ -27,6 +27,7 @@ import (
 
 	"github.com/ory/lumen/internal/chunker"
 	"github.com/ory/lumen/internal/embedder"
+	"github.com/ory/lumen/internal/git"
 	"github.com/ory/lumen/internal/merkle"
 	"github.com/ory/lumen/internal/store"
 )
@@ -84,11 +85,16 @@ func (idx *Indexer) Close() error {
 	return idx.store.Close()
 }
 
+// makeSkip returns a SkipFunc for projectDir that excludes internal worktrees.
+func makeSkip(projectDir string) merkle.SkipFunc {
+	return merkle.MakeSkipWithExtra(projectDir, chunker.SupportedExtensions(), git.InternalWorktreePaths(projectDir))
+}
+
 // Index indexes the project at projectDir. If force is true, all files are
 // re-indexed regardless of whether they have changed.
 func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, progress ProgressFunc) (Stats, error) {
 	// Build tree outside the lock: it is read-only and can be slow for large projects.
-	curTree, err := merkle.BuildTree(projectDir, merkle.MakeSkip(projectDir, chunker.SupportedExtensions()))
+	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
 		return Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
@@ -113,7 +119,7 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 // Returns whether a re-index occurred, the stats, and any error.
 func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress ProgressFunc) (bool, Stats, error) {
 	// Build tree outside the lock: it is read-only and can be slow for large projects.
-	curTree, err := merkle.BuildTree(projectDir, merkle.MakeSkip(projectDir, chunker.SupportedExtensions()))
+	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
 		return false, Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
@@ -271,7 +277,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 // the current Merkle tree root hash against the stored one. Returns false if
 // the project has never been indexed (no stored hash).
 func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
-	curTree, err := merkle.BuildTree(projectDir, merkle.MakeSkip(projectDir, chunker.SupportedExtensions()))
+	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
 		return false, fmt.Errorf("build merkle tree: %w", err)
 	}

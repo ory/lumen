@@ -113,6 +113,59 @@ func TestCommonDir(t *testing.T) {
 	}
 }
 
+func TestInternalWorktreePaths_InternalWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	main := t.TempDir()
+	run(t, main, "git", "init")
+	run(t, main, "git", "commit", "--allow-empty", "-m", "init")
+
+	// Create a worktree INSIDE the main repo directory.
+	internalWt := filepath.Join(main, ".worktrees", "feature")
+	run(t, main, "git", "worktree", "add", internalWt)
+
+	paths := InternalWorktreePaths(main)
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 internal worktree path, got %d: %v", len(paths), paths)
+	}
+	want := filepath.Join(".worktrees", "feature")
+	if paths[0] != want {
+		t.Errorf("expected %q, got %q", want, paths[0])
+	}
+}
+
+func TestInternalWorktreePaths_ExternalWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	main := t.TempDir()
+	run(t, main, "git", "init")
+	run(t, main, "git", "commit", "--allow-empty", "-m", "init")
+
+	// Create a worktree OUTSIDE the main repo directory.
+	externalWt := filepath.Join(t.TempDir(), "feature")
+	run(t, main, "git", "worktree", "add", externalWt)
+
+	paths := InternalWorktreePaths(main)
+	if len(paths) != 0 {
+		t.Errorf("expected 0 internal worktree paths for external worktree, got %v", paths)
+	}
+}
+
+func TestInternalWorktreePaths_NotARepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := t.TempDir()
+	paths := InternalWorktreePaths(dir)
+	if len(paths) != 0 {
+		t.Errorf("expected nil for non-repo, got %v", paths)
+	}
+}
+
 func TestListWorktrees_NotARepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")

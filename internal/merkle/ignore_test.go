@@ -349,6 +349,49 @@ func TestParseLinguistGenerated(t *testing.T) {
 	}
 }
 
+func TestMakeSkipWithExtra_SkipsWorktreePaths(t *testing.T) {
+	dir := t.TempDir()
+
+	extraPaths := []string{".worktrees/feature", ".worktrees/bugfix"}
+	skip := MakeSkipWithExtra(dir, []string{".go"}, extraPaths)
+
+	// Extra paths should be skipped as directories
+	if !skip(".worktrees/feature", true) {
+		t.Error("expected .worktrees/feature dir to be skipped")
+	}
+	if !skip(".worktrees/bugfix", true) {
+		t.Error("expected .worktrees/bugfix dir to be skipped")
+	}
+	// Files are not subject to the extra skip (directory pruning handles it)
+	if skip("main.go", false) {
+		t.Error("expected main.go to pass")
+	}
+	// A similarly named dir NOT in the skip list should pass
+	if skip(".worktrees/other", true) {
+		t.Error("expected .worktrees/other to pass (not in extra skip list)")
+	}
+}
+
+func TestBuildTree_SkipsInternalWorktrees(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "main.go", "package main\n")
+	writeFile(t, dir, ".worktrees/feature/main.go", "package main\n")
+	writeFile(t, dir, ".worktrees/feature/util.go", "package util\n")
+
+	skip := MakeSkipWithExtra(dir, []string{".go"}, []string{".worktrees/feature"})
+	tree, err := BuildTree(dir, skip)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tree.Files) != 1 {
+		t.Fatalf("expected 1 file (main.go only), got %d: %v", len(tree.Files), tree.Files)
+	}
+	if _, ok := tree.Files["main.go"]; !ok {
+		t.Error("expected main.go in tree")
+	}
+}
+
 func TestAncestorDirs(t *testing.T) {
 	tests := []struct {
 		input string
