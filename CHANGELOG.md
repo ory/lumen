@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.18](https://github.com/ory/lumen/compare/v0.0.17...v0.0.18) (2026-03-18)
+
+
+### Bug Fixes
+
+* **index:** exclude internal git worktrees from project index ([#54](https://github.com/ory/lumen/issues/54)) ([4890908](https://github.com/ory/lumen/commit/4890908636f40e57b10c1a1edab95c41a9d44c4d))
+
 ## [0.0.17](https://github.com/ory/lumen/compare/v0.0.16...v0.0.17) (2026-03-17)
 
 
