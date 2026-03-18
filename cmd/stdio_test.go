@@ -17,6 +17,7 @@ package cmd
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -162,6 +163,50 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 			t.Fatalf("expected original path (skip dir in route), got %s", root)
 		}
 	})
+}
+
+func TestIndexerCache_FindEffectiveRoot_GitBoundary(t *testing.T) {
+	// Structure: ancestor/ (has an index DB) → repo/ (git root) → subdir/
+	// findEffectiveRoot must not walk above the git repo root to adopt the
+	// ancestor index.
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	const model = "test-model"
+
+	// Create directory layout.
+	ancestor := filepath.Join(tmpDir, "ancestor")
+	repo := filepath.Join(ancestor, "repo")
+	subdir := filepath.Join(repo, "subdir")
+	for _, d := range []string{ancestor, repo, subdir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Initialise a git repository at repo/.
+	cmd := exec.Command("git", "init", repo)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, out)
+	}
+
+	// Create a fake index DB for the ancestor directory (above the git root).
+	ancestorDBPath := config.DBPathForProject(ancestor, model)
+	if err := os.MkdirAll(filepath.Dir(ancestorDBPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ancestorDBPath, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		cache: make(map[string]cacheEntry),
+		model: model,
+	}
+	root := ic.findEffectiveRoot(subdir)
+	if root != subdir {
+		t.Fatalf("expected findEffectiveRoot to stop at git boundary and return %s, got %s", subdir, root)
+	}
 }
 
 func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
