@@ -30,6 +30,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
+	"github.com/ory/lumen/internal/git"
 	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/merkle"
 	"github.com/spf13/cobra"
@@ -136,8 +137,21 @@ type indexerCache struct {
 // path passes through a directory in merkle.SkipDirs (e.g. "testdata"). Such
 // a parent index would never contain path's files, so it is not useful.
 func (ic *indexerCache) findEffectiveRoot(path string) string {
+	// Cap the upward walk at the git repository root. This prevents lumen
+	// from adopting a large ancestor index (e.g. a GOPATH index) that
+	// happens to contain path as a subdirectory, which would cause
+	// EnsureFresh to scan the entire ancestor tree.
+	gitRoot, gitErr := git.RepoRoot(path)
+
 	candidate := filepath.Dir(path)
 	for {
+		// Do not walk above the git repo root.
+		if gitErr == nil {
+			if rel, relErr := filepath.Rel(gitRoot, candidate); relErr != nil || strings.HasPrefix(rel, "..") {
+				break
+			}
+		}
+
 		if !pathCrossesSkipDir(candidate, path) {
 			if _, ok := ic.cache[candidate]; ok {
 				return candidate

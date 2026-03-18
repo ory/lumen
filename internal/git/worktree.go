@@ -93,6 +93,28 @@ func InternalWorktreePaths(projectPath string) []string {
 	return result
 }
 
+// RepoRoot returns the absolute path of the root directory of the git
+// repository containing projectPath, by running "git rev-parse --show-toplevel".
+// Returns an error if git is not available or projectPath is not inside a git
+// repository.
+func RepoRoot(projectPath string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel")
+	cmd.Dir = projectPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	root := strings.TrimSpace(string(out))
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	return root, nil
+}
+
 // ListWorktrees returns the absolute paths of all worktrees (including the
 // main working tree) for the repository containing projectPath. Returns nil
 // if git is not available or projectPath is not inside a git repository.
