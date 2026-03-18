@@ -213,16 +213,17 @@ func TestStore_ChunkIndexesExist(t *testing.T) {
 	}
 	defer func() { _ = s.Close() }()
 
-	var count int
-	err = s.db.QueryRow(
-		`SELECT count(*) FROM sqlite_master
-		 WHERE type='index' AND name = 'idx_chunks_file_path'`,
-	).Scan(&count)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Fatalf("expected 1 index, got %d", count)
+	for _, name := range []string{"idx_chunks_file_path", "idx_chunks_symbol"} {
+		var count int
+		err = s.db.QueryRow(
+			`SELECT count(*) FROM sqlite_master WHERE type='index' AND name = ?`, name,
+		).Scan(&count)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("expected index %s to exist", name)
+		}
 	}
 }
 

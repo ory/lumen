@@ -106,6 +106,7 @@ func createSchema(db *sql.DB, dimensions int) error {
 			end_line   INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_chunks_file_path ON chunks(file_path)`,
+		`CREATE INDEX IF NOT EXISTS idx_chunks_symbol ON chunks(symbol)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -329,7 +330,11 @@ func (s *Store) insertChunksInTransaction(chunks []chunker.Chunk, vectors [][]fl
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, _ = s.db.Exec("ANALYZE")
+	return nil
 }
 
 func insertChunkAndVector(chunkStmt, vecStmt interface {
