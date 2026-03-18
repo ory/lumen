@@ -93,9 +93,6 @@ func makeSkip(projectDir string) merkle.SkipFunc {
 // Index indexes the project at projectDir. If force is true, all files are
 // re-indexed regardless of whether they have changed.
 func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, progress ProgressFunc) (Stats, error) {
-	if progress != nil {
-		progress(0, 0, "Scanning files...")
-	}
 	// Build tree outside the lock: it is read-only and can be slow for large projects.
 	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
@@ -121,9 +118,6 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 // EnsureFresh checks if the index is stale and re-indexes if needed.
 // Returns whether a re-index occurred, the stats, and any error.
 func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress ProgressFunc) (bool, Stats, error) {
-	if progress != nil {
-		progress(0, 0, "Scanning files...")
-	}
 	// Build tree outside the lock: it is read-only and can be slow for large projects.
 	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {

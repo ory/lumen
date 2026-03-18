@@ -384,6 +384,11 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 		return nil
 	}
 	return func(current, total int, message string) {
+		if total == 0 {
+			// Skip indeterminate notifications (e.g. "Scanning files...") —
+			// MCP progress requires Total > 0 for meaningful progress tracking.
+			return
+		}
 		_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
 			ProgressToken: token,
 			Progress:      float64(current),

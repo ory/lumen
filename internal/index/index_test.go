@@ -366,17 +366,13 @@ func checkFirstCall(t *testing.T, first progressCall) {
 	if first.current != 0 {
 		t.Errorf("first call: expected current=0, got %d", first.current)
 	}
-	if !strings.Contains(first.message, "Scanning") {
-		t.Errorf("first call: expected scanning message, got %q", first.message)
+	if !strings.Contains(first.message, "Found") || !strings.Contains(first.message, "files to index") {
+		t.Errorf("first call: expected 'Found ... files to index' message, got %q", first.message)
 	}
 }
 
 func checkAllCalls(t *testing.T, calls []progressCall) {
 	for i, c := range calls {
-		// Scanning-phase calls report total=0 (unknown at that point).
-		if c.total == 0 {
-			continue
-		}
 		if c.total != 2 {
 			t.Errorf("call[%d]: expected total=2, got %d (message: %s)", i, c.total, c.message)
 		}
