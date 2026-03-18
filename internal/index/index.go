@@ -249,6 +249,10 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		return stats, err
 	}
 
+	if len(filesToIndex) > 0 {
+		idx.store.Analyze()
+	}
+
 	if progress != nil && len(filesToIndex) > 0 {
 		progress(len(filesToIndex), len(filesToIndex),
 			fmt.Sprintf("Indexing complete: %d files, %d chunks", len(filesToIndex), totalChunks))

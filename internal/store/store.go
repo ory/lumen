@@ -106,7 +106,6 @@ func createSchema(db *sql.DB, dimensions int) error {
 			end_line   INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_chunks_file_path ON chunks(file_path)`,
-		`CREATE INDEX IF NOT EXISTS idx_chunks_symbol ON chunks(symbol)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -330,11 +329,7 @@ func (s *Store) insertChunksInTransaction(chunks []chunker.Chunk, vectors [][]fl
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	_, _ = s.db.Exec("ANALYZE")
-	return nil
+	return tx.Commit()
 }
 
 func insertChunkAndVector(chunkStmt, vecStmt interface {
@@ -498,6 +493,12 @@ func (s *Store) TopSymbols(n int) ([]string, error) {
 		symbols = append(symbols, sym)
 	}
 	return symbols, rows.Err()
+}
+
+// Analyze runs ANALYZE on the database so the query planner has up-to-date
+// statistics. Call once after a full index pass, not after every batch.
+func (s *Store) Analyze() {
+	_, _ = s.db.Exec("ANALYZE")
 }
 
 // Close closes the underlying database connection.
