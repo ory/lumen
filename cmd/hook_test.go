@@ -16,12 +16,22 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ory/lumen/internal/config"
 )
 
 func TestGenerateSessionContext_NoIndex(t *testing.T) {
-	content := generateSessionContext("lumen", "/nonexistent/path")
+	// Use the internal version with a no-op bgIndexer to avoid spawning the
+	// test binary as a background process (which would trigger a fork bomb:
+	// the spawned binary runs all tests, which spawn more binaries, etc.)
+	content := generateSessionContextInternal("lumen", "/nonexistent/path",
+		func(_, _ string) string { return "" },
+		func(_ string) {},
+	)
 	if !strings.Contains(content, "mcp__lumen__semantic_search") {
 		t.Error("content should reference the semantic_search tool")
 	}
@@ -155,8 +165,95 @@ func TestPreToolUseOutputJSON(t *testing.T) {
 	}
 }
 
+func TestGenerateSessionContextInternal_SpawnsWhenNoDB(t *testing.T) {
+	// No DB exists → bgIndexer must be called regardless of donor presence.
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	t.Run("with donor", func(t *testing.T) {
+		var bgCwd string
+		generateSessionContextInternal("lumen", "/my/worktree",
+			func(_, _ string) string { return "/some/donor.db" },
+			func(cwd string) { bgCwd = cwd },
+		)
+		if bgCwd != "/my/worktree" {
+			t.Fatalf("expected bgIndexer called with /my/worktree, got %q", bgCwd)
+		}
+	})
+
+	t.Run("without donor", func(t *testing.T) {
+		var bgCwd string
+		generateSessionContextInternal("lumen", "/my/worktree",
+			func(_, _ string) string { return "" },
+			func(cwd string) { bgCwd = cwd },
+		)
+		if bgCwd != "/my/worktree" {
+			t.Fatalf("expected bgIndexer called even without donor, got %q", bgCwd)
+		}
+	})
+}
+
+func TestGenerateSessionContextInternal_NoSpawnWhenDBExists(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	// Use the same model the function will load so the DB path matches.
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+
+	dbPath := config.DBPathForProject("/myproject", cfg.Model)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dbPath, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	generateSessionContextInternal("lumen", "/myproject",
+		func(_, _ string) string { return "/some/donor.db" },
+		func(_ string) { called = true },
+	)
+	if called {
+		t.Fatal("bgIndexer must not be called when an index already exists")
+	}
+}
+
+func TestGenerateSessionContextInternal_MessageWithDonor(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	result := generateSessionContextInternal("lumen", "/my/worktree",
+		func(_, _ string) string { return "/some/donor.db" },
+		func(_ string) {},
+	)
+	if !strings.Contains(result, "background") {
+		t.Errorf("expected 'background' in context when donor found, got: %s", result)
+	}
+}
+
+func TestGenerateSessionContextInternal_MessageWithoutDonor(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	result := generateSessionContextInternal("lumen", "/my/worktree",
+		func(_, _ string) string { return "" },
+		func(_ string) {},
+	)
+	if !strings.Contains(result, "background") {
+		t.Errorf("expected 'background' in context when no donor, got: %s", result)
+	}
+}
+
 func TestHookOutputJSON(t *testing.T) {
-	content := generateSessionContext("lumen", "/nonexistent/path")
+	// Use the internal version with a no-op bgIndexer — same fork-bomb reason
+	// as in TestGenerateSessionContext_NoIndex.
+	content := generateSessionContextInternal("lumen", "/nonexistent/path",
+		func(_, _ string) string { return "" },
+		func(_ string) {},
+	)
 	out := hookOutput{
 		HookSpecificOutput: hookSpecificOutput{
 			HookEventName:     "SessionStart",
