@@ -218,7 +218,18 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	// Determine the effective root: prefer explicit root, then walk up.
 	var effectiveRoot string
 	if preferredRoot != "" {
-		effectiveRoot = filepath.Clean(preferredRoot)
+		clean := filepath.Clean(preferredRoot)
+		// Only adopt the preferred root if an index already exists there.
+		// Creating a brand-new index at cwd when path is a small subdirectory
+		// would scan and embed the entire ancestor tree (e.g. a monorepo root),
+		// making every first search prohibitively slow. Once an index exists at
+		// the preferred root, subsequent searches reuse it and benefit from the
+		// shared project-wide index.
+		if _, err := os.Stat(config.DBPathForProject(clean, ic.model)); err == nil {
+			effectiveRoot = clean
+		} else {
+			effectiveRoot = ic.findEffectiveRoot(projectPath)
+		}
 	} else {
 		effectiveRoot = ic.findEffectiveRoot(projectPath)
 	}

@@ -314,38 +314,64 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 
-	ic := &indexerCache{
-		embedder: &stubEmbedder{},
-		model:    "stub",
-		cfg:      config.Config{MaxChunkTokens: 512},
-	}
-
 	parentDir := filepath.Join(tmpDir, "project")
 	subDir := filepath.Join(parentDir, "src")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Call with subDir as projectPath but parentDir as preferredRoot.
-	idx, root, err := ic.getOrCreate(subDir, parentDir)
-	if err != nil {
-		t.Fatalf("getOrCreate with preferredRoot: %v", err)
-	}
-	if root != parentDir {
-		t.Fatalf("expected effectiveRoot=%s, got %s", parentDir, root)
-	}
+	t.Run("no existing DB at preferredRoot falls back to projectPath", func(t *testing.T) {
+		ic := &indexerCache{
+			embedder: &stubEmbedder{},
+			model:    "stub",
+			cfg:      config.Config{MaxChunkTokens: 512},
+		}
+		// No DB exists at parentDir yet — should fall through to findEffectiveRoot(subDir)
+		// which returns subDir (no parent index found either).
+		_, root, err := ic.getOrCreate(subDir, parentDir)
+		if err != nil {
+			t.Fatalf("getOrCreate: %v", err)
+		}
+		if root != subDir {
+			t.Fatalf("expected effectiveRoot=%s (fallback), got %s", subDir, root)
+		}
+	})
 
-	// Both subDir and parentDir should be cached.
-	ic.mu.RLock()
-	parentEntry := ic.cache[parentDir]
-	subEntry := ic.cache[subDir]
-	ic.mu.RUnlock()
-	if parentEntry.idx != idx {
-		t.Fatal("parent key not in cache")
-	}
-	if subEntry.idx != idx {
-		t.Fatal("subdir key not aliased to parent indexer")
-	}
+	t.Run("existing DB at preferredRoot is adopted", func(t *testing.T) {
+		ic := &indexerCache{
+			embedder: &stubEmbedder{},
+			model:    "stub",
+			cfg:      config.Config{MaxChunkTokens: 512},
+		}
+		// Pre-create the DB file at parentDir so the preferred root is adopted.
+		dbPath := config.DBPathForProject(parentDir, "stub")
+		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dbPath, []byte{}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		idx, root, err := ic.getOrCreate(subDir, parentDir)
+		if err != nil {
+			t.Fatalf("getOrCreate with preferredRoot: %v", err)
+		}
+		if root != parentDir {
+			t.Fatalf("expected effectiveRoot=%s, got %s", parentDir, root)
+		}
+
+		// Both subDir and parentDir should be cached.
+		ic.mu.RLock()
+		parentEntry := ic.cache[parentDir]
+		subEntry := ic.cache[subDir]
+		ic.mu.RUnlock()
+		if parentEntry.idx != idx {
+			t.Fatal("parent key not in cache")
+		}
+		if subEntry.idx != idx {
+			t.Fatal("subdir key not aliased to parent indexer")
+		}
+	})
 }
 
 func TestValidateSearchInput_CwdPathInteraction(t *testing.T) {
