@@ -101,6 +101,15 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
+	// Seed from a sibling worktree index if this is a brand-new index.
+	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+		if donorPath := config.FindDonorIndex(projectPath, cfg.Model); donorPath != "" {
+			if _, seedErr := index.SeedFromDonor(donorPath, dbPath); seedErr != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "lumen: seed from worktree failed: %v\n", seedErr)
+			}
+		}
+	}
+
 	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
