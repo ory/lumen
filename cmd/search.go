@@ -63,11 +63,11 @@ func (t *tracer) print(w io.Writer) {
 	const sep = "───────────────────────────────────────────────────────────────────────"
 	for _, s := range t.spans {
 		ms := s.duration.Milliseconds()
-		fmt.Fprintf(w, "[%4dms] %-22s → %s\n", ms, s.label, s.detail)
+		_, _ = fmt.Fprintf(w, "[%4dms] %-22s → %s\n", ms, s.label, s.detail)
 	}
-	fmt.Fprintln(w, sep)
+	_, _ = fmt.Fprintln(w, sep)
 	total := time.Since(t.start)
-	fmt.Fprintf(w, "[%4dms] total\n", total.Milliseconds())
+	_, _ = fmt.Fprintf(w, "[%4dms] total\n", total.Milliseconds())
 }
 
 func init() {
