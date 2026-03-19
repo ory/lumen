@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.0.21](https://github.com/ory/lumen/compare/v0.0.20...v0.0.21) (2026-03-19)
+
+
+### Features
+
+* **cmd:** add search subcommand with --trace diagnostic flag ([e1f4bf2](https://github.com/ory/lumen/commit/e1f4bf2fa6c5bc9a9ac1e3ca04840f36dc1430cd))
+* **hook,stdio:** background index pre-warming and TTL pre-population ([338fdc9](https://github.com/ory/lumen/commit/338fdc97c564eb2e0e2d20df3f96dbfd99460ea0))
+* **index:** seed CLI index command from sibling worktree on first use ([ff55769](https://github.com/ory/lumen/commit/ff55769e25bd3a064a770f438bdd46465cd215d8))
+
+
+### Bug Fixes
+
+* **cmd:** lint cleanup in search subcommand ([736e2c6](https://github.com/ory/lumen/commit/736e2c69f77d247cc3f01e91fe90bb9bb38f350f))
+* make all e2e and unit tests pass ([57db1ea](https://github.com/ory/lumen/commit/57db1eae94546518e7deba74d3af16ede097f16c))
+* **stdio:** default to git repo root when no existing index found ([929b4c9](https://github.com/ory/lumen/commit/929b4c92015d52bf9c9e0e90819f7275add6f3d0))
+* **stdio:** only adopt cwd as index root when a DB already exists there ([80fe5d4](https://github.com/ory/lumen/commit/80fe5d44f0fd88eaedf4cdd9fee25d6d24a43ded))
+* **stdio:** resolve symlinks in search input paths before processing ([f1caa70](https://github.com/ory/lumen/commit/f1caa70f00f97350dce8411204249821703b7846))
+* **tests:** prevent fork bomb and close indexer FDs in cmd tests ([90c3d94](https://github.com/ory/lumen/commit/90c3d94f89177279b84ed367023ee36edd2b0aee))
+
+
+### Performance Improvements
+
+* **stdio:** skip merkle walk within 30s freshness TTL ([0e2c7a4](https://github.com/ory/lumen/commit/0e2c7a4d4e590fd50bbdd37a6c7c3ad28b3eff04))
+
 ## [0.0.20](https://github.com/ory/lumen/compare/v0.0.19...v0.0.20) (2026-03-18)
 
 
