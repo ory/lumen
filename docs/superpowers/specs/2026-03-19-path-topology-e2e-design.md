@@ -19,9 +19,9 @@ A single `TestE2E_PathTopologies` test function iterates over a table of `pathTo
 - Has a self-contained `setup` function that creates an isolated temp dir and repo layout
 - Declares search parameters (path, cwd, query)
 - Declares expectations: reindexed flag, minimum file count, symbols that must appear (`wantSymbols`), symbols that must not appear (`wantNoSymbols`)
-- Optionally declares a second search call to verify cache reuse or index sharing
+- Optionally declares a second search call (with its own query, path, and symbol assertions) to verify cache reuse or index sharing
 
-All entries share one MCP server session for performance. Each entry uses a different temp dir, producing a different DB path hash, so there is no cache interference between entries.
+All entries share one MCP server session for performance. Each entry uses a different temp dir, producing a different DB path hash, so there is no cache interference between entries. `LUMEN_FRESHNESS_TTL=1s` (set by `startServer`) means TTL interactions between sequentially-run entries are bounded to 1 second and do not affect correctness.
 
 ## Data Types
 
@@ -31,9 +31,9 @@ type pathTopologyCase struct {
     setup         func(t *testing.T) topologySetup
     query         string
     wantReindexed bool
-    wantMinFiles  int
-    wantSymbols   []string // all must appear in results
-    wantNoSymbols []string // none must appear (verifies pathPrefix scoping)
+    wantMinFiles  int       // 0 = unchecked
+    wantSymbols   []string  // all must appear in results
+    wantNoSymbols []string  // none must appear (verifies pathPrefix scoping)
     second        *secondCall
 }
 
@@ -42,36 +42,77 @@ type topologySetup struct {
     cwd        string // empty = omit from MCP request
 }
 
+// secondCall describes an optional second search call on the same repo.
+// Used to verify cache/index sharing or sibling-directory scoping.
 type secondCall struct {
     query         string
     searchPath    string
     wantReindexed bool
     wantSymbols   []string
+    wantNoSymbols []string  // verifies pathPrefix on second call too
 }
+```
+
+## Repo layout used by git-based topologies
+
+Topologies 2–10 use a shared canonical layout (each gets its own fresh temp dir):
+
+```
+repo/               ← git root (git init)
+  pkg/
+    server.go       ← defines func StartServer()
+  api/
+    handler.go      ← defines func HandleLogin()
+```
+
+Worktree topologies additionally create:
+
+```
+# external worktree (topologies 6, 7):
+worktree/           ← git worktree of repo (git worktree add)
+  pkg/
+    server.go       ← defines func StartServer() (same content)
+  api/
+    handler.go      ← defines func HandleLogin() (same content)
+
+# internal worktree (topology 8):
+repo/.worktrees/feat/   ← internal worktree (git worktree add repo/.worktrees/feat -b feat)
+  pkg/
+    worker.go       ← defines func RunWorker()
+  api/
+    auth.go         ← defines func AuthenticateUser()
 ```
 
 ## Topologies
 
-| # | Name | Setup | Path | wantNoSymbols | Notes |
-|---|------|-------|------|---------------|-------|
-| 1 | `plain-dir` | Temp dir, one Go file, no git | root | — | Baseline; `findEffectiveRoot` falls back to input path |
-| 2 | `git-root` | Git repo, `pkg/` + `api/` subdirs | repo root | — | No pathPrefix; both subdirs indexed |
-| 3 | `git-subdir` | Same repo as #2 layout (new temp) | `pkg/` | `api/` symbols | pathPrefix="pkg" must exclude `api/` |
-| 4 | `git-subdir-sibling` | Same; second call from `api/` | `pkg/` → `api/` | — | Second call: Reindexed=false; `api/` symbols found via shared index |
-| 5 | `git-subdir-cwd` | Git repo; `path=pkg/, cwd=root` | `pkg/` | — | cwd not adopted (no DB); git root fallback used |
-| 6 | `worktree-root` | Git repo + external worktree | worktree root | — | Worktree uses its own index root |
-| 7 | `worktree-subdir` | Git repo + worktree with `pkg/` subdir | `worktree/pkg/` | symbols outside `pkg/` | pathPrefix inside worktree |
-| 8 | `internal-worktree-subdir` | Git repo + internal worktree at `.worktrees/feat/` with `pkg/` | `.worktrees/feat/pkg/` | — | Internal worktree treated as own root; pathPrefix within it |
-| 9 | `symlink-root` | Git repo; symlink → repo root | symlink path | — | Gap A: symlinks resolved; results found |
-| 10 | `symlink-subdir` | Git repo with `pkg/`; symlink → repo | `symlink/pkg/` | symbols outside `pkg/` | Gap A+B combined: symlink + pathPrefix |
+| # | Name | searchPath | cwd | query (1st) | wantMinFiles | wantSymbols | wantNoSymbols | second call |
+|---|------|-----------|-----|-------------|--------------|-------------|----------------|-------------|
+| 1 | `plain-dir` | repo root (no git) | — | "start server" | 2 | `StartServer` | — | — |
+| 2 | `git-root` | repo root | — | "start server" | 2 | `StartServer` | — | — |
+| 3 | `git-subdir` | `repo/pkg/` | — | "start server" | 2 | `StartServer` | `HandleLogin` | — |
+| 4 | `git-subdir-sibling` | `repo/pkg/` | — | "start server" | 2 | `StartServer` | `HandleLogin` | path=`repo/api/`, query="login handler", Reindexed=false, wantSymbols=`HandleLogin`, wantNoSymbols=`StartServer` |
+| 5 | `git-subdir-cwd` | `repo/pkg/` | `repo/` | "start server" | 2 | `StartServer` | — | — |
+| 6 | `worktree-root` | worktree root | — | "start server" | 2 | `StartServer` | — | — |
+| 7 | `worktree-subdir` | `worktree/pkg/` | — | "start server" | 2 | `StartServer` | `HandleLogin` | — |
+| 8 | `internal-worktree-subdir` | `repo/.worktrees/feat/pkg/` | — | "run worker" | 2 | `RunWorker` | `AuthenticateUser` | — |
+| 9 | `symlink-root` *(skip if symlink unavailable)* | symlink → repo root | — | "start server" | 2 | `StartServer` | — | — |
+| 10 | `symlink-subdir` *(skip if symlink unavailable)* | symlink → `repo/pkg/` | — | "start server" | 2 | `StartServer` | `HandleLogin` | — |
+
+**Topology 1 (`plain-dir`)** has `wantMinFiles: 2` because the plain-dir layout has both `pkg/server.go` and `api/handler.go` and no path filtering — both must be indexed.
+
+**Topology 5 (`git-subdir-cwd`)** adds `wantMinFiles: 2` to verify that even with `cwd=repo/` (where no DB exists yet), the git root fallback indexes both subdirectories — not just `pkg/`. The existing `TestE2E_CwdNotAdoptedWhenNoDBExists` only verifies one symbol is findable; this topology adds the complementary file-count assertion.
+
+**Topology 8 (`internal-worktree-subdir`)** works because git worktrees have their own git root: `git rev-parse --show-toplevel` from inside `repo/.worktrees/feat/` returns `repo/.worktrees/feat/`, not `repo/`. Therefore `findEffectiveRoot(repo/.worktrees/feat/pkg/)` walks up to `repo/.worktrees/feat/` (the worktree's git root) and uses it as `effectiveRoot`. Both `feat/pkg/worker.go` and `feat/api/auth.go` are indexed at that root. Searching with `pathPrefix="pkg"` returns `RunWorker` but not `AuthenticateUser`. This is distinct from `TestE2E_InternalWorktreeSearchNoReindex`, which only verifies `Reindexed=false` and does not test pathPrefix scoping within the worktree's own index.
+
+**Topologies 9 and 10 (symlink):** Each topology creates a secondary temp dir outside the repo, then calls `os.Symlink(repoDir, symlinkDir)` where `symlinkDir` is a path inside that secondary temp dir. This guarantees the symlink path and the resolved path are different strings on all platforms: on macOS, `t.TempDir()` already returns a symlink path (`/var/...` → `/private/var/...`), so both `symlinkDir` and `repoDir` differ from their resolved forms; on Linux, `t.TempDir()` returns real paths and `os.Symlink` creates a genuinely different string path. If `os.Symlink` fails (e.g., some restricted environments), `t.Skip` is called rather than failing.
 
 ## Key Assertions
 
-**`wantNoSymbols`** is the critical assertion that was missing before. For topologies 3, 7, and 10, symbols from sibling subdirectories must not appear in results. This verifies that pathPrefix filtering actually excludes out-of-scope results — not just that it returns something.
+**`wantNoSymbols`** is the critical new assertion. For topologies 3, 4 (second call), 7, 8, and 10, symbols from sibling subdirectories must not appear in results. This verifies that pathPrefix filtering actively excludes out-of-scope results — not just that it returns something. This assertion was absent in all tests before this PR.
 
-**Second call `wantReindexed=false`** in topology 4 verifies that sibling subdirectory searches share the git-root index rather than creating per-subdirectory indexes.
+**Second call `wantReindexed=false`** in topology 4 verifies that sibling subdirectory searches share the git-root index. The second call also uses `wantNoSymbols: ["StartServer"]` to confirm that searching `api/` with pathPrefix="api" excludes `pkg/` symbols even when using the shared index.
 
-**Topologies 9 and 10** are explicit regression tests for the macOS symlink bug. They use `os.Symlink` to create an actual symlink, pass the symlink path to the server, and assert that results are correct — so any future removal of `EvalSymlinks` from `validateSearchInput` will cause these tests to fail.
+**`wantMinFiles: 2`** is required for all topologies. It distinguishes between "indexed only the searched subdirectory" (wrong: 1 file) and "indexed the full root" (correct: 2 files), catching any regression where effectiveRoot is scoped too narrowly.
 
 ## File Structure
 
