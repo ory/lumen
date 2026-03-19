@@ -203,9 +203,13 @@ func TestIndexerCache_FindEffectiveRoot_GitBoundary(t *testing.T) {
 		cache: make(map[string]cacheEntry),
 		model: model,
 	}
+	// No DB exists inside the git repo, so findEffectiveRoot should return the
+	// git root (not the ancestor DB above it, and not the subdir itself).
 	root := ic.findEffectiveRoot(subdir)
-	if root != subdir {
-		t.Fatalf("expected findEffectiveRoot to stop at git boundary and return %s, got %s", subdir, root)
+	// Resolve symlinks for comparison: macOS /var/folders → /private/var/folders.
+	repoReal, _ := filepath.EvalSymlinks(repo)
+	if root != repoReal {
+		t.Fatalf("expected findEffectiveRoot to return git root %s, got %s", repoReal, root)
 	}
 }
 

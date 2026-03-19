@@ -173,6 +173,12 @@ func (ic *indexerCache) findEffectiveRoot(path string) string {
 		}
 		candidate = parent
 	}
+	// No existing index found anywhere in the ancestry. Default to the git
+	// repository root so all searches within the same repo share one index,
+	// rather than creating a separate index per subdirectory.
+	if gitErr == nil {
+		return gitRoot
+	}
 	return path
 }
 
