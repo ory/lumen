@@ -277,6 +277,21 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 	return stats, nil
 }
 
+// LastIndexedAt returns the time the index was last successfully updated, as
+// stored in the last_indexed_at metadata field. Returns (zero, false) if the
+// field is absent or unparseable (e.g. the index has never been run).
+func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
+	val, err := idx.store.GetMeta("last_indexed_at")
+	if err != nil || val == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, val)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
 // IsFresh checks whether the index for projectDir is up to date by comparing
 // the current Merkle tree root hash against the stored one. Returns false if
 // the project has never been indexed (no stored hash).

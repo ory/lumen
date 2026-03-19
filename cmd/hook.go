@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -96,7 +97,16 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 // generateSessionContext builds concise context for the SessionStart hook.
 // If an index exists, it includes stats and top symbols to create a natural
 // data dependency — Claude sees useful data and wants more from the tool.
+// When no index exists, it triggers background pre-warming so the first search
+// in the session is fast.
 func generateSessionContext(mcpName, cwd string) string {
+	return generateSessionContextInternal(mcpName, cwd, config.FindDonorIndex, spawnBackgroundIndexer)
+}
+
+// generateSessionContextInternal is the testable core of generateSessionContext.
+// findDonor and bgIndexer are injected so tests can verify behaviour without
+// spawning real processes or requiring a live git repository.
+func generateSessionContextInternal(mcpName, cwd string, findDonor func(string, string) string, bgIndexer func(string)) string {
 	toolRef := "mcp__" + mcpName + "__semantic_search"
 	directive := "Call " + toolRef + " first for any code discovery task — before Grep, Bash, or Read."
 
@@ -107,10 +117,13 @@ func generateSessionContext(mcpName, cwd string) string {
 
 	dbPath := config.DBPathForProject(cwd, cfg.Model)
 	if _, err := os.Stat(dbPath); err != nil {
-		if donorPath := config.FindDonorIndex(cwd, cfg.Model); donorPath != "" {
-			return directive + " Sibling worktree index found — fast incremental re-index on first search."
+		// No index yet — kick off background pre-warming so the first search
+		// in this session doesn't pay the full seed + embed cost synchronously.
+		bgIndexer(cwd)
+		if donorPath := findDonor(cwd, cfg.Model); donorPath != "" {
+			return directive + " Sibling worktree index found — indexing in background."
 		}
-		return directive + " No index yet — auto-created on first call."
+		return directive + " No index yet — indexing in background."
 	}
 
 	s, err := store.New(dbPath, cfg.Dims)
@@ -135,6 +148,18 @@ func generateSessionContext(mcpName, cwd string) string {
 	}
 	sb.WriteString(" " + directive)
 	return sb.String()
+}
+
+// spawnBackgroundIndexer runs "lumen index <cwd>" as a detached background
+// process. Errors are silently ignored — the MCP server will index on demand
+// if pre-warming fails or hasn't finished by the time the first search arrives.
+func spawnBackgroundIndexer(cwd string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(exe, "index", cwd)
+	_ = cmd.Start()
 }
 
 // --- PreToolUse hook ---

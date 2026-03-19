@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // progressCall represents a progress function call for testing.
@@ -538,6 +539,48 @@ func World() {}
 	}
 	if fresh {
 		t.Fatal("expected IsFresh=false after modifying a file")
+	}
+}
+
+func TestIndexer_LastIndexedAt_ReturnsFalseWhenNotIndexed(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "empty.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(dbPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	_, ok := idx.LastIndexedAt()
+	if ok {
+		t.Fatal("expected ok=false for an index with no last_indexed_at metadata")
+	}
+}
+
+func TestIndexer_LastIndexedAt_ReturnsTimeAfterIndex(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\nfunc Foo() {}\n")
+
+	dbPath := filepath.Join(t.TempDir(), "idx.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(dbPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	before := time.Now().Add(-time.Second)
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().Add(time.Second)
+
+	at, ok := idx.LastIndexedAt()
+	if !ok {
+		t.Fatal("expected ok=true after Index was called")
+	}
+	if at.Before(before) || at.After(after) {
+		t.Fatalf("LastIndexedAt=%v outside expected window [%v, %v]", at, before, after)
 	}
 }
 

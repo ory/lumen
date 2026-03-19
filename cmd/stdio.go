@@ -77,6 +77,7 @@ type SemanticSearchOutput struct {
 	Reindexed    bool               `json:"reindexed"`
 	IndexedFiles int                `json:"indexed_files,omitempty"`
 	FilteredHint string             `json:"filtered_hint,omitempty"`
+	SeedWarning  string             `json:"seed_warning,omitempty"`
 }
 
 // IndexStatusInput defines the parameters for the index_status tool.
@@ -126,12 +127,14 @@ type cacheEntry struct {
 // indexerCache manages one *index.Indexer per project path, creating them
 // lazily with a shared embedder.
 type indexerCache struct {
-	mu           sync.RWMutex
-	cache        map[string]cacheEntry
-	embedder     embedder.Embedder
-	model        string
-	cfg          config.Config
-	freshnessTTL time.Duration // 0 means use defaultFreshnessTTL
+	mu            sync.RWMutex
+	cache         map[string]cacheEntry
+	embedder      embedder.Embedder
+	model         string
+	cfg           config.Config
+	freshnessTTL  time.Duration              // 0 means use defaultFreshnessTTL
+	findDonorFunc func(string, string) string // nil uses config.FindDonorIndex
+	seedFunc      func(string, string) (bool, error) // nil uses index.SeedFromDonor
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -197,19 +200,20 @@ func pathCrossesSkipDir(root, sub string) bool {
 
 // getOrCreate returns an existing Indexer for the given project path (or a
 // parent index if one exists), along with the effective root directory used by
-// the indexer. Creates a new indexer if none exists.
+// the indexer, and a non-empty seedWarning if seeding from a sibling worktree
+// failed. Creates a new indexer if none exists.
 //
 // When preferredRoot is non-empty it is used as the effective root directly,
 // bypassing the findEffectiveRoot walk. This lets callers pass the known
 // project root (e.g. cwd from Claude) so that sub-directory paths index the
 // whole project.
-func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*index.Indexer, string, error) {
+func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*index.Indexer, string, string, error) {
 	// Fast path: read lock for already-cached indexers.
 	ic.mu.RLock()
 	if ic.cache != nil {
 		if entry, ok := ic.cache[projectPath]; ok {
 			ic.mu.RUnlock()
-			return entry.idx, entry.effectiveRoot, nil
+			return entry.idx, entry.effectiveRoot, "", nil
 		}
 	}
 	ic.mu.RUnlock()
@@ -223,7 +227,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	}
 	// Double-check: another goroutine may have created it while we waited.
 	if entry, ok := ic.cache[projectPath]; ok {
-		return entry.idx, entry.effectiveRoot, nil
+		return entry.idx, entry.effectiveRoot, "", nil
 	}
 
 	// Determine the effective root: prefer explicit root, then walk up.
@@ -249,34 +253,57 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	if effectiveRoot != projectPath {
 		if entry, ok := ic.cache[effectiveRoot]; ok {
 			ic.cache[projectPath] = cacheEntry{idx: entry.idx, effectiveRoot: effectiveRoot}
-			return entry.idx, effectiveRoot, nil
+			return entry.idx, effectiveRoot, "", nil
 		}
 	}
 
 	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return nil, "", fmt.Errorf("create db directory: %w", err)
+		return nil, "", "", fmt.Errorf("create db directory: %w", err)
 	}
 
 	// Seed from sibling worktree if this is a new index.
+	var seedWarning string
 	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
-		if donorPath := config.FindDonorIndex(effectiveRoot, ic.model); donorPath != "" {
-			if _, seedErr := index.SeedFromDonor(donorPath, dbPath); seedErr != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "lumen: seed from worktree failed: %v\n", seedErr)
+		findDonor := ic.findDonorFunc
+		if findDonor == nil {
+			findDonor = config.FindDonorIndex
+		}
+		if donorPath := findDonor(effectiveRoot, ic.model); donorPath != "" {
+			seedFn := ic.seedFunc
+			if seedFn == nil {
+				seedFn = index.SeedFromDonor
+			}
+			if _, seedErr := seedFn(donorPath, dbPath); seedErr != nil {
+				seedWarning = fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
 			}
 		}
 	}
 
 	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens)
 	if err != nil {
-		return nil, "", fmt.Errorf("create indexer: %w", err)
+		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
 
-	ic.cache[effectiveRoot] = cacheEntry{idx: idx, effectiveRoot: effectiveRoot}
-	if effectiveRoot != projectPath {
-		ic.cache[projectPath] = cacheEntry{idx: idx, effectiveRoot: effectiveRoot}
+	// Pre-populate the freshness TTL if the index was recently stamped by
+	// background pre-warming (SessionStart hook). This avoids a redundant
+	// merkle walk on the very first search in a new session.
+	entry := cacheEntry{idx: idx, effectiveRoot: effectiveRoot}
+	if lastAt, ok := idx.LastIndexedAt(); ok {
+		ttl := ic.freshnessTTL
+		if ttl == 0 {
+			ttl = defaultFreshnessTTL
+		}
+		if time.Since(lastAt) < ttl {
+			entry.lastCheckedAt = lastAt
+		}
 	}
-	return idx, effectiveRoot, nil
+
+	ic.cache[effectiveRoot] = entry
+	if effectiveRoot != projectPath {
+		ic.cache[projectPath] = cacheEntry{idx: idx, effectiveRoot: effectiveRoot, lastCheckedAt: entry.lastCheckedAt}
+	}
+	return idx, effectiveRoot, seedWarning, nil
 }
 
 // handleSemanticSearch is the tool handler for the semantic_search tool.
@@ -287,7 +314,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return nil, nil, err
 	}
 
-	idx, effectiveRoot, err := ic.getOrCreate(input.Path, input.Cwd)
+	idx, effectiveRoot, seedWarning, err := ic.getOrCreate(input.Path, input.Cwd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get indexer: %w", err)
 	}
@@ -298,6 +325,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	if err != nil {
 		return nil, nil, err
 	}
+	out.SeedWarning = seedWarning
 
 	queryVec, err := ic.embedQuery(ctx, input.Query)
 	if err != nil {
@@ -546,7 +574,7 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 		return nil, nil, fmt.Errorf("path is required (or provide cwd)")
 	}
 
-	idx, effectiveRoot, err := ic.getOrCreate(input.Path, input.Cwd)
+	idx, effectiveRoot, _, err := ic.getOrCreate(input.Path, input.Cwd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get indexer: %w", err)
 	}
@@ -827,6 +855,10 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 		if out.Reindexed {
 			fmt.Fprintf(&b, " (indexed %d files)", out.IndexedFiles)
 		}
+		if out.SeedWarning != "" {
+			b.WriteString("\nWarning: ")
+			b.WriteString(out.SeedWarning)
+		}
 		if out.FilteredHint != "" {
 			b.WriteString("\n")
 			b.WriteString(out.FilteredHint)
@@ -838,6 +870,9 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	fmt.Fprintf(&b, "Found %d results", len(out.Results))
 	if out.Reindexed {
 		fmt.Fprintf(&b, " (indexed %d files)", out.IndexedFiles)
+	}
+	if out.SeedWarning != "" {
+		fmt.Fprintf(&b, "\nWarning: %s", out.SeedWarning)
 	}
 	b.WriteString(":\n")
 
