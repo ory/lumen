@@ -41,6 +41,8 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".cs",
+	".md", ".mdx",
+	".yaml", ".yml", ".json",
 }
 
 // SupportedExtensions returns the file extensions indexed by DefaultLanguages.
@@ -246,6 +248,10 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 
 	goChunker := NewGoAST()
 
+	md := NewMarkdownChunker()
+
+	structured := NewStructuredChunker(maxChunkTokens)
+
 	return map[string]Chunker{
 		".go":   goChunker,
 		".ts":   ts,
@@ -265,5 +271,10 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".hpp":  cpp,
 		".php":  php,
 		".cs":   cs,
+		".md":   md,
+		".mdx":  md,
+		".yaml": structured,
+		".yml":  structured,
+		".json": structured,
 	}
 }

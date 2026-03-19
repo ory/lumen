@@ -1,2 +1,12 @@
-results: 0
+results: 10
+k8s-deployment.yaml:1-2  apiVersion+kind (section)
+k8s-deployment.yaml:8-8  spec.replicas (section)
+k8s-load-balancer.yaml:2-21  kind+metadata+spec (section)
+k8s-statefulset.yaml:10-10  spec.replicas (section)
+k8s-zookeeper-statefulset.yaml:7-7  spec.replicas (section)
+kube-prometheus-stack-values.yaml:1939-1943  kubeControllerManager.serviceMonitor.https (section)
+kube-prometheus-stack-values.yaml:2714-2720  prometheusOperator.admissionWebhooks.deployment.replicas+prometheusOperator.admissionWebhooks.deployment.strategy (section)
+kube-prometheus-stack-values.yaml:3317-3321  prometheusOperator.verticalPodAutoscaler.updatePolicy (section)
+kube-prometheus-stack-values.yaml:3619-3621  prometheus.service.publishNotReadyAddresses (section)
+kube-prometheus-stack-values.yaml:4287-4290  prometheus.prometheusSpec.replicas (section)
 

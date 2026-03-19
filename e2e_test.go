@@ -111,6 +111,10 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
 		"LUMEN_FRESHNESS_TTL=1s",
+		// all-minilm uses BERT WordPiece tokenisation which is ~4x denser than
+		// our 4-chars-per-token estimate, so cap chunks at 100 "tokens" (400
+		// chars) to stay within the model's 512-token context window.
+		"LUMEN_MAX_CHUNK_TOKENS=100",
 		"XDG_DATA_HOME=" + dataHome,
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
@@ -758,6 +762,9 @@ func GracefulShutdown(timeout int) error {
 	if err := os.WriteFile(newFile, []byte(code), 0o644); err != nil {
 		t.Fatalf("failed to write new file: %v", err)
 	}
+	// Wait for the freshness TTL (1s in e2e tests) to expire so the merkle
+	// walk is triggered and the new file is detected.
+	time.Sleep(1100 * time.Millisecond)
 
 	outAdd := callSearch(t, session, map[string]any{
 		"query": "graceful shutdown",
@@ -792,6 +799,8 @@ func VerifyCredentials(username, password string) error {
 	if err := os.WriteFile(authFile, []byte(modifiedAuth), 0o644); err != nil {
 		t.Fatalf("failed to rewrite auth.go: %v", err)
 	}
+	// Wait for the freshness TTL to expire.
+	time.Sleep(1100 * time.Millisecond)
 
 	outMod := callSearch(t, session, map[string]any{
 		"query": "verify credentials",
@@ -811,6 +820,8 @@ func VerifyCredentials(username, password string) error {
 	if err := os.Remove(filepath.Join(tmpDir, "database.go")); err != nil {
 		t.Fatalf("failed to delete database.go: %v", err)
 	}
+	// Wait for the freshness TTL to expire.
+	time.Sleep(1100 * time.Millisecond)
 
 	outDel := callSearch(t, session, map[string]any{
 		"query": "database query",

@@ -1,8 +1,10 @@
-results: 6
-django-views.py:73-130  LoginView+dispatch+form_valid (type)
-django-views.py:176-196  logout_then_login+redirect_to_login (function)
+results: 8
+django-backends.py:59-63  authenticate (function)
+django-views.py:63-98  get_success_url_allowed_hosts.request+form_class+authentication_form+template_name+redirect_authenticated_user+extra_context+dispatch.redirect_to+get_form_kwargs.kwargs+get_context_data.context+get_context_data.current_site+http_method_names+template_name+extra_context+post.redirect_to+get_context_data.context+get_context_data.current_site+logout_then_login.login_url+redirect_to_login.resolved_url+redirect_to_login.login_url_parts+redirect_to_login.querystring+extra_context+get_context_data.context+email_template_name+extra_email_context+form_class+from_email+html_email_template_name+subject_template_name+success_url+template_name+title+token_generator+LoginView (type)
+django-views.py:109-118  LoginView+form_valid (function)
+django-views.py:133-142  LogoutView (type)
+django-views.py:176-189  logout_then_login+redirect_to_login (function)
 django-views.py:249-252  PasswordResetDoneView (type)
-django-views.py:267-299  PasswordResetConfirmView (type)
-django-views.py:311-351  PasswordResetConfirmView+form_valid+PasswordResetCompleteView (type)
-django-views.py:368-379  form_valid+PasswordChangeDoneView (function)
+django-views.py:343-347  PasswordResetCompleteView (type)
+django-views.py:368-379  form_valid+PasswordChangeView+PasswordChangeDoneView (function)
 

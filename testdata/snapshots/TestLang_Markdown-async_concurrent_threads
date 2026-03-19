@@ -1,2 +1,11 @@
-results: 0
+results: 9
+ch04-02-references-and-borrowing.md:134-140  Mutable References (section)
+ch13-01-closures.md:237-240  Capturing References or Moving Ownership (section)
+ch13-01-closures.md:257-260  Capturing References or Moving Ownership (section)
+ch16-01-threads.md:1-41  Using Threads to Run Code Simultaneously+Creating a New Thread with `spawn` (section)
+ch16-01-threads.md:71-97  Creating a New Thread with `spawn`+Waiting for All Threads to Finish (section)
+ch16-01-threads.md:131-138  Waiting for All Threads to Finish (section)
+ch16-01-threads.md:176-177  Using `move` Closures with Threads (section)
+ch16-01-threads.md:225-228  Using `move` Closures with Threads (section)
+ch16-01-threads.md:280-283  Using `move` Closures with Threads (section)
 

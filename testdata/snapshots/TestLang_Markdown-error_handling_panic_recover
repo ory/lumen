@@ -1,2 +1,10 @@
-results: 0
+results: 8
+ch09-01-unrecoverable-errors-with-panic.md:1-31  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:48-56  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:63-66  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:84-91  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:103-114  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:129-132  Unrecoverable Errors with `panic!` (section)
+ch09-01-unrecoverable-errors-with-panic.md:156-171  Unrecoverable Errors with `panic!` (section)
+ch11-01-writing-tests.md:136-139  Structuring Test Functions (section)
 

@@ -1,8 +1,11 @@
-results: 6
-tokio-listener.rs:62-188  TcpListener+accept (function)
-tokio-listener.rs:202-236  TcpListener (type)
-tokio-listener.rs:242-272  TcpListener+from_std (function)
-tokio-listener.rs:300-363  TcpListener+local_addr (function)
-tokio-stream.rs:75-113  TcpStream (type)
-tokio-stream.rs:1146-1176  TcpStream (type)
+results: 9
+tokio-listener.rs:62-69  TcpListener (type)
+tokio-listener.rs:123-160  TcpListener+accept (function)
+tokio-listener.rs:180-184  poll_accept (function)
+tokio-listener.rs:223-232  TcpListener (type)
+tokio-listener.rs:242-251  TcpListener+from_std (function)
+tokio-listener.rs:304-332  TcpListener+local_addr (type)
+tokio-listener.rs:352-362  ttl (function)
+tokio-listener.rs:378-388  set_ttl+TcpListener (function)
+tokio-stream.rs:1295-1298  TcpStream (type)
 

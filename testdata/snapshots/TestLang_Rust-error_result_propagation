@@ -1,7 +1,12 @@
-results: 5
-rg-globset-lib.rs:254-269  ErrorKind+fmt (type)
-rg-ignore-lib.rs:154-303  Error+is_partial+io_error+into_io_error+from_walkdir (type)
+results: 10
+rg-globset-lib.rs:243-255  Error+ErrorKind (type)
+rg-ignore-lib.rs:137-142  clone (function)
+rg-ignore-lib.rs:204-213  io_error (function)
+rg-ignore-lib.rs:225-229  Error+into_io_error (type)
+rg-ignore-lib.rs:322-329  Error (type)
 rg-ignore-lib.rs:361-365  Error (type)
-rg-matcher-lib.rs:470-41  NoCaptures+NoCaptures+NoError+NoError+Error+Output+Output+Captures+Error+interpolate (type)
-tokio-oneshot.rs:339-368  error+RecvError+RecvError (type)
+rg-matcher-lib.rs:386-395  ByteSet+NoCaptures+NoCaptures+NoError+NoError+Error+Output+Output+Captures+Error+interpolate (type)
+tokio-oneshot.rs:362-382  RecvError+RecvError+error (type)
+tokio-oneshot.rs:984-992  is_terminated (function)
+tokio-stream.rs:301-304  take_error (function)
 

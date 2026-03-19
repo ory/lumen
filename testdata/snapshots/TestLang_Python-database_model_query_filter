@@ -1,8 +1,9 @@
-results: 6
-django-query.py:303-347  QuerySet+__init__+query (function)
-django-query.py:470-517  QuerySet+__or__ (type)
-django-query.py:1253-1276  QuerySet (type)
-django-query.py:1603-1690  QuerySet+all+filter+complex_filter (type)
-django-query.py:2051-2056  db (function)
-django-query.py:2221-2227  _has_filters (function)
+results: 7
+django-query.py:194-200  __iter__.known_related_objects+__iter__.peers+__iter__.obj+__iter__.rel_obj_id+__iter__.rel_obj+__iter__.db+__iter__.query+__iter__.connection+__iter__.compiler+__iter__.query_iterator+__iter__.model_cls+__iter__.fields+__iter__.cols+__iter__.converters+__iter__.query_iterator+__iter__.query_iterator+__iter__.fetch_mode+__iter__.peers+__iter__.model_init_values+__iter__.instance+__iter__.queryset+__iter__.query+__iter__.compiler+__iter__.names+__iter__.names+__iter__.indexes+__iter__.queryset+__iter__.query+__iter__.compiler+__iter__.queryset+__iter__.names+__iter__.query+__iter__.names+__iter__.tuple_class+__iter__.new+__iter__.queryset+__iter__.compiler+as_manager.manager+as_manager+__deepcopy__.obj+__setstate__.pickled_version+__repr__.data+__getitem__.qs+__getitem__.start+__getitem__.start+__getitem__.stop+__getitem__.stop+__getitem__.qs+__and__.combined+__or__.query+__or__.combined+__or__.other+__xor__.query+__xor__.combined+__xor__.other+_iterator.iterable+_iterator.iterator+iterator.use_chunked_fetch+aiterator.use_chunked_fetch+aiterator.iterable+aiterator.results+get.clone+get.clone+get.limit+get.limit+get.num+create.reverse_one_to_one_fields+create.obj+_check_bulk_create_options.db_features+bulk_create.opts+bulk_create.unique_fields+bulk_create.update_fields+bulk_create.on_conflict+bulk_create.fields+bulk_create.objs+bulk_create.context+bulk_create.context (var)
+django-query.py:315-332  QuerySet+__init__+query (type)
+django-query.py:494-498  __or__+QuerySet (function)
+django-query.py:513-521  QuerySet (type)
+django-query.py:1617-1631  QuerySet+all+filter (function)
+django-query.py:1651-1676  QuerySet+complex_filter (function)
+django-query.py:2221-2228  _has_filters+QuerySet (function)
 

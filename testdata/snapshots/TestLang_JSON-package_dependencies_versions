@@ -1,2 +1,12 @@
-results: 0
+results: 10
+express-package.json:62-62  dependencies.vary (section)
+prettier-package.json:43-43  dependencies.@babel/types (section)
+prettier-package.json:55-55  dependencies.camelcase (section)
+prettier-package.json:62-62  dependencies.diff (section)
+prettier-package.json:73-83  dependencies.get-stdin+dependencies.ignore+dependencies.json5 (section)
+prettier-package.json:100-100  dependencies.n-readlines (section)
+prettier-package.json:113-126  dependencies.regexp-util+dependencies.remark-parse+dependencies.strip-ansi+dependencies.typescript+dependencies.unified+dependencies.url-or-path (section)
+react-package.json:147-152  scripts.version-check+scripts.check-release-dependencies (section)
+typescript-package.json:5-5  version (section)
+webpack-package.json:3-3  version (section)
 

@@ -374,7 +374,7 @@ func TestCreateSubChunks_OverlapIncluded(t *testing.T) {
 		{"line9\n", "line10\n", "line11\n"},
 	}
 	c := makeTestChunk("Func", 1, 11, "")
-	result := createSubChunks(c, parts)
+	result := createSubChunks(c, parts, 0)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 chunks, got %d", len(result))
 	}
@@ -402,7 +402,7 @@ func TestCreateSubChunks_HeaderInjected(t *testing.T) {
 	part1 := []string{"line14\n", "line15\n", "line16\n"}
 
 	c := makeTestChunk("BigFunc", 1, 16, "")
-	result := createSubChunks(c, [][]string{part0, part1})
+	result := createSubChunks(c, [][]string{part0, part1}, 0)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 chunks, got %d", len(result))
 	}
@@ -432,7 +432,7 @@ func TestCreateSubChunks_OverlapLineNumbers(t *testing.T) {
 		{"u\n", "v\n"},
 	}
 	c := makeTestChunk("Func", 10, 31, "")
-	result := createSubChunks(c, parts)
+	result := createSubChunks(c, parts, 0)
 	// First chunk: lines 10-29
 	if result[0].StartLine != 10 || result[0].EndLine != 29 {
 		t.Errorf("first chunk lines: got %d-%d, want 10-29", result[0].StartLine, result[0].EndLine)

@@ -1,8 +1,9 @@
-results: 6
-Owner.java:93-145  getPets+addPet+Owner (method)
-OwnerRepository.java:24-45  OwnerRepository+findByLastNameStartingWith (interface)
-Pet.java:36-85  Pet (type)
-PetController.java:40-87  PetController+VIEWS_PETS_CREATE_OR_UPDATE_FORM+owners+types+findOwner+findPet (function)
-PetController.java:132-181  processUpdateForm+PetController+updatePetDetails (method)
-VisitController.java:55-69  loadPetWithVisit (method)
+results: 7
+Owner.java:93-95  getPets (method)
+Owner.java:103-134  getPet+Owner (type)
+Pet.java:36-55  Pet (type)
+PetController.java:40-59  PetController+VIEWS_PETS_CREATE_OR_UPDATE_FORM+owners+types (function)
+PetController.java:74-87  PetController+findPet (type)
+PetController.java:132-138  processUpdateForm+PetController (method)
+PetController.java:155-181  PetController+PetController+PetController+updatePetDetails (method)
 

@@ -817,6 +817,8 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
 		".cs":   []byte("class Foo {}"),
+		".md":   []byte("# Introduction\nSome content here.\n"),
+		".mdx":  []byte("# Introduction\nSome content here.\n"),
 		".yaml": []byte("foo: bar\n"),
 		".yml":  []byte("foo: bar\n"),
 		".json": []byte(`{"foo": "bar"}`),

@@ -1,8 +1,12 @@
-results: 6
-concern.rb:3-217  ActiveSupport+ActiveSupport.Concern+Concern.append_features (type)
-engine.rb:397-424  Rails (type)
-engine.rb:490-524  Rails+Engine.helpers (function)
-metal.rb:40-42  MiddlewareStack.INCLUDE+MiddlewareStack.EXCLUDE+MiddlewareStack.NULL (var)
-sinatra-base.rb:1291-1319  Sinatra.Base+Base.CALLERS_TO_IGNORE (type)
-sinatra-base.rb:1541-1589  Sinatra.Base (type)
+results: 10
+concern.rb:3-20  ActiveSupport (type)
+concern.rb:38-63  ActiveSupport (type)
+concern.rb:78-107  ActiveSupport (type)
+concern.rb:133-141  ActiveSupport+Concern.append_features (type)
+engine.rb:204-217  Rails (type)
+engine.rb:415-420  Engine.isolate_namespace (function)
+engine.rb:494-508  Rails.Engine+Engine.helpers (function)
+metal.rb:31-43  ActionController.MiddlewareStack+MiddlewareStack.INCLUDE+MiddlewareStack.EXCLUDE+MiddlewareStack.NULL (var)
+sinatra-base.rb:1555-1561  Sinatra.Base+Base.helpers (type)
+sinatra-base.rb:2159-2168  Sinatra (type)
 

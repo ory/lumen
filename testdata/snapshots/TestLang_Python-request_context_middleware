@@ -1,6 +1,12 @@
-results: 4
+results: 10
 django-base.py:22-34  ContextMixin (type)
-django-common.py:52-79  CommonMiddleware (type)
-flask-ctx.py:260-452  AppContext+has_request+push (type)
-flask-ctx.py:488-525  AppContext (type)
+flask-app.py:1501-1506  Flask+request_context (type)
+flask-cli.py:628-635  FlaskGroup+get_command (type)
+flask-ctx.py:154-160  copy_current_request_context (function)
+flask-ctx.py:209-218  has_request_context (function)
+flask-ctx.py:235-245  has_app_context (function)
+flask-ctx.py:260-266  AppContext (type)
+flask-ctx.py:339-342  from_environ (function)
+flask-ctx.py:350-358  has_request+AppContext (type)
+flask-ctx.py:370-380  AppContext+request (type)
 

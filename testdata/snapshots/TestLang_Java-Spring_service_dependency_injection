@@ -1,11 +1,12 @@
-results: 9
-OwnerRepository.java:24-46  OwnerRepository (interface)
+results: 10
+OwnerController.java:55-64  OwnerController (type)
+OwnerRepository.java:24-31  OwnerRepository (interface)
 PetClinicApplication.java:23-36  PetClinicApplication+main (method)
-PetController.java:40-66  PetController (type)
-Vet.java:35-60  Vet (type)
-VetController.java:29-53  VetController+vetRepository (function)
-VetController.java:60-78  VetController+showResourcesVetList (method)
-VetRepository.java:27-58  VetRepository (interface)
+PetController.java:88-108  PetController (type)
+VetController.java:29-44  VetController+vetRepository (type)
+VetController.java:69-78  showResourcesVetList+VetController (method)
+VetRepository.java:27-34  VetRepository (interface)
 Vets.java:24-43  Vets (type)
-VisitController.java:33-104  VisitController+initNewVisitForm+processNewVisitForm (method)
+VisitController.java:40-54  VisitController (type)
+VisitController.java:82-91  VisitController+initNewVisitForm+processNewVisitForm (type)
 

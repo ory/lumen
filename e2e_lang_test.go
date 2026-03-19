@@ -54,7 +54,10 @@ func startLangServer(t *testing.T) *mcp.ClientSession {
 	cmd.Env = []string{
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
-		"LUMEN_MAX_CHUNK_TOKENS=200",
+		// all-minilm uses BERT WordPiece tokenisation which is ~4x denser than
+		// our 4-chars-per-token estimate, so cap chunks at 100 "tokens" (400
+		// chars) to stay within the model's 512-token context window.
+		"LUMEN_MAX_CHUNK_TOKENS=100",
 		"XDG_DATA_HOME=" + dataHome,
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),

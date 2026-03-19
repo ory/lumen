@@ -1,2 +1,10 @@
-results: 0
+results: 8
+babel-package.json:9-13  scripts.codesandbox:build+scripts.build+scripts.test (section)
+prettier-package.json:222-226  scripts.build+scripts.build:website+scripts.generate-builtin-plugins (section)
+react-package.json:126-128  scripts.build-for-devtools-dev+scripts.build-for-devtools-prod+scripts.build-for-flight-dev (section)
+svelte-package.json:17-17  scripts.build (section)
+typescript-package.json:86-88  scripts.build+scripts.build:compiler+scripts.build:tests (section)
+vite-package.json:22-34  scripts.test-build+scripts.test-docs+scripts.docs-build+scripts.build+scripts.ci-docs (section)
+vue-package.json:44-44  scripts.build (section)
+webpack-package.json:51-51  scripts.build:examples (section)
 

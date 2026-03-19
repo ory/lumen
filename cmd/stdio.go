@@ -177,7 +177,13 @@ func (ic *indexerCache) findEffectiveRoot(path string) string {
 	// No existing index found anywhere in the ancestry. Default to the git
 	// repository root so all searches within the same repo share one index,
 	// rather than creating a separate index per subdirectory.
-	if gitErr == nil {
+	//
+	// Skip the git-root fallback if the search path lives under a SkipDir
+	// (e.g. testdata/). A git-root index would never include those files, so
+	// defaulting to it only wastes time indexing the whole tree. Use the
+	// search path itself instead, so test fixtures and similar directories get
+	// their own scoped index.
+	if gitErr == nil && !pathCrossesSkipDir(gitRoot, path) {
 		return gitRoot
 	}
 	return path

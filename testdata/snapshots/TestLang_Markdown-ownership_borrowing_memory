@@ -1,2 +1,12 @@
-results: 0
+results: 10
+ch04-01-what-is-ownership.md:3-27  What Is Ownership? (section)
+ch04-01-what-is-ownership.md:78-83  What Is Ownership? (section)
+ch04-01-what-is-ownership.md:134-137  The `String` Type (section)
+ch04-01-what-is-ownership.md:178-179  Memory and Allocation (section)
+ch04-01-what-is-ownership.md:191-202  Memory and Allocation (section)
+ch04-01-what-is-ownership.md:217-220  Memory and Allocation (section)
+ch04-01-what-is-ownership.md:360-364  Memory and Allocation (section)
+ch04-01-what-is-ownership.md:489-497  Return Values and Scope (section)
+ch04-01-what-is-ownership.md:510-513  Return Values and Scope (section)
+ch04-02-references-and-borrowing.md:62-67  References and Borrowing (section)
 

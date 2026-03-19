@@ -1,8 +1,7 @@
-results: 6
-AuthManager.php:3-3  Illuminate\Auth (type)
-AuthManager.php:9-72  AuthManager+__construct+guard (method)
-AuthManager.php:89-102  resolve (method)
-AuthManager.php:115-189  AuthManager+createSessionDriver+createTokenDriver+getConfig (type)
-AuthManager.php:201-244  shouldUse+AuthManager (method)
-AuthManager.php:272-342  AuthManager+hasResolvedGuards+forgetGuards (method)
+results: 5
+AuthManager.php:9-23  AuthManager (type)
+AuthManager.php:47-69  __construct+AuthManager+guard (type)
+AuthManager.php:116-166  AuthManager+createSessionDriver+createTokenDriver (type)
+AuthManager.php:180-190  AuthManager+getConfig (type)
+AuthManager.php:296-316  AuthManager+hasResolvedGuards+forgetGuards (method)
 

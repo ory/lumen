@@ -1,12 +1,12 @@
 results: 10
-express-request.js:513-527  defineGetter (function)
-express-response.js:925-933  sendfile.onaborted (function)
-express-response.js:945-957  sendfile.onerror+sendfile.onend (function)
-fastify-reply.js:64-83  Reply+get (method)
+express-response.js:925-958  sendfile.onaborted+sendfile.onerror+sendfile.onend (function)
+express-response.js:1046-1047  stringify (function)
 fastify-reply.js:94-96  get (method)
 fastify-reply.js:114-116  get (method)
-fastify-reply.js:933-953  onResponseCallback (function)
+fastify-reply.js:609-619  onSendEnd (function)
+fastify-reply.js:933-968  onResponseCallback+buildReply (function)
 fastify-reply.js:1007-1024  serialize (function)
-fastify-request.js:68-91  buildRegularRequest (function)
+fastify-route.js:513-515  buildRouting (function)
 node-http.js:100-122  request+get (function)
+node-https.js:660-668  get (function)
 

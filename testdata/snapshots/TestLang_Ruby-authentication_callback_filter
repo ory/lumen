@@ -1,10 +1,12 @@
-results: 8
-application.rb:772-774  Application.coerce_same_site_protection (function)
-base.rb:90-119  ActionCable (type)
-base.rb:197-206  Base.subscribe_to_channel (function)
-base.rb:300-339  Channel.Base+ActionCable+Base.action_signature+Base.parameter_filter (type)
-callbacks.rb:121-173  ActiveRecord (type)
-callbacks.rb:278-394  ActiveRecord.Callbacks+Callbacks.CALLBACKS (var)
-sinatra-base.rb:1053-1061  Base.filter! (function)
-sinatra-base.rb:1483-1495  Base.before+Base.after (function)
+results: 10
+application.rb:772-781  Rails.Application+Application.coerce_same_site_protection (type)
+base.rb:108-119  ActionCable (type)
+base.rb:306-324  Base.action_signature+Channel.Base (function)
+cache.rb:443-451  Store.fetch (function)
+callbacks.rb:86-89  ActiveRecord (type)
+callbacks.rb:101-110  ActiveRecord (type)
+callbacks.rb:125-131  ActiveRecord (type)
+callbacks.rb:281-287  Callbacks.CALLBACKS+ActiveRecord (var)
+metal.rb:8-17  ActionController (type)
+sinatra-base.rb:1483-1509  Sinatra.Base+Base.before+Base.after (type)
 

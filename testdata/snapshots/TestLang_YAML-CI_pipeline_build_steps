@@ -1,2 +1,12 @@
-results: 0
+results: 10
+express-ci.yml:3-14  on (section)
+express-ci.yml:92-93  jobs.coverage.needs+jobs.coverage.runs-on (section)
+express-ci.yml:102-104  jobs.coverage.steps[1] (section)
+express-ci.yml:112-114  jobs.coverage.steps[3] (section)
+ripgrep-ci.yml:150-151  jobs.test.steps[5] (section)
+ripgrep-ci.yml:161-168  jobs.test.steps[7] (section)
+ripgrep-ci.yml:194-195  jobs.test.steps[10] (section)
+rust-lang-ci.yml:59-65  jobs.calculate_matrix.steps[1] (section)
+rust-lang-ci.yml:228-241  jobs.job.steps[25]+jobs.job.steps[26].run (section)
+rust-lang-ci.yml:325-331  jobs.outcome.steps (section)
 

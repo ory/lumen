@@ -1,12 +1,12 @@
 results: 10
 express-application.js:615-618  logerror (function)
 express-request.js:513-527  defineGetter (function)
-express-view.js:52-95  View (function)
+express-view.js:66-95  View (function)
 express-view.js:197-205  tryStat (function)
-fastify.js:170-215  fastify (function)
-fastify.js:766-772  fastify.printRoutes (function)
+fastify.js:766-773  fastify.printRoutes (function)
+node-https.js:622-630  request (function)
 node-os.js:170-175  platform (function)
-node-util.js:398-417  reconstructCallSite (function)
+node-util.js:256-267  _extend (function)
 node-util.js:479-482  deprecate (function)
 node-util.js:519-524  transferableAbortSignal+transferableAbortController (method)
 

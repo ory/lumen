@@ -1,10 +1,12 @@
-results: 8
-tokio-builder.rs:423-460  Builder (type)
-tokio-builder.rs:507-540  Builder (type)
-tokio-builder.rs:583-870  Builder (type)
-tokio-builder.rs:950-985  Builder (type)
-tokio-builder.rs:1171-1198  Builder (type)
-tokio-mod.rs:1365-1397  Child (type)
-tokio-rwlock.rs:392-425  read (function)
-tokio-rwlock.rs:552-581  read_owned (function)
+results: 10
+tokio-builder.rs:431-442  Builder (type)
+tokio-builder.rs:655-670  Builder (type)
+tokio-builder.rs:816-822  on_task_spawn (function)
+tokio-mod.rs:718-725  Command (type)
+tokio-mod.rs:885-895  Command (type)
+tokio-mutex.rs:54-67  Mutex (type)
+tokio-rwlock.rs:413-430  read (function)
+tokio-rwlock.rs:557-577  RwLock+read_owned (type)
+tokio-rwlock.rs:634-644  try_read (function)
+tokio-rwlock.rs:697-718  try_read_owned (function)
 

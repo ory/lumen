@@ -1,11 +1,12 @@
-results: 9
-api.go:68-76  statusSuccess+statusError+statusClientClosedConnection+checkContextEveryNIterations (const)
-api.go:222-264  API (type)
-api.go:391-484  API.Register (method)
-api.go:1793-1799  API.serveRuntimeInfo (method)
-api.go:1937-2024  API.serveWALReplayStatus+API.notifications+API.notificationsSSE+API.remoteRead+API.remoteWrite+API.otlpWrite (method)
-api.go:2120-2135  API.respond (method)
-api.go:2186-2205  getDefaultErrorCode (function)
+results: 10
+api.go:236-238  API (type)
+api.go:277-289  NewAPI (function)
+api.go:391-415  API.Register (method)
+api.go:1937-1960  API.serveWALReplayStatus+API.notifications+API.notificationsSSE (method)
+api.go:2001-2024  API.remoteRead+API.remoteWrite+API.otlpWrite (method)
+api.go:2124-2131  API.respond (method)
+manager.go:123-131  Options (type)
 scrape.go:677-683  scraper (interface)
-scrape.go:735-752  targetScraper.scrape (method)
+scrape.go:735-740  targetScraper.scrape (method)
+scrape.go:1370-1375  scrapeLoop.scrapeAndReport (method)
 

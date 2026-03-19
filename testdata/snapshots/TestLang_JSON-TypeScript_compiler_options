@@ -1,2 +1,10 @@
-results: 0
+results: 8
+babel-package.json:90-90  devDependencies.typescript (section)
+typescript-package.json:2-2  name (section)
+typescript-package.json:8-18  keywords+repository+typings+bin (section)
+typescript-package.json:42-50  devDependencies.@types/minimist+devDependencies.@types/node+devDependencies.@types/source-map-support+devDependencies.@typescript-eslint/type-utils+devDependencies.@typescript-eslint/utils (section)
+typescript-package.json:74-80  devDependencies.source-map-support+devDependencies.tslib+devDependencies.typescript+overrides (section)
+typescript-package.json:86-89  scripts.build+scripts.build:compiler+scripts.build:tests:notypecheck (section)
+typescript-package.json:97-97  browser (section)
+vite-package.json:64-64  devDependencies.typescript (section)
 

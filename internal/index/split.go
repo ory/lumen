@@ -24,7 +24,9 @@ import (
 
 // splitOversizedChunks splits chunks whose estimated token count exceeds
 // maxTokens into smaller sub-chunks at line boundaries. Chunks under the
-// limit pass through unchanged. Token count is estimated as len(content)/4.
+// limit pass through unchanged. Token count is estimated as len(content)/4,
+// with additional budget reserved for the filepath prefix prepended during
+// embedding ("// " + filePath + "\n").
 func splitOversizedChunks(chunks []chunker.Chunk, maxTokens int) []chunker.Chunk {
 	if maxTokens <= 0 {
 		return chunks
@@ -33,11 +35,17 @@ func splitOversizedChunks(chunks []chunker.Chunk, maxTokens int) []chunker.Chunk
 	maxChars := maxTokens * 4
 	var result []chunker.Chunk
 	for _, c := range chunks {
-		if len(c.Content) <= maxChars {
+		// Reserve space for the embed prefix: "// " + filePath + "\n"
+		overhead := 3 + len(c.FilePath) + 1
+		budget := maxChars - overhead
+		if budget < 1 {
+			budget = 1
+		}
+		if len(c.Content) <= budget {
 			result = append(result, c)
 			continue
 		}
-		subChunks := splitChunk(c, maxChars)
+		subChunks := splitChunk(c, budget)
 		result = append(result, subChunks...)
 	}
 	return result
@@ -51,7 +59,7 @@ func splitChunk(c chunker.Chunk, maxChars int) []chunker.Chunk {
 		return []chunker.Chunk{c}
 	}
 
-	return createSubChunks(c, parts)
+	return createSubChunks(c, parts, maxChars)
 }
 
 func splitContentByLines(content string) []string {
@@ -226,7 +234,20 @@ const overlapLines = 10
 // associate algorithmic body code with its parent declaration.
 const headerLines = 5
 
-func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
+// linesLen returns the total byte length of all lines joined.
+func linesLen(lines []string) int {
+	n := 0
+	for _, l := range lines {
+		n += len(l)
+	}
+	return n
+}
+
+// createSubChunks builds sub-chunks from the partitioned lines.
+// maxChars is the per-chunk content budget (0 = unlimited). Header and overlap
+// lines are prepended to sub-chunks after the first only when they fit within
+// the budget; if they would overflow, the sub-chunk uses just its own lines.
+func createSubChunks(c chunker.Chunk, parts [][]string, maxChars int) []chunker.Chunk {
 	var result []chunker.Chunk
 	lineOffset := 0
 
@@ -244,11 +265,16 @@ func createSubChunks(c chunker.Chunk, parts [][]string) []chunker.Chunk {
 			prev := parts[i-1]
 			n := min(overlapLines, len(prev))
 			overlap := prev[len(prev)-n:]
-			effective = make([]string, 0, len(header)+n+len(part))
-			effective = append(effective, header...)  // function signature context
-			effective = append(effective, overlap...) // cross-boundary overlap
-			effective = append(effective, part...)
-			overlapCount = n
+			extended := make([]string, 0, len(header)+n+len(part))
+			extended = append(extended, header...)  // function signature context
+			extended = append(extended, overlap...) // cross-boundary overlap
+			extended = append(extended, part...)
+			// Only use the extended version if it fits within the content budget.
+			// If maxChars <= 0 there is no limit, so always extend.
+			if maxChars <= 0 || linesLen(extended) <= maxChars {
+				effective = extended
+				overlapCount = n
+			}
 		}
 
 		content := strings.Join(effective, "")

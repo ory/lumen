@@ -1,2 +1,12 @@
-results: 0
+results: 10
+express-package.json:22-22  keywords (section)
+express-package.json:64-64  devDependencies (section)
+petstore-openapi.json:18-19  servers+tags (section)
+petstore-openapi.json:60-60  paths./pet.put.responses (section)
+petstore-openapi.json:99-99  paths./pet.post.responses (section)
+petstore-openapi.json:138-138  paths./pet/findByStatus.get.responses (section)
+petstore-openapi.json:206-207  paths./pet/{petId}.get.description+paths./pet/{petId}.get.operationId (section)
+petstore-openapi.json:217-217  paths./pet/{petId}.get.responses (section)
+petstore-openapi.json:243-243  paths./pet/{petId}.post.parameters (section)
+petstore-openapi.json:610-610  paths./user/{username}.get.responses (section)
 

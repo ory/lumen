@@ -1,2 +1,12 @@
-results: 0
+results: 10
+01-installation.mdx:96-110  Create with the CLI (section)
+01-installation.mdx:226-245  Create the `app` directory (section)
+02-project-structure.mdx:43-44  Top-level files (section)
+ch01-01-installation.md:1-16  Installation (section)
+ch01-01-installation.md:42-47  Installing `rustup` on Linux or macOS (section)
+ch01-01-installation.md:58-65  Installing `rustup` on Windows (section)
+ch01-01-installation.md:129-131  Updating and Uninstalling (section)
+ch01-01-installation.md:139-148  Reading the Local Documentation+Using Text Editors and IDEs (section)
+ch01-01-installation.md:155-161  Working Offline with This Book (section)
+ch01-01-installation.md:169-180  Working Offline with This Book (section)
 
