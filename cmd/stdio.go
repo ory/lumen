@@ -114,9 +114,16 @@ type HealthCheckOutput struct {
 // was created for. When a subdirectory is aliased to a parent index, both
 // the parent path and the subdirectory path map to the same cacheEntry, but
 // effectiveRoot always points at the parent.
+// freshnessTTL is how long a confirmed-fresh index is trusted before the
+// merkle tree is re-walked. Within a session Claude often issues many searches
+// in quick succession; re-walking thousands of files on every call adds 1-3s
+// of pure filesystem I/O even when nothing has changed.
+const freshnessTTL = 30 * time.Second
+
 type cacheEntry struct {
 	idx           *index.Indexer
 	effectiveRoot string
+	lastCheckedAt time.Time // zero means never checked
 }
 
 // indexerCache manages one *index.Indexer per project path, creating them
@@ -430,8 +437,15 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
 		}
+		ic.touchChecked(projectDir)
 		out.Reindexed = true
 		out.IndexedFiles = stats.IndexedFiles
+		return out, nil
+	}
+
+	// Skip the merkle tree walk if we confirmed freshness recently. The walk
+	// costs 1-3s on large projects even when nothing changed.
+	if ic.recentlyChecked(projectDir) {
 		return out, nil
 	}
 
@@ -439,11 +453,40 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
+	ic.touchChecked(projectDir)
 	out.Reindexed = reindexed
 	if reindexed {
 		out.IndexedFiles = stats.IndexedFiles
 	}
 	return out, nil
+}
+
+// recentlyChecked reports whether the index for projectDir was confirmed fresh
+// within freshnessTTL. Reads under RLock so it is safe to call concurrently.
+func (ic *indexerCache) recentlyChecked(projectDir string) bool {
+	ic.mu.RLock()
+	entry, ok := ic.cache[projectDir]
+	ic.mu.RUnlock()
+	return ok && !entry.lastCheckedAt.IsZero() && time.Since(entry.lastCheckedAt) < freshnessTTL
+}
+
+// touchChecked records the current time as the last freshness-check time for
+// projectDir. It updates both the projectDir entry and its effectiveRoot entry
+// (which may differ when projectDir is a subdirectory alias).
+func (ic *indexerCache) touchChecked(projectDir string) {
+	now := time.Now()
+	ic.mu.Lock()
+	defer ic.mu.Unlock()
+	if entry, ok := ic.cache[projectDir]; ok {
+		entry.lastCheckedAt = now
+		ic.cache[projectDir] = entry
+		if entry.effectiveRoot != projectDir {
+			if root, ok := ic.cache[entry.effectiveRoot]; ok {
+				root.lastCheckedAt = now
+				ic.cache[entry.effectiveRoot] = root
+			}
+		}
+	}
 }
 
 func (ic *indexerCache) embedQuery(ctx context.Context, query string) ([]float32, error) {

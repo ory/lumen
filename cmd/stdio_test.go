@@ -896,3 +896,58 @@ func TestIsTestFile(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		model:    "stub",
+		cfg:      config.Config{MaxChunkTokens: 512},
+	}
+
+	projectDir := filepath.Join(tmpDir, "proj")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, effectiveRoot, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+
+	input := SemanticSearchInput{
+		Path:     projectDir,
+		Cwd:      projectDir,
+		Query:    "test",
+		NResults: 8,
+	}
+
+	// First call: no TTL entry yet — runs EnsureFresh and records lastCheckedAt.
+	_, err = ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, nil)
+	if err != nil {
+		t.Fatalf("first ensureIndexed: %v", err)
+	}
+
+	ic.mu.RLock()
+	entry := ic.cache[projectDir]
+	ic.mu.RUnlock()
+	if entry.lastCheckedAt.IsZero() {
+		t.Fatal("lastCheckedAt should be set after first ensureIndexed")
+	}
+
+	// Second call within TTL: recentlyChecked should be true, skipping the walk.
+	if !ic.recentlyChecked(projectDir) {
+		t.Fatal("expected recentlyChecked=true immediately after ensureIndexed")
+	}
+
+	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, nil)
+	if err != nil {
+		t.Fatalf("second ensureIndexed: %v", err)
+	}
+	// Should be a no-op: not reindexed, no files counted.
+	if out.Reindexed {
+		t.Fatal("second call should not reindex within TTL")
+	}
+}
