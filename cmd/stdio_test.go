@@ -16,16 +16,19 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"flag"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/store"
 )
 
 var updateGolden = flag.Bool("update-golden", false, "update golden test files")
@@ -85,7 +88,7 @@ func TestIndexerCache_ConcurrentReads(_ *testing.T) {
 		wg.Go(func() {
 			// Path doesn't exist on disk — getOrCreate will error, that's fine.
 			// We're testing there's no data race on the cache map/mutex.
-			_, _, _ = ic.getOrCreate("/nonexistent/path/for/race/test", "")
+			_, _, _, _ = ic.getOrCreate("/nonexistent/path/for/race/test", "")
 		})
 	}
 	wg.Wait()
@@ -229,17 +232,18 @@ func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
 	if err := os.MkdirAll(parentDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	parentIdx, parentRoot, err := ic.getOrCreate(parentDir, "")
+	parentIdx, parentRoot, _, err := ic.getOrCreate(parentDir, "")
 	if err != nil {
 		t.Fatalf("getOrCreate(parent): %v", err)
 	}
+	t.Cleanup(func() { _ = parentIdx.Close() })
 	if parentRoot != parentDir {
 		t.Fatalf("expected effectiveRoot=%s, got %s", parentDir, parentRoot)
 	}
 
 	// Second call: request a subdirectory — should reuse the parent indexer.
 	subDir := filepath.Join(parentDir, "src")
-	subIdx, subRoot, err := ic.getOrCreate(subDir, "")
+	subIdx, subRoot, _, err := ic.getOrCreate(subDir, "")
 	if err != nil {
 		t.Fatalf("getOrCreate(subdir): %v", err)
 	}
@@ -263,7 +267,7 @@ func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
 	}
 
 	// Third call: same subDir again — hits fast path; must still return parent root.
-	subIdx2, subRoot2, err := ic.getOrCreate(subDir, "")
+	subIdx2, subRoot2, _, err := ic.getOrCreate(subDir, "")
 	if err != nil {
 		t.Fatalf("getOrCreate(subdir fast path): %v", err)
 	}
@@ -295,17 +299,19 @@ func TestIndexerCache_GetOrCreate_FastPathEffectiveRoot(t *testing.T) {
 	subDir := filepath.Join(parentDir, "api")
 
 	// Prime the parent index.
-	if _, _, err := ic.getOrCreate(parentDir, ""); err != nil {
+	parentIdx, _, _, err := ic.getOrCreate(parentDir, "")
+	if err != nil {
 		t.Fatalf("getOrCreate(parent): %v", err)
 	}
+	t.Cleanup(func() { _ = parentIdx.Close() })
 
 	// First subDir call — slow path, caches alias.
-	if _, _, err := ic.getOrCreate(subDir, ""); err != nil {
+	if _, _, _, err := ic.getOrCreate(subDir, ""); err != nil {
 		t.Fatalf("getOrCreate(subdir slow path): %v", err)
 	}
 
 	// Second subDir call — hits the fast path.
-	_, root, err := ic.getOrCreate(subDir, "")
+	_, root, _, err := ic.getOrCreate(subDir, "")
 	if err != nil {
 		t.Fatalf("getOrCreate(subdir fast path): %v", err)
 	}
@@ -332,10 +338,11 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 		}
 		// No DB exists at parentDir yet — should fall through to findEffectiveRoot(subDir)
 		// which returns subDir (no parent index found either).
-		_, root, err := ic.getOrCreate(subDir, parentDir)
+		idx, root, _, err := ic.getOrCreate(subDir, parentDir)
 		if err != nil {
 			t.Fatalf("getOrCreate: %v", err)
 		}
+		t.Cleanup(func() { _ = idx.Close() })
 		if root != subDir {
 			t.Fatalf("expected effectiveRoot=%s (fallback), got %s", subDir, root)
 		}
@@ -356,10 +363,11 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		idx, root, err := ic.getOrCreate(subDir, parentDir)
+		idx, root, _, err := ic.getOrCreate(subDir, parentDir)
 		if err != nil {
 			t.Fatalf("getOrCreate with preferredRoot: %v", err)
 		}
+		t.Cleanup(func() { _ = idx.Close() })
 		if root != parentDir {
 			t.Fatalf("expected effectiveRoot=%s, got %s", parentDir, root)
 		}
@@ -901,6 +909,132 @@ func TestIsTestFile(t *testing.T) {
 	}
 }
 
+func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
+	// When a DB exists with a recent last_indexed_at (e.g. background pre-warming
+	// ran before the first search), getOrCreate must pre-populate the freshness TTL
+	// so the first ensureIndexed call skips the merkle walk entirely.
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build a real DB at the expected path and stamp it with a recent timestamp.
+	dbPath := config.DBPathForProject(projectDir, "stub")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDBWithLastIndexedAt(t, dbPath, time.Now().Add(-5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		embedder:     &stubEmbedder{},
+		model:        "stub",
+		cfg:          config.Config{MaxChunkTokens: 512},
+		freshnessTTL: 30 * time.Second,
+	}
+	idx, _, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+	t.Cleanup(func() { _ = idx.Close() })
+	if !ic.recentlyChecked(projectDir) {
+		t.Fatal("expected freshness TTL pre-populated from recent last_indexed_at")
+	}
+}
+
+func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := config.DBPathForProject(projectDir, "stub")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Stamp with a timestamp older than the TTL.
+	if err := writeDBWithLastIndexedAt(t, dbPath, time.Now().Add(-5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		embedder:     &stubEmbedder{},
+		model:        "stub",
+		cfg:          config.Config{MaxChunkTokens: 512},
+		freshnessTTL: 30 * time.Second,
+	}
+	idx, _, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+	t.Cleanup(func() { _ = idx.Close() })
+	if ic.recentlyChecked(projectDir) {
+		t.Fatal("should not pre-populate TTL when last_indexed_at is older than freshnessTTL")
+	}
+}
+
+// writeDBWithLastIndexedAt creates a minimal SQLite index DB stamped with the
+// given timestamp in the last_indexed_at metadata field.
+func writeDBWithLastIndexedAt(t *testing.T, dbPath string, at time.Time) error {
+	t.Helper()
+	s, err := store.New(dbPath, 4)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = s.Close() }()
+	return s.SetMeta("last_indexed_at", at.UTC().Format(time.RFC3339))
+}
+
+func TestGetOrCreate_ReturnsSeedWarningWhenSeedFails(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		embedder:     &stubEmbedder{},
+		model:        "stub",
+		cfg:          config.Config{MaxChunkTokens: 512},
+		findDonorFunc: func(_, _ string) string { return "/fake/donor.db" },
+		seedFunc: func(_, _ string) (bool, error) {
+			return false, fmt.Errorf("permission denied")
+		},
+	}
+
+	idx, _, seedWarning, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+	t.Cleanup(func() { _ = idx.Close() })
+	if seedWarning == "" {
+		t.Fatal("expected non-empty seedWarning when seed fails")
+	}
+	if !strings.Contains(seedWarning, "permission denied") {
+		t.Fatalf("expected seedWarning to mention 'permission denied', got: %q", seedWarning)
+	}
+}
+
+func TestFormatSearchResults_IncludesSeedWarning(t *testing.T) {
+	out := SemanticSearchOutput{
+		Results:     nil,
+		SeedWarning: "index seeded from scratch (sibling copy failed: permission denied)",
+	}
+	got := formatSearchResults("/any", out)
+	if !strings.Contains(got, "permission denied") {
+		t.Fatalf("expected seed warning in formatted output, got: %s", got)
+	}
+}
+
 func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
@@ -916,10 +1050,11 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idx, effectiveRoot, err := ic.getOrCreate(projectDir, "")
+	idx, effectiveRoot, _, err := ic.getOrCreate(projectDir, "")
 	if err != nil {
 		t.Fatalf("getOrCreate: %v", err)
 	}
+	t.Cleanup(func() { _ = idx.Close() })
 
 	input := SemanticSearchInput{
 		Path:     projectDir,
