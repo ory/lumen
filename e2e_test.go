@@ -110,6 +110,7 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 	cmd.Env = []string{
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
+		"LUMEN_FRESHNESS_TTL=1s",
 		"XDG_DATA_HOME=" + dataHome,
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
@@ -1239,6 +1240,242 @@ func ValidateTokenV2(token string) bool {
 	})
 	if out2.Reindexed {
 		t.Error("second search in worktree (no changes): expected Reindexed=false")
+	}
+}
+
+// TestE2E_CwdNotAdoptedWhenNoDBExists verifies that when cwd points to a large
+// ancestor directory with no existing DB, the index is scoped to path — not
+// cwd. This was the root cause of multi-minute searches in monorepos.
+func TestE2E_CwdNotAdoptedWhenNoDBExists(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	t.Parallel()
+	session := startServer(t)
+
+	// Layout: repo/ (git root = cwd)
+	//           main.go
+	//           sub/
+	//             handler.go  ← path for search
+	repoDir := t.TempDir()
+	gitE2ERun(t, repoDir, "init")
+	subDir := filepath.Join(repoDir, "sub")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte(`package main
+
+// StartServer launches the HTTP server.
+func StartServer() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "handler.go"), []byte(`package sub
+
+import "net/http"
+
+// HandleRequest processes an incoming HTTP request.
+func HandleRequest(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Search with path=subDir, cwd=repoDir (no existing DB anywhere).
+	// Old behaviour: cwd used as root → indexes all of repoDir.
+	// New behaviour: no DB at cwd → falls through to findEffectiveRoot →
+	// defaults to git root (repoDir), but critically does NOT blindly use cwd
+	// when it would force a fresh index of a much larger tree with no benefit.
+	out1 := callSearch(t, session, map[string]any{
+		"query":     "HTTP request handler",
+		"path":      subDir,
+		"cwd":       repoDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if !out1.Reindexed {
+		t.Error("first search: expected Reindexed=true")
+	}
+
+	// Second call — same path+cwd, no file changes, within TTL.
+	// Must NOT reindex regardless of which root was chosen.
+	out2 := callSearch(t, session, map[string]any{
+		"query":     "HTTP request handler",
+		"path":      subDir,
+		"cwd":       repoDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if out2.Reindexed {
+		t.Error("second search (no changes, within TTL): expected Reindexed=false")
+	}
+
+	// HandleRequest must be findable — it's in the indexed tree.
+	if findResult(out1.Results, "HandleRequest") == nil {
+		t.Errorf("HandleRequest not found in first search results: %v", resultSymbols(out1.Results))
+	}
+
+	// Now build a DB at cwd by searching repoDir directly.
+	callSearch(t, session, map[string]any{
+		"query": "server startup",
+		"path":  repoDir,
+		"cwd":   repoDir,
+	})
+
+	// Third call: DB now exists at cwd=repoDir — must reuse it (no new index).
+	out3 := callSearch(t, session, map[string]any{
+		"query":     "HTTP request handler",
+		"path":      subDir,
+		"cwd":       repoDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if out3.Reindexed {
+		t.Error("third search (cwd DB exists): expected Reindexed=false")
+	}
+}
+
+// TestE2E_GitRootFallbackSharedIndex verifies that the first search from any
+// subdirectory in a git repo creates one shared index at the git root, and
+// a sibling subdirectory search reuses it without triggering a re-index.
+func TestE2E_GitRootFallbackSharedIndex(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	t.Parallel()
+	session := startServer(t)
+
+	// Layout: repo/ (git root)
+	//           pkg/
+	//             server.go
+	//           api/
+	//             handler.go
+	repoDir := t.TempDir()
+	gitE2ERun(t, repoDir, "init")
+	pkgDir := filepath.Join(repoDir, "pkg")
+	apiDir := filepath.Join(repoDir, "api")
+	for _, d := range []string{pkgDir, apiDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "server.go"), []byte(`package pkg
+
+// StartServer starts the main server loop.
+func StartServer() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(apiDir, "handler.go"), []byte(`package api
+
+// HandleLogin processes login requests.
+func HandleLogin() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// First search from pkg/ — no DB anywhere, should default to git root.
+	out1 := callSearch(t, session, map[string]any{
+		"query":     "start server",
+		"path":      pkgDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if !out1.Reindexed {
+		t.Error("call 1 (pkg/): expected Reindexed=true on first search")
+	}
+	// Both files should be indexed (git root scope, not just pkg/).
+	if out1.IndexedFiles < 2 {
+		t.Errorf("call 1: expected at least 2 files indexed (git root scope), got %d — index may be scoped to subdir only", out1.IndexedFiles)
+	}
+
+	// Search from sibling api/ — should reuse the repo-root index, no re-index.
+	out2 := callSearch(t, session, map[string]any{
+		"query":     "login handler",
+		"path":      apiDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if out2.Reindexed {
+		t.Error("call 2 (api/): expected Reindexed=false — sibling should reuse git-root index")
+	}
+	if findResult(out2.Results, "HandleLogin") == nil {
+		t.Errorf("HandleLogin not found in api/ search: %v", resultSymbols(out2.Results))
+	}
+
+	// Verify the shared index contains both subdirectories by searching the repo root.
+	out3 := callSearch(t, session, map[string]any{
+		"query":     "start server",
+		"path":      repoDir,
+		"n_results": 5,
+		"min_score": -1,
+	})
+	if findResult(out3.Results, "StartServer") == nil {
+		t.Errorf("StartServer (in pkg/) not findable from repo root — index missing pkg/ files: %v", resultSymbols(out3.Results))
+	}
+}
+
+// TestE2E_FreshnessTTLSkipsMerkleWalk verifies that consecutive searches
+// within the TTL window skip the merkle tree walk (Reindexed stays false even
+// after the TTL would have expired if files had not changed).
+func TestE2E_FreshnessTTLSkipsMerkleWalk(t *testing.T) {
+	t.Parallel()
+	session := startServer(t)
+
+	tmpDir := t.TempDir()
+	copyDir(t, sampleProjectPath(t), tmpDir)
+
+	// First search — triggers indexing.
+	out1 := callSearch(t, session, map[string]any{
+		"query": "authentication",
+		"path":  tmpDir,
+	})
+	if !out1.Reindexed {
+		t.Error("first search: expected Reindexed=true")
+	}
+
+	// Immediately — within TTL (1s in tests): must skip the walk.
+	out2 := callSearch(t, session, map[string]any{
+		"query": "authentication",
+		"path":  tmpDir,
+	})
+	if out2.Reindexed {
+		t.Error("second search (within TTL): expected Reindexed=false")
+	}
+
+	// Wait for TTL to expire, then search again — merkle walk runs, finds no changes.
+	time.Sleep(1100 * time.Millisecond)
+	out3 := callSearch(t, session, map[string]any{
+		"query": "authentication",
+		"path":  tmpDir,
+	})
+	if out3.Reindexed {
+		t.Error("third search (after TTL, no file changes): expected Reindexed=false")
+	}
+
+	// Now modify a file and wait for TTL to expire again.
+	authFile := filepath.Join(tmpDir, "auth.go")
+	modified := `package project
+
+// RefreshedToken is a new token variant.
+func RefreshedToken(id string) string { return id }
+`
+	if err := os.WriteFile(authFile, []byte(modified), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+
+	// After TTL + file change: merkle walk detects the change and reindexes.
+	out4 := callSearch(t, session, map[string]any{
+		"query": "refreshed token",
+		"path":  tmpDir,
+	})
+	if !out4.Reindexed {
+		t.Error("fourth search (after TTL + file change): expected Reindexed=true")
+	}
+	if findResult(out4.Results, "RefreshedToken") == nil {
+		t.Errorf("RefreshedToken not found after reindex: %v", resultSymbols(out4.Results))
 	}
 }
 

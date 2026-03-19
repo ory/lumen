@@ -110,15 +110,12 @@ type HealthCheckOutput struct {
 
 // --- indexerCache ---
 
-// cacheEntry holds an indexer together with the effective root directory it
-// was created for. When a subdirectory is aliased to a parent index, both
-// the parent path and the subdirectory path map to the same cacheEntry, but
-// effectiveRoot always points at the parent.
-// freshnessTTL is how long a confirmed-fresh index is trusted before the
-// merkle tree is re-walked. Within a session Claude often issues many searches
-// in quick succession; re-walking thousands of files on every call adds 1-3s
-// of pure filesystem I/O even when nothing has changed.
-const freshnessTTL = 30 * time.Second
+// defaultFreshnessTTL is how long a confirmed-fresh index is trusted before
+// the merkle tree is re-walked. Within a session Claude often issues many
+// searches in quick succession; re-walking thousands of files on every call
+// adds 1-3s of pure filesystem I/O even when nothing has changed.
+// Override with LUMEN_FRESHNESS_TTL (e.g. "1s", "30s") for testing.
+const defaultFreshnessTTL = 30 * time.Second
 
 type cacheEntry struct {
 	idx           *index.Indexer
@@ -129,11 +126,12 @@ type cacheEntry struct {
 // indexerCache manages one *index.Indexer per project path, creating them
 // lazily with a shared embedder.
 type indexerCache struct {
-	mu       sync.RWMutex
-	cache    map[string]cacheEntry
-	embedder embedder.Embedder
-	model    string
-	cfg      config.Config
+	mu           sync.RWMutex
+	cache        map[string]cacheEntry
+	embedder     embedder.Embedder
+	model        string
+	cfg          config.Config
+	freshnessTTL time.Duration // 0 means use defaultFreshnessTTL
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -384,6 +382,9 @@ func validateSearchInput(input *SemanticSearchInput) error {
 		if !filepath.IsAbs(input.Cwd) {
 			return fmt.Errorf("cwd must be an absolute path")
 		}
+		if resolved, err := filepath.EvalSymlinks(input.Cwd); err == nil {
+			input.Cwd = resolved
+		}
 	}
 
 	if input.Path == "" && input.Cwd != "" {
@@ -398,6 +399,11 @@ func validateSearchInput(input *SemanticSearchInput) error {
 		if input.Cwd == "" {
 			input.Cwd = wd
 		}
+	}
+
+	input.Path = filepath.Clean(input.Path)
+	if resolved, err := filepath.EvalSymlinks(input.Path); err == nil {
+		input.Path = resolved
 	}
 
 	if input.Cwd != "" && input.Path != input.Cwd {
@@ -473,7 +479,11 @@ func (ic *indexerCache) recentlyChecked(projectDir string) bool {
 	ic.mu.RLock()
 	entry, ok := ic.cache[projectDir]
 	ic.mu.RUnlock()
-	return ok && !entry.lastCheckedAt.IsZero() && time.Since(entry.lastCheckedAt) < freshnessTTL
+	ttl := ic.freshnessTTL
+	if ttl == 0 {
+		ttl = defaultFreshnessTTL
+	}
+	return ok && !entry.lastCheckedAt.IsZero() && time.Since(entry.lastCheckedAt) < ttl
 }
 
 // touchChecked records the current time as the last freshness-check time for
@@ -910,7 +920,13 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create embedder: %w", err)
 	}
 
-	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg}
+	var freshnessTTL time.Duration
+	if s := os.Getenv("LUMEN_FRESHNESS_TTL"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			freshnessTTL = d
+		}
+	}
+	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg, freshnessTTL: freshnessTTL}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",
