@@ -174,14 +174,18 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		}
 		// Purge stale records with unsupported extensions (e.g. .md entries
 		// inherited via donor seeding). The current Merkle tree never includes
-		// them, so keeping them would produce phantom "removed" entries in every
-		// diff until a reindex cleans them up.
+		// them, so keeping them in oldHashes would produce phantom "removed"
+		// entries in every diff. Delete them from the DB now so they do not
+		// accumulate across reindex cycles.
 		supported := make(map[string]bool, len(chunker.SupportedExtensions()))
 		for _, ext := range chunker.SupportedExtensions() {
 			supported[ext] = true
 		}
 		for path := range oldHashes {
 			if !supported[filepath.Ext(path)] {
+				if err := idx.store.DeleteFileChunks(path); err != nil {
+					return stats, fmt.Errorf("purge stale file %s: %w", path, err)
+				}
 				delete(oldHashes, path)
 			}
 		}
