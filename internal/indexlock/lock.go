@@ -42,8 +42,9 @@ func TryAcquire(lockPath string) (*Lock, error) {
 }
 
 // IsHeld reports whether another process currently holds an exclusive lock on
-// lockPath. Returns false on any error (fail-open: callers proceed normally).
-// Does NOT create the lock file — if it doesn't exist, no process holds it.
+// lockPath. Returns true on any error (fail-closed: callers skip work rather
+// than risk concurrent writes). Does NOT create the lock file — if it doesn't
+// exist, no process holds it.
 func IsHeld(lockPath string) bool {
 	if _, err := os.Stat(lockPath); err != nil {
 		return false // file doesn't exist → no indexer running
