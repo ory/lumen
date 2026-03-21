@@ -63,6 +63,7 @@ func (p *Progress) Start(title string, total int) {
 		WithWriter(p.writer).
 		WithShowCount(true).
 		WithShowPercentage(true).
+		WithShowElapsedTime(false).
 		Start()
 	p.bar = bar
 }
