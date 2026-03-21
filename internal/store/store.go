@@ -70,7 +70,7 @@ func New(dsn string, dimensions int) (*Store, error) {
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA cache_size=-64000",
 		"PRAGMA temp_store=MEMORY",
-		"PRAGMA busy_timeout=5000",
+		"PRAGMA busy_timeout=30000",
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {
@@ -181,29 +181,32 @@ func storeDimensions(db *sql.DB, dimensions int) error {
 }
 
 func resetAndRecreateVecTable(db *sql.DB, dimensions int) error {
-	stmts := []string{
-		"DROP TABLE IF EXISTS vec_chunks",
+	// Drop the virtual table first — cannot be wrapped in a transaction in SQLite.
+	if _, err := db.Exec("DROP TABLE IF EXISTS vec_chunks"); err != nil {
+		return fmt.Errorf("drop vec_chunks: %w", err)
+	}
+
+	// Clear regular tables atomically so a crash leaves them consistent.
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin reset tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range []string{
 		"DELETE FROM chunks",
 		"DELETE FROM files",
 		"DELETE FROM project_meta",
-	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			return fmt.Errorf("reset for dimension change %q: %w", s, err)
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("reset %q: %w", stmt, err)
 		}
 	}
-
-	createVec := fmt.Sprintf(
-		`CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
-			id TEXT PRIMARY KEY,
-			embedding float[%d] distance_metric=cosine
-		)`, dimensions)
-
-	if _, err := db.Exec(createVec); err != nil {
-		return fmt.Errorf("recreate vec_chunks: %w", err)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reset: %w", err)
 	}
 
-	return storeDimensions(db, dimensions)
+	return createVecTable(db, dimensions)
 }
 
 // SetMeta upserts a key-value pair in the project_meta table.
