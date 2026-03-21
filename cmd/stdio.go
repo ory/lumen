@@ -34,6 +34,7 @@ import (
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/git"
 	"github.com/ory/lumen/internal/index"
+	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/merkle"
 	"github.com/spf13/cobra"
 )
@@ -253,8 +254,11 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	}
 
 	// Determine the effective root: prefer explicit root, then walk up.
+	// Exception: if projectPath is itself a git worktree (has a .git FILE, not
+	// dir) it must be indexed independently — adopting the outer repo root would
+	// cause the entire monorepo to be re-indexed on every search.
 	var effectiveRoot string
-	if preferredRoot != "" {
+	if preferredRoot != "" && !git.IsWorktree(projectPath) {
 		clean := filepath.Clean(preferredRoot)
 		// Only adopt the preferred root if an index already exists there.
 		// Creating a brand-new index at cwd when path is a small subdirectory
@@ -547,6 +551,26 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	// costs 1-3s on large projects even when nothing changed.
 	if ic.recentlyChecked(projectDir) {
 		ic.logger().Debug("freshness TTL hit, skipping merkle check",
+			"cwd", input.Cwd,
+			"effective_root", projectDir,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
+		return out, nil
+	}
+
+	// If a background indexer process is running (holds exclusive flock),
+	// skip EnsureFresh — it would duplicate the in-progress Merkle walk.
+	// The search proceeds with the current DB contents; the next search after
+	// the background indexer finishes will find a fresh index.
+	//
+	// Note: this is a check-then-act probe (TOCTOU). The background indexer
+	// may acquire the lock after IsHeld returns false, causing EnsureFresh to
+	// run concurrently. Under SQLite WAL mode both operations are safe and the
+	// result is redundant work, not data corruption — an acceptable outcome
+	// given the narrow window between session start and first search.
+	dbPath := config.DBPathForProject(projectDir, ic.model)
+	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
+		ic.logger().Debug("background indexer running, skipping EnsureFresh",
 			"cwd", input.Cwd,
 			"effective_root", projectDir,
 			"elapsed_ms", time.Since(start).Milliseconds(),
