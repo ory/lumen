@@ -86,7 +86,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	p := tui.NewProgress(os.Stderr)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, cfg.Model, cfg.Dims))

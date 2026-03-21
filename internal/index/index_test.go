@@ -863,7 +863,7 @@ func TestIndex_SkipsBinaryFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	_, err = idx.Index(context.Background(), dir, false, nil)
 	if err != nil {
