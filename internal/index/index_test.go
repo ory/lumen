@@ -846,6 +846,42 @@ func TestIndex_ForceRemovesDeletedFiles(t *testing.T) {
 	}
 }
 
+func TestIndex_SkipsBinaryFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "normal.go"), []byte("package p\n\nfunc Foo() {}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	binaryContent := []byte("package p\x00binary\x00data")
+	if err := os.WriteFile(filepath.Join(dir, "binary.go"), binaryContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(filepath.Join(dir, "test.db"), emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	_, err = idx.Index(context.Background(), dir, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hashes["binary.go"]; ok {
+		t.Error("binary.go should not be indexed")
+	}
+	if _, ok := hashes["normal.go"]; !ok {
+		t.Error("normal.go should be indexed")
+	}
+}
+
 func writeGoFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
