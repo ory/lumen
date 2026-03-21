@@ -68,7 +68,7 @@ type StatusInfo struct {
 
 // Indexer orchestrates chunking, embedding, and storage for a code index.
 type Indexer struct {
-	mu             sync.Mutex
+	mu             sync.RWMutex
 	store          *store.Store
 	emb            embedder.Embedder
 	chunker        chunker.Chunker
@@ -364,6 +364,9 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 		return false, fmt.Errorf("build merkle tree: %w", err)
 	}
 
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
 		return false, fmt.Errorf("get root_hash: %w", err)
@@ -378,12 +381,17 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 // If maxDistance > 0, results with distance >= maxDistance are excluded.
 // If pathPrefix != "", only chunks under that relative path are returned.
 func (idx *Indexer) Search(_ context.Context, _ string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
 	return idx.store.Search(queryVec, limit, maxDistance, pathPrefix)
 }
 
 // Status returns information about the current index state for a project.
 // All values are read from the database; no filesystem walk is performed.
 func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
 	var info StatusInfo
 	info.ProjectPath = projectDir
 
