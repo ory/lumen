@@ -365,7 +365,7 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 	}
 
 	// cwd=parentRepo is passed as preferredRoot (the outer monorepo).
-	_, effectiveRoot, err := ic.getOrCreate(worktreePath, parentRepo)
+	_, effectiveRoot, _, err := ic.getOrCreate(worktreePath, parentRepo)
 	if err != nil {
 		t.Fatalf("getOrCreate: %v", err)
 	}
@@ -381,13 +381,6 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
-
-	ic := &indexerCache{
-		embedder: &stubEmbedder{},
-		model:    "stub",
-		cfg:      config.Config{MaxChunkTokens: 512},
-		log:      discardLog,
-	}
 
 	parentDir := filepath.Join(tmpDir, "project")
 	subDir := filepath.Join(parentDir, "src")
@@ -1230,8 +1223,10 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		NResults: 8,
 	}
 
+	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
+
 	// First call: no TTL entry yet — runs EnsureFresh and records lastCheckedAt.
-	_, err = ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, nil)
+	_, err = ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
 	if err != nil {
 		t.Fatalf("first ensureIndexed: %v", err)
 	}
@@ -1248,7 +1243,7 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		t.Fatal("expected recentlyChecked=true immediately after ensureIndexed")
 	}
 
-	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, nil)
+	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
 	if err != nil {
 		t.Fatalf("second ensureIndexed: %v", err)
 	}

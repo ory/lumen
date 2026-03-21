@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -152,18 +151,6 @@ func generateSessionContextInternal(mcpName, cwd string, findDonor func(string, 
 	}
 	sb.WriteString(" " + directive)
 	return sb.String()
-}
-
-// spawnBackgroundIndexer runs "lumen index <cwd>" as a detached background
-// process. Errors are silently ignored — the MCP server will index on demand
-// if pre-warming fails or hasn't finished by the time the first search arrives.
-func spawnBackgroundIndexer(cwd string) {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	cmd := exec.Command(exe, "index", cwd)
-	_ = cmd.Start()
 }
 
 // --- PreToolUse hook ---

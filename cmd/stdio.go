@@ -19,6 +19,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -138,6 +139,15 @@ type indexerCache struct {
 	findDonorFunc func(string, string) string // nil uses config.FindDonorIndex
 	seedFunc      func(string, string) (bool, error) // nil uses index.SeedFromDonor
 	log           *slog.Logger
+}
+
+// logger returns ic.log, falling back to a discarding logger when the field
+// is nil (e.g. in unit tests that construct indexerCache directly).
+func (ic *indexerCache) logger() *slog.Logger {
+	if ic.log == nil {
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return ic.log
 }
 
 // Close closes all cached indexers. Call on MCP server shutdown.
@@ -364,7 +374,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		}
 	}
 
-	ic.log.Info("indexer created",
+	ic.logger().Info("indexer created",
 		"project_path", projectPath,
 		"effective_root", effectiveRoot,
 		"db_path", dbPath,
@@ -550,15 +560,17 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 }
 
 func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, dbPath string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+	start := time.Now()
 	out := SemanticSearchOutput{}
 
 	if input.ForceReindex {
 		// Skip force reindex if background indexer is running to avoid
 		// concurrent SQLite writes that could exceed busy_timeout.
 		if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
-			ic.log.Info("force reindex skipped: background indexer is running", "project", projectDir)
+			ic.logger().Info("force reindex skipped: background indexer is running", "project", projectDir)
 			return out, nil
 		}
+		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
 		stats, err := idx.Index(ctx, projectDir, true, progress)
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
@@ -566,6 +578,13 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		ic.touchChecked(projectDir)
 		out.Reindexed = true
 		out.IndexedFiles = stats.IndexedFiles
+		ic.logger().Info("force reindex complete",
+			"cwd", input.Cwd,
+			"search_path", input.Path,
+			"effective_root", projectDir,
+			"indexed_files", stats.IndexedFiles,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 		return out, nil
 	}
 
@@ -593,6 +612,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	)
 
 	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
+	elapsed := time.Since(start)
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
@@ -605,26 +625,14 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 			"elapsed_ms", elapsed.Milliseconds(),
 		)
 	} else {
-		// Build a concise "why" string for quick log scanning.
-		reason := "incremental update"
-		if stats.FirstIndex {
-			reason = "first index (no prior data)"
-		}
-
 		ic.logger().Info("reindex triggered",
 			"cwd", input.Cwd,
 			"search_path", input.Path,
 			"effective_root", projectDir,
-			"reason", reason,
 			"total_project_files", stats.TotalFiles,
 			"files_indexed", stats.IndexedFiles,
 			"chunks_created", stats.ChunksCreated,
-			"added_count", len(stats.AddedFiles),
-			"modified_count", len(stats.ModifiedFiles),
-			"removed_count", len(stats.RemovedFiles),
-			"added_files", stats.AddedFiles,
-			"modified_files", stats.ModifiedFiles,
-			"removed_files", stats.RemovedFiles,
+			"files_changed", stats.FilesChanged,
 			"elapsed_ms", elapsed.Milliseconds(),
 		)
 	}
