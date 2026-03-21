@@ -19,7 +19,10 @@ package cmd
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
+
+	"github.com/ory/lumen/internal/config"
 )
 
 // spawnBackgroundIndexer launches "lumen index <projectPath>" as a fully
@@ -37,6 +40,17 @@ func spawnBackgroundIndexer(projectPath string) {
 	cmd := exec.Command(exe, "index", projectPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdout = nil
-	cmd.Stderr = nil
-	_ = cmd.Start()
+
+	logPath := filepath.Join(config.XDGDataDir(), "lumen", "debug.log")
+	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		cmd.Stderr = f
+		defer func() { _ = f.Close() }()
+	}
+
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	// Reap the child to avoid a zombie process entry. The goroutine exits
+	// when the detached indexer terminates (or immediately if Start failed).
+	go func() { _ = cmd.Wait() }()
 }

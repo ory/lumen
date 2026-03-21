@@ -16,8 +16,41 @@
 
 package cmd
 
-// spawnBackgroundIndexer is a no-op on Windows.
-// Windows background indexing is not supported (requires flock + Setsid, both Unix-only).
-// To add Windows support, use CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS via
-// syscall.SysProcAttr and replace flock with a Windows mutex or named pipe.
-func spawnBackgroundIndexer(_ string) {}
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
+
+	"github.com/ory/lumen/internal/config"
+)
+
+// spawnBackgroundIndexer launches "lumen index <projectPath>" as a detached
+// background process on Windows using CREATE_NEW_PROCESS_GROUP and
+// DETACHED_PROCESS flags. The spawned process acquires an advisory lock
+// (via LockFileEx) before indexing, so concurrent calls are safe.
+//
+// Errors are silently ignored: background indexing is best-effort.
+func spawnBackgroundIndexer(projectPath string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	cmd := exec.Command(exe, "index", projectPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008, // DETACHED_PROCESS
+	}
+	cmd.Stdout = nil
+
+	logPath := filepath.Join(config.XDGDataDir(), "lumen", "debug.log")
+	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		cmd.Stderr = f
+		defer f.Close()
+	}
+
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	// Reap the child to avoid resource leaks.
+	go func() { _ = cmd.Wait() }()
+}

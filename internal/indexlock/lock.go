@@ -1,17 +1,14 @@
-//go:build !windows
-
 // Package indexlock provides advisory file locking for lumen index operations.
-// It uses flock(2) so the OS automatically releases the lock when the holding
-// process terminates for any reason — including SIGKILL — making stale locks
-// impossible.
-//
-// Windows is not supported (flock is Unix-only). No-op stubs in
-// lock_windows.go allow the package to compile there, but locking is disabled.
+// It uses github.com/gofrs/flock which wraps flock(2) on Unix and LockFileEx
+// on Windows. The OS automatically releases the lock when the holding process
+// terminates for any reason — including SIGKILL / TerminateProcess — making
+// stale locks impossible on all platforms.
 package indexlock
 
 import (
 	"os"
-	"syscall"
+
+	"github.com/gofrs/flock"
 )
 
 // LockPathForDB returns the advisory lock file path for a given index DB path.
@@ -23,54 +20,54 @@ func LockPathForDB(dbPath string) string {
 // Lock is an exclusive advisory lock held on an index lock file.
 // Release it when indexing is complete. Safe to call Release on a nil Lock.
 type Lock struct {
-	f *os.File
+	fl *flock.Flock
 }
 
-// TryAcquire attempts to acquire an exclusive non-blocking flock on lockPath.
+// TryAcquire attempts to acquire an exclusive non-blocking lock on lockPath.
 //
 //   - Returns (lock, nil) on success — the caller owns the lock.
 //   - Returns (nil, nil) when another process already holds the lock (normal
 //     case: a background indexer is already running — callers should skip).
 //   - Returns (nil, err) only on unexpected OS errors (e.g. permissions).
 func TryAcquire(lockPath string) (*Lock, error) {
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0o600)
+	fl := flock.New(lockPath)
+	locked, err := fl.TryLock()
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = f.Close()
-		if err == syscall.EWOULDBLOCK {
-			return nil, nil // another process holds the lock
-		}
-		return nil, err
+	if !locked {
+		return nil, nil // another process holds the lock
 	}
-	return &Lock{f: f}, nil
+	return &Lock{fl: fl}, nil
 }
 
 // IsHeld reports whether another process currently holds an exclusive lock on
 // lockPath. Returns false on any error (fail-open: callers proceed normally).
 // Does NOT create the lock file — if it doesn't exist, no process holds it.
 func IsHeld(lockPath string) bool {
-	f, err := os.OpenFile(lockPath, os.O_RDONLY, 0)
+	if _, err := os.Stat(lockPath); err != nil {
+		return false // file doesn't exist → no indexer running
+	}
+	fl := flock.New(lockPath)
+	locked, err := fl.TryRLock()
 	if err != nil {
-		return false // ENOENT or permission error → no indexer running
+		// Could not acquire shared lock → exclusive lock is held by another process.
+		return true
 	}
-	defer func() { _ = f.Close() }()
-	// A non-blocking shared lock succeeds only when no exclusive lock is held.
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
-		return err == syscall.EWOULDBLOCK
+	if !locked {
+		// TryRLock returned false without error → exclusive lock held.
+		return true
 	}
-	// Release the shared lock immediately — we only wanted to probe.
-	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	// Shared lock succeeded → no exclusive lock held. Release immediately.
+	_ = fl.Unlock()
 	return false
 }
 
 // Release releases the exclusive lock and closes the underlying file.
 // Safe to call on a nil *Lock.
 func (l *Lock) Release() {
-	if l == nil || l.f == nil {
+	if l == nil || l.fl == nil {
 		return
 	}
-	_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
-	_ = l.f.Close()
+	_ = l.fl.Unlock()
 }

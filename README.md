@@ -64,9 +64,9 @@ _Claude Code asking about the
 
 **Prerequisites:**
 
-> **Platform support:** Linux and macOS only. Windows is not currently supported
-> because background indexing coordination uses `flock(2)`, a Unix advisory
-> file-locking primitive not available on Windows.
+> **Platform support:** Linux, macOS, and Windows. File locking for background
+> indexing coordination uses `flock(2)` on Unix and `LockFileEx` on Windows
+> (via [gofrs/flock](https://github.com/gofrs/flock)).
 
 1. [Ollama](https://ollama.com/) installed and running, then pull the default
    embedding model:
