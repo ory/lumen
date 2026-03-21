@@ -1,5 +1,3 @@
-//go:build !windows
-
 package indexlock_test
 
 import (
