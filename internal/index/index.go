@@ -43,6 +43,14 @@ type Stats struct {
 	IndexedFiles  int
 	ChunksCreated int
 	FilesChanged  int
+	// FirstIndex is true when the project had never been indexed before (no
+	// stored root hash), meaning all files were indexed from scratch.
+	FirstIndex bool
+	// AddedFiles, ModifiedFiles, RemovedFiles list the relative paths that
+	// triggered re-indexing. Populated only during incremental (non-force) runs.
+	AddedFiles    []string
+	ModifiedFiles []string
+	RemovedFiles  []string
 }
 
 // StatusInfo holds information about the current index state for a project.
@@ -139,6 +147,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 	if err != nil {
 		return false, stats, err
 	}
+	stats.FirstIndex = storedHash == ""
 	return true, stats, nil
 }
 
@@ -163,11 +172,27 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		if err != nil {
 			return stats, fmt.Errorf("get file hashes: %w", err)
 		}
+		// Purge stale records with unsupported extensions (e.g. .md entries
+		// inherited via donor seeding). The current Merkle tree never includes
+		// them, so keeping them would produce phantom "removed" entries in every
+		// diff until a reindex cleans them up.
+		supported := make(map[string]bool, len(chunker.SupportedExtensions()))
+		for _, ext := range chunker.SupportedExtensions() {
+			supported[ext] = true
+		}
+		for path := range oldHashes {
+			if !supported[filepath.Ext(path)] {
+				delete(oldHashes, path)
+			}
+		}
 		oldTree := &merkle.Tree{Files: oldHashes}
 		added, removed, modified := merkle.Diff(oldTree, curTree)
 		filesToIndex = append(filesToIndex, added...)
 		filesToIndex = append(filesToIndex, modified...)
 		filesToRemove = removed
+		stats.AddedFiles = added
+		stats.ModifiedFiles = modified
+		stats.RemovedFiles = removed
 	}
 
 	stats.FilesChanged = len(filesToIndex) + len(filesToRemove)
