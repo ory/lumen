@@ -796,6 +796,7 @@ func readFileLines(projectPath, filePath string) []string {
 
 	var lines []string
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // up to 1MB per line
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
