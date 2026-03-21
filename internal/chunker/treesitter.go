@@ -121,6 +121,7 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 		}
 	}
 
+	chunks = deduplicateByExactRange(chunks)
 	return chunks, nil
 }
 
@@ -132,11 +133,15 @@ func isCommentNode(t string) bool {
 	return t == "comment" || t == "line_comment" || t == "block_comment"
 }
 
+const maxLeadingCommentLines = 10
+
 // findLeadingComments returns the earliest comment node immediately preceding
 // node with no blank line between them, or nil if none exist.
+// At most maxLeadingCommentLines lines of comments are captured.
 func findLeadingComments(node *sitter.Node) *sitter.Node {
 	var earliest *sitter.Node
 	nextRow := node.StartPoint().Row
+	commentLines := 0
 	for sibling := node.PrevNamedSibling(); sibling != nil; sibling = sibling.PrevNamedSibling() {
 		if !isCommentNode(sibling.Type()) {
 			break
@@ -159,10 +164,40 @@ func findLeadingComments(node *sitter.Node) *sitter.Node {
 		if !adjacent {
 			break
 		}
+		siblingLines := int(sibling.EndPoint().Row-sibling.StartPoint().Row) + 1
+		if commentLines+siblingLines > maxLeadingCommentLines {
+			break
+		}
+		commentLines += siblingLines
 		earliest = sibling
 		nextRow = sibling.StartPoint().Row
 	}
 	return earliest
+}
+
+// deduplicateByExactRange removes chunks with identical (StartLine, EndLine) ranges.
+// When two chunks share the same range, the later one wins because
+// queries are ordered from general to specific.
+func deduplicateByExactRange(chunks []Chunk) []Chunk {
+	if len(chunks) <= 1 {
+		return chunks
+	}
+	type lineRange struct{ start, end int }
+	best := make(map[lineRange]int, len(chunks))
+	for i, c := range chunks {
+		best[lineRange{c.StartLine, c.EndLine}] = i
+	}
+	seen := make(map[int]bool, len(best))
+	for _, idx := range best {
+		seen[idx] = true
+	}
+	result := make([]Chunk, 0, len(best))
+	for i, c := range chunks {
+		if seen[i] {
+			result = append(result, c)
+		}
+	}
+	return result
 }
 
 // findEnclosingSymbol walks up the AST from node and returns the name of the

@@ -15,6 +15,7 @@
 package chunker_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1790,6 +1791,34 @@ func TestTreeSitterChunker_LeadingComments(t *testing.T) {
 				t.Errorf("Content must not contain %q; got:\n%s", tc.wantMissing, ch.Content)
 			}
 		})
+	}
+}
+
+func TestTreeSitterChunker_LeadingCommentsCapped(t *testing.T) {
+	var commentLines []string
+	for i := 0; i < 20; i++ {
+		commentLines = append(commentLines, fmt.Sprintf("# line %d", i+1))
+	}
+	src := strings.Join(commentLines, "\n") + "\ndef capped():\n    pass\n"
+
+	c := mustPyChunker(t)
+	chunks, err := c.Chunk("test.py", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one chunk")
+	}
+	chunk := chunks[0]
+	capturedLines := strings.Split(chunk.Content, "\n")
+	commentCount := 0
+	for _, line := range capturedLines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			commentCount++
+		}
+	}
+	if commentCount > 10 {
+		t.Errorf("captured %d comment lines, want ≤10", commentCount)
 	}
 }
 
