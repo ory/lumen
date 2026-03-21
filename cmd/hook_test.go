@@ -283,3 +283,12 @@ func TestHookOutputJSON(t *testing.T) {
 		t.Error("additionalContext should contain tool reference")
 	}
 }
+
+// TestSpawnBackgroundIndexer_DoesNotPanic verifies that spawnBackgroundIndexer
+// does not panic or block on a path that contains no indexable files.
+// The spawned process will acquire the lock, find nothing to index, and exit.
+func TestSpawnBackgroundIndexer_DoesNotPanic(t *testing.T) {
+	// Use a temp directory — no Go files, so the indexer exits quickly.
+	spawnBackgroundIndexer(t.TempDir())
+	// If we reach here without panic or deadlock, the test passes.
+}
