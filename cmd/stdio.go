@@ -19,6 +19,8 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	ristretto "github.com/dgraph-io/ristretto/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
@@ -127,6 +130,19 @@ type indexerCache struct {
 	embedder embedder.Embedder
 	model    string
 	cfg      config.Config
+	// freshness caches per-project freshness confirmations with a TTL so that
+	// successive searches skip the Merkle tree rebuild when nothing has changed.
+	freshness *ristretto.Cache[string, string]
+	log       *slog.Logger
+}
+
+// logger returns ic.log, falling back to a discarding logger when the field
+// is nil (e.g. in unit tests that construct indexerCache directly).
+func (ic *indexerCache) logger() *slog.Logger {
+	if ic.log == nil {
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return ic.log
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -198,6 +214,10 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	if ic.cache != nil {
 		if entry, ok := ic.cache[projectPath]; ok {
 			ic.mu.RUnlock()
+			ic.logger().Debug("indexer cache hit",
+				"project_path", projectPath,
+				"effective_root", entry.effectiveRoot,
+			)
 			return entry.idx, entry.effectiveRoot, nil
 		}
 	}
@@ -239,9 +259,20 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	// Seed from sibling worktree if this is a new index.
 	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
 		if donorPath := config.FindDonorIndex(effectiveRoot, ic.model); donorPath != "" {
+			ic.logger().Info("seeding index from donor worktree",
+				"effective_root", effectiveRoot,
+				"donor_path", donorPath,
+			)
 			if _, seedErr := index.SeedFromDonor(donorPath, dbPath); seedErr != nil {
+				ic.logger().Warn("seed from donor worktree failed",
+					"effective_root", effectiveRoot,
+					"donor_path", donorPath,
+					"error", seedErr,
+				)
 				_, _ = fmt.Fprintf(os.Stderr, "lumen: seed from worktree failed: %v\n", seedErr)
 			}
+		} else {
+			ic.logger().Debug("no donor index found for seeding", "effective_root", effectiveRoot)
 		}
 	}
 
@@ -249,6 +280,16 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	if err != nil {
 		return nil, "", fmt.Errorf("create indexer: %w", err)
 	}
+
+	gitRoot, _ := git.RepoRoot(effectiveRoot)
+	ic.logger().Info("indexer created",
+		"project_path", projectPath,
+		"effective_root", effectiveRoot,
+		"is_parent_adoption", effectiveRoot != projectPath,
+		"is_worktree", git.IsWorktree(effectiveRoot),
+		"git_root", gitRoot,
+		"db_path", dbPath,
+	)
 
 	ic.cache[effectiveRoot] = cacheEntry{idx: idx, effectiveRoot: effectiveRoot}
 	if effectiveRoot != projectPath {
@@ -264,6 +305,13 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	if err := validateSearchInput(&input); err != nil {
 		return nil, nil, err
 	}
+
+	ic.logger().Debug("semantic search request",
+		"cwd", input.Cwd,
+		"search_path", input.Path,
+		"force_reindex", input.ForceReindex,
+		"n_results", input.NResults,
+	)
 
 	idx, effectiveRoot, err := ic.getOrCreate(input.Path, input.Cwd)
 	if err != nil {
@@ -413,21 +461,85 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 }
 
 func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+	start := time.Now()
 	out := SemanticSearchOutput{}
+
 	if input.ForceReindex {
+		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
 		stats, err := idx.Index(ctx, projectDir, true, progress)
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
 		}
+		ic.freshness.Del(projectDir)
 		out.Reindexed = true
 		out.IndexedFiles = stats.IndexedFiles
+		ic.logger().Info("force reindex complete",
+			"cwd", input.Cwd,
+			"search_path", input.Path,
+			"effective_root", projectDir,
+			"indexed_files", stats.IndexedFiles,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 		return out, nil
 	}
 
+	// Fast path: skip the Merkle tree build if freshness was confirmed recently.
+	if _, ok := ic.freshness.Get(projectDir); ok {
+		ic.logger().Debug("freshness TTL hit, skipping merkle check",
+			"cwd", input.Cwd,
+			"effective_root", projectDir,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
+		return out, nil
+	}
+
+	ic.logger().Debug("freshness TTL expired or first check, building merkle tree",
+		"cwd", input.Cwd,
+		"effective_root", projectDir,
+	)
+
 	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
+	elapsed := time.Since(start)
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
+
+	if !reindexed {
+		// Cache freshness so the next search within TTL skips the Merkle walk.
+		ic.freshness.SetWithTTL(projectDir, "fresh", 1, ic.cfg.FreshnessTTL)
+		ic.logger().Debug("index fresh, caching result",
+			"cwd", input.Cwd,
+			"effective_root", projectDir,
+			"freshness_ttl", ic.cfg.FreshnessTTL.String(),
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+	} else {
+		ic.freshness.Del(projectDir)
+
+		// Build a concise "why" string for quick log scanning.
+		reason := "incremental update"
+		if stats.FirstIndex {
+			reason = "first index (no prior data)"
+		}
+
+		ic.logger().Info("reindex triggered",
+			"cwd", input.Cwd,
+			"search_path", input.Path,
+			"effective_root", projectDir,
+			"reason", reason,
+			"total_project_files", stats.TotalFiles,
+			"files_indexed", stats.IndexedFiles,
+			"chunks_created", stats.ChunksCreated,
+			"added_count", len(stats.AddedFiles),
+			"modified_count", len(stats.ModifiedFiles),
+			"removed_count", len(stats.RemovedFiles),
+			"added_files", stats.AddedFiles,
+			"modified_files", stats.ModifiedFiles,
+			"removed_files", stats.RemovedFiles,
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+	}
+
 	out.Reindexed = reindexed
 	if reindexed {
 		out.IndexedFiles = stats.IndexedFiles
@@ -850,7 +962,33 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create embedder: %w", err)
 	}
 
-	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg}
+	logger, logFile := newDebugLogger()
+	if logFile != nil {
+		defer func() { _ = logFile.Close() }()
+	}
+	logger.Info("lumen config",
+		"model", cfg.Model,
+		"backend", cfg.Backend,
+		"freshness_ttl", cfg.FreshnessTTL.String(),
+	)
+
+	freshnessCache, err := ristretto.NewCache(&ristretto.Config[string, string]{
+		NumCounters: 1_000,
+		MaxCost:     100,
+		BufferItems: 64,
+	})
+	if err != nil {
+		return fmt.Errorf("create freshness cache: %w", err)
+	}
+	defer freshnessCache.Close()
+
+	indexers := &indexerCache{
+		embedder:  emb,
+		model:     cfg.Model,
+		cfg:       cfg,
+		freshness: freshnessCache,
+		log:       logger,
+	}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",

@@ -541,6 +541,41 @@ func World() {}
 	}
 }
 
+// TestIndexer_StaleUnsupportedExtensionNotCountedAsRemoved verifies that file
+// records in the DB with unsupported extensions (e.g. .md from donor seeding)
+// do not appear as RemovedFiles in the diff. They are ghost entries that the
+// current Merkle tree will never include, so treating them as real removals
+// causes spurious reindex churn on every freshness check.
+func TestIndexer_StaleUnsupportedExtensionNotCountedAsRemoved(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	// Simulate donor seeding: inject a stale .md record directly into the
+	// files table. This file does not exist on disk and .md is not in
+	// SupportedExtensions, so the Merkle tree will never include it.
+	if err := idx.store.UpsertFile(".changelog-network/v1.0.0.md", "staledeadhash"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stats, err := idx.EnsureFresh(context.Background(), projectDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range stats.RemovedFiles {
+		if filepath.Ext(f) == ".md" {
+			t.Errorf("stale .md record %q must not appear in RemovedFiles; it is a ghost from donor seeding", f)
+		}
+	}
+}
+
 func writeGoFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
