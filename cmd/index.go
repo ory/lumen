@@ -72,7 +72,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	if lock == nil {
 		// Another indexer is already running for this project — skip silently.
 		// This is the normal case when multiple Claude terminals are open.
-		fmt.Println("Another indexer is already running for this project. Skipping.")
+		fmt.Fprintln(os.Stderr, "Another indexer is already running for this project. Skipping.")
 		return nil
 	}
 	defer lock.Release()
@@ -94,7 +94,10 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	stats, err := performIndexing(ctx, cmd, idx, projectPath, p)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil // cancelled gracefully by signal
+			// A signal arrived; treat as clean exit. If an unrelated error
+			// also occurred in the same instant, it is intentionally dropped —
+			// the cancellation is the primary cause and the lock will be released.
+			return nil
 		}
 		return err
 	}
