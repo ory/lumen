@@ -619,6 +619,134 @@ func TestIndexer_StaleUnsupportedExtensionNotCountedAsRemoved(t *testing.T) {
 	}
 }
 
+// TestIndexer_StaleUnsupportedExtensionDeletedFromDB verifies that after a
+// reindex, stale file records with unsupported extensions are removed from the
+// DB so they do not accumulate across reindex cycles.
+func TestIndexer_StaleUnsupportedExtensionDeletedFromDB(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	if err := idx.store.UpsertFile(".changelog-network/v1.0.0.md", "staledeadhash"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := idx.EnsureFresh(context.Background(), projectDir, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path := range hashes {
+		if filepath.Ext(path) == ".md" {
+			t.Errorf("stale .md record %q should have been purged from the DB during reindex", path)
+		}
+	}
+}
+
+// TestIndexer_SupportedFileRemovedFromDisk_CountedAsRemoved is a regression
+// test: the stale-extension filter must not suppress legitimate removals of
+// supported files that were deleted from disk between index runs.
+func TestIndexer_SupportedFileRemovedFromDisk_CountedAsRemoved(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
+	writeGoFile(t, projectDir, "extra.go", "package main\nfunc Extra() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	if _, _, err := idx.EnsureFresh(context.Background(), projectDir, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(filepath.Join(projectDir, "extra.go")); err != nil {
+		t.Fatal(err)
+	}
+
+	reindexed, stats, err := idx.EnsureFresh(context.Background(), projectDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reindexed {
+		t.Fatal("expected reindex after deleting extra.go")
+	}
+	found := false
+	for _, f := range stats.RemovedFiles {
+		if f == "extra.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("extra.go must appear in RemovedFiles after being deleted from disk; got %v", stats.RemovedFiles)
+	}
+}
+
+// TestIndexer_MixedStaleAndValidRemovals verifies that when a reindex runs
+// with both stale unsupported-extension entries and a genuinely deleted
+// supported file, only the supported file appears in RemovedFiles.
+func TestIndexer_MixedStaleAndValidRemovals(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
+	writeGoFile(t, projectDir, "extra.go", "package main\nfunc Extra() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	// Initial index of both Go files.
+	if _, _, err := idx.EnsureFresh(context.Background(), projectDir, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject a stale .md record simulating donor contamination.
+	if err := idx.store.UpsertFile("docs/CHANGELOG.md", "staledeadhash"); err != nil {
+		t.Fatal(err)
+	}
+	// Delete a real supported file.
+	if err := os.Remove(filepath.Join(projectDir, "extra.go")); err != nil {
+		t.Fatal(err)
+	}
+	// Force a root_hash mismatch so EnsureFresh actually runs the diff.
+	if err := idx.store.SetMeta("root_hash", "outdated"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stats, err := idx.EnsureFresh(context.Background(), projectDir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, f := range stats.RemovedFiles {
+		if filepath.Ext(f) == ".md" {
+			t.Errorf("stale .md record %q must not appear in RemovedFiles", f)
+		}
+	}
+	foundExtra := false
+	for _, f := range stats.RemovedFiles {
+		if f == "extra.go" {
+			foundExtra = true
+		}
+	}
+	if !foundExtra {
+		t.Errorf("extra.go must appear in RemovedFiles after being deleted; got %v", stats.RemovedFiles)
+	}
+}
+
 func writeGoFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
