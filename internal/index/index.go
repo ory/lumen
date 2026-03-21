@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -413,10 +414,5 @@ func isBinaryContent(data []byte) bool {
 	if len(check) > 512 {
 		check = check[:512]
 	}
-	for _, b := range check {
-		if b == 0 {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(check, 0)
 }
