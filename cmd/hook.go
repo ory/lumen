@@ -80,6 +80,10 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 		cwd, _ = os.Getwd()
 	}
 
+	// Kick off a background incremental re-index so the index is fresh
+	// by the time the first semantic_search arrives.
+	spawnBackgroundIndexer(cwd)
+
 	content := generateSessionContext(mcpName, cwd)
 
 	out := hookOutput{
