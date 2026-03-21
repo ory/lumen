@@ -19,6 +19,8 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -135,6 +137,16 @@ type indexerCache struct {
 	freshnessTTL  time.Duration              // 0 means use defaultFreshnessTTL
 	findDonorFunc func(string, string) string // nil uses config.FindDonorIndex
 	seedFunc      func(string, string) (bool, error) // nil uses index.SeedFromDonor
+	log           *slog.Logger
+}
+
+// logger returns ic.log, falling back to a discarding logger when the field
+// is nil (e.g. in unit tests that construct indexerCache directly).
+func (ic *indexerCache) logger() *slog.Logger {
+	if ic.log == nil {
+		return slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	return ic.log
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -219,6 +231,10 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	if ic.cache != nil {
 		if entry, ok := ic.cache[projectPath]; ok {
 			ic.mu.RUnlock()
+			ic.logger().Debug("indexer cache hit",
+				"project_path", projectPath,
+				"effective_root", entry.effectiveRoot,
+			)
 			return entry.idx, entry.effectiveRoot, "", nil
 		}
 	}
@@ -276,13 +292,24 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 			findDonor = config.FindDonorIndex
 		}
 		if donorPath := findDonor(effectiveRoot, ic.model); donorPath != "" {
+			ic.logger().Info("seeding index from donor worktree",
+				"effective_root", effectiveRoot,
+				"donor_path", donorPath,
+			)
 			seedFn := ic.seedFunc
 			if seedFn == nil {
 				seedFn = index.SeedFromDonor
 			}
 			if _, seedErr := seedFn(donorPath, dbPath); seedErr != nil {
+				ic.logger().Warn("seed from donor worktree failed",
+					"effective_root", effectiveRoot,
+					"donor_path", donorPath,
+					"error", seedErr,
+				)
 				seedWarning = fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
 			}
+		} else {
+			ic.logger().Debug("no donor index found for seeding", "effective_root", effectiveRoot)
 		}
 	}
 
@@ -305,6 +332,16 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		}
 	}
 
+	gitRoot, _ := git.RepoRoot(effectiveRoot)
+	ic.logger().Info("indexer created",
+		"project_path", projectPath,
+		"effective_root", effectiveRoot,
+		"is_parent_adoption", effectiveRoot != projectPath,
+		"is_worktree", git.IsWorktree(effectiveRoot),
+		"git_root", gitRoot,
+		"db_path", dbPath,
+	)
+
 	ic.cache[effectiveRoot] = entry
 	if effectiveRoot != projectPath {
 		ic.cache[projectPath] = cacheEntry{idx: idx, effectiveRoot: effectiveRoot, lastCheckedAt: entry.lastCheckedAt}
@@ -319,6 +356,13 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	if err := validateSearchInput(&input); err != nil {
 		return nil, nil, err
 	}
+
+	ic.logger().Debug("semantic search request",
+		"cwd", input.Cwd,
+		"search_path", input.Path,
+		"force_reindex", input.ForceReindex,
+		"n_results", input.NResults,
+	)
 
 	idx, effectiveRoot, seedWarning, err := ic.getOrCreate(input.Path, input.Cwd)
 	if err != nil {
@@ -477,8 +521,11 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 }
 
 func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+	start := time.Now()
 	out := SemanticSearchOutput{}
+
 	if input.ForceReindex {
+		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
 		stats, err := idx.Index(ctx, projectDir, true, progress)
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
@@ -486,20 +533,71 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		ic.touchChecked(projectDir)
 		out.Reindexed = true
 		out.IndexedFiles = stats.IndexedFiles
+		ic.logger().Info("force reindex complete",
+			"cwd", input.Cwd,
+			"search_path", input.Path,
+			"effective_root", projectDir,
+			"indexed_files", stats.IndexedFiles,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 		return out, nil
 	}
 
 	// Skip the merkle tree walk if we confirmed freshness recently. The walk
 	// costs 1-3s on large projects even when nothing changed.
 	if ic.recentlyChecked(projectDir) {
+		ic.logger().Debug("freshness TTL hit, skipping merkle check",
+			"cwd", input.Cwd,
+			"effective_root", projectDir,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		)
 		return out, nil
 	}
 
+	ic.logger().Debug("freshness TTL expired or first check, building merkle tree",
+		"cwd", input.Cwd,
+		"effective_root", projectDir,
+	)
+
+
 	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
+	elapsed := time.Since(start)
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
 	ic.touchChecked(projectDir)
+
+	if !reindexed {
+		ic.logger().Debug("index fresh, caching result",
+			"cwd", input.Cwd,
+			"effective_root", projectDir,
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+	} else {
+		// Build a concise "why" string for quick log scanning.
+		reason := "incremental update"
+		if stats.FirstIndex {
+			reason = "first index (no prior data)"
+		}
+
+		ic.logger().Info("reindex triggered",
+			"cwd", input.Cwd,
+			"search_path", input.Path,
+			"effective_root", projectDir,
+			"reason", reason,
+			"total_project_files", stats.TotalFiles,
+			"files_indexed", stats.IndexedFiles,
+			"chunks_created", stats.ChunksCreated,
+			"added_count", len(stats.AddedFiles),
+			"modified_count", len(stats.ModifiedFiles),
+			"removed_count", len(stats.RemovedFiles),
+			"added_files", stats.AddedFiles,
+			"modified_files", stats.ModifiedFiles,
+			"removed_files", stats.RemovedFiles,
+			"elapsed_ms", elapsed.Milliseconds(),
+		)
+	}
+
 	out.Reindexed = reindexed
 	if reindexed {
 		out.IndexedFiles = stats.IndexedFiles
@@ -961,13 +1059,22 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("create embedder: %w", err)
 	}
 
-	var freshnessTTL time.Duration
-	if s := os.Getenv("LUMEN_FRESHNESS_TTL"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			freshnessTTL = d
-		}
+	logger, logFile := newDebugLogger()
+	if logFile != nil {
+		defer func() { _ = logFile.Close() }()
 	}
-	indexers := &indexerCache{embedder: emb, model: cfg.Model, cfg: cfg, freshnessTTL: freshnessTTL}
+	logger.Info("lumen config",
+		"model", cfg.Model,
+		"backend", cfg.Backend,
+		"freshness_ttl", cfg.FreshnessTTL.String(),
+	)
+
+	indexers := &indexerCache{
+		embedder: emb,
+		model:    cfg.Model,
+		cfg:      cfg,
+		log:      logger,
+	}
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",

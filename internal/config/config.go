@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/ory/lumen/internal/embedder"
 )
@@ -41,6 +42,7 @@ type Config struct {
 	OllamaHost     string
 	Backend        string
 	LMStudioHost   string
+	FreshnessTTL   time.Duration
 }
 
 // Load reads configuration from environment variables and the model registry.
@@ -68,6 +70,7 @@ func Load() (Config, error) {
 		OllamaHost:     EnvOrDefault("OLLAMA_HOST", "http://localhost:11434"),
 		Backend:        backend,
 		LMStudioHost:   EnvOrDefault("LM_STUDIO_HOST", "http://localhost:1234"),
+		FreshnessTTL:   EnvOrDefaultDuration("LUMEN_FRESHNESS_TTL", 60*time.Second),
 	}, nil
 }
 
@@ -113,6 +116,18 @@ func EnvOrDefaultInt(key string, fallback int) int {
 	if val := os.Getenv(key); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+// EnvOrDefaultDuration returns the time.Duration value of the environment
+// variable named by key, or fallback if the variable is not set, empty, or
+// not a valid duration string (e.g. "30s", "1m").
+func EnvOrDefaultDuration(key string, fallback time.Duration) time.Duration {
+	if val := os.Getenv(key); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			return d
 		}
 	}
 	return fallback
