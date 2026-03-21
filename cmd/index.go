@@ -77,15 +77,16 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 	defer lock.Release()
 
-	idx, err := setupIndexer(&cfg, dbPath)
-	if err != nil {
-		return err
-	}
-
 	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
 	// the deferred lock.Release() runs before exit.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	idx, err := setupIndexer(&cfg, dbPath)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
 
 	p := tui.NewProgress(os.Stderr)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, cfg.Model, cfg.Dims))
