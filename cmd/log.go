@@ -20,41 +20,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/ory/lumen/internal/config"
 )
 
-// newDebugLogger opens (or creates) the lumen debug log file with automatic
-// rotation and returns a JSON slog.Logger that appends to it. The file is
-// written to the lumen data directory alongside the index databases so it is
-// easy to find when debugging re-index behaviour.
-//
-// Rotation policy: 10 MB per file, 3 compressed backups retained, no age limit.
-//
-// The caller is responsible for closing the returned io.Closer when the
-// process exits. If the log directory cannot be created the logger writes to
-// os.Stderr instead, and a nil Closer is returned.
+// newDebugLogger opens (or creates) the lumen debug log file and returns a
+// JSON slog.Logger that appends to it. The caller must close the returned
+// io.Closer when the process exits. If the log directory cannot be created
+// the logger writes to os.Stderr and returns a nil Closer.
 func newDebugLogger() (*slog.Logger, io.Closer) {
 	logDir := filepath.Join(config.XDGDataDir(), "lumen")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return slog.New(slog.NewJSONHandler(os.Stderr, nil)), nil
 	}
 
-	lj := &lumberjack.Logger{
-		Filename:   filepath.Join(logDir, "debug.log"),
-		MaxSize:    10, // megabytes
-		MaxBackups: 3,
-		Compress:   true,
+	f, err := os.OpenFile(filepath.Join(logDir, "debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return slog.New(slog.NewJSONHandler(os.Stderr, nil)), nil
 	}
 
-	logger := slog.New(slog.NewJSONHandler(lj, &slog.HandlerOptions{
+	logger := slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: parseLogLevel(os.Getenv("LUMEN_LOG_LEVEL")),
 	}))
-	logger.Info("lumen started", "log_file", lj.Filename, "time", time.Now().UTC().Format(time.RFC3339))
-	return logger, lj
+	return logger, f
 }
 
 // parseLogLevel maps a LUMEN_LOG_LEVEL string to a slog.Level.

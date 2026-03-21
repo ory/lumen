@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"io"
+	"log/slog"
 	"time"
 
 	"flag"
@@ -32,7 +34,10 @@ import (
 	"github.com/ory/lumen/internal/store"
 )
 
-var updateGolden = flag.Bool("update-golden", false, "update golden test files")
+var (
+	updateGolden = flag.Bool("update-golden", false, "update golden test files")
+	discardLog   = slog.New(slog.NewTextHandler(io.Discard, nil))
+)
 
 // assertGolden compares got against the golden file at path. If -update-golden
 // is set, it writes got to the golden file instead.
@@ -81,6 +86,7 @@ func TestIndexerCache_ConcurrentReads(_ *testing.T) {
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      config.Config{MaxChunkTokens: 2048},
+		log:      discardLog,
 	}
 
 	const goroutines = 20
@@ -226,6 +232,7 @@ func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
 		embedder: &stubEmbedder{},
 		model:    model,
 		cfg:      config.Config{MaxChunkTokens: 512},
+		log:      discardLog,
 	}
 
 	// First call: index the parent directory — creates an indexer and DB on disk.
@@ -291,6 +298,7 @@ func TestIndexerCache_GetOrCreate_FastPathEffectiveRoot(t *testing.T) {
 		embedder: &stubEmbedder{},
 		model:    model,
 		cfg:      config.Config{MaxChunkTokens: 512},
+		log:      discardLog,
 	}
 
 	parentDir := filepath.Join(tmpDir, "project")
@@ -353,6 +361,7 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 		embedder: &stubEmbedder{},
 		model:    "stub",
 		cfg:      config.Config{MaxChunkTokens: 512},
+		log:      discardLog,
 	}
 
 	// cwd=parentRepo is passed as preferredRoot (the outer monorepo).
@@ -372,6 +381,13 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		model:    "stub",
+		cfg:      config.Config{MaxChunkTokens: 512},
+		log:      discardLog,
+	}
 
 	parentDir := filepath.Join(tmpDir, "project")
 	subDir := filepath.Join(parentDir, "src")
@@ -951,6 +967,7 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 		model:        "stub",
 		cfg:          config.Config{MaxChunkTokens: 512, FreshnessTTL: time.Minute},
 		freshnessTTL: time.Minute,
+		log:          discardLog,
 	}
 
 	idx, effectiveRoot, _, err := ic.getOrCreate(projectPath, "")
