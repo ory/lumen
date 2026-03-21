@@ -162,13 +162,23 @@ func (ic *indexerCache) findEffectiveRoot(path string) string {
 	// from adopting a large ancestor index (e.g. a GOPATH index) that
 	// happens to contain path as a subdirectory, which would cause
 	// EnsureFresh to scan the entire ancestor tree.
+	//
+	// RepoRoot resolves symlinks (via git rev-parse --show-toplevel), so we
+	// must also resolve candidate paths before comparing. On macOS /var is a
+	// symlink to /private/var; without resolution the Rel check produces a
+	// "../" prefix and breaks the walk prematurely.
 	gitRoot, gitErr := git.RepoRoot(path)
 
 	candidate := filepath.Dir(path)
 	for {
-		// Do not walk above the git repo root.
+		// Do not walk above the git repo root. Resolve symlinks on candidate
+		// to match gitRoot (which is already resolved by git).
 		if gitErr == nil {
-			if rel, relErr := filepath.Rel(gitRoot, candidate); relErr != nil || strings.HasPrefix(rel, "..") {
+			resolvedCandidate := candidate
+			if r, err := filepath.EvalSymlinks(candidate); err == nil {
+				resolvedCandidate = r
+			}
+			if rel, relErr := filepath.Rel(gitRoot, resolvedCandidate); relErr != nil || strings.HasPrefix(rel, "..") {
 				break
 			}
 		}
@@ -217,6 +227,16 @@ func pathCrossesSkipDir(root, sub string) bool {
 	return false
 }
 
+// hasIndex reports whether projectPath has an in-memory cached indexer or an
+// on-disk SQLite database. Callers must hold ic.mu.
+func (ic *indexerCache) hasIndex(projectPath string) bool {
+	if _, ok := ic.cache[projectPath]; ok {
+		return true
+	}
+	_, err := os.Stat(config.DBPathForProject(projectPath, ic.model))
+	return err == nil
+}
+
 // getOrCreate returns an existing Indexer for the given project path (or a
 // parent index if one exists), along with the effective root directory used by
 // the indexer, and a non-empty seedWarning if seeding from a sibling worktree
@@ -255,8 +275,11 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 
 	// Determine the effective root: prefer explicit root, then walk up.
 	// Exception: if projectPath is itself a git worktree (has a .git FILE, not
-	// dir) it must be indexed independently — adopting the outer repo root would
-	// cause the entire monorepo to be re-indexed on every search.
+	// dir) use findEffectiveRoot instead of preferredRoot. This avoids blindly
+	// adopting the outer monorepo root (which would trigger a full re-index),
+	// while still finding a parent index if one exists (e.g. when a search
+	// path points into an internal .worktrees/ subdir of an already-indexed
+	// project).
 	var effectiveRoot string
 	if preferredRoot != "" && !git.IsWorktree(projectPath) {
 		clean := filepath.Clean(preferredRoot)
@@ -271,6 +294,12 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		} else {
 			effectiveRoot = ic.findEffectiveRoot(projectPath)
 		}
+	} else if git.IsWorktree(projectPath) && preferredRoot != "" && ic.hasIndex(preferredRoot) {
+		// projectPath is a worktree but the parent project (preferredRoot) is
+		// already indexed — reuse the parent index instead of creating a new
+		// one. This handles the case where a search path points into an
+		// internal .worktrees/ subdir of an already-indexed project.
+		effectiveRoot = filepath.Clean(preferredRoot)
 	} else {
 		effectiveRoot = ic.findEffectiveRoot(projectPath)
 	}
