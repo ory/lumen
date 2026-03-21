@@ -16,6 +16,7 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,6 +24,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ory/lumen/internal/merkle"
 )
 
 // progressCall represents a progress function call for testing.
@@ -619,9 +622,10 @@ func TestIndexer_StaleUnsupportedExtensionNotCountedAsRemoved(t *testing.T) {
 	}
 }
 
+
 // TestIndexer_StaleUnsupportedExtensionDeletedFromDB verifies that after a
-// reindex, stale file records with unsupported extensions are removed from the
-// DB so they do not accumulate across reindex cycles.
+// reindex, stale file records with unsupported extensions (e.g. .md from
+// donor seeding) are purged from the DB.
 func TestIndexer_StaleUnsupportedExtensionDeletedFromDB(t *testing.T) {
 	projectDir := t.TempDir()
 	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
@@ -633,6 +637,7 @@ func TestIndexer_StaleUnsupportedExtensionDeletedFromDB(t *testing.T) {
 	}
 	defer func() { _ = idx.Close() }()
 
+	// Simulate donor seeding: inject a stale .md record.
 	if err := idx.store.UpsertFile(".changelog-network/v1.0.0.md", "staledeadhash"); err != nil {
 		t.Fatal(err)
 	}
@@ -652,10 +657,9 @@ func TestIndexer_StaleUnsupportedExtensionDeletedFromDB(t *testing.T) {
 	}
 }
 
-// TestIndexer_SupportedFileRemovedFromDisk_CountedAsRemoved is a regression
-// test: the stale-extension filter must not suppress legitimate removals of
-// supported files that were deleted from disk between index runs.
-func TestIndexer_SupportedFileRemovedFromDisk_CountedAsRemoved(t *testing.T) {
+// TestIndexer_SupportedFileRemovedFromDisk verifies that deleting a supported
+// file from disk triggers a reindex and removes it from the DB.
+func TestIndexer_SupportedFileRemovedFromDisk(t *testing.T) {
 	projectDir := t.TempDir()
 	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
 	writeGoFile(t, projectDir, "extra.go", "package main\nfunc Extra() {}\n")
@@ -675,27 +679,26 @@ func TestIndexer_SupportedFileRemovedFromDisk_CountedAsRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reindexed, stats, err := idx.EnsureFresh(context.Background(), projectDir, nil)
+	reindexed, _, err := idx.EnsureFresh(context.Background(), projectDir, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reindexed {
 		t.Fatal("expected reindex after deleting extra.go")
 	}
-	found := false
-	for _, f := range stats.RemovedFiles {
-		if f == "extra.go" {
-			found = true
-		}
+
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !found {
-		t.Errorf("extra.go must appear in RemovedFiles after being deleted from disk; got %v", stats.RemovedFiles)
+	if _, ok := hashes["extra.go"]; ok {
+		t.Error("extra.go should have been removed from the DB after being deleted from disk")
 	}
 }
 
-// TestIndexer_MixedStaleAndValidRemovals verifies that when a reindex runs
-// with both stale unsupported-extension entries and a genuinely deleted
-// supported file, only the supported file appears in RemovedFiles.
+// TestIndexer_MixedStaleAndValidRemovals verifies that stale unsupported-
+// extension entries are purged while genuinely deleted supported files are
+// also correctly removed.
 func TestIndexer_MixedStaleAndValidRemovals(t *testing.T) {
 	projectDir := t.TempDir()
 	writeGoFile(t, projectDir, "main.go", "package main\nfunc Hello() {}\n")
@@ -708,42 +711,97 @@ func TestIndexer_MixedStaleAndValidRemovals(t *testing.T) {
 	}
 	defer func() { _ = idx.Close() }()
 
-	// Initial index of both Go files.
 	if _, _, err := idx.EnsureFresh(context.Background(), projectDir, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	// Inject a stale .md record simulating donor contamination.
+	// Inject a stale .md record and delete a real supported file.
 	if err := idx.store.UpsertFile("docs/CHANGELOG.md", "staledeadhash"); err != nil {
 		t.Fatal(err)
 	}
-	// Delete a real supported file.
 	if err := os.Remove(filepath.Join(projectDir, "extra.go")); err != nil {
 		t.Fatal(err)
 	}
-	// Force a root_hash mismatch so EnsureFresh actually runs the diff.
 	if err := idx.store.SetMeta("root_hash", "outdated"); err != nil {
 		t.Fatal(err)
 	}
 
-	_, stats, err := idx.EnsureFresh(context.Background(), projectDir, nil)
-	if err != nil {
+	if _, _, err := idx.EnsureFresh(context.Background(), projectDir, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, f := range stats.RemovedFiles {
-		if filepath.Ext(f) == ".md" {
-			t.Errorf("stale .md record %q must not appear in RemovedFiles", f)
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path := range hashes {
+		if filepath.Ext(path) == ".md" {
+			t.Errorf("stale .md record %q should have been purged", path)
 		}
 	}
-	foundExtra := false
-	for _, f := range stats.RemovedFiles {
-		if f == "extra.go" {
-			foundExtra = true
-		}
+	if _, ok := hashes["extra.go"]; ok {
+		t.Error("extra.go should have been removed from the DB")
 	}
-	if !foundExtra {
-		t.Errorf("extra.go must appear in RemovedFiles after being deleted; got %v", stats.RemovedFiles)
+	if _, ok := hashes["main.go"]; !ok {
+		t.Error("main.go should still exist in the DB")
+	}
+}
+
+// failingEmbedder always returns an error from Embed.
+type failingEmbedder struct{}
+
+func (f *failingEmbedder) Embed(_ context.Context, _ []string) ([][]float32, error) {
+	return nil, errors.New("embedding API unavailable")
+}
+func (f *failingEmbedder) Dimensions() int   { return 4 }
+func (f *failingEmbedder) ModelName() string { return "test-model" }
+
+// TestIndex_UpsertFileDefersUntilFlush verifies that when flushBatch fails
+// (e.g. embedding API error), UpsertFile is NOT called for files in the failed
+// batch — preserving the invariant that a file hash is committed only after its
+// chunks have been durably stored.
+func TestIndex_UpsertFileDefersUntilFlush(t *testing.T) {
+	projectDir := t.TempDir()
+
+	// Write one .go file — one chunk will be produced, flushBatch will be
+	// called exactly once (the final flush), and the failing embedder will
+	// make it return an error.
+	writeGoFile(t, projectDir, "main.go", `package main
+
+func Hello() {}
+`)
+
+	emb := &failingEmbedder{}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	_, indexErr := idx.Index(context.Background(), projectDir, false, nil)
+	if indexErr == nil {
+		t.Fatal("expected Index to return an error when embedder fails")
+	}
+
+	// After the failed index run the real content hash must NOT have been
+	// committed. The file may have a sentinel placeholder hash ("") to satisfy
+	// the FK constraint, but it must never carry the real SHA-256 — so that
+	// the next run treats it as changed and re-indexes it.
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Build the expected real hash using the Merkle tree so the test stays
+	// independent of hash implementation details.
+	curTree, treeErr := merkle.BuildTree(projectDir, makeSkip(projectDir))
+	if treeErr != nil {
+		t.Fatal(treeErr)
+	}
+	for path, storedHash := range hashes {
+		realHash := curTree.Files[path]
+		if storedHash == realHash {
+			t.Errorf("file %q has its real hash %q committed after a failed flush — it will be invisible to future searches", path, storedHash)
+		}
 	}
 }
 

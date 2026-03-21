@@ -32,6 +32,16 @@ import (
 	"github.com/ory/lumen/internal/store"
 )
 
+// supportedExts is the set of file extensions that lumen indexes, computed
+// once at init time to avoid rebuilding the map on every incremental index.
+var supportedExts = func() map[string]bool {
+	m := make(map[string]bool, len(chunker.SupportedExtensions()))
+	for _, ext := range chunker.SupportedExtensions() {
+		m[ext] = true
+	}
+	return m
+}()
+
 // ProgressFunc is an optional callback for reporting indexing progress.
 // current is the number of items processed so far, total is the total number
 // of items (0 if unknown), and message describes the current step.
@@ -43,14 +53,6 @@ type Stats struct {
 	IndexedFiles  int
 	ChunksCreated int
 	FilesChanged  int
-	// FirstIndex is true when the project had never been indexed before (no
-	// stored root hash), meaning all files were indexed from scratch.
-	FirstIndex bool
-	// AddedFiles, ModifiedFiles, RemovedFiles list the relative paths that
-	// triggered re-indexing. Populated only during incremental (non-force) runs.
-	AddedFiles    []string
-	ModifiedFiles []string
-	RemovedFiles  []string
 }
 
 // StatusInfo holds information about the current index state for a project.
@@ -147,7 +149,6 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 	if err != nil {
 		return false, stats, err
 	}
-	stats.FirstIndex = storedHash == ""
 	return true, stats, nil
 }
 
@@ -175,14 +176,9 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		// Purge stale records with unsupported extensions (e.g. .md entries
 		// inherited via donor seeding). The current Merkle tree never includes
 		// them, so keeping them in oldHashes would produce phantom "removed"
-		// entries in every diff. Delete them from the DB now so they do not
-		// accumulate across reindex cycles.
-		supported := make(map[string]bool, len(chunker.SupportedExtensions()))
-		for _, ext := range chunker.SupportedExtensions() {
-			supported[ext] = true
-		}
+		// entries in every diff.
 		for path := range oldHashes {
-			if !supported[filepath.Ext(path)] {
+			if !supportedExts[filepath.Ext(path)] {
 				if err := idx.store.DeleteFileChunks(path); err != nil {
 					return stats, fmt.Errorf("purge stale file %s: %w", path, err)
 				}
@@ -194,9 +190,6 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		filesToIndex = append(filesToIndex, added...)
 		filesToIndex = append(filesToIndex, modified...)
 		filesToRemove = removed
-		stats.AddedFiles = added
-		stats.ModifiedFiles = modified
-		stats.RemovedFiles = removed
 	}
 
 	stats.FilesChanged = len(filesToIndex) + len(filesToRemove)
@@ -238,6 +231,12 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		return nil
 	}
 
+	type pendingFile struct {
+		relPath string
+		hash    string
+	}
+	var pendingFiles []pendingFile
+
 	for fileIdx, relPath := range filesToIndex {
 		if progress != nil {
 			progress(fileIdx, len(filesToIndex), fmt.Sprintf("Processing file %d/%d: %s", fileIdx+1, len(filesToIndex), relPath))
@@ -253,8 +252,13 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 			return stats, fmt.Errorf("delete old chunks for %s: %w", relPath, err)
 		}
 
-		if err := idx.store.UpsertFile(relPath, curTree.Files[relPath]); err != nil {
-			return stats, fmt.Errorf("upsert file %s: %w", relPath, err)
+		// Register the file with a sentinel hash ("") so that the chunks FK
+		// constraint is satisfied during InsertChunks. The real hash is written
+		// only after the batch flush succeeds. A sentinel hash never equals a
+		// real SHA-256, so if the process crashes here the file will be
+		// re-indexed on the next run.
+		if err := idx.store.UpsertFile(relPath, ""); err != nil {
+			return stats, fmt.Errorf("upsert file placeholder %s: %w", relPath, err)
 		}
 
 		chunks, err := idx.chunker.Chunk(relPath, content)
@@ -270,16 +274,30 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		chunks = splitOversizedChunks(chunks, idx.maxChunkTokens)
 
 		batch = append(batch, chunks...)
+		pendingFiles = append(pendingFiles, pendingFile{relPath, curTree.Files[relPath]})
 
 		if len(batch) >= chunkBatchSize {
 			if err := flushBatch(fileIdx + 1); err != nil {
 				return stats, err
 			}
+			// Chunks are durably stored — now commit the real file hashes.
+			for _, pf := range pendingFiles {
+				if err := idx.store.UpsertFile(pf.relPath, pf.hash); err != nil {
+					return stats, fmt.Errorf("upsert file %s: %w", pf.relPath, err)
+				}
+			}
+			pendingFiles = pendingFiles[:0]
 		}
 	}
 
+	// Final flush + upsert.
 	if err := flushBatch(len(filesToIndex)); err != nil {
 		return stats, err
+	}
+	for _, pf := range pendingFiles {
+		if err := idx.store.UpsertFile(pf.relPath, pf.hash); err != nil {
+			return stats, fmt.Errorf("upsert file %s: %w", pf.relPath, err)
+		}
 	}
 
 	if len(filesToIndex) > 0 {
