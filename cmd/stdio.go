@@ -375,7 +375,8 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 
 	progress := buildProgressFunc(ctx, req)
 
-	out, err := ic.ensureIndexed(ctx, idx, input, effectiveRoot, progress)
+	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
+	out, err := ic.ensureIndexed(ctx, idx, input, effectiveRoot, dbPath, progress)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -524,7 +525,7 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 	}
 }
 
-func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, dbPath string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
 	start := time.Now()
 	out := SemanticSearchOutput{}
 
@@ -568,7 +569,6 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	// run concurrently. Under SQLite WAL mode both operations are safe and the
 	// result is redundant work, not data corruption — an acceptable outcome
 	// given the narrow window between session start and first search.
-	dbPath := config.DBPathForProject(projectDir, ic.model)
 	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
 		ic.logger().Debug("background indexer running, skipping EnsureFresh",
 			"cwd", input.Cwd,

@@ -28,6 +28,7 @@ import (
 	"flag"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/store"
 )
 
@@ -317,6 +318,54 @@ func TestIndexerCache_GetOrCreate_FastPathEffectiveRoot(t *testing.T) {
 	}
 	if root != parentDir {
 		t.Fatalf("fast path returned wrong effectiveRoot: got %s, want %s", root, parentDir)
+	}
+}
+
+func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T) {
+	// Reproduces the scenario where a search arrives with:
+	//   path = /repo/.claire/worktrees/some-branch  (a git worktree)
+	//   cwd  = /repo                                 (outer monorepo root, passed as preferredRoot)
+	//
+	// When path is a git worktree (has a .git FILE), lumen must use path as the
+	// effective root rather than adopting the outer repo root (preferredRoot).
+	// Without this guard a search from any tool's worktree directory triggers a
+	// full re-index of the entire monorepo.
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	parentRepo := filepath.Join(tmpDir, "cloud")
+	worktreePath := filepath.Join(parentRepo, ".claire", "worktrees", "my-branch")
+	if err := os.MkdirAll(worktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if out, err := exec.Command("git", "init", parentRepo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	// Mark worktreePath as a proper git worktree by writing a .git FILE (not dir).
+	gitFile := filepath.Join(worktreePath, ".git")
+	if err := os.WriteFile(gitFile, []byte("gitdir: ../../../.git/worktrees/my-branch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		model:    "stub",
+		cfg:      config.Config{MaxChunkTokens: 512},
+	}
+
+	// cwd=parentRepo is passed as preferredRoot (the outer monorepo).
+	_, effectiveRoot, err := ic.getOrCreate(worktreePath, parentRepo)
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+
+	// When path is a git worktree, the effective root must be the worktree
+	// path, not the outer repo. Using the parent causes the entire monorepo to
+	// be re-indexed on every search from this worktree.
+	if effectiveRoot != worktreePath {
+		t.Fatalf("expected effectiveRoot=%s (worktree), got %s (adopted parent instead)", worktreePath, effectiveRoot)
 	}
 }
 
@@ -866,6 +915,107 @@ func TestScoreIsNotDistance(t *testing.T) {
 		if scoreA < scoreB {
 			t.Fatalf("expected scores descending: %.2f should be >= %.2f", scoreA, scoreB)
 		}
+	}
+}
+
+// TestEnsureIndexed_LockHolder_Helper is the subprocess entry point for
+// TestEnsureIndexed_SkipsWhenLockHeld. It acquires the exclusive lock, signals
+// readiness by writing one byte to stdout, then sleeps until killed.
+func TestEnsureIndexed_LockHolder_Helper(t *testing.T) {
+	if os.Getenv("LUMEN_TEST_LOCK_HOLDER") != "1" {
+		t.Skip("helper only runs when invoked as subprocess")
+	}
+	lockPath := os.Getenv("LUMEN_TEST_LOCK_PATH")
+	lock, err := indexlock.TryAcquire(lockPath)
+	if err != nil || lock == nil {
+		t.Fatalf("helper: TryAcquire failed: err=%v lock=%v", err, lock)
+	}
+	_, _ = os.Stdout.Write([]byte{1})
+	time.Sleep(30 * time.Second)
+}
+
+// TestEnsureIndexed_SkipsWhenLockHeld verifies that ensureIndexed returns
+// immediately (Reindexed=false, err=nil) when a background indexer holds the
+// exclusive flock, without calling EnsureFresh.
+func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	projectPath := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ic := &indexerCache{
+		embedder:     &stubEmbedder{},
+		model:        "stub",
+		cfg:          config.Config{MaxChunkTokens: 512, FreshnessTTL: time.Minute},
+		freshnessTTL: time.Minute,
+	}
+
+	idx, effectiveRoot, _, err := ic.getOrCreate(projectPath, "")
+	if err != nil {
+		t.Fatalf("getOrCreate: %v", err)
+	}
+
+	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
+	lockPath := indexlock.LockPathForDB(dbPath)
+
+	// Ensure the lock file's parent directory exists (getOrCreate creates the DB
+	// directory, so this should already be true, but be explicit).
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Spawn a subprocess that holds the exclusive flock.
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestEnsureIndexed_LockHolder_Helper")
+	cmd.Env = append(os.Environ(),
+		"LUMEN_TEST_LOCK_HOLDER=1",
+		"LUMEN_TEST_LOCK_PATH="+lockPath,
+		"XDG_DATA_HOME="+tmpDir,
+	)
+	cmd.Stdout = pw
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
+		_ = pr.Close()
+		t.Fatalf("start subprocess: %v", err)
+	}
+	_ = pw.Close()
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+
+	// Wait for the subprocess to signal it has acquired the lock.
+	readDone := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 1)
+		_, readErr := pr.Read(buf)
+		_ = pr.Close()
+		readDone <- readErr
+	}()
+
+	select {
+	case readErr := <-readDone:
+		if readErr != nil {
+			t.Fatalf("waiting for subprocess ready signal: %v", readErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for subprocess to acquire lock")
+	}
+
+	// With the lock held by the subprocess, ensureIndexed must skip EnsureFresh.
+	input := SemanticSearchInput{Cwd: projectPath, Path: projectPath, Query: "test", NResults: 8}
+	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
+	if err != nil {
+		t.Fatalf("ensureIndexed returned unexpected error: %v", err)
+	}
+	if out.Reindexed {
+		t.Fatal("expected Reindexed=false when lock is held by background indexer")
 	}
 }
 
