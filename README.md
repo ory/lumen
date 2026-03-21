@@ -64,6 +64,10 @@ _Claude Code asking about the
 
 **Prerequisites:**
 
+> **Platform support:** Linux and macOS only. Windows is not currently supported
+> because background indexing coordination uses `flock(2)`, a Unix advisory
+> file-locking primitive not available on Windows.
+
 1. [Ollama](https://ollama.com/) installed and running, then pull the default
    embedding model:
    ```bash
