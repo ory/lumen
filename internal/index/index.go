@@ -255,6 +255,10 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 			return stats, fmt.Errorf("read file %s: %w", relPath, err)
 		}
 
+		if isBinaryContent(content) {
+			continue
+		}
+
 		if err := idx.store.DeleteFileChunks(relPath); err != nil {
 			return stats, fmt.Errorf("delete old chunks for %s: %w", relPath, err)
 		}
@@ -400,4 +404,19 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	}
 
 	return info, nil
+}
+
+// isBinaryContent reports whether data appears to be binary by checking
+// for NUL bytes in the first 512 bytes — the same heuristic used by git.
+func isBinaryContent(data []byte) bool {
+	check := data
+	if len(check) > 512 {
+		check = check[:512]
+	}
+	for _, b := range check {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
 }
