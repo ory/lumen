@@ -17,6 +17,7 @@ package merkle
 import (
 	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -94,6 +95,8 @@ type IgnoreTree struct {
 	extSet        map[string]bool
 	extraSkipDirs map[string]bool // relative paths of directories to always skip
 
+	globalIgnore *ignore.GitIgnore // from core.excludesFile
+
 	mu   sync.Mutex
 	dirs map[string]*dirIgnore // keyed by relative dir path ("" = root)
 }
@@ -111,6 +114,11 @@ func NewIgnoreTree(rootDir string, exts []string) *IgnoreTree {
 		dirs:    make(map[string]*dirIgnore),
 	}
 	t.loadDir("") // eagerly load root
+	if globalPath := globalGitignorePath(); globalPath != "" {
+		if gi, err := ignore.CompileIgnoreFile(globalPath); err == nil {
+			t.globalIgnore = gi
+		}
+	}
 	return t
 }
 
@@ -154,6 +162,10 @@ func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	if t.globalIgnore != nil && t.globalIgnore.MatchesPath(relPath) {
+		return true
+	}
 
 	parentDir := filepath.Dir(relPath)
 	ancestors := ancestorDirs(parentDir)
@@ -208,6 +220,30 @@ func ancestorDirs(dirRel string) []string {
 		result = append(result, filepath.Join(parts[:i+1]...))
 	}
 	return result
+}
+
+// globalGitignorePath returns the path to the global gitignore file,
+// or "" if not configured or not found.
+func globalGitignorePath() string {
+	out, err := exec.Command("git", "config", "--global", "core.excludesFile").Output()
+	if err == nil {
+		path := strings.TrimSpace(string(out))
+		if path != "" {
+			if strings.HasPrefix(path, "~/") {
+				if home, err := os.UserHomeDir(); err == nil {
+					path = filepath.Join(home, path[2:])
+				}
+			}
+			return path
+		}
+	}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		return filepath.Join(xdg, "git", "ignore")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".config", "git", "ignore")
+	}
+	return ""
 }
 
 // parseLinguistExcluded reads a .gitattributes file and returns a compiled
