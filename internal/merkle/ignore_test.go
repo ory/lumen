@@ -15,6 +15,7 @@
 package merkle
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -510,6 +511,34 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 	}
 	if _, ok := tree.Files["sub/internal_helper.go"]; ok {
 		t.Error("expected sub/internal_helper.go to be excluded by nested .gitignore")
+	}
+}
+
+func TestIgnoreTree_GlobalGitignore(t *testing.T) {
+	// Create global gitignore
+	globalIgnoreDir := t.TempDir()
+	globalIgnorePath := filepath.Join(globalIgnoreDir, "gitignore_global")
+	if err := os.WriteFile(globalIgnorePath, []byte("*.scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create git config pointing to it
+	configPath := filepath.Join(globalIgnoreDir, "gitconfig")
+	configContent := fmt.Sprintf("[core]\n\texcludesFile = %s\n", globalIgnorePath)
+	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override git config location
+	t.Setenv("GIT_CONFIG_GLOBAL", configPath)
+
+	dir := t.TempDir()
+	tree := NewIgnoreTree(dir, []string{".go", ".scratch"})
+	if !tree.shouldSkip("notes.scratch", false) {
+		t.Error("*.scratch should be skipped by global gitignore")
+	}
+	if tree.shouldSkip("main.go", false) {
+		t.Error("main.go should not be skipped")
 	}
 }
 
