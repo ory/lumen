@@ -163,6 +163,60 @@ func TestBuildTree_ParallelMatchesSerial(t *testing.T) {
 	}
 }
 
+func TestCollectFilePaths_SkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	realFile := filepath.Join(dir, "real.go")
+	if err := os.WriteFile(realFile, []byte("package p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkFile := filepath.Join(dir, "link.go")
+	if err := os.Symlink(realFile, linkFile); err != nil {
+		t.Skip("symlinks not supported:", err)
+	}
+
+	paths, err := collectFilePaths(dir, DefaultSkip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		if filepath.Base(p) == "link.go" {
+			t.Errorf("symlink should be skipped, got: %v", paths)
+		}
+	}
+}
+
+func TestCollectFilePaths_SkipsLargeFiles(t *testing.T) {
+	dir := t.TempDir()
+	largeFile := filepath.Join(dir, "large.go")
+	data := make([]byte, 11*1024*1024)
+	if err := os.WriteFile(largeFile, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	smallFile := filepath.Join(dir, "small.go")
+	if err := os.WriteFile(smallFile, []byte("package p"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths, err := collectFilePaths(dir, DefaultSkip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		if filepath.Base(p) == "large.go" {
+			t.Errorf("large file should be skipped, got: %v", paths)
+		}
+	}
+	found := false
+	for _, p := range paths {
+		if filepath.Base(p) == "small.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("small.go should be included")
+	}
+}
+
 func writeFile(t *testing.T, dir, rel, content string) {
 	t.Helper()
 	abs := filepath.Join(dir, rel)

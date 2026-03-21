@@ -62,6 +62,8 @@ func MakeExtSkip(exts []string) SkipFunc {
 
 const merkleWorkers = 8
 
+const maxFileSize = 10 * 1024 * 1024 // 10 MB
+
 // BuildTree walks rootDir and computes a Merkle tree.
 // File reads are parallelized across up to merkleWorkers goroutines.
 // If skip is nil, DefaultSkip is used.
@@ -98,6 +100,12 @@ func collectFilePaths(rootDir string, skip SkipFunc) ([]string, error) {
 			if skip(rel, true) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && info.Size() > maxFileSize {
 			return nil
 		}
 		if !skip(rel, false) {
