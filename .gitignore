@@ -12,10 +12,14 @@ dist/
 .DS_Store
 
 # Claude
-.claude/*.local.json
+**/.claude/*.local.json
 .worktrees/
 
 lumen
 
 bench-swe/bench-swe
 bench-swe/overview.txt
+
+**/.claude/worktrees
+**/.claire
+.worktrees
