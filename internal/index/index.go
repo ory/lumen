@@ -160,6 +160,23 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 
 	stats.TotalFiles = len(curTree.Files)
 
+	// Load stored hashes once — used for extension purge in both paths,
+	// and for deletion diff in both paths.
+	oldHashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		return stats, fmt.Errorf("get file hashes: %w", err)
+	}
+	// Purge stale records with unsupported extensions — applies in both
+	// force and incremental paths to clean up donor-seeded .md etc. records.
+	for path := range oldHashes {
+		if !supportedExts[filepath.Ext(path)] {
+			if err := idx.store.DeleteFileChunks(path); err != nil {
+				return stats, fmt.Errorf("purge stale file %s: %w", path, err)
+			}
+			delete(oldHashes, path)
+		}
+	}
+
 	// Determine which files need processing.
 	var filesToIndex []string
 	var filesToRemove []string
@@ -168,23 +185,13 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 		for path := range curTree.Files {
 			filesToIndex = append(filesToIndex, path)
 		}
-	} else {
-		oldHashes, err := idx.store.GetFileHashes()
-		if err != nil {
-			return stats, fmt.Errorf("get file hashes: %w", err)
-		}
-		// Purge stale records with unsupported extensions (e.g. .md entries
-		// inherited via donor seeding). The current Merkle tree never includes
-		// them, so keeping them in oldHashes would produce phantom "removed"
-		// entries in every diff.
+		// Compute removals: files in DB but not on disk.
 		for path := range oldHashes {
-			if !supportedExts[filepath.Ext(path)] {
-				if err := idx.store.DeleteFileChunks(path); err != nil {
-					return stats, fmt.Errorf("purge stale file %s: %w", path, err)
-				}
-				delete(oldHashes, path)
+			if _, exists := curTree.Files[path]; !exists {
+				filesToRemove = append(filesToRemove, path)
 			}
 		}
+	} else {
 		oldTree := &merkle.Tree{Files: oldHashes}
 		added, removed, modified := merkle.Diff(oldTree, curTree)
 		filesToIndex = append(filesToIndex, added...)

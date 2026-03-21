@@ -805,6 +805,47 @@ func Hello() {}
 	}
 }
 
+// TestIndex_ForceRemovesDeletedFiles verifies that a force reindex removes
+// DB records for files that no longer exist on disk.
+func TestIndex_ForceRemovesDeletedFiles(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "a.go", "package main\nfunc A() {}\n")
+	writeGoFile(t, projectDir, "b.go", "package main\nfunc B() {}\n")
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	// Seed the DB with both files.
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete b.go from disk.
+	if err := os.Remove(filepath.Join(projectDir, "b.go")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Force reindex — should clean up b.go from DB.
+	if _, err := idx.Index(context.Background(), projectDir, true, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := idx.store.GetFileHashes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hashes["b.go"]; ok {
+		t.Error("b.go should have been removed from the DB after force reindex")
+	}
+	if _, ok := hashes["a.go"]; !ok {
+		t.Error("a.go should still be present in the DB after force reindex")
+	}
+}
+
 func writeGoFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	path := filepath.Join(dir, name)
