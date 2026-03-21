@@ -19,7 +19,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -141,13 +140,18 @@ type indexerCache struct {
 	log           *slog.Logger
 }
 
-// logger returns ic.log, falling back to a discarding logger when the field
-// is nil (e.g. in unit tests that construct indexerCache directly).
-func (ic *indexerCache) logger() *slog.Logger {
-	if ic.log == nil {
-		return slog.New(slog.NewTextHandler(io.Discard, nil))
+// Close closes all cached indexers. Call on MCP server shutdown.
+func (ic *indexerCache) Close() {
+	ic.mu.Lock()
+	defer ic.mu.Unlock()
+	seen := make(map[*index.Indexer]bool)
+	for _, entry := range ic.cache {
+		if !seen[entry.idx] {
+			seen[entry.idx] = true
+			_ = entry.idx.Close()
+		}
 	}
-	return ic.log
+	ic.cache = nil
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -274,12 +278,9 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	}
 
 	// Determine the effective root: prefer explicit root, then walk up.
-	// Exception: if projectPath is itself a git worktree (has a .git FILE, not
-	// dir) use findEffectiveRoot instead of preferredRoot. This avoids blindly
-	// adopting the outer monorepo root (which would trigger a full re-index),
-	// while still finding a parent index if one exists (e.g. when a search
-	// path points into an internal .worktrees/ subdir of an already-indexed
-	// project).
+	// When projectPath is a git worktree (has a .git FILE, not dir), only
+	// use preferredRoot if it already has an index — otherwise fall back to
+	// findEffectiveRoot to avoid adopting the outer monorepo root.
 	var effectiveRoot string
 	if preferredRoot != "" && !git.IsWorktree(projectPath) {
 		clean := filepath.Clean(preferredRoot)
@@ -341,8 +342,6 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 				)
 				seedWarning = fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
 			}
-		} else {
-			ic.logger().Debug("no donor index found for seeding", "effective_root", effectiveRoot)
 		}
 	}
 
@@ -365,13 +364,9 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		}
 	}
 
-	gitRoot, _ := git.RepoRoot(effectiveRoot)
-	ic.logger().Info("indexer created",
+	ic.log.Info("indexer created",
 		"project_path", projectPath,
 		"effective_root", effectiveRoot,
-		"is_parent_adoption", effectiveRoot != projectPath,
-		"is_worktree", git.IsWorktree(effectiveRoot),
-		"git_root", gitRoot,
 		"db_path", dbPath,
 	)
 
@@ -555,11 +550,15 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 }
 
 func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, dbPath string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
-	start := time.Now()
 	out := SemanticSearchOutput{}
 
 	if input.ForceReindex {
-		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
+		// Skip force reindex if background indexer is running to avoid
+		// concurrent SQLite writes that could exceed busy_timeout.
+		if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
+			ic.log.Info("force reindex skipped: background indexer is running", "project", projectDir)
+			return out, nil
+		}
 		stats, err := idx.Index(ctx, projectDir, true, progress)
 		if err != nil {
 			return out, fmt.Errorf("force reindex: %w", err)
@@ -567,13 +566,6 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		ic.touchChecked(projectDir)
 		out.Reindexed = true
 		out.IndexedFiles = stats.IndexedFiles
-		ic.logger().Info("force reindex complete",
-			"cwd", input.Cwd,
-			"search_path", input.Path,
-			"effective_root", projectDir,
-			"indexed_files", stats.IndexedFiles,
-			"elapsed_ms", time.Since(start).Milliseconds(),
-		)
 		return out, nil
 	}
 
@@ -588,22 +580,10 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		return out, nil
 	}
 
-	// If a background indexer process is running (holds exclusive flock),
-	// skip EnsureFresh — it would duplicate the in-progress Merkle walk.
-	// The search proceeds with the current DB contents; the next search after
-	// the background indexer finishes will find a fresh index.
-	//
-	// Note: this is a check-then-act probe (TOCTOU). The background indexer
-	// may acquire the lock after IsHeld returns false, causing EnsureFresh to
-	// run concurrently. Under SQLite WAL mode both operations are safe and the
-	// result is redundant work, not data corruption — an acceptable outcome
-	// given the narrow window between session start and first search.
+	// If a background indexer holds the exclusive flock, skip EnsureFresh to
+	// avoid duplicating the in-progress Merkle walk. The TOCTOU race is benign:
+	// worst case is redundant work, not corruption (SQLite WAL mode).
 	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
-		ic.logger().Debug("background indexer running, skipping EnsureFresh",
-			"cwd", input.Cwd,
-			"effective_root", projectDir,
-			"elapsed_ms", time.Since(start).Milliseconds(),
-		)
 		return out, nil
 	}
 
@@ -612,9 +592,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		"effective_root", projectDir,
 	)
 
-
 	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
-	elapsed := time.Since(start)
 	if err != nil {
 		return out, fmt.Errorf("ensure fresh: %w", err)
 	}
@@ -1128,6 +1106,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		cfg:      cfg,
 		log:      logger,
 	}
+	defer indexers.Close()
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",
