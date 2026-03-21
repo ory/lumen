@@ -18,12 +18,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
+	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -56,17 +59,43 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve path: %w", err)
 	}
 
-	idx, err := setupIndexer(&cfg, projectPath)
+	dbPath := config.DBPathForProject(projectPath, cfg.Model)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("create db directory: %w", err)
+	}
+
+	lockPath := indexlock.LockPathForDB(dbPath)
+	lock, err := indexlock.TryAcquire(lockPath)
+	if err != nil {
+		return fmt.Errorf("acquire index lock: %w", err)
+	}
+	if lock == nil {
+		// Another indexer is already running for this project — skip silently.
+		// This is the normal case when multiple Claude terminals are open.
+		fmt.Println("Another indexer is already running for this project. Skipping.")
+		return nil
+	}
+	defer lock.Release()
+
+	idx, err := setupIndexer(&cfg, dbPath)
 	if err != nil {
 		return err
 	}
+
+	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
+	// the deferred lock.Release() runs before exit.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
 	p := tui.NewProgress(os.Stderr)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, cfg.Model, cfg.Dims))
 
 	start := time.Now()
-	stats, err := performIndexing(cmd, idx, projectPath, p)
+	stats, err := performIndexing(ctx, cmd, idx, projectPath, p)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil // cancelled gracefully by signal
+		}
 		return err
 	}
 
@@ -90,24 +119,11 @@ func applyModelFlag(cmd *cobra.Command, cfg *config.Config) error {
 	return nil
 }
 
-func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error) {
+// setupIndexer receives dbPath so it is computed exactly once in runIndex.
+func setupIndexer(cfg *config.Config, dbPath string) (*index.Indexer, error) {
 	emb, err := newEmbedder(*cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create embedder: %w", err)
-	}
-
-	dbPath := config.DBPathForProject(projectPath, cfg.Model)
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		return nil, fmt.Errorf("create db directory: %w", err)
-	}
-
-	// Seed from a sibling worktree index if this is a brand-new index.
-	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
-		if donorPath := config.FindDonorIndex(projectPath, cfg.Model); donorPath != "" {
-			if _, seedErr := index.SeedFromDonor(donorPath, dbPath); seedErr != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "lumen: seed from worktree failed: %v\n", seedErr)
-			}
-		}
 	}
 
 	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens)
@@ -117,16 +133,16 @@ func setupIndexer(cfg *config.Config, projectPath string) (*index.Indexer, error
 	return idx, nil
 }
 
-func performIndexing(cmd *cobra.Command, idx *index.Indexer, projectPath string, p *tui.Progress) (index.Stats, error) {
+func performIndexing(ctx context.Context, cmd *cobra.Command, idx *index.Indexer, projectPath string, p *tui.Progress) (index.Stats, error) {
 	force, _ := cmd.Flags().GetBool("force")
 
 	progress := p.AsProgressFunc()
 
 	if force {
-		return idx.Index(context.Background(), projectPath, true, progress)
+		return idx.Index(ctx, projectPath, true, progress)
 	}
 
-	reindexed, stats, err := idx.EnsureFresh(context.Background(), projectPath, progress)
+	reindexed, stats, err := idx.EnsureFresh(ctx, projectPath, progress)
 	if err != nil {
 		return stats, fmt.Errorf("indexing: %w", err)
 	}
