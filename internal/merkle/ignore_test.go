@@ -224,7 +224,7 @@ func TestMakeSkip_GitattributesNestedDir(t *testing.T) {
 
 func TestMakeSkip_GitattributesNonGenerated(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, ".gitattributes", "*.go linguist-language=Go\nvendored/* linguist-vendored\nkeep.go linguist-generated=false\n")
+	writeFile(t, dir, ".gitattributes", "*.go linguist-language=Go\nkeep.go linguist-generated=false\n")
 
 	skip := MakeSkip(dir, []string{".go"})
 
@@ -276,7 +276,7 @@ func TestMakeSkip_AllLayersCombined(t *testing.T) {
 	}
 }
 
-func TestParseLinguistGenerated(t *testing.T) {
+func TestParseLinguistExcluded(t *testing.T) {
 	dir := t.TempDir()
 
 	tests := []struct {
@@ -328,7 +328,7 @@ func TestParseLinguistGenerated(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			gi := parseLinguistGenerated(path)
+			gi := parseLinguistExcluded(path)
 
 			for _, p := range tt.match {
 				if gi == nil || !gi.MatchesPath(p) {
@@ -344,8 +344,27 @@ func TestParseLinguistGenerated(t *testing.T) {
 	}
 
 	// Non-existent file
-	if gi := parseLinguistGenerated(filepath.Join(dir, "nonexistent")); gi != nil {
+	if gi := parseLinguistExcluded(filepath.Join(dir, "nonexistent")); gi != nil {
 		t.Error("expected nil for non-existent file")
+	}
+}
+
+func TestParseLinguistAttributes_Vendored(t *testing.T) {
+	dir := t.TempDir()
+	attrs := "third_party/* linguist-vendored\ngenerated.go linguist-generated=true\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitattributes"), []byte(attrs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := NewIgnoreTree(dir, []string{".go"})
+	if !tree.shouldSkip("third_party/lib.go", false) {
+		t.Error("linguist-vendored file should be skipped")
+	}
+	if !tree.shouldSkip("generated.go", false) {
+		t.Error("linguist-generated=true file should be skipped")
+	}
+	if tree.shouldSkip("normal.go", false) {
+		t.Error("normal.go should not be skipped")
 	}
 }
 
@@ -493,3 +512,4 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 		t.Error("expected sub/internal_helper.go to be excluded by nested .gitignore")
 	}
 }
+

@@ -90,8 +90,8 @@ type dirIgnore struct {
 // IgnoreTree manages hierarchical ignore rules, lazily loading them as
 // filepath.WalkDir traverses directories. It is safe for concurrent use.
 type IgnoreTree struct {
-	rootDir      string
-	extSet       map[string]bool
+	rootDir       string
+	extSet        map[string]bool
 	extraSkipDirs map[string]bool // relative paths of directories to always skip
 
 	mu   sync.Mutex
@@ -130,7 +130,7 @@ func (t *IgnoreTree) loadDir(dirRel string) *dirIgnore {
 	if ai, err := ignore.CompileIgnoreFile(filepath.Join(absDir, ".lumenignore")); err == nil {
 		d.lumenIgnore = ai
 	}
-	if ga := parseLinguistGenerated(filepath.Join(absDir, ".gitattributes")); ga != nil {
+	if ga := parseLinguistExcluded(filepath.Join(absDir, ".gitattributes")); ga != nil {
 		d.gitattributes = ga
 	}
 
@@ -210,10 +210,11 @@ func ancestorDirs(dirRel string) []string {
 	return result
 }
 
-// parseLinguistGenerated reads a .gitattributes file and returns a compiled
-// matcher for patterns marked with linguist-generated or linguist-generated=true.
+// parseLinguistExcluded reads a .gitattributes file and returns a compiled
+// matcher for patterns marked with linguist-generated, linguist-generated=true,
+// linguist-vendored, or linguist-vendored=true.
 // Returns nil if the file doesn't exist or contains no such patterns.
-func parseLinguistGenerated(path string) *ignore.GitIgnore {
+func parseLinguistExcluded(path string) *ignore.GitIgnore {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -235,9 +236,8 @@ func parseLinguistGenerated(path string) *ignore.GitIgnore {
 		}
 		pattern := fields[0]
 		for _, attr := range fields[1:] {
-			// Match "linguist-generated" (bare) or "linguist-generated=true"
-			// but NOT "linguist-generated=false" or "-linguist-generated"
-			if attr == "linguist-generated" || attr == "linguist-generated=true" {
+			if attr == "linguist-generated" || attr == "linguist-generated=true" ||
+				attr == "linguist-vendored" || attr == "linguist-vendored=true" {
 				patterns = append(patterns, pattern)
 				break
 			}
