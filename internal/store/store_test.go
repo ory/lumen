@@ -371,6 +371,77 @@ func TestStore_SearchWithPathPrefix(t *testing.T) {
 	}
 }
 
+func TestResetAndRecreateVecTable_Transactional(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "reset_test.db")
+
+	// Create store with 4 dimensions and insert data.
+	s1, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.UpsertFile("a.go", "hash_a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.InsertChunks(
+		[]chunker.Chunk{{ID: "c1", FilePath: "a.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 3}},
+		[][]float32{{0.1, 0.2, 0.3, 0.4}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger dimension reset by opening with different dimensions.
+	s2, err := New(dbPath, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s2.Close() }()
+
+	// chunks and files tables must be empty — no orphaned data.
+	var chunkCount, fileCount int
+	if err := s2.db.QueryRow("SELECT count(*) FROM chunks").Scan(&chunkCount); err != nil {
+		t.Fatalf("query chunks: %v", err)
+	}
+	if err := s2.db.QueryRow("SELECT count(*) FROM files").Scan(&fileCount); err != nil {
+		t.Fatalf("query files: %v", err)
+	}
+	if chunkCount != 0 {
+		t.Fatalf("expected 0 chunks after dimension reset, got %d", chunkCount)
+	}
+	if fileCount != 0 {
+		t.Fatalf("expected 0 files after dimension reset, got %d", fileCount)
+	}
+
+	// vec_chunks must exist with the new dimension.
+	exists, err := checkTableExists(s2.db, "vec_chunks")
+	if err != nil {
+		t.Fatalf("checkTableExists: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected vec_chunks to exist after dimension reset")
+	}
+
+	// Should be able to insert and search with new dimensions.
+	if err := s2.UpsertFile("b.go", "hash_b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s2.InsertChunks(
+		[]chunker.Chunk{{ID: "c2", FilePath: "b.go", Symbol: "Beta", Kind: "function", StartLine: 1, EndLine: 3}},
+		[][]float32{{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	results, err := s2.Search([]float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8}, 10, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Symbol != "Beta" {
+		t.Fatalf("expected 1 result with symbol Beta after reset, got %v", results)
+	}
+}
+
 func TestStore_SearchPathPrefixNoFalsePositives(t *testing.T) {
 	s, err := New(":memory:", 4)
 	if err != nil {
