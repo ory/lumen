@@ -2,7 +2,7 @@ results: 10
 application.rb:772-781  Rails.Application+Application.coerce_same_site_protection (type)
 base.rb:108-119  ActionCable (type)
 base.rb:306-324  Base.action_signature+Channel.Base (function)
-cache.rb:443-451  Store.fetch (function)
+cache.rb:442-451  Store.fetch+Cache.Store (function)
 callbacks.rb:86-89  ActiveRecord (type)
 callbacks.rb:101-110  ActiveRecord (type)
 callbacks.rb:125-131  ActiveRecord (type)
