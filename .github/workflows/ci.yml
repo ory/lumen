@@ -25,7 +25,7 @@ jobs:
           (while true; do echo "[ci] tests still running…"; sleep 60; done) &
           HEARTBEAT=$!
           trap "kill $HEARTBEAT 2>/dev/null || true" EXIT
-          CGO_ENABLED=1 go test -tags=fts5 -timeout=30m \
+          CGO_ENABLED=1 go test -p 1 -tags=fts5 -timeout=30m \
             -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Coveralls
