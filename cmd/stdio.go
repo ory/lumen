@@ -1110,10 +1110,11 @@ func runStdio(_ *cobra.Command, _ []string) error {
 	)
 
 	indexers := &indexerCache{
-		embedder: emb,
-		model:    cfg.Model,
-		cfg:      cfg,
-		log:      logger,
+		embedder:     emb,
+		model:        cfg.Model,
+		cfg:          cfg,
+		freshnessTTL: cfg.FreshnessTTL,
+		log:          logger,
 	}
 	defer indexers.Close()
 
