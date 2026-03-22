@@ -10,6 +10,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -18,8 +19,17 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ runner.os }}-go-cgo
+          max-size: 500M
+
       - name: Test
         run: |
+          # Use ccache to speed up repeated CGO (C) compilation of sqlite3/tree-sitter.
+          export CC="ccache gcc"
+          export CXX="ccache g++"
           # Print a heartbeat every 60 s so GitHub Actions does not kill the
           # runner during the silent CGO (sqlite3) compilation phase.
           (while true; do echo "[ci] tests still running…"; sleep 60; done) &
