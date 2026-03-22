@@ -24,6 +24,21 @@ import (
 	"github.com/ory/lumen/internal/config"
 )
 
+// TestMain detects when the cmd test binary is invoked as a background
+// indexer subprocess (via spawnBackgroundIndexer → os.Executable()) and exits
+// immediately instead of running the full test suite.  Without this guard,
+// TestSpawnBackgroundIndexer_DoesNotPanic would create a fork-bomb: the
+// spawned test binary runs all tests, which spawns more binaries, etc.
+func TestMain(m *testing.M) {
+	// spawnBackgroundIndexer calls: exec.Command(exe, "index", projectPath)
+	// where exe == os.Executable() == this test binary.
+	// Detect that pattern and exit cleanly so no tests run in the subprocess.
+	if len(os.Args) > 1 && os.Args[1] == "index" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestGenerateSessionContext_NoIndex(t *testing.T) {
 	// Use the internal version with a no-op bgIndexer to avoid spawning the
 	// test binary as a background process (which would trigger a fork bomb:
