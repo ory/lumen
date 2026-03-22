@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.0.22](https://github.com/ory/lumen/compare/v0.0.21...v0.0.22) (2026-03-22)
+
+
+### Features
+
+* **hook:** spawn detached background indexer on session start ([d943ebf](https://github.com/ory/lumen/commit/d943ebf4cbfa4694ece3c4e9a8f7b8eee4a0dd07))
+* **index:** acquire flock before indexing, thread ctx, cancel on SIGTERM ([9409971](https://github.com/ory/lumen/commit/94099719b231084b06460df462f6beb6e896182f))
+* **indexlock:** add flock-based advisory lock for index coordination ([2a55737](https://github.com/ory/lumen/commit/2a5573715840ab9911824e1e975a4f47e3466da4))
+* **merkle:** load global gitignore (core.excludesFile) ([04e7bcb](https://github.com/ory/lumen/commit/04e7bcbe99d139811d592189ed06d008cbc39a1c))
+* **merkle:** support linguist-vendored in .gitattributes ([c7492d4](https://github.com/ory/lumen/commit/c7492d48e7090f83875926135bb84b326500475a))
+* **stdio:** skip EnsureFresh when background indexer holds lock ([64a8d03](https://github.com/ory/lumen/commit/64a8d03c14ee9f0b15727d39365de9e8ddabc6fa))
+
+
+### Bug Fixes
+
+* **chunker:** cap leading comments to 10 lines ([34f56eb](https://github.com/ory/lumen/commit/34f56ebaf117d19d634f9dc947a97378793ed258))
+* **chunker:** deduplicate overlapping tree-sitter chunks ([0581cf0](https://github.com/ory/lumen/commit/0581cf0c09cbf203bb18765db5131f009b4d71bd))
+* **cmd:** add TestMain to prevent fork-bomb in TestSpawnBackgroundIndexer ([19849aa](https://github.com/ory/lumen/commit/19849aac8dbe447f31ff5e76f74a8ee637c56389))
+* **cmd:** close indexers on shutdown and set up signals before DB open ([859a274](https://github.com/ory/lumen/commit/859a27482898a4f3504d5c3571116d8ce07e6c28))
+* **cmd:** remove lumberjack rotation; add discardLog to test fixtures ([502f454](https://github.com/ory/lumen/commit/502f4541df1287083f4490039488498b8b778f58))
+* **hook:** add license headers, smoke test, and Windows stub guidance ([2cffb63](https://github.com/ory/lumen/commit/2cffb63c6b92d510e766e5216900503dfc21a595))
+* **index:** defer UpsertFile until chunks are flushed ([9daac4f](https://github.com/ory/lumen/commit/9daac4fac8877dd6e301834c55a7f287debca758))
+* **index:** force reindex removes deleted files and purges stale extensions ([b3b3b48](https://github.com/ory/lumen/commit/b3b3b482f45a39a7a9cdf3e7f50f796238938227))
+* **index:** purge stale unsupported-extension records from donor seeding + freshness TTL cache + debug logging ([cea7687](https://github.com/ory/lumen/commit/cea768792bb7d60b66b9333e2dd1fbe9ef4bc7d4))
+* **index:** simplify isBinaryContent using slices.Contains ([d04216a](https://github.com/ory/lumen/commit/d04216a48efa2fc896c97593dd0a91e4bd73738d))
+* **index:** skip binary files based on NUL-byte detection ([4fef1d2](https://github.com/ory/lumen/commit/4fef1d24c6e09b52d057ad51627fef08c6796a13))
+* **index:** write skip message to stderr, document signal-race trade-off ([bbc63f1](https://github.com/ory/lumen/commit/bbc63f1a2eea7dea49d25126c3844ff3f61e485a))
+* **lint:** wrap deferred Close calls to satisfy errcheck ([5a200a2](https://github.com/ory/lumen/commit/5a200a242179082b2de0b86a29eb77bf309bda37))
+* **log:** use lumberjack for log rotation; remove repro test; fix imports ([24d6906](https://github.com/ory/lumen/commit/24d6906fbacb0d957b55fd4d9c80728e7724de49))
+* **merkle:** skip symlinks and files &gt;10MB during tree walk ([3f3de05](https://github.com/ory/lumen/commit/3f3de05db66226f058098a36ada7c56ad4d59696))
+* remove worktrees ([61384a7](https://github.com/ory/lumen/commit/61384a781f25e38d35be4e92bafcc309c6476358))
+* **stdio:** increase scanner buffer to 1MB for long lines ([36c0435](https://github.com/ory/lumen/commit/36c0435fe97bac8fe217bb48763cb2d045f6c5a7))
+* **stdio:** propagate LUMEN_FRESHNESS_TTL from config to indexerCache ([cb4029b](https://github.com/ory/lumen/commit/cb4029b7eb13545425910ee0291dd6ec0748416b))
+* **stdio:** reuse parent index when search path points into internal worktree ([e96b464](https://github.com/ory/lumen/commit/e96b4643ec097e9052efcd3dc73086d71c4a7188))
+* **stdio:** skip force reindex when background indexer holds lock ([a867910](https://github.com/ory/lumen/commit/a8679108c099b061528657d701d14f3e620b72ec))
+* **store:** increase busy_timeout to 30s for slow embedding batches ([91a2883](https://github.com/ory/lumen/commit/91a2883518bb1f4a289625ce6c3627d2a568f7e0))
+* **store:** wrap dimension-reset deletes in a transaction ([33ea835](https://github.com/ory/lumen/commit/33ea835feaf8c49719be9d118c0fb1dceef0ff71))
+* **tui:** disable ShowElapsedTime to prevent pterm ticker goroutine race ([cec32c5](https://github.com/ory/lumen/commit/cec32c52e3df45b379bf7e5da6480f769582cf37))
+
 ## [0.0.21](https://github.com/ory/lumen/compare/v0.0.20...v0.0.21) (2026-03-19)
 
 
