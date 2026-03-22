@@ -19,9 +19,14 @@ jobs:
           cache: true
 
       - name: Test
-        run:
-          CGO_ENABLED=1 go test -v -tags=fts5 -timeout=30m -coverprofile=coverage.out
-          -covermode=atomic ./...
+        run: |
+          # Print a heartbeat every 60 s so GitHub Actions does not kill the
+          # runner during the silent CGO (sqlite3) compilation phase.
+          (while true; do echo "[ci] tests still running…"; sleep 60; done) &
+          HEARTBEAT=$!
+          trap "kill $HEARTBEAT 2>/dev/null || true" EXIT
+          CGO_ENABLED=1 go test -v -tags=fts5 -timeout=30m \
+            -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
