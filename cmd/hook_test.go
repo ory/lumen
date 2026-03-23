@@ -20,9 +20,30 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/store"
 )
+
+// writeHookTestDB creates a minimal SQLite DB stamped with last_indexed_at,
+// using the configured embedding model's dimensions so store.New doesn't reset
+// the schema when generateSessionContextInternal opens it.
+func writeHookTestDB(t *testing.T, dbPath string, lastIndexedAt time.Time) {
+	t.Helper()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	s, err := store.New(dbPath, cfg.Dims)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	if err := s.SetMeta("last_indexed_at", lastIndexedAt.UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+}
 
 // TestMain detects when the cmd test binary is invoked as a background
 // indexer subprocess (via spawnBackgroundIndexer → os.Executable()) and exits
@@ -208,33 +229,54 @@ func TestGenerateSessionContextInternal_SpawnsWhenNoDB(t *testing.T) {
 	})
 }
 
-func TestGenerateSessionContextInternal_NoSpawnWhenDBExists(t *testing.T) {
+func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 
-	// Use the same model the function will load so the DB path matches.
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-
 	dbPath := config.DBPathForProject("/myproject", cfg.Model)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(dbPath, []byte{}, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeHookTestDB(t, dbPath, time.Now().Add(-30*time.Second))
 
 	called := false
 	generateSessionContextInternal("lumen", "/myproject",
-		func(_, _ string) string { return "/some/donor.db" },
+		func(_, _ string) string { return "" },
 		func(_ string) { called = true },
 	)
 	if called {
-		t.Fatal("bgIndexer must not be called when an index already exists")
+		t.Fatal("bgIndexer must not be called when index was recently updated")
 	}
 }
+
+func TestGenerateSessionContextInternal_SpawnsWhenStale(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	dbPath := config.DBPathForProject("/myproject", cfg.Model)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeHookTestDB(t, dbPath, time.Now().Add(-10*time.Minute))
+
+	called := false
+	generateSessionContextInternal("lumen", "/myproject",
+		func(_, _ string) string { return "" },
+		func(_ string) { called = true },
+	)
+	if !called {
+		t.Fatal("bgIndexer must be called when index is stale")
+	}
+}
+
 
 func TestGenerateSessionContextInternal_MessageWithDonor(t *testing.T) {
 	tmpDir := t.TempDir()

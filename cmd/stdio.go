@@ -345,7 +345,15 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 
 	// Seed from sibling worktree if this is a new index.
 	var seedWarning string
+	isNewDB := false
 	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
+		isNewDB = true
+		ic.logger().Info("creating new index database",
+			"effective_root", effectiveRoot,
+			"db_path", dbPath,
+			"model", ic.model,
+			"index_version", config.IndexVersion,
+		)
 		findDonor := ic.findDonorFunc
 		if findDonor == nil {
 			findDonor = config.FindDonorIndex
@@ -374,6 +382,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
+	idx.SetLogger(ic.logger())
 
 	// Pre-populate the freshness TTL if the index was recently stamped by
 	// background pre-warming (SessionStart hook). This avoids a redundant
@@ -393,6 +402,9 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 		"project_path", projectPath,
 		"effective_root", effectiveRoot,
 		"db_path", dbPath,
+		"new_index", isNewDB,
+		"model", ic.model,
+		"index_version", config.IndexVersion,
 	)
 
 	ic.cache[effectiveRoot] = entry
@@ -583,6 +595,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		// concurrent SQLite writes that could exceed busy_timeout.
 		if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
 			ic.logger().Info("force reindex skipped: background indexer is running", "project", projectDir)
+			out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use standard tools for the next 10 tool calls before trying semantic_search again."
 			return out, nil
 		}
 		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
@@ -597,7 +610,14 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 			"cwd", input.Cwd,
 			"search_path", input.Path,
 			"effective_root", projectDir,
+			"reason", stats.Reason,
+			"total_project_files", stats.TotalFiles,
 			"indexed_files", stats.IndexedFiles,
+			"chunks_created", stats.ChunksCreated,
+			"files_added", stats.FilesAdded,
+			"files_removed", stats.FilesRemoved,
+			"old_root_hash", stats.OldRootHash,
+			"new_root_hash", stats.NewRootHash,
 			"elapsed_ms", time.Since(start).Milliseconds(),
 		)
 		return out, nil
@@ -618,6 +638,8 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	// avoid duplicating the in-progress Merkle walk. The TOCTOU race is benign:
 	// worst case is redundant work, not corruption (SQLite WAL mode).
 	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
+		ic.logger().Info("skipping reindex: background indexer is running", "project", projectDir)
+		out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use standard tools for the next 10 tool calls before trying semantic_search again."
 		return out, nil
 	}
 
@@ -633,6 +655,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		reindexed bool
 		stats     index.Stats
 		err       error
+		skipped   bool // true when flock was held by another process
 	}
 	done := make(chan freshResult, 1) // buffered: goroutine must never block on send
 
@@ -645,16 +668,35 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		lk, lockErr := indexlock.TryAcquire(lockPath)
 		if lockErr != nil {
 			ic.logger().Warn("background reindex: failed to acquire lock", "project", projectDir, "err", lockErr)
-			done <- freshResult{}
+			done <- freshResult{skipped: true}
 			return
 		}
 		if lk == nil {
 			// Another process grabbed the lock between our IsHeld check and now.
 			ic.logger().Debug("background reindex: lock held by another process, skipping", "project", projectDir)
-			done <- freshResult{}
+			done <- freshResult{skipped: true}
 			return
 		}
 		defer lk.Release()
+
+		// If a recent external process (e.g. lumen index from SessionStart)
+		// already updated the index within freshnessTTL, trust the DB timestamp
+		// and skip the expensive merkle tree walk.
+		if lastAt, ok := idx.LastIndexedAt(); ok {
+			ttl := ic.freshnessTTL
+			if ttl == 0 {
+				ttl = defaultFreshnessTTL
+			}
+			if time.Since(lastAt) < ttl {
+				ic.logger().Debug("skipping merkle walk: index recently updated by external process",
+					"project", projectDir,
+					"last_indexed_at", lastAt,
+				)
+				ic.touchChecked(projectDir)
+				done <- freshResult{}
+				return
+			}
+		}
 
 		ensureFresh := ic.ensureFreshFunc
 		if ensureFresh == nil {
@@ -677,6 +719,11 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	select {
 	case result := <-done:
 		bgCancel() // release context resources early
+		if result.skipped {
+			ic.logger().Info("reindex skipped: lock held by another process", "project", projectDir)
+			out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use standard tools for the next 10 tool calls before trying semantic_search again."
+			return out, nil
+		}
 		if result.err != nil {
 			return out, fmt.Errorf("ensure fresh: %w", result.err)
 		}
@@ -692,10 +739,15 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 				"cwd", input.Cwd,
 				"search_path", input.Path,
 				"effective_root", projectDir,
+				"reason", result.stats.Reason,
 				"total_project_files", result.stats.TotalFiles,
 				"files_indexed", result.stats.IndexedFiles,
 				"chunks_created", result.stats.ChunksCreated,
-				"files_changed", result.stats.FilesChanged,
+				"files_added", result.stats.FilesAdded,
+				"files_modified", result.stats.FilesModified,
+				"files_removed", result.stats.FilesRemoved,
+				"old_root_hash", result.stats.OldRootHash,
+				"new_root_hash", result.stats.NewRootHash,
 				"elapsed_ms", elapsed.Milliseconds(),
 			)
 		}
@@ -710,7 +762,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 			"project", projectDir,
 			"timeout", reindexTimeout,
 		)
-		out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. A follow-up search in ~30s will return fresh results."
+		out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use standard tools for the next 10 tool calls before trying semantic_search again."
 		return out, nil
 	}
 }
