@@ -81,6 +81,7 @@ type SemanticSearchOutput struct {
 	IndexedFiles int                `json:"indexed_files,omitempty"`
 	FilteredHint string             `json:"filtered_hint,omitempty"`
 	SeedWarning  string             `json:"seed_warning,omitempty"`
+	StaleWarning string             `json:"stale_warning,omitempty"`
 }
 
 // IndexStatusInput defines the parameters for the index_status tool.
@@ -120,6 +121,8 @@ type HealthCheckOutput struct {
 // adds 1-3s of pure filesystem I/O even when nothing has changed.
 // Override with LUMEN_FRESHNESS_TTL (e.g. "1s", "30s") for testing.
 const defaultFreshnessTTL = 30 * time.Second
+const reindexTimeout = 15 * time.Second
+const backgroundReindexMaxDuration = 10 * time.Minute
 
 type cacheEntry struct {
 	idx           *index.Indexer
@@ -139,6 +142,7 @@ type indexerCache struct {
 	findDonorFunc func(string, string) string // nil uses config.FindDonorIndex
 	seedFunc      func(string, string) (bool, error) // nil uses index.SeedFromDonor
 	log           *slog.Logger
+	wg            sync.WaitGroup // tracks background reindex goroutines
 }
 
 // logger returns ic.log, falling back to a discarding logger when the field
@@ -316,8 +320,14 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string) (*
 	}
 
 	// If a parent index is already cached, alias and return.
+	// Guard: only reuse the cached entry if it is the actual owner of effectiveRoot
+	// (entry.effectiveRoot == effectiveRoot). If the cache holds a guest-alias entry
+	// for effectiveRoot (e.g. cache["src"] = {ccIdx, effectiveRoot:"cc"} written when
+	// "src" was a projectPath routed to cc), reusing it here would pair the wrong
+	// indexer with the wrong directory scope, causing EnsureFresh to scan one directory
+	// and write results into a different DB.
 	if effectiveRoot != projectPath {
-		if entry, ok := ic.cache[effectiveRoot]; ok {
+		if entry, ok := ic.cache[effectiveRoot]; ok && entry.effectiveRoot == effectiveRoot {
 			ic.cache[projectPath] = cacheEntry{idx: entry.idx, effectiveRoot: effectiveRoot}
 			return entry.idx, effectiveRoot, "", nil
 		}
