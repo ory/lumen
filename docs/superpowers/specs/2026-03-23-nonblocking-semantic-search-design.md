@@ -52,12 +52,19 @@ timeout-guarded goroutine:
 ```
 freshnessTTL miss AND flock NOT held:
 
-  1. Create a done channel and a result struct.
+  1. Create a buffered done channel (cap 1) and a result struct.
   2. Spawn goroutine:
      a. Try to acquire flock via TryAcquire().
      b. If flock acquired:
-        - Run idx.EnsureFresh(bgCtx, projectDir, progress)
-        - Release flock when done.
+        - Run idx.EnsureFresh(bgCtx, projectDir, nil)
+          (pass nil progress — the MCP request context may be gone
+           by the time the goroutine runs, so progress notifications
+           would fail)
+        - On success: call ic.touchChecked(projectDir) so subsequent
+          searches benefit from the freshness TTL cache.
+        - On error: log the error at Warn level. Do NOT call
+          touchChecked (next search retries).
+        - Release flock (defer).
         - Send result (reindexed, stats, err) on done channel.
      c. If flock NOT acquired (race — another process grabbed it):
         - Send zero result on done channel (skip).
@@ -65,10 +72,18 @@ freshnessTTL miss AND flock NOT held:
      a. Done received in time → process as today (touchChecked, set
         Reindexed/IndexedFiles, return).
      b. Timeout fires:
+        - Log at Info level: "reindex timeout, returning stale results".
         - Set out.StaleWarning with the warning message.
         - Do NOT call touchChecked() — next search retries freshness.
         - Return immediately — search proceeds against stale index.
+        - The goroutine's result is never read; the buffered channel
+          ensures it does not block.
 ```
+
+**Why buffered channel (cap 1):** If the timeout fires first, the caller never
+reads from the done channel. An unbuffered channel would cause the goroutine to
+block on send forever, leaking it. A buffered channel lets the goroutine send
+and exit cleanly.
 
 ### Goroutine context and lifecycle
 
@@ -80,6 +95,10 @@ freshnessTTL miss AND flock NOT held:
 - When the goroutine finishes, it releases the flock. The next search with an
   expired freshness TTL sees a fresh index.
 - If the MCP server process exits, the OS releases the flock — no leaked locks.
+- **Graceful shutdown**: `indexerCache` should track background goroutines via a
+  `sync.WaitGroup`. `Close()` calls `wg.Wait()` before closing indexers, so a
+  background `EnsureFresh` is not interrupted mid-write. The 10-minute context
+  timeout is the upper bound — in practice reindexing finishes much sooner.
 
 ### `formatSearchResults` update
 
@@ -106,6 +125,8 @@ if out.StaleWarning != "" {
 |------|--------|
 | `cmd/stdio.go` | `SemanticSearchOutput` struct: add `StaleWarning` field |
 | `cmd/stdio.go` | `ensureIndexed()`: replace synchronous `EnsureFresh` with timeout-guarded goroutine + flock |
+| `cmd/stdio.go` | `indexerCache` struct: add `sync.WaitGroup` for background goroutine tracking |
+| `cmd/stdio.go` | `Close()`: wait for background goroutines before closing indexers |
 | `cmd/stdio.go` | `formatSearchResults()`: render `StaleWarning` in output text |
 
 No new files. No new packages.
