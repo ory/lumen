@@ -1252,3 +1252,26 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		t.Fatal("second call should not reindex within TTL")
 	}
 }
+
+func TestIndexerCache_CloseWaitsForBackground(t *testing.T) {
+	ic := &indexerCache{
+		cache: make(map[string]cacheEntry),
+	}
+
+	done := make(chan struct{})
+	ic.wg.Add(1)
+	go func() {
+		defer ic.wg.Done()
+		time.Sleep(100 * time.Millisecond)
+		close(done)
+	}()
+
+	ic.Close()
+
+	select {
+	case <-done:
+		// goroutine finished before Close returned — correct
+	default:
+		t.Fatal("Close() returned before background goroutine finished")
+	}
+}

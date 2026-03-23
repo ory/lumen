@@ -154,8 +154,10 @@ func (ic *indexerCache) logger() *slog.Logger {
 	return ic.log
 }
 
-// Close closes all cached indexers. Call on MCP server shutdown.
+// Close waits for any background reindex goroutines to finish, then
+// closes all cached indexers. Call on MCP server shutdown.
 func (ic *indexerCache) Close() {
+	ic.wg.Wait()
 	ic.mu.Lock()
 	defer ic.mu.Unlock()
 	seen := make(map[*index.Indexer]bool)
