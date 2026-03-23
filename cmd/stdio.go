@@ -623,37 +623,89 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		"effective_root", projectDir,
 	)
 
-	reindexed, stats, err := idx.EnsureFresh(ctx, projectDir, progress)
-	elapsed := time.Since(start)
-	if err != nil {
-		return out, fmt.Errorf("ensure fresh: %w", err)
+	// Run EnsureFresh in a goroutine with a 15s timeout. If reindexing
+	// takes longer, return stale results with a warning while the
+	// goroutine continues in the background.
+	type freshResult struct {
+		reindexed bool
+		stats     index.Stats
+		err       error
 	}
-	ic.touchChecked(projectDir)
+	done := make(chan freshResult, 1) // buffered: goroutine must never block on send
 
-	if !reindexed {
-		ic.logger().Debug("index fresh, caching result",
-			"cwd", input.Cwd,
-			"effective_root", projectDir,
-			"elapsed_ms", elapsed.Milliseconds(),
-		)
-	} else {
-		ic.logger().Info("reindex triggered",
-			"cwd", input.Cwd,
-			"search_path", input.Path,
-			"effective_root", projectDir,
-			"total_project_files", stats.TotalFiles,
-			"files_indexed", stats.IndexedFiles,
-			"chunks_created", stats.ChunksCreated,
-			"files_changed", stats.FilesChanged,
-			"elapsed_ms", elapsed.Milliseconds(),
-		)
-	}
+	bgCtx, bgCancel := context.WithTimeout(context.Background(), backgroundReindexMaxDuration)
 
-	out.Reindexed = reindexed
-	if reindexed {
-		out.IndexedFiles = stats.IndexedFiles
+	lockPath := indexlock.LockPathForDB(dbPath)
+	ic.wg.Add(1)
+	go func() {
+		defer ic.wg.Done()
+		defer bgCancel()
+
+		lk, lockErr := indexlock.TryAcquire(lockPath)
+		if lockErr != nil {
+			ic.logger().Warn("background reindex: failed to acquire lock", "project", projectDir, "err", lockErr)
+			done <- freshResult{}
+			return
+		}
+		if lk == nil {
+			// Another process grabbed the lock between our IsHeld check and now.
+			ic.logger().Debug("background reindex: lock held by another process, skipping", "project", projectDir)
+			done <- freshResult{}
+			return
+		}
+		defer lk.Release()
+
+		reindexed, stats, err := idx.EnsureFresh(bgCtx, projectDir, nil) // nil progress: request ctx may be gone
+		if err != nil {
+			ic.logger().Warn("background reindex failed", "project", projectDir, "err", err)
+		} else {
+			ic.touchChecked(projectDir)
+		}
+		done <- freshResult{reindexed: reindexed, stats: stats, err: err}
+	}()
+
+	timer := time.NewTimer(reindexTimeout)
+	defer timer.Stop()
+
+	select {
+	case result := <-done:
+		bgCancel() // release context resources early
+		if result.err != nil {
+			return out, fmt.Errorf("ensure fresh: %w", result.err)
+		}
+		elapsed := time.Since(start)
+		if !result.reindexed {
+			ic.logger().Debug("index fresh, caching result",
+				"cwd", input.Cwd,
+				"effective_root", projectDir,
+				"elapsed_ms", elapsed.Milliseconds(),
+			)
+		} else {
+			ic.logger().Info("reindex triggered",
+				"cwd", input.Cwd,
+				"search_path", input.Path,
+				"effective_root", projectDir,
+				"total_project_files", result.stats.TotalFiles,
+				"files_indexed", result.stats.IndexedFiles,
+				"chunks_created", result.stats.ChunksCreated,
+				"files_changed", result.stats.FilesChanged,
+				"elapsed_ms", elapsed.Milliseconds(),
+			)
+		}
+		out.Reindexed = result.reindexed
+		if result.reindexed {
+			out.IndexedFiles = result.stats.IndexedFiles
+		}
+		return out, nil
+
+	case <-timer.C:
+		ic.logger().Info("reindex timeout, returning stale results",
+			"project", projectDir,
+			"timeout", reindexTimeout,
+		)
+		out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. A follow-up search in ~30s will return fresh results."
+		return out, nil
 	}
-	return out, nil
 }
 
 // recentlyChecked reports whether the index for projectDir was confirmed fresh
