@@ -636,9 +636,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 	bgCtx, bgCancel := context.WithTimeout(context.Background(), backgroundReindexMaxDuration)
 
 	lockPath := indexlock.LockPathForDB(dbPath)
-	ic.wg.Add(1)
-	go func() {
-		defer ic.wg.Done()
+	ic.wg.Go(func() {
 		defer bgCancel()
 
 		lk, lockErr := indexlock.TryAcquire(lockPath)
@@ -662,7 +660,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 			ic.touchChecked(projectDir)
 		}
 		done <- freshResult{reindexed: reindexed, stats: stats, err: err}
-	}()
+	})
 
 	timer := time.NewTimer(reindexTimeout)
 	defer timer.Stop()

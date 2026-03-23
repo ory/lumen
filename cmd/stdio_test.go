@@ -1259,12 +1259,10 @@ func TestIndexerCache_CloseWaitsForBackground(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	ic.wg.Add(1)
-	go func() {
-		defer ic.wg.Done()
+	ic.wg.Go(func() {
 		time.Sleep(100 * time.Millisecond)
 		close(done)
-	}()
+	})
 
 	ic.Close()
 
