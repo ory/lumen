@@ -156,6 +156,8 @@ func (ic *indexerCache) logger() *slog.Logger {
 
 // Close waits for any background reindex goroutines to finish, then
 // closes all cached indexers. Call on MCP server shutdown.
+// Worst-case wait is backgroundReindexMaxDuration (10 min) if a
+// background reindex is in progress.
 func (ic *indexerCache) Close() {
 	ic.wg.Wait()
 	ic.mu.Lock()
