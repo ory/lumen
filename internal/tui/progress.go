@@ -16,8 +16,10 @@
 package tui
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/pterm/pterm"
 	"golang.org/x/term"
@@ -28,11 +30,12 @@ import (
 // configured writer (typically os.Stderr to avoid interfering with
 // MCP stdio on stdout).
 type Progress struct {
-	writer  io.Writer
-	bar     *pterm.ProgressbarPrinter
-	info    pterm.PrefixPrinter
-	success pterm.PrefixPrinter
-	errpr   pterm.PrefixPrinter
+	writer     io.Writer
+	bar        *pterm.ProgressbarPrinter
+	info       pterm.PrefixPrinter
+	success    pterm.PrefixPrinter
+	errpr      pterm.PrefixPrinter
+	isTerminal bool
 }
 
 // NewProgress creates a new Progress that writes to w.
@@ -41,17 +44,19 @@ type Progress struct {
 // via PTerm's global output writer.
 func NewProgress(w io.Writer) *Progress {
 	f, isFile := w.(*os.File)
-	if !isFile || !term.IsTerminal(int(f.Fd())) {
+	isTerm := isFile && term.IsTerminal(int(f.Fd()))
+	if !isTerm {
 		pterm.DisableStyling()
 	}
 	// Redirect PTerm's global output (used for cursor control etc.) to w
 	// so nothing escapes to the default os.Stdout.
 	pterm.SetDefaultOutput(w)
 	return &Progress{
-		writer:  w,
-		info:    *pterm.Info.WithWriter(w),
-		success: *pterm.Success.WithWriter(w),
-		errpr:   *pterm.Error.WithWriter(w),
+		writer:     w,
+		info:       *pterm.Info.WithWriter(w),
+		success:    *pterm.Success.WithWriter(w),
+		errpr:      *pterm.Error.WithWriter(w),
+		isTerminal: isTerm,
 	}
 }
 
@@ -93,11 +98,26 @@ func (p *Progress) Stop() {
 // AsProgressFunc returns a callback compatible with index.ProgressFunc.
 // Calls with total=0 print an info line; the progress bar is started on
 // the first call with total>0 and stopped when current reaches total.
+// When writing to a non-terminal (e.g. a log file), progress bar is skipped
+// entirely and a plain-text status line is emitted at most every 5 seconds.
 func (p *Progress) AsProgressFunc() func(current, total int, message string) {
+	const logInterval = 5 * time.Second
 	started := false
+	var lastLog time.Time
 	return func(current, total int, message string) {
 		if total == 0 {
 			p.Info(message)
+			return
+		}
+		if !p.isTerminal {
+			// Non-terminal: emit a plain status line every logInterval.
+			now := time.Now()
+			if current < total && now.Sub(lastLog) < logInterval {
+				return
+			}
+			lastLog = now
+			pct := current * 100 / total
+			_, _ = fmt.Fprintf(p.writer, "Indexing: %d/%d (%d%%)\n", current, total, pct)
 			return
 		}
 		if !started {

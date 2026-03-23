@@ -20,12 +20,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/store"
 )
+
+// backgroundIndexStaleness is how old last_indexed_at must be before
+// SessionStart spawns a background indexer. This prevents every new terminal
+// from triggering a full merkle walk when the index was just updated.
+const backgroundIndexStaleness = 5 * time.Minute
 
 // NOTE: Hooks are now declared in hooks/hooks.json (plugin system).
 // The hook subcommands remain as the execution targets for those declarations.
@@ -79,10 +85,6 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 		cwd, _ = os.Getwd()
 	}
 
-	// Kick off a background incremental re-index so the index is fresh
-	// by the time the first semantic_search arrives.
-	spawnBackgroundIndexer(cwd)
-
 	content := generateSessionContext(mcpName, cwd)
 
 	out := hookOutput{
@@ -134,6 +136,15 @@ func generateSessionContextInternal(mcpName, cwd string, findDonor func(string, 
 		return directive
 	}
 	defer func() { _ = s.Close() }()
+
+	// Spawn background indexer if the index is stale or has never been
+	// successfully completed. This avoids spawning on every session start
+	// when the index was recently updated.
+	if val, metaErr := s.GetMeta("last_indexed_at"); metaErr != nil || val == "" {
+		bgIndexer(cwd)
+	} else if t, parseErr := time.Parse(time.RFC3339, val); parseErr != nil || time.Since(t) > backgroundIndexStaleness {
+		bgIndexer(cwd)
+	}
 
 	stats, err := s.Stats()
 	if err != nil {

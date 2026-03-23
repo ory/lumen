@@ -1334,8 +1334,8 @@ func TestEnsureIndexed_FlockHeldSkipsReindex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.StaleWarning != "" {
-		t.Fatalf("expected no StaleWarning when flock held, got: %s", out.StaleWarning)
+	if out.StaleWarning == "" {
+		t.Fatal("expected StaleWarning when flock held")
 	}
 }
 
@@ -1425,6 +1425,55 @@ func TestEnsureIndexed_FastEnsureFreshNoWarning(t *testing.T) {
 	}
 	if out.IndexedFiles != 42 {
 		t.Fatalf("expected IndexedFiles=42, got %d", out.IndexedFiles)
+	}
+
+	ic.Close()
+}
+
+func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	idx, err := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	// Simulate an external process (e.g. lumen index from SessionStart) having
+	// recently written last_indexed_at to the DB.
+	if err := writeDBWithLastIndexedAt(t, dbPath, time.Now().Add(-5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	ensureFreshCalled := false
+	ic := &indexerCache{
+		cache: map[string]cacheEntry{
+			tmpDir: {idx: idx, effectiveRoot: tmpDir},
+		},
+		ensureFreshFunc: func(_ context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
+			ensureFreshCalled = true
+			return true, index.Stats{IndexedFiles: 42}, nil
+		},
+	}
+
+	out, err := ic.ensureIndexed(
+		context.Background(),
+		idx,
+		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
+		tmpDir, dbPath, nil,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if out.StaleWarning != "" {
+		t.Fatalf("unexpected StaleWarning: %s", out.StaleWarning)
+	}
+	if ensureFreshCalled {
+		t.Fatal("expected EnsureFresh to be skipped when index was recently updated externally")
+	}
+	if !ic.recentlyChecked(tmpDir) {
+		t.Fatal("expected recentlyChecked=true after skipping merkle walk")
 	}
 
 	ic.Close()
