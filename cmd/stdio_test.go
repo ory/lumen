@@ -1323,7 +1323,7 @@ func TestEnsureIndexed_FlockHeldSkipsReindex(t *testing.T) {
 	if idxErr != nil {
 		t.Fatal(idxErr)
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	out, err := ic.ensureIndexed(
 		context.Background(),
@@ -1347,7 +1347,7 @@ func TestEnsureIndexed_TimeoutReturnsStaleWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	ic := &indexerCache{
 		cache: map[string]cacheEntry{
@@ -1397,7 +1397,7 @@ func TestEnsureIndexed_FastEnsureFreshNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	ic := &indexerCache{
 		cache: map[string]cacheEntry{
