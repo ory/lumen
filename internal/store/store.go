@@ -70,7 +70,7 @@ func New(dsn string, dimensions int) (*Store, error) {
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA cache_size=-64000",
 		"PRAGMA temp_store=MEMORY",
-		"PRAGMA busy_timeout=30000",
+		"PRAGMA busy_timeout=120000",
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {
@@ -319,7 +319,7 @@ func (s *Store) insertChunksInTransaction(chunks []chunker.Chunk, vectors [][]fl
 	defer func() { _ = chunkStmt.Close() }()
 
 	vecStmt, err := tx.Prepare(
-		`INSERT INTO vec_chunks (id, embedding) VALUES (?, ?)`,
+		`INSERT OR REPLACE INTO vec_chunks (id, embedding) VALUES (?, ?)`,
 	)
 	if err != nil {
 		return fmt.Errorf("prepare vec insert: %w", err)
