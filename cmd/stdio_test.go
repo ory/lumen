@@ -1195,6 +1195,31 @@ func TestFormatSearchResults_IncludesSeedWarning(t *testing.T) {
 	}
 }
 
+func TestFormatSearchResults_StaleWarning(t *testing.T) {
+	out := SemanticSearchOutput{
+		Results: []SearchResultItem{
+			{FilePath: "/proj/main.go", Symbol: "main", Kind: "function", StartLine: 1, EndLine: 5, Score: 0.9},
+		},
+		StaleWarning: "Index is being updated in the background.",
+	}
+	text := formatSearchResults("/proj", out)
+	if !strings.Contains(text, "Warning: Index is being updated") {
+		t.Fatalf("expected stale warning in output, got:\n%s", text)
+	}
+}
+
+func TestFormatSearchResults_NoStaleWarning(t *testing.T) {
+	out := SemanticSearchOutput{
+		Results: []SearchResultItem{
+			{FilePath: "/proj/main.go", Symbol: "main", Kind: "function", StartLine: 1, EndLine: 5, Score: 0.9},
+		},
+	}
+	text := formatSearchResults("/proj", out)
+	if strings.Contains(text, "Warning:") {
+		t.Fatalf("unexpected warning in output, got:\n%s", text)
+	}
+}
+
 func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)

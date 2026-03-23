@@ -1067,6 +1067,10 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 			b.WriteString("\nWarning: ")
 			b.WriteString(out.SeedWarning)
 		}
+		if out.StaleWarning != "" {
+			b.WriteString("\nWarning: ")
+			b.WriteString(out.StaleWarning)
+		}
 		if out.FilteredHint != "" {
 			b.WriteString("\n")
 			b.WriteString(out.FilteredHint)
@@ -1081,6 +1085,9 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	}
 	if out.SeedWarning != "" {
 		fmt.Fprintf(&b, "\nWarning: %s", out.SeedWarning)
+	}
+	if out.StaleWarning != "" {
+		fmt.Fprintf(&b, "\nWarning: %s", out.StaleWarning)
 	}
 	b.WriteString(":\n")
 
