@@ -30,6 +30,7 @@ import (
 	"flag"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/store"
 )
@@ -1297,4 +1298,134 @@ func TestIndexerCache_CloseWaitsForBackground(t *testing.T) {
 	default:
 		t.Fatal("Close() returned before background goroutine finished")
 	}
+}
+
+func TestEnsureIndexed_FlockHeldSkipsReindex(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	lockPath := indexlock.LockPathForDB(dbPath)
+
+	// Pre-acquire the lock to simulate a running indexer.
+	lk, err := indexlock.TryAcquire(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lk == nil {
+		t.Fatal("expected to acquire lock")
+	}
+	defer lk.Release()
+
+	ic := &indexerCache{
+		cache: make(map[string]cacheEntry),
+	}
+
+	idx, idxErr := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	if idxErr != nil {
+		t.Fatal(idxErr)
+	}
+	defer idx.Close()
+
+	out, err := ic.ensureIndexed(
+		context.Background(),
+		idx,
+		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
+		tmpDir, dbPath, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.StaleWarning != "" {
+		t.Fatalf("expected no StaleWarning when flock held, got: %s", out.StaleWarning)
+	}
+}
+
+func TestEnsureIndexed_TimeoutReturnsStaleWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	idx, err := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	ic := &indexerCache{
+		cache: map[string]cacheEntry{
+			tmpDir: {idx: idx, effectiveRoot: tmpDir},
+		},
+		ensureFreshFunc: func(ctx context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
+			select {
+			case <-time.After(30 * time.Second):
+				return true, index.Stats{IndexedFiles: 100}, nil
+			case <-ctx.Done():
+				return false, index.Stats{}, ctx.Err()
+			}
+		},
+	}
+
+	start := time.Now()
+	out, err := ic.ensureIndexed(
+		context.Background(),
+		idx,
+		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
+		tmpDir, dbPath, nil,
+	)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if out.StaleWarning == "" {
+		t.Fatal("expected StaleWarning to be set after timeout")
+	}
+	if elapsed > 20*time.Second {
+		t.Fatalf("ensureIndexed took %v, expected ~15s timeout", elapsed)
+	}
+	if out.Reindexed {
+		t.Fatal("expected Reindexed=false after timeout")
+	}
+
+	// Wait for background goroutine to finish (WaitGroup).
+	ic.Close()
+}
+
+func TestEnsureIndexed_FastEnsureFreshNoWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	idx, err := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	ic := &indexerCache{
+		cache: map[string]cacheEntry{
+			tmpDir: {idx: idx, effectiveRoot: tmpDir},
+		},
+		ensureFreshFunc: func(_ context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
+			return true, index.Stats{IndexedFiles: 42}, nil
+		},
+	}
+
+	out, err := ic.ensureIndexed(
+		context.Background(),
+		idx,
+		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
+		tmpDir, dbPath, nil,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if out.StaleWarning != "" {
+		t.Fatalf("unexpected StaleWarning: %s", out.StaleWarning)
+	}
+	if !out.Reindexed {
+		t.Fatal("expected Reindexed=true")
+	}
+	if out.IndexedFiles != 42 {
+		t.Fatalf("expected IndexedFiles=42, got %d", out.IndexedFiles)
+	}
+
+	ic.Close()
 }
