@@ -142,6 +142,28 @@ system handles MCP registration, hooks, and skills declaratively via:
 └── testdata/           # Fixtures for E2E tests
 ```
 
+## Output & Logging
+
+Lumen has two execution contexts with distinct output strategies:
+
+**Interactive** (`lumen index`, `lumen purge`, `lumen search`):
+- Progress and status → `tui.Progress` (pterm) on **stderr**
+- Completion summaries → `fmt.Printf` on **stdout**
+- Errors → `fmt.Fprintf(os.Stderr, ...)`
+
+**Background / MCP** (`lumen stdio` MCP server, background indexer spawned by
+SessionStart hook):
+- All output → `slog` (JSON) → `~/.local/share/lumen/debug.log`
+- Use `newDebugLogger()` from `cmd/log.go` — opens the log file; falls back to
+  stderr only if the file cannot be created
+- stderr of the background indexer process is set to `nil` (discarded) so that
+  pterm output never pollutes the log file
+
+**Rule**: never mix these. Interactive commands use tui/fmt; background/MCP code
+uses slog. If a command can run in both modes (e.g. `lumen index`), add slog for
+the background path and keep tui/fmt for the interactive path — they coexist
+because slog writes to the log file while tui writes to the process stderr.
+
 ## Key Design Decisions
 
 - **Merkle tree for diffs**: Avoid re-indexing unchanged code

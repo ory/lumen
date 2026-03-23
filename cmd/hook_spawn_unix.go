@@ -19,10 +19,7 @@ package cmd
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
-
-	"github.com/ory/lumen/internal/config"
 )
 
 // spawnBackgroundIndexer launches "lumen index <projectPath>" as a fully
@@ -39,13 +36,11 @@ func spawnBackgroundIndexer(projectPath string) {
 	}
 	cmd := exec.Command(exe, "index", projectPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// Discard stdout and stderr — the background indexer uses slog which
+	// writes structured JSON directly to debug.log. Piping stderr to the log
+	// file would mix in pterm progress output with the structured log lines.
 	cmd.Stdout = nil
-
-	logPath := filepath.Join(config.XDGDataDir(), "lumen", "debug.log")
-	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-		cmd.Stderr = f
-		defer func() { _ = f.Close() }()
-	}
+	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
 		return

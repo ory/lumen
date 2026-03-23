@@ -17,6 +17,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -45,6 +46,11 @@ var indexCmd = &cobra.Command{
 }
 
 func runIndex(cmd *cobra.Command, args []string) error {
+	logger, logFile := newDebugLogger()
+	if logFile != nil {
+		defer func() { _ = logFile.Close() }()
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -72,6 +78,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	if lock == nil {
 		// Another indexer is already running for this project — skip silently.
 		// This is the normal case when multiple Claude terminals are open.
+		logger.Info("index skipped: another indexer is already running", "project", projectPath)
 		fmt.Fprintln(os.Stderr, "Another indexer is already running for this project. Skipping.")
 		return nil
 	}
@@ -82,12 +89,13 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	idx, err := setupIndexer(&cfg, dbPath)
+	idx, err := setupIndexer(&cfg, dbPath, logger)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = idx.Close() }()
 
+	logger.Info("indexing started", "project", projectPath, "model", cfg.Model, "dims", cfg.Dims)
 	p := tui.NewProgress(os.Stderr)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, cfg.Model, cfg.Dims))
 
@@ -98,13 +106,47 @@ func runIndex(cmd *cobra.Command, args []string) error {
 			// A signal arrived; treat as clean exit. If an unrelated error
 			// also occurred in the same instant, it is intentionally dropped —
 			// the cancellation is the primary cause and the lock will be released.
+			logger.Info("indexing cancelled by signal", "project", projectPath)
 			return nil
 		}
+		logger.Error("indexing failed", "project", projectPath, "err", err)
 		return err
 	}
 
+	elapsed := time.Since(start).Round(time.Millisecond)
+	if stats.Reason == "already fresh" {
+		logger.Info("index already fresh",
+			"project", projectPath,
+			"elapsed", elapsed.String(),
+		)
+	} else {
+		logger.Info("indexing complete",
+			"project", projectPath,
+			"reason", stats.Reason,
+			"total_files", stats.TotalFiles,
+			"files_unchanged", stats.TotalFiles-stats.FilesChanged,
+			"files_added", stats.FilesAdded,
+			"files_modified", stats.FilesModified,
+			"files_removed", stats.FilesRemoved,
+			"indexed_files", stats.IndexedFiles,
+			"chunks_created", stats.ChunksCreated,
+			"old_root_hash", stats.OldRootHash,
+			"new_root_hash", stats.NewRootHash,
+			"elapsed", elapsed.String(),
+		)
+	}
+	if stats.Reason != "" {
+		fmt.Printf("Reason: %s\n", stats.Reason)
+	}
+	if stats.OldRootHash != "" {
+		fmt.Printf("Root hash: %s -> %s\n", stats.OldRootHash[:16], stats.NewRootHash[:16])
+	} else if stats.NewRootHash != "" {
+		fmt.Printf("Root hash: (none) -> %s\n", stats.NewRootHash[:16])
+	}
+	fmt.Printf("Files: %d added, %d modified, %d removed (%d total in project)\n",
+		stats.FilesAdded, stats.FilesModified, stats.FilesRemoved, stats.TotalFiles)
 	fmt.Printf("Done. Indexed %d files, %d chunks in %s.\n",
-		stats.IndexedFiles, stats.ChunksCreated, time.Since(start).Round(time.Millisecond))
+		stats.IndexedFiles, stats.ChunksCreated, elapsed)
 	return nil
 }
 
@@ -124,7 +166,7 @@ func applyModelFlag(cmd *cobra.Command, cfg *config.Config) error {
 }
 
 // setupIndexer receives dbPath so it is computed exactly once in runIndex.
-func setupIndexer(cfg *config.Config, dbPath string) (*index.Indexer, error) {
+func setupIndexer(cfg *config.Config, dbPath string, logger *slog.Logger) (*index.Indexer, error) {
 	emb, err := newEmbedder(*cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create embedder: %w", err)
@@ -134,6 +176,7 @@ func setupIndexer(cfg *config.Config, dbPath string) (*index.Indexer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}
+	idx.SetLogger(logger)
 	return idx, nil
 }
 
@@ -152,6 +195,7 @@ func performIndexing(ctx context.Context, cmd *cobra.Command, idx *index.Indexer
 	}
 
 	if !reindexed {
+		stats.Reason = "already fresh"
 		fmt.Println("Index is already up to date.")
 	}
 

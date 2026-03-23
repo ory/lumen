@@ -19,6 +19,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -54,6 +55,18 @@ type Stats struct {
 	IndexedFiles  int
 	ChunksCreated int
 	FilesChanged  int
+
+	// Breakdown of changed files by category.
+	FilesAdded    int
+	FilesModified int
+	FilesRemoved  int
+
+	// Reason explains why reindexing was triggered.
+	Reason string
+
+	// OldRootHash and NewRootHash are the merkle root hashes before and after.
+	OldRootHash string
+	NewRootHash string
 }
 
 // StatusInfo holds information about the current index state for a project.
@@ -73,6 +86,12 @@ type Indexer struct {
 	emb            embedder.Embedder
 	chunker        chunker.Chunker
 	maxChunkTokens int
+	logger         *slog.Logger
+}
+
+// SetLogger attaches a logger to the indexer for structured diagnostic output.
+func (idx *Indexer) SetLogger(l *slog.Logger) {
+	idx.logger = l
 }
 
 // NewIndexer creates a new Indexer backed by a SQLite store at dsn,
@@ -113,17 +132,33 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
+	storedHash, err := idx.store.GetMeta("root_hash")
+	if err != nil && err != sql.ErrNoRows {
+		return Stats{}, fmt.Errorf("get root_hash: %w", err)
+	}
+
 	// If not forcing, check root hash before doing any work.
 	if !force {
-		storedHash, err := idx.store.GetMeta("root_hash")
-		if err != nil && err != sql.ErrNoRows {
-			return Stats{}, fmt.Errorf("get root_hash: %w", err)
-		}
 		if storedHash == curTree.RootHash {
 			return Stats{}, nil
 		}
 	}
-	return idx.indexWithTree(ctx, projectDir, force, curTree, progress)
+
+	stats, indexErr := idx.indexWithTree(ctx, projectDir, force, curTree, progress)
+	if indexErr != nil {
+		return stats, indexErr
+	}
+
+	if force {
+		stats.Reason = "force reindex requested"
+	} else if storedHash == "" || err == sql.ErrNoRows {
+		stats.Reason = "fresh index (no previous root hash)"
+	} else {
+		stats.Reason = "root hash changed"
+	}
+	stats.OldRootHash = storedHash
+	stats.NewRootHash = curTree.RootHash
+	return stats, nil
 }
 
 // EnsureFresh checks if the index is stale and re-indexes if needed.
@@ -146,10 +181,21 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 		return false, Stats{}, nil
 	}
 
+	var reason string
+	switch {
+	case storedHash == "" || err == sql.ErrNoRows:
+		reason = "fresh index (no previous root hash)"
+	default:
+		reason = "root hash changed"
+	}
+
 	stats, err := idx.indexWithTree(ctx, projectDir, false, curTree, progress)
 	if err != nil {
 		return false, stats, err
 	}
+	stats.Reason = reason
+	stats.OldRootHash = storedHash
+	stats.NewRootHash = curTree.RootHash
 	return true, stats, nil
 }
 
@@ -192,15 +238,31 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 				filesToRemove = append(filesToRemove, path)
 			}
 		}
+		stats.FilesAdded = len(filesToIndex)
+		stats.FilesRemoved = len(filesToRemove)
 	} else {
 		oldTree := &merkle.Tree{Files: oldHashes}
 		added, removed, modified := merkle.Diff(oldTree, curTree)
 		filesToIndex = append(filesToIndex, added...)
 		filesToIndex = append(filesToIndex, modified...)
 		filesToRemove = removed
+		stats.FilesAdded = len(added)
+		stats.FilesModified = len(modified)
+		stats.FilesRemoved = len(removed)
 	}
 
 	stats.FilesChanged = len(filesToIndex) + len(filesToRemove)
+
+	if idx.logger != nil {
+		idx.logger.Info("indexing plan",
+			"project", projectDir,
+			"total_files", stats.TotalFiles,
+			"files_unchanged", stats.TotalFiles-stats.FilesChanged,
+			"files_to_add", stats.FilesAdded,
+			"files_to_modify", stats.FilesModified,
+			"files_to_remove", stats.FilesRemoved,
+		)
+	}
 
 	if progress != nil {
 		progress(0, len(filesToIndex), fmt.Sprintf("Found %d files to index", len(filesToIndex)))

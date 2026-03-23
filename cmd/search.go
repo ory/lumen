@@ -151,7 +151,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	tr.record("path resolution", indexRoot)
 
 	// Span 2: indexer setup
-	idx, err := setupIndexer(&cfg, indexRoot)
+	idx, err := setupIndexer(&cfg, indexRoot, nil)
 	if err != nil {
 		return fmt.Errorf("setup indexer: %w", err)
 	}
