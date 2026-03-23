@@ -139,9 +139,10 @@ type indexerCache struct {
 	model         string
 	cfg           config.Config
 	freshnessTTL  time.Duration              // 0 means use defaultFreshnessTTL
-	findDonorFunc func(string, string) string // nil uses config.FindDonorIndex
-	seedFunc      func(string, string) (bool, error) // nil uses index.SeedFromDonor
-	log           *slog.Logger
+	findDonorFunc   func(string, string) string // nil uses config.FindDonorIndex
+	seedFunc        func(string, string) (bool, error) // nil uses index.SeedFromDonor
+	ensureFreshFunc func(ctx context.Context, idx *index.Indexer, projectDir string, progress index.ProgressFunc) (bool, index.Stats, error) // nil uses idx.EnsureFresh
+	log             *slog.Logger
 	wg            sync.WaitGroup // tracks background reindex goroutines
 }
 
@@ -655,7 +656,13 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 		}
 		defer lk.Release()
 
-		reindexed, stats, err := idx.EnsureFresh(bgCtx, projectDir, nil) // nil progress: request ctx may be gone
+		ensureFresh := ic.ensureFreshFunc
+		if ensureFresh == nil {
+			ensureFresh = func(ctx context.Context, idx *index.Indexer, dir string, p index.ProgressFunc) (bool, index.Stats, error) {
+				return idx.EnsureFresh(ctx, dir, p)
+			}
+		}
+		reindexed, stats, err := ensureFresh(bgCtx, idx, projectDir, nil) // nil progress: request ctx may be gone
 		if err != nil {
 			ic.logger().Warn("background reindex failed", "project", projectDir, "err", err)
 		} else {
