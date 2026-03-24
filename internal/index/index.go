@@ -144,7 +144,7 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 		}
 	}
 
-	stats, indexErr := idx.indexWithTree(ctx, projectDir, force, curTree, progress)
+	stats, indexErr := idx.indexWithTree(ctx, projectDir, storedHash, force, curTree, progress)
 	if indexErr != nil {
 		return stats, indexErr
 	}
@@ -189,7 +189,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 		reason = "root hash changed"
 	}
 
-	stats, err := idx.indexWithTree(ctx, projectDir, false, curTree, progress)
+	stats, err := idx.indexWithTree(ctx, projectDir, storedHash, false, curTree, progress)
 	if err != nil {
 		return false, stats, err
 	}
@@ -202,7 +202,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 // indexWithTree is the internal implementation of Index that accepts a pre-built
 // merkle tree, so callers that already have one (e.g. EnsureFresh) do not need
 // to build it again.
-func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
+func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
 	var stats Stats
 
 	stats.TotalFiles = len(curTree.Files)
@@ -254,14 +254,22 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir string, force 
 	stats.FilesChanged = len(filesToIndex) + len(filesToRemove)
 
 	if idx.logger != nil {
-		idx.logger.Info("indexing plan",
+		logArgs := []any{
 			"project", projectDir,
 			"total_files", stats.TotalFiles,
-			"files_unchanged", stats.TotalFiles-stats.FilesChanged,
+			"files_unchanged", stats.TotalFiles - stats.FilesChanged,
 			"files_to_add", stats.FilesAdded,
 			"files_to_modify", stats.FilesModified,
 			"files_to_remove", stats.FilesRemoved,
-		)
+			"old_root_hash", oldRootHash,
+			"new_root_hash", curTree.RootHash,
+		}
+		if git.IsWorktree(projectDir) {
+			if worktrees, err := git.ListWorktrees(projectDir); err == nil && len(worktrees) > 0 {
+				logArgs = append(logArgs, "main_worktree", worktrees[0])
+			}
+		}
+		idx.logger.Info("indexing plan", logArgs...)
 	}
 
 	if progress != nil {
