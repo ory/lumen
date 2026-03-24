@@ -87,6 +87,7 @@ type Indexer struct {
 	chunker        chunker.Chunker
 	maxChunkTokens int
 	logger         *slog.Logger
+	dsn            string // path to the SQLite database file; used for corruption recovery
 }
 
 // SetLogger attaches a logger to the indexer for structured diagnostic output.
@@ -107,7 +108,26 @@ func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer
 		emb:            emb,
 		chunker:        chunker.NewMultiChunker(chunker.DefaultLanguages(maxChunkTokens)),
 		maxChunkTokens: maxChunkTokens,
+		dsn:            dsn,
 	}, nil
+}
+
+// rebuildStore closes the current store, deletes the database files, and
+// opens a fresh store. Must be called while holding idx.mu.Lock() or before
+// the Indexer is shared with other goroutines.
+func (idx *Indexer) rebuildStore() error {
+	_ = idx.store.Close()
+	if idx.dsn != "" && idx.dsn != ":memory:" {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			_ = os.Remove(idx.dsn + suffix)
+		}
+	}
+	s, err := store.New(idx.dsn, idx.emb.Dimensions())
+	if err != nil {
+		return fmt.Errorf("open fresh store: %w", err)
+	}
+	idx.store = s
+	return nil
 }
 
 // Close closes the underlying store.
@@ -146,7 +166,25 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 
 	stats, indexErr := idx.indexWithTree(ctx, projectDir, storedHash, force, curTree, progress)
 	if indexErr != nil {
-		return stats, indexErr
+		if !store.IsCorruptionErr(indexErr) {
+			return stats, indexErr
+		}
+		if idx.logger != nil {
+			idx.logger.Error("corrupted database detected during index, rebuilding",
+				"project", projectDir, "err", indexErr)
+		}
+		if rebuildErr := idx.rebuildStore(); rebuildErr != nil {
+			return Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
+		}
+		// Retry with force=true so the fresh DB gets a full index pass.
+		stats, indexErr = idx.indexWithTree(ctx, projectDir, "", true, curTree, progress)
+		if indexErr != nil {
+			return stats, fmt.Errorf("reindex after rebuild: %w", indexErr)
+		}
+		stats.OldRootHash = storedHash
+		stats.NewRootHash = curTree.RootHash
+		stats.Reason = "rebuilt after corruption"
+		return stats, nil
 	}
 
 	if force {
@@ -191,7 +229,23 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 
 	stats, err := idx.indexWithTree(ctx, projectDir, storedHash, false, curTree, progress)
 	if err != nil {
-		return false, stats, err
+		if !store.IsCorruptionErr(err) {
+			return false, stats, err
+		}
+		if idx.logger != nil {
+			idx.logger.Error("corrupted database detected during reindex, rebuilding",
+				"project", projectDir, "err", err)
+		}
+		if rebuildErr := idx.rebuildStore(); rebuildErr != nil {
+			return false, Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
+		}
+		// Retry with empty storedHash so the fresh DB gets a full index pass.
+		stats, err = idx.indexWithTree(ctx, projectDir, "", false, curTree, progress)
+		if err != nil {
+			return false, stats, fmt.Errorf("reindex after rebuild: %w", err)
+		}
+		reason = "rebuilt after corruption"
+		storedHash = ""
 	}
 	stats.Reason = reason
 	stats.OldRootHash = storedHash
