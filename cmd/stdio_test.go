@@ -1021,7 +1021,7 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 
 	// With the lock held by the subprocess, ensureIndexed must skip EnsureFresh.
 	input := SemanticSearchInput{Cwd: projectPath, Path: projectPath, Query: "test", NResults: 8}
-	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
+	out, err := ic.ensureIndexed(idx, input, effectiveRoot, dbPath, nil)
 	if err != nil {
 		t.Fatalf("ensureIndexed returned unexpected error: %v", err)
 	}
@@ -1252,7 +1252,7 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
 
 	// First call: no TTL entry yet — runs EnsureFresh and records lastCheckedAt.
-	_, err = ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
+	_, err = ic.ensureIndexed(idx, input, effectiveRoot, dbPath, nil)
 	if err != nil {
 		t.Fatalf("first ensureIndexed: %v", err)
 	}
@@ -1269,7 +1269,7 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		t.Fatal("expected recentlyChecked=true immediately after ensureIndexed")
 	}
 
-	out, err := ic.ensureIndexed(context.Background(), idx, input, effectiveRoot, dbPath, nil)
+	out, err := ic.ensureIndexed(idx, input, effectiveRoot, dbPath, nil)
 	if err != nil {
 		t.Fatalf("second ensureIndexed: %v", err)
 	}
@@ -1326,7 +1326,6 @@ func TestEnsureIndexed_FlockHeldSkipsReindex(t *testing.T) {
 	defer func() { _ = idx.Close() }()
 
 	out, err := ic.ensureIndexed(
-		context.Background(),
 		idx,
 		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
 		tmpDir, dbPath, nil,
@@ -1365,7 +1364,6 @@ func TestEnsureIndexed_TimeoutReturnsStaleWarning(t *testing.T) {
 
 	start := time.Now()
 	out, err := ic.ensureIndexed(
-		context.Background(),
 		idx,
 		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
 		tmpDir, dbPath, nil,
@@ -1409,7 +1407,6 @@ func TestEnsureIndexed_FastEnsureFreshNoWarning(t *testing.T) {
 	}
 
 	out, err := ic.ensureIndexed(
-		context.Background(),
 		idx,
 		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
 		tmpDir, dbPath, nil,
@@ -1458,7 +1455,6 @@ func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T
 	}
 
 	out, err := ic.ensureIndexed(
-		context.Background(),
 		idx,
 		SemanticSearchInput{Cwd: tmpDir, Path: tmpDir, Query: "test"},
 		tmpDir, dbPath, nil,
