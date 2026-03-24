@@ -18,6 +18,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -28,6 +29,26 @@ import (
 
 func init() {
 	sqlite_vec.Auto()
+}
+
+// IsCorruptionErr reports whether err indicates SQLite database corruption.
+// These are the canonical SQLite error messages for an unrecoverable on-disk
+// data problem; the only safe recovery is to delete the database and rebuild.
+func IsCorruptionErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "database disk image is malformed") ||
+		strings.Contains(msg, "disk I/O error")
+}
+
+// deleteDBFiles removes the SQLite database file and its WAL/SHM sidecars.
+// Errors are silently ignored — the file may already be gone or unwritable.
+func deleteDBFiles(path string) {
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		_ = os.Remove(path + suffix)
+	}
 }
 
 // SearchResult represents a single result from a vector search.
@@ -56,7 +77,21 @@ type Store struct {
 // New opens (or creates) a SQLite database at dsn, enables WAL mode and
 // foreign keys, and creates the schema tables if they do not exist.
 // dimensions specifies the size of the embedding vectors.
+//
+// If the database file is corrupted (SQLite returns a corruption error during
+// open or schema setup), New deletes the file and its WAL/SHM sidecars and
+// retries once from a clean state. In-memory databases (dsn == ":memory:")
+// are never deleted.
 func New(dsn string, dimensions int) (*Store, error) {
+	s, err := openStore(dsn, dimensions)
+	if err != nil && IsCorruptionErr(err) && dsn != ":memory:" {
+		deleteDBFiles(dsn)
+		s, err = openStore(dsn, dimensions)
+	}
+	return s, err
+}
+
+func openStore(dsn string, dimensions int) (*Store, error) {
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
