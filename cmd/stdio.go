@@ -58,7 +58,6 @@ type SemanticSearchInput struct {
 	Cwd          string   `json:"cwd,omitempty" jsonschema:"The current working directory / project root. Used as index root when provided."`
 	NResults     int      `json:"n_results,omitempty" jsonschema:"Max results to return, default 8"`
 	MinScore     *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default depends on embedding model. Use -1 to return all results."`
-	ForceReindex bool     `json:"force_reindex,omitempty" jsonschema:"Force full re-index before searching"`
 	Summary      bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
 	MaxLines     int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
 }
@@ -425,7 +424,6 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	ic.logger().Debug("semantic search request",
 		"cwd", input.Cwd,
 		"search_path", input.Path,
-		"force_reindex", input.ForceReindex,
 		"n_results", input.NResults,
 	)
 
@@ -437,7 +435,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	progress := buildProgressFunc(ctx, req)
 
 	dbPath := config.DBPathForProject(effectiveRoot, ic.model)
-	out, err := ic.ensureIndexed(ctx, idx, input, effectiveRoot, dbPath, progress)
+	out, err := ic.ensureIndexed(idx, input, effectiveRoot, dbPath, progress)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -566,6 +564,7 @@ func validateSearchInput(input *SemanticSearchInput) error {
 	return nil
 }
 
+
 func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.ProgressFunc {
 	token := req.Params.GetProgressToken()
 	if token == nil {
@@ -573,8 +572,7 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 	}
 	return func(current, total int, message string) {
 		if total == 0 {
-			// Skip indeterminate notifications (e.g. "Scanning files...") —
-			// MCP progress requires Total > 0 for meaningful progress tracking.
+			// Skip indeterminate notifications — MCP progress requires Total > 0.
 			return
 		}
 		_ = req.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
@@ -586,42 +584,9 @@ func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.Prog
 	}
 }
 
-func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, input SemanticSearchInput, projectDir string, dbPath string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
+func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchInput, projectDir string, dbPath string, progress index.ProgressFunc) (SemanticSearchOutput, error) {
 	start := time.Now()
 	out := SemanticSearchOutput{}
-
-	if input.ForceReindex {
-		// Skip force reindex if background indexer is running to avoid
-		// concurrent SQLite writes that could exceed busy_timeout.
-		if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
-			ic.logger().Info("force reindex skipped: background indexer is running", "project", projectDir)
-			out.StaleWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use standard tools for the next 10 tool calls before trying semantic_search again."
-			return out, nil
-		}
-		ic.logger().Info("force reindex requested", "cwd", input.Cwd, "search_path", input.Path, "effective_root", projectDir)
-		stats, err := idx.Index(ctx, projectDir, true, progress)
-		if err != nil {
-			return out, fmt.Errorf("force reindex: %w", err)
-		}
-		ic.touchChecked(projectDir)
-		out.Reindexed = true
-		out.IndexedFiles = stats.IndexedFiles
-		ic.logger().Info("force reindex complete",
-			"cwd", input.Cwd,
-			"search_path", input.Path,
-			"effective_root", projectDir,
-			"reason", stats.Reason,
-			"total_project_files", stats.TotalFiles,
-			"indexed_files", stats.IndexedFiles,
-			"chunks_created", stats.ChunksCreated,
-			"files_added", stats.FilesAdded,
-			"files_removed", stats.FilesRemoved,
-			"old_root_hash", stats.OldRootHash,
-			"new_root_hash", stats.NewRootHash,
-			"elapsed_ms", time.Since(start).Milliseconds(),
-		)
-		return out, nil
-	}
 
 	// Skip the merkle tree walk if we confirmed freshness recently. The walk
 	// costs 1-3s on large projects even when nothing changed.
@@ -704,7 +669,7 @@ func (ic *indexerCache) ensureIndexed(ctx context.Context, idx *index.Indexer, i
 				return idx.EnsureFresh(ctx, dir, p)
 			}
 		}
-		reindexed, stats, err := ensureFresh(bgCtx, idx, projectDir, nil) // nil progress: request ctx may be gone
+		reindexed, stats, err := ensureFresh(bgCtx, idx, projectDir, progress)
 		if err != nil {
 			ic.logger().Warn("background reindex failed", "project", projectDir, "err", err)
 		} else {

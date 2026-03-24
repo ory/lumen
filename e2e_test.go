@@ -894,42 +894,6 @@ func TestE2E_IndexStatus(t *testing.T) {
 	}
 }
 
-func TestE2E_ForceReindex(t *testing.T) {
-	t.Parallel()
-	session := startServer(t)
-	projectPath := sampleProjectPath(t)
-
-	// Normal search triggers indexing.
-	out1 := callSearch(t, session, map[string]any{
-		"query": "config",
-		"path":  projectPath,
-	})
-	if !out1.Reindexed {
-		t.Error("first search: expected Reindexed=true")
-	}
-
-	// Second search (no changes) should skip.
-	out2 := callSearch(t, session, map[string]any{
-		"query": "config",
-		"path":  projectPath,
-	})
-	if out2.Reindexed {
-		t.Error("second search (no changes): expected Reindexed=false")
-	}
-
-	// Force reindex should re-index even with no changes.
-	out3 := callSearch(t, session, map[string]any{
-		"query":         "config",
-		"path":          projectPath,
-		"force_reindex": true,
-	})
-	if !out3.Reindexed {
-		t.Error("force_reindex: expected Reindexed=true")
-	}
-	if out3.IndexedFiles != 5 {
-		t.Errorf("force_reindex: expected IndexedFiles=5, got %d", out3.IndexedFiles)
-	}
-}
 
 func TestE2E_ProgressNotifications(t *testing.T) {
 	t.Parallel()
