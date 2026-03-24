@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.23](https://github.com/ory/lumen/compare/v0.0.22...v0.0.23) (2026-03-24)
+
+
+### Features
+
+* **cmd:** Close() waits for background reindex goroutines ([d7b7cad](https://github.com/ory/lumen/commit/d7b7cad177fe7604bdfcfe7a7ee2c3a3922e6840))
+* **cmd:** non-blocking ensureIndexed with 15s timeout and background reindex ([fa883d7](https://github.com/ory/lumen/commit/fa883d7ed355cb1e349221a09819347510fb6afc))
+* **cmd:** render StaleWarning in semantic_search output ([ce2503b](https://github.com/ory/lumen/commit/ce2503b84c9ecfd7f6677a7cefa9c3575d200040))
+* **index:** add root hashes and worktree info to indexing plan log ([bd237e3](https://github.com/ory/lumen/commit/bd237e38d1450d1d77378c3ee5292947c9537320))
+* **index:** add slog to background indexer and enrich Stats with change breakdown ([919eef1](https://github.com/ory/lumen/commit/919eef16911115be70d6e88794aac142e642f1bc))
+
+
+### Bug Fixes
+
+* **cmd:** eliminate reindex fragmentation causing constant cpu usage ([c7eb27e](https://github.com/ory/lumen/commit/c7eb27e77629d8bca02b5a24c97503a8509b7e35))
+* **store,index:** auto-recover from SQLite database corruption ([652b418](https://github.com/ory/lumen/commit/652b41800fc7ab45a06b4508c05a224c332b29fe))
+* **store:** increase busy_timeout to 120s and use INSERT OR REPLACE for vec_chunks ([25a0e01](https://github.com/ory/lumen/commit/25a0e0184c9075d7637cf854bf4c001a47ae301a))
+
 ## [0.0.22](https://github.com/ory/lumen/compare/v0.0.21...v0.0.22) (2026-03-22)
 
 
