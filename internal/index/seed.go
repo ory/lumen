@@ -35,13 +35,24 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 		return false, nil
 	}
 
-	// Checkpoint the WAL so the main DB file is self-contained.
+	// Verify donor has completed at least one full indexing pass.
+	// A missing or empty root_hash means the donor is still being built
+	// (or was interrupted), so its data is incomplete and potentially
+	// inconsistent — skip seeding to avoid inheriting corrupt state.
 	db, err := sql.Open("sqlite3", donorPath+"?mode=ro")
 	if err != nil {
 		return false, fmt.Errorf("open donor: %w", err)
 	}
+	var rootHash sql.NullString
+	_ = db.QueryRow("SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&rootHash)
+
+	// Checkpoint the WAL so the main DB file is self-contained.
 	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	_ = db.Close()
+
+	if !rootHash.Valid || rootHash.String == "" {
+		return false, nil
+	}
 
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return false, fmt.Errorf("create dst directory: %w", err)

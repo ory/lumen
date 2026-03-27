@@ -94,6 +94,35 @@ func TestSeedFromDonor_DstExists(t *testing.T) {
 	}
 }
 
+func TestSeedFromDonor_IncompleteDonor(t *testing.T) {
+	// Create a donor DB that has the schema but no root_hash (simulates
+	// a donor whose first indexing pass hasn't finished yet).
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Close without indexing — root_hash will not be set.
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+	seeded, err := SeedFromDonor(donorPath, dstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seeded {
+		t.Fatal("expected seeded=false for incomplete donor (no root_hash)")
+	}
+
+	// Destination should not have been created.
+	if _, err := os.Stat(dstPath); err == nil {
+		t.Fatal("expected dst to not exist when donor is incomplete")
+	}
+}
+
 func TestSeedFromDonor_IncrementalUpdate(t *testing.T) {
 	// Create donor with one file.
 	projectDir := t.TempDir()
