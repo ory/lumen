@@ -533,6 +533,14 @@ func (s *Store) TopSymbols(n int) ([]string, error) {
 	return symbols, rows.Err()
 }
 
+// HasSentinelFiles reports whether any files have an empty hash, indicating
+// they were registered but never fully indexed (interrupted run).
+func (s *Store) HasSentinelFiles() (bool, error) {
+	var exists bool
+	err := s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM files WHERE hash = '')").Scan(&exists)
+	return exists, err
+}
+
 // Analyze runs ANALYZE on the database so the query planner has up-to-date
 // statistics. Call once after a full index pass, not after every batch.
 func (s *Store) Analyze() {

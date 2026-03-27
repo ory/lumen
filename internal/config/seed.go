@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/ory/lumen/internal/git"
 )
@@ -38,9 +39,34 @@ func FindDonorIndexBase(dataDir, projectPath, model string) string {
 	}
 
 	// Resolve symlinks so comparisons work on macOS (/var → /private/var).
-	resolvedSelf := projectPath
+	resolvedProject := projectPath
 	if r, err := filepath.EvalSymlinks(projectPath); err == nil {
-		resolvedSelf = r
+		resolvedProject = r
+	}
+
+	// Find which worktree contains projectPath and compute the relative suffix.
+	// This handles subdirectory effective roots (e.g., hydra-flake/backoffice)
+	// by searching for the same subdirectory in sibling worktrees.
+	var myWorktree string
+	for _, wt := range worktrees {
+		resolved := wt
+		if r, err := filepath.EvalSymlinks(wt); err == nil {
+			resolved = r
+		}
+		rel, err := filepath.Rel(resolved, resolvedProject)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		myWorktree = resolved
+		break
+	}
+	if myWorktree == "" {
+		return ""
+	}
+
+	relSuffix, err := filepath.Rel(myWorktree, resolvedProject)
+	if err != nil {
+		return ""
 	}
 
 	type candidate struct {
@@ -50,10 +76,16 @@ func FindDonorIndexBase(dataDir, projectPath, model string) string {
 	var candidates []candidate
 
 	for _, wt := range worktrees {
-		if wt == resolvedSelf {
-			continue
+		resolved := wt
+		if r, err := filepath.EvalSymlinks(wt); err == nil {
+			resolved = r
 		}
-		dbPath := DBPathForProjectBase(dataDir, wt, model)
+		if resolved == myWorktree {
+			continue // skip self
+		}
+		// Look for a DB at the same relative subdirectory in the sibling worktree.
+		siblingProject := filepath.Join(resolved, relSuffix)
+		dbPath := DBPathForProjectBase(dataDir, siblingProject, model)
 		info, err := os.Stat(dbPath)
 		if err != nil {
 			continue

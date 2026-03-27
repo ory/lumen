@@ -158,9 +158,15 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 	}
 
 	// If not forcing, check root hash before doing any work.
+	// Even when the root hash matches, sentinel files (hash="") indicate an
+	// interrupted previous run — fall through to incremental indexing so those
+	// files get completed.
 	if !force {
 		if storedHash == curTree.RootHash {
-			return Stats{}, nil
+			hasSentinels, _ := idx.store.HasSentinelFiles()
+			if !hasSentinels {
+				return Stats{}, nil
+			}
 		}
 	}
 
@@ -216,7 +222,11 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 		return false, Stats{}, fmt.Errorf("get root_hash: %w", err)
 	}
 	if storedHash == curTree.RootHash {
-		return false, Stats{}, nil
+		hasSentinels, _ := idx.store.HasSentinelFiles()
+		if !hasSentinels {
+			return false, Stats{}, nil
+		}
+		// Has incomplete files from an interrupted run — fall through.
 	}
 
 	var reason string
@@ -336,6 +346,23 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 		}
 	}
 
+	// saveMeta persists the root hash and other metadata so that subsequent
+	// runs can skip the expensive merkle walk when the tree hasn't changed.
+	// It is called on both success and partial-failure paths: if at least one
+	// batch was flushed we record progress so the next session doesn't redo
+	// everything from scratch.
+	metaSaved := false
+	saveMeta := func() {
+		if metaSaved {
+			return
+		}
+		metaSaved = true
+		_ = idx.store.SetMeta("root_hash", curTree.RootHash)
+		_ = idx.store.SetMeta("embedding_model", idx.emb.ModelName())
+		_ = idx.store.SetMeta("last_indexed_at", time.Now().UTC().Format(time.RFC3339))
+		_ = idx.store.SetMeta("total_files", strconv.Itoa(stats.TotalFiles))
+	}
+
 	const chunkBatchSize = 256
 	var batch []chunker.Chunk
 	var totalChunks int
@@ -414,6 +441,11 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 
 		if len(batch) >= chunkBatchSize {
 			if err := flushBatch(fileIdx + 1); err != nil {
+				// At least some batches may have succeeded earlier;
+				// persist metadata so the next run can match root_hash.
+				if totalChunks > 0 {
+					saveMeta()
+				}
 				return stats, err
 			}
 			// Chunks are durably stored — now commit the real file hashes.
@@ -428,6 +460,9 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 
 	// Final flush + upsert.
 	if err := flushBatch(len(filesToIndex)); err != nil {
+		if totalChunks > 0 {
+			saveMeta()
+		}
 		return stats, err
 	}
 	for _, pf := range pendingFiles {
@@ -448,18 +483,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	stats.IndexedFiles = len(filesToIndex)
 	stats.ChunksCreated = totalChunks
 
-	if err := idx.store.SetMeta("root_hash", curTree.RootHash); err != nil {
-		return stats, fmt.Errorf("set root_hash: %w", err)
-	}
-	if err := idx.store.SetMeta("embedding_model", idx.emb.ModelName()); err != nil {
-		return stats, fmt.Errorf("set embedding_model: %w", err)
-	}
-	if err := idx.store.SetMeta("last_indexed_at", time.Now().UTC().Format(time.RFC3339)); err != nil {
-		return stats, fmt.Errorf("set last_indexed_at: %w", err)
-	}
-	if err := idx.store.SetMeta("total_files", strconv.Itoa(stats.TotalFiles)); err != nil {
-		return stats, fmt.Errorf("set total_files: %w", err)
-	}
+	saveMeta()
 
 	return stats, nil
 }
