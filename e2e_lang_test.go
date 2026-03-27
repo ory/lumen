@@ -141,6 +141,17 @@ func TestLang_Java(t *testing.T) {
 	})
 }
 
+func TestLang_Dart(t *testing.T) {
+	t.Parallel()
+	runLangTest(t, "dart", []string{
+		"HTTP request handler middleware",
+		"server pipeline shelf handler",
+		"response body status code",
+		"cascade route matching",
+		"logging middleware interceptor",
+	})
+}
+
 func TestLang_PHP(t *testing.T) {
 	t.Parallel()
 	runLangTest(t, "php", []string{

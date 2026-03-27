@@ -1,0 +1,14 @@
+diff --git a/pkgs/shelf_router/lib/src/router.dart b/pkgs/shelf_router/lib/src/router.dart
+index 720d3c3..d68627a 100644
+--- a/pkgs/shelf_router/lib/src/router.dart
++++ b/pkgs/shelf_router/lib/src/router.dart
+@@ -60,9 +60,6 @@ extension RouterParams on Request {
+ 
+ /// Middleware to remove body from request.
+ final _removeBody = createMiddleware(responseHandler: (r) {
+-  if (r.headers.containsKey('content-length')) {
+-    r = r.change(headers: {'content-length': '0'});
+-  }
+   return r.change(body: <int>[]);
+ });
+ 

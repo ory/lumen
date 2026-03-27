@@ -15,6 +15,8 @@
 package chunker
 
 import (
+	sitter_dart "github.com/alexaandru/go-sitter-forest/dart"
+	sitter "github.com/smacker/go-tree-sitter"
 	sitter_c "github.com/smacker/go-tree-sitter/c"
 	sitter_cpp "github.com/smacker/go-tree-sitter/cpp"
 	sitter_cs "github.com/smacker/go-tree-sitter/csharp"
@@ -41,6 +43,7 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".cs",
+	".dart",
 	".md", ".mdx",
 	".yaml", ".yml", ".json",
 }
@@ -246,6 +249,25 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		},
 	})
 
+	dart := mustTreeSitterChunker(LanguageDef{
+		Language: sitter.NewLanguage(sitter_dart.GetLanguage()),
+		Queries: []QueryDef{
+			{Pattern: `(class_definition name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(mixin_declaration (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(extension_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			// Top-level and abstract method function signatures.
+			{Pattern: `(function_signature name: (identifier) @name) @decl`, Kind: "function"},
+			// Class/mixin body declarations override function_signature kind to "method".
+			{Pattern: `(declaration (function_signature name: (identifier) @name)) @decl`, Kind: "method"},
+			{Pattern: `(method_signature (function_signature name: (identifier) @name)) @decl`, Kind: "method"},
+			{Pattern: `(method_signature (getter_signature (identifier) @name)) @decl`, Kind: "method"},
+			{Pattern: `(method_signature (setter_signature (identifier) @name)) @decl`, Kind: "method"},
+			{Pattern: `(type_alias . (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(constructor_signature (identifier) @name) @decl`, Kind: "function"},
+		},
+	})
+
 	goChunker := NewGoAST()
 
 	md := NewMarkdownChunker()
@@ -271,6 +293,7 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".hpp":  cpp,
 		".php":  php,
 		".cs":   cs,
+		".dart": dart,
 		".md":   md,
 		".mdx":  md,
 		".yaml": structured,

@@ -1,0 +1,20 @@
+{
+  "id": "dart-hard",
+  "language": "dart",
+  "repo": "https://github.com/dart-lang/shelf",
+  "base_commit": "a00c10a20b8d2b74389776d5bdbf74ca01f38c49",
+  "fix_commit": "e20fd9c716c55826d45fabe87115bd37590349bf",
+  "issue_url": "https://github.com/dart-lang/shelf/issues/510",
+  "issue_title": "shelf_router should NOT modify the content-length per RFC",
+  "issue_body": "The shelf_router `_removeBody` middleware incorrectly sets content-length to 0 for HEAD requests.\n\nPer RFC 9110 Section 9.3.2, HEAD and GET should be identical except for the lack of body content. The content-length header should reflect the size of the body that WOULD have been returned by a GET request, not 0.\n\nCurrently, when a HEAD request is made, the router's _removeBody middleware replaces the content-length with '0', which violates the RFC. The middleware should only strip the body content while preserving the original content-length header.\n\nTo reproduce:\n1. Create a Router with a handler that returns a response with a body\n2. Send a HEAD request to that route\n3. Observe that content-length is set to 0 instead of the actual body length\n\nExpected: content-length should match what GET would return (e.g., 11 for 'hello-world')\nActual: content-length is set to 0",
+  "gold_patch_file": "patches/dart-hard.patch",
+  "expected_files": [
+    "pkgs/shelf_router/lib/src/router.dart",
+    "pkgs/shelf_router/test/router_test.dart"
+  ],
+  "setup_commands": [
+    "cd pkgs/shelf_router && dart pub get"
+  ],
+  "test_command": "cd pkgs/shelf_router && dart test test/router_test.dart",
+  "timeout_s": 900
+}

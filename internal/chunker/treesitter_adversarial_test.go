@@ -978,6 +978,7 @@ func TestAdversarial_ChunkInvariants(t *testing.T) {
 		".cs":   adversarialCSharp,
 		".tsx":  adversarialTSX,
 		".php":  adversarialPHP,
+		".dart": adversarialDart,
 	}
 
 	for ext, src := range testFiles {
@@ -1188,4 +1189,130 @@ var varArrow = () => 4;
 	// lexical_declaration covers both const and let
 	cs.mustHave("mutableHandler", "function")
 	cs.mustHave("arrowHandler", "function")
+}
+
+// ---------- Dart Adversarial ----------
+
+var adversarialDart = []byte(`
+// Top-level functions
+void topLevelFn() {}
+
+Future<void> asyncFn() async {}
+
+Stream<int> generatorFn() async* { yield 1; }
+
+Iterable<int> syncGenerator() sync* { yield 1; }
+
+// Classes
+class BaseClass {
+  final String name;
+  BaseClass(this.name);
+  BaseClass.named(String n) : name = n;
+
+  void method() {}
+  static void staticMethod() {}
+
+  factory BaseClass.create() => BaseClass('default');
+
+  String get label => name;
+  set label(String v) {}
+}
+
+abstract class AbstractBase {
+  void abstractMethod();
+}
+
+class Child extends BaseClass {
+  Child() : super('child');
+}
+
+// Mixins
+mixin Printable {
+  void printSelf() {}
+}
+
+mixin on Comparable<int> {
+  int compareDefault() => 0;
+}
+
+// Enums (enhanced, Dart 2.17+)
+enum Status {
+  active, inactive;
+
+  String get display => name.toUpperCase();
+}
+
+// Extensions
+extension NumHelper on num {
+  bool get isPositive => this > 0;
+}
+
+// Extension types (Dart 3.0)
+// extension type Wrapper(int value) {}
+
+// Typedefs
+typedef JsonMap = Map<String, dynamic>;
+typedef Callback<T> = void Function(T);
+
+// Top-level variable
+final version = '1.0.0';
+
+// Edge: should NOT extract
+// void commentedFunction() {}
+/*
+class CommentedClass {}
+*/
+
+var codeInString = '''
+void fakeFunction() {}
+class FakeClass {}
+''';
+`)
+
+func TestAdversarial_Dart(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	chunks, err := langs[".dart"].Chunk("adv.dart", adversarialDart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := newChunkSet(t, chunks)
+	t.Logf("Extracted chunks:\n%s", cs.dump())
+
+	// Top-level functions
+	cs.mustHave("topLevelFn", "function")
+	cs.mustHave("asyncFn", "function")
+	cs.mustHave("generatorFn", "function")
+	cs.mustHave("syncGenerator", "function")
+
+	// Classes
+	cs.mustHave("BaseClass", "type")
+	cs.mustHave("BaseClass.method", "method")
+	cs.mustHave("BaseClass.staticMethod", "method")
+	cs.mustHave("BaseClass.label", "method")       // getter
+	cs.mustHave("BaseClass.BaseClass", "function")  // constructor
+	cs.mustHave("AbstractBase", "type")
+	cs.mustHave("AbstractBase.abstractMethod", "method")
+	cs.mustHave("Child", "type")
+
+	// Mixins
+	cs.mustHave("Printable", "type")
+	cs.mustHave("Printable.printSelf", "method")
+
+	// Enums (enum methods are unqualified — enum_body/enum_declaration shared with Java)
+	cs.mustHave("Status", "type")
+	cs.mustHave("display", "method")
+
+	// Extensions
+	cs.mustHave("NumHelper", "type")
+	cs.mustHave("NumHelper.isPositive", "method")
+
+	// Typedefs
+	cs.mustHave("JsonMap", "type")
+	cs.mustHave("Callback", "type")
+
+	// Must NOT extract
+	cs.mustNotHave("commentedFunction", "function")
+	cs.mustNotHave("CommentedClass", "type")
+	cs.mustNotHave("fakeFunction", "function")
+	cs.mustNotHave("FakeClass", "type")
 }
