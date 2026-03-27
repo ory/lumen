@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.24](https://github.com/ory/lumen/compare/v0.0.23...v0.0.24) (2026-03-27)
+
+
+### Bug Fixes
+
+* reindex stability — sentinel resume, donor safety, worktree subdirs, progress bar ([#67](https://github.com/ory/lumen/issues/67)) ([07782d6](https://github.com/ory/lumen/commit/07782d63c97cc91c0c4dee1169d7965221d733ee))
+
 ## [0.0.23](https://github.com/ory/lumen/compare/v0.0.22...v0.0.23) (2026-03-24)
 
 
