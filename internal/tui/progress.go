@@ -78,6 +78,16 @@ func (p *Progress) Update(current int, message string) {
 	if p.bar == nil {
 		return
 	}
+	// Truncate message to prevent line-wrapping, which confuses pterm's
+	// cursor positioning and causes output duplication on long paths or
+	// after terminal resize.
+	const barOverhead = 45 // chars consumed by [bar] N/Total (PCT%)
+	if width := pterm.GetTerminalWidth(); width > barOverhead {
+		maxTitle := width - barOverhead
+		if len(message) > maxTitle {
+			message = message[:maxTitle-1] + "…"
+		}
+	}
 	p.bar.UpdateTitle(message)
 	// Increment is additive, so compute the delta from the bar's current value.
 	delta := current - p.bar.Current
