@@ -46,7 +46,7 @@ For each run, bench-swe captures:
 
 ### Current Test Suite
 
-8 languages, hard difficulty — all against real GitHub bugs:
+9 languages, hard difficulty — all against real GitHub bugs:
 
 | Task            | Language   | Repository                                                    | Issue                                                                            |
 | --------------- | ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -57,6 +57,7 @@ For each run, bench-swe captures:
 | typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js)  | Negative flag negation doesn't propagate to aliases                              |
 | ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)       | Wrong content type when Accept header is a wildcard                              |
 | cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                   | Add a C API (feature implementation)                                             |
+| dart-hard       | Dart       | [dart-lang/shelf](https://github.com/dart-lang/shelf)          | shelf_router HEAD request incorrectly sets content-length to 0                   |
 | rust-hard       | Rust       | [toml-rs/toml](https://github.com/toml-rs/toml)               | False duplicate key error for dotted keys when parent table is implicitly created |
 
 Embedding model: `ordis/jina-embeddings-v2-base-code` (Ollama, 768-dim). Claude
@@ -66,26 +67,26 @@ model: Sonnet (execution), Sonnet 4.6 (judging).
 
 ## Results Overview
 
-**8 benchmark runs across 8 languages.** Quality was maintained in every single
+**9 benchmark runs across 9 languages.** Quality was maintained in every single
 task — no regressions. Cost was reduced in every language tested.
 
-### Bug-Fix Tasks (7 languages, excluding C++ feature task)
+### Bug-Fix Tasks (8 languages, excluding C++ feature task)
 
 | Metric        | Baseline avg | With-Lumen avg | Delta     |
 | ------------- | ------------ | -------------- | --------- |
-| Cost          | $0.40        | $0.29          | **-26%**  |
-| Time          | 174s         | 125s           | **-28%**  |
-| Output tokens | 8,323        | 5,247          | **-37%**  |
+| Cost          | $0.43        | $0.27          | **-37%**  |
+| Time          | 183s         | 116s           | **-37%**  |
+| Output tokens | 8,278        | 4,787          | **-42%**  |
 
-### All 8 Tasks (including C++ feature task)
+### All 9 Tasks (including C++ feature task)
 
 | Metric        | Baseline avg | With-Lumen avg | Delta     |
 | ------------- | ------------ | -------------- | --------- |
-| Cost          | $0.48        | $0.38          | **-21%**  |
-| Time          | 199s         | 154s           | **-23%**  |
-| Output tokens | 9,595        | 7,348          | **-23%**  |
+| Cost          | $0.50        | $0.37          | **-26%**  |
+| Time          | 204s         | 146s           | **-28%**  |
+| Output tokens | 9,439        | 7,042          | **-25%**  |
 
-Cost was reduced in **all 8 languages** — the only universally positive metric.
+Cost was reduced in **all 9 languages** — the only universally positive metric.
 Quality was maintained in every task.
 
 ---
@@ -108,6 +109,8 @@ Quality was maintained in every task.
 | ruby-hard       | Ruby | with-lumen | Good    | $0.411 | 165.2s | 5,581      | 295K       | 47         |
 | go-hard         | Go   | baseline   | Good    | $0.646 | 291.2s | 11,475     | 658K       | 51         |
 | go-hard         | Go   | with-lumen | Good    | $0.568 | 264.1s | 10,283     | 538K       | 35         |
+| dart-hard       | Dart | baseline   | Good    | $0.634 | 246.1s | 21,286     | 4,126K     | 61         |
+| dart-hard       | Dart | with-lumen | Good    | $0.153 | 50.9s  | 3,862      | 663K       | 14         |
 | cpp-hard        | C++  | baseline   | Good    | $1.102 | 370.7s | 15,506     | 1,327K     | 63         |
 | cpp-hard        | C++  | with-lumen | Good    | $1.014 | 359.1s | 22,056     | 1,019K     | 51         |
 
@@ -256,6 +259,28 @@ Both scenarios produced correct patches with test files. The with-lumen patch
 was more thorough — table-driven tests covering both null values and
 comments-only nodes, vs a single test case in the baseline.
 
+### Dart — shelf (HEAD content-length RFC violation)
+
+**The strongest result overall.** Lumen cut cost by 76% and time by 79% — the
+largest improvements across all 9 languages. The bug was an RFC 9110 violation
+where `shelf_router`'s `_removeBody` middleware incorrectly set `content-length`
+to 0 for HEAD requests.
+
+| Metric        | Baseline | With Lumen | Delta      |
+| ------------- | -------- | ---------- | ---------- |
+| Rating        | Good     | Good       | Same       |
+| Cost          | $0.634   | $0.153     | **-75.8%** |
+| Time          | 246.1s   | 50.9s      | **-79.3%** |
+| Output tokens | 21,286   | 3,862      | **-81.9%** |
+| Cache reads   | 4,126K   | 663K       | **-83.9%** |
+| Tool calls    | 61       | 14         | **-77.0%** |
+
+Both scenarios fixed the bug correctly. The baseline spent 61 tool calls and
+over 4 minutes exploring the monorepo structure (`pkgs/shelf_router/` inside
+the larger `shelf` repository). With Lumen, semantic search located
+`_removeBody` and the router's HEAD handling directly, completing the fix in
+under a minute with only 14 tool calls.
+
 ### C++ — fmt (C API feature)
 
 The only **feature implementation** task (not a bug fix). Both scenarios
@@ -285,6 +310,7 @@ where Lumen's advantage is smallest, it still delivered cost savings.
 | ---------- | --------------- | ----------------- | ------------- |
 | JavaScript | Perfect         | Perfect           | Same          |
 | Python     | Perfect         | Perfect           | Same          |
+| Dart       | Good            | Good              | Same          |
 | PHP        | Good            | Good              | Same          |
 | TypeScript | Good            | Good              | Same          |
 | Ruby       | Good            | Good              | Same          |
@@ -292,7 +318,7 @@ where Lumen's advantage is smallest, it still delivered cost savings.
 | C++        | Good            | Good              | Same          |
 | Rust       | Poor            | Poor              | Same          |
 
-Quality was maintained in **all 8 tasks** — zero regressions. Where the baseline
+Quality was maintained in **all 9 tasks** — zero regressions. Where the baseline
 produced Perfect patches, Lumen matched it. Where the baseline produced Good
 patches, Lumen matched it. And where the task was too hard for the baseline
 (Rust), Lumen didn't make it worse — it just made the failure cheaper.
@@ -303,11 +329,12 @@ patches, Lumen matched it. And where the task was too hard for the baseline
 
 ### 1. Cost Reduced in Every Language
 
-Lumen reduced cost in **all 8 languages** — the only universally positive
-metric. The range spans from -8% (C++) to -39% (Rust):
+Lumen reduced cost in **all 9 languages** — the only universally positive
+metric. The range spans from -8% (C++) to -76% (Dart):
 
 | Language   | Baseline cost | With-Lumen cost | Delta      |
 | ---------- | ------------- | --------------- | ---------- |
+| Dart       | $0.634        | $0.153          | **-75.8%** |
 | Rust       | $0.611        | $0.375          | **-38.7%** |
 | JavaScript | $0.482        | $0.325          | **-32.6%** |
 | TypeScript | $0.186        | $0.136          | **-27.1%** |
@@ -319,12 +346,13 @@ metric. The range spans from -8% (C++) to -39% (Rust):
 
 ### 2. Output Token Reduction Is the Primary Driver
 
-In 7/8 languages, output tokens dropped — up to 66% for JavaScript. The one
+In 8/9 languages, output tokens dropped — up to 82% for Dart. The one
 exception is C++ where output tokens increased (+42%) due to more comprehensive
 code generation. Fewer output tokens means Claude explores less and acts more:
 
 | Language   | Baseline output | With-Lumen output | Delta      |
 | ---------- | --------------- | ----------------- | ---------- |
+| Dart       | 21,286          | 3,862             | **-81.9%** |
 | JavaScript | 14,286          | 4,872             | **-65.9%** |
 | TypeScript | 4,994           | 1,813             | **-63.7%** |
 | PHP        | 1,936           | 796               | **-58.9%** |
@@ -341,6 +369,7 @@ time reductions:
 
 | Language   | Baseline time | With-Lumen time | Delta      |
 | ---------- | ------------- | --------------- | ---------- |
+| Dart       | 246.1s        | 50.9s           | **-79.3%** |
 | JavaScript | 254.7s        | 119.3s          | **-53.2%** |
 | Rust       | 309.7s        | 204.0s          | **-34.1%** |
 | PHP        | 51.5s         | 34.0s           | **-34.0%** |
@@ -361,6 +390,7 @@ replaces other tool usage:
 | PHP        | 2                  | 7                        | 10                          |
 | Rust       | 2                  | 9                        | 22                          |
 | TypeScript | 1                  | 9                        | 6                           |
+| Dart       | —                  | 14                       | 61                          |
 | JavaScript | 2                  | 16                       | 18                          |
 | Go         | 3                  | 35                       | 51                          |
 | Ruby       | 10                 | 47                       | 53                          |
@@ -368,8 +398,8 @@ replaces other tool usage:
 
 ### 5. Zero Quality Regressions
 
-Lumen maintained patch quality in all 8 tasks. Two tasks achieved Perfect
-ratings (JavaScript, Python) — identical patches to the gold standard. Five
+Lumen maintained patch quality in all 9 tasks. Two tasks achieved Perfect
+ratings (JavaScript, Python) — identical patches to the gold standard. Six
 achieved Good ratings with correct fixes via different approaches. Even the
 one task too hard for either approach (Rust) showed no degradation — Lumen
 just made the failure 39% cheaper.
@@ -380,7 +410,7 @@ All benchmark artifacts — raw JSONL streams, patch diffs, metrics, and judge
 ratings — are committed to this repository. The benchmark framework is
 deterministic in setup (same commit, same issue, same tools) while allowing
 natural LLM variation in execution. The consistent direction of improvement
-across 8 independent language benchmarks validates that the results are
+across 9 independent language benchmarks validates that the results are
 reliable.
 
 ---
