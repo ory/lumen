@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.25](https://github.com/ory/lumen/compare/v0.0.24...v0.0.25) (2026-03-28)
+
+
+### Features
+
+* **chunker:** add Dart language support ([#69](https://github.com/ory/lumen/issues/69)) ([00a985b](https://github.com/ory/lumen/commit/00a985b5deca29a2a1c5b10143304b6d0ebb0f1f))
+
 ## [0.0.24](https://github.com/ory/lumen/compare/v0.0.23...v0.0.24) (2026-03-27)
 
 
