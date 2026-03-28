@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the core RFC violation by removing the `content-length: '0'` override, allowing the original content-length to pass through unchanged, and only strips the body. However, it uses a different approach than the gold patch: it keeps the `createMiddleware` structure (which has known issues with async handlers) rather than converting to a proper `Handler`-wrapping function. The candidate also adds a standalone test instead of enhancing the existing HEAD tests, but the test itself correctly validates both the content-length preservation and empty body requirements.

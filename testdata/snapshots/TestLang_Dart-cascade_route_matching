@@ -1,0 +1,9 @@
+results: 7
+cascade.dart:11-11  _ShouldCascade (type)
+cascade.dart:30-66  Cascade+Cascade.Cascade+Cascade._+Cascade.add (type)
+cascade.dart:74-87  Cascade+_computeShouldCascade (function)
+router.dart:230-244  Router (type)
+router.dart:265-270  Router (type)
+router_entry.dart:30-64  RouterEntry (type)
+router_entry.dart:85-96  RouterEntry+RouterEntry.match (type)
+

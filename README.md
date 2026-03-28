@@ -158,7 +158,7 @@ judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **11 language families** with semantic chunking (8 benchmarked):
+Supports **12 language families** with semantic chunking (9 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
@@ -166,6 +166,7 @@ Supports **11 language families** with semantic chunking (8 benchmarked):
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens     |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time           |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time           |
+| Dart             | tree-sitter | `.dart`                                   | Benchmarked: -76% cost, -82% tokens, -79% time |
 | Rust             | tree-sitter | `.rs`                                     | Benchmarked: -39% cost, -34% time             |
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time           |
@@ -175,7 +176,7 @@ Supports **11 language families** with semantic chunking (8 benchmarked):
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
-for all 8 per-language benchmark deep dives.
+for all 9 per-language benchmark deep dives.
 
 ## Configuration
 

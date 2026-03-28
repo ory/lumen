@@ -15,6 +15,11 @@ E2E test fixtures. They are used solely for testing purposes.
 - **spring-projects/spring-petclinic** (Apache 2.0) —
   https://github.com/spring-projects/spring-petclinic
 
+## Dart
+
+- **dart-lang/shelf** (BSD-3-Clause) — https://github.com/dart-lang/shelf
+  (commit 4d99e49fa9275bfa348a88c0ce066bfcd335f763)
+
 ## PHP
 
 - **laravel/framework** (MIT) — https://github.com/laravel/framework

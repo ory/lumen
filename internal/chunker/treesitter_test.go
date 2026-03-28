@@ -818,6 +818,7 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
 		".cs":   []byte("class Foo {}"),
+		".dart": []byte("void foo() {}"),
 		".md":   []byte("# Introduction\nSome content here.\n"),
 		".mdx":  []byte("# Introduction\nSome content here.\n"),
 		".yaml": []byte("foo: bar\n"),
@@ -1820,6 +1821,80 @@ func TestTreeSitterChunker_LeadingCommentsCapped(t *testing.T) {
 	if commentCount > 10 {
 		t.Errorf("captured %d comment lines, want ≤10", commentCount)
 	}
+}
+
+var sampleDartComprehensive = []byte(`
+void greet(String name) {
+  print('Hello, $name');
+}
+
+class Animal {
+  final String name;
+  Animal(this.name);
+
+  void speak() {
+    print('...');
+  }
+}
+
+mixin Swimming {
+  void swim() {
+    print('swimming');
+  }
+}
+
+enum Color { red, green, blue }
+
+extension StringHelper on String {
+  bool get isBlank => trim().isEmpty;
+}
+
+typedef IntCallback = void Function(int);
+
+abstract class Repository {
+  Future<void> save(Object entity);
+}
+`)
+
+func TestTreeSitterChunker_Dart_Comprehensive(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c, ok := langs[".dart"]
+	if !ok {
+		t.Fatal("missing chunker for .dart")
+	}
+
+	chunks, err := c.Chunk("sample.dart", sampleDartComprehensive)
+	if err != nil {
+		t.Fatalf("Chunk: %v", err)
+	}
+
+	bySymbolKind := make(map[string]map[string]bool)
+	for _, ch := range chunks {
+		if bySymbolKind[ch.Symbol] == nil {
+			bySymbolKind[ch.Symbol] = make(map[string]bool)
+		}
+		bySymbolKind[ch.Symbol][ch.Kind] = true
+	}
+
+	check := func(symbol, kind string) {
+		t.Helper()
+		kinds, ok := bySymbolKind[symbol]
+		if !ok || !kinds[kind] {
+			t.Errorf("missing chunk %q/%q (got: %v)", symbol, kind, symbolNames(chunks))
+		}
+	}
+
+	check("greet", "function")
+	check("Animal", "type")            // class_definition
+	check("Animal.speak", "method")    // method_signature in class
+	check("Swimming", "type")          // mixin_declaration
+	check("Swimming.swim", "method")   // method_signature in mixin
+	check("Color", "type")             // enum_declaration
+	check("StringHelper", "type")      // extension_declaration
+	check("StringHelper.isBlank", "method") // getter in extension
+	check("IntCallback", "type")       // type_alias
+	check("Repository", "type")        // abstract class
+	check("Animal.Animal", "function") // constructor
 }
 
 // mustPyChunker creates a Python TreeSitterChunker for use in tests.

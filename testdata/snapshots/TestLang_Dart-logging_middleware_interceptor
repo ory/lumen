@@ -1,0 +1,12 @@
+results: 10
+message.dart:48-53  Message (type)
+middleware.dart:28-28  Middleware (type)
+middleware.dart:49-53  createMiddleware (function)
+middleware_extensions.dart:8-15  MiddlewareExtensions+MiddlewareExtensions.addMiddleware+MiddlewareExtensions.addHandler (method)
+pipeline.dart:21-49  Pipeline+Pipeline.addMiddleware+Pipeline.middleware+_Pipeline+_Pipeline._Pipeline (type)
+router.dart:222-229  Router (type)
+router_entry.dart:53-64  RouterEntry+RouterEntry._ (type)
+router_entry.dart:106-110  RouterEntry (type)
+server_handler.dart:19-34  ServerHandler (type)
+server_handler.dart:42-47  ServerHandler+ServerHandler._onRequest (type)
+

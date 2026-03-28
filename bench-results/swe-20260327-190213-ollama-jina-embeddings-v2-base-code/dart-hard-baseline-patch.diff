@@ -1,0 +1,50 @@
+diff --git a/pkgs/shelf_router/lib/src/router.dart b/pkgs/shelf_router/lib/src/router.dart
+index 720d3c3..8613f01 100644
+--- a/pkgs/shelf_router/lib/src/router.dart
++++ b/pkgs/shelf_router/lib/src/router.dart
+@@ -58,11 +58,12 @@ extension RouterParams on Request {
+   }
+ }
+ 
+-/// Middleware to remove body from request.
++/// Middleware to remove body from HEAD requests.
++///
++/// Per RFC 9110 Section 9.3.2, HEAD and GET responses should be identical
++/// except for the body. The content-length header should reflect the size of
++/// the body that WOULD have been returned by a GET request.
+ final _removeBody = createMiddleware(responseHandler: (r) {
+-  if (r.headers.containsKey('content-length')) {
+-    r = r.change(headers: {'content-length': '0'});
+-  }
+   return r.change(body: <int>[]);
+ });
+ 
+diff --git a/pkgs/shelf_router/test/router_test.dart b/pkgs/shelf_router/test/router_test.dart
+index fdffa51..cb19c9c 100644
+--- a/pkgs/shelf_router/test/router_test.dart
++++ b/pkgs/shelf_router/test/router_test.dart
+@@ -204,4 +204,24 @@ void main() {
+     final b2 = await Router.routeNotFound.readAsString();
+     expect(b2, b1);
+   });
++
++  test('HEAD request should preserve content-length header per RFC 9110', () async {
++    var app = Router();
++
++    app.get('/hello', (Request request) {
++      // Explicitly set content-length header
++      return Response.ok('hello-world',
++          headers: {'content-length': '11'});
++    });
++
++    // Create a request with HEAD method
++    final headRequest = Request('HEAD', Uri.parse('http://localhost/hello'));
++    final headResponse = await app(headRequest);
++
++    // Per RFC 9110 Section 9.3.2, the content-length should be preserved
++    expect(headResponse.headers['content-length'], '11');
++
++    // Verify that the body is empty
++    expect(await headResponse.readAsString(), isEmpty);
++  });
+ }

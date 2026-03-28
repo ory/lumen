@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/alexaandru/go-sitter-forest/dart v1.9.4
 	github.com/bradleyjkemp/cupaloy/v2 v2.8.0
 	github.com/gofrs/flock v0.13.0
 	github.com/pterm/pterm v0.12.83
