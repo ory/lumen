@@ -151,7 +151,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	tr.record("path resolution", indexRoot)
 
 	// Span 2: indexer setup
-	idx, err := setupIndexer(&cfg, indexRoot, nil)
+	dbPath := config.DBPathForProject(indexRoot, cfg.Model)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return fmt.Errorf("create db directory: %w", err)
+	}
+	idx, err := setupIndexer(&cfg, dbPath, nil)
 	if err != nil {
 		return fmt.Errorf("setup indexer: %w", err)
 	}

@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ory/lumen/internal/config"
 )
 
 func TestTracer_DisabledIsNoop(t *testing.T) {
@@ -106,6 +110,43 @@ func TestSearchCmd_FlagsRegistered(t *testing.T) {
 			t.Fatalf("search cmd missing flag --%s", name)
 		}
 	}
+}
+
+// TestSetupIndexer_DBPathVsDirectory is a regression test for
+// https://github.com/ory/lumen/issues/72.
+//
+// runSearch previously passed the raw indexRoot directory to setupIndexer
+// instead of the computed DB file path. SQLite cannot open a directory and
+// returns an error containing "PRAGMA journal_mode=WAL".
+//
+// Red: passing the directory directly must fail with a SQLite error.
+// Green: passing config.DBPathForProject(dir, model) must succeed.
+func TestSetupIndexer_DBPathVsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	// RED: directory path → SQLite PRAGMA error (the pre-fix behaviour).
+	_, dirErr := setupIndexer(&cfg, dir, nil)
+	if dirErr == nil {
+		t.Fatal("expected error when passing a directory as the db path, got nil")
+	}
+	if !strings.Contains(dirErr.Error(), "PRAGMA") && !strings.Contains(dirErr.Error(), "unable to open") {
+		t.Fatalf("expected SQLite open error, got: %v", dirErr)
+	}
+
+	// GREEN: proper db file path → no error.
+	dbPath := config.DBPathForProject(dir, cfg.Model)
+	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
+		t.Fatalf("MkdirAll: %v", mkErr)
+	}
+	idx, err := setupIndexer(&cfg, dbPath, nil)
+	if err != nil {
+		t.Fatalf("setupIndexer with db path failed: %v", err)
+	}
+	_ = idx.Close()
 }
 
 func TestSearchCmd_TraceSpanLabels(t *testing.T) {

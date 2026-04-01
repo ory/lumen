@@ -31,6 +31,9 @@ runtime behavior for this repository outside the Claude plugin install path.
 - **E2E tests**: `go test -tags e2e ./...` (requires Ollama/LM Studio running)
 - **All tests must pass before commit**
 - Coverage tracked but not enforced
+- **TDD required**: All features and bug fixes must follow red/green TDD — write
+  a failing test that demonstrates the bug or specifies the feature first, then
+  make it pass with the implementation.
 
 ### Linting & Errors
 
