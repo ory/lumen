@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.26](https://github.com/ory/lumen/compare/v0.0.25...v0.0.26) (2026-04-01)
+
+
+### Bug Fixes
+
+* **search:** pass db file path instead of directory to setupIndexer ([#75](https://github.com/ory/lumen/issues/75)) ([81cb4db](https://github.com/ory/lumen/commit/81cb4dbdbaff09713a38dfb28635805199c6d97b))
+
 ## [0.0.25](https://github.com/ory/lumen/compare/v0.0.24...v0.0.25) (2026-03-28)
 
 
