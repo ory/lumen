@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.27](https://github.com/ory/lumen/compare/v0.0.26...v0.0.27) (2026-04-02)
+
+
+### Features
+
+* add LUMEN_EMBED_DIMS/LUMEN_EMBED_CTX env vars for custom models ([#80](https://github.com/ory/lumen/issues/80)) ([2b124b1](https://github.com/ory/lumen/commit/2b124b1664086ad34a177b78906e26387bac789d))
+
 ## [0.0.26](https://github.com/ory/lumen/compare/v0.0.25...v0.0.26) (2026-04-01)
 
 
