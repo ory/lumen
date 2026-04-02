@@ -44,6 +44,7 @@ func TestKnownModels(t *testing.T) {
 	}
 }
 
+
 func TestDefaultModelInRegistry(t *testing.T) {
 	if _, ok := KnownModels[DefaultModel]; !ok {
 		t.Errorf("DefaultModel %q is not in KnownModels", DefaultModel)
