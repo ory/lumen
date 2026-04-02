@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.28](https://github.com/ory/lumen/compare/v0.0.27...v0.0.28) (2026-04-02)
+
+
+### Features
+
+* **config:** add LUMEN_EMBED_DIMS/LUMEN_EMBED_CTX escape hatch for custom models ([#88](https://github.com/ory/lumen/issues/88)) ([29ad682](https://github.com/ory/lumen/commit/29ad682a5decb37193aab2d179e0d055635be88d))
+
+
+### Bug Fixes
+
+* **index:** prevent triple indexing when non-git parent contains git repos ([#81](https://github.com/ory/lumen/issues/81)) ([adf4e54](https://github.com/ory/lumen/commit/adf4e5488ae342bb0a616349a8c990a18879eed0))
+* skip permission-denied files instead of aborting index/search ([#84](https://github.com/ory/lumen/issues/84)) ([fde97b4](https://github.com/ory/lumen/commit/fde97b4dd15218eb3b56bb8a6d3619a7b5cfb830))
+
 ## [0.0.27](https://github.com/ory/lumen/compare/v0.0.26...v0.0.27) (2026-04-02)
 
 
