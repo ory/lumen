@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.29](https://github.com/ory/lumen/compare/v0.0.28...v0.0.29) (2026-04-03)
+
+
+### Features
+
+* **index:** reuse ancestor index for non-git subdirectories ([3f89427](https://github.com/ory/lumen/commit/3f89427e965207a2718e893deaadcf7cbdd8a87f))
+
+
+### Bug Fixes
+
+* **test:** resolve symlinks in e2e test paths for macOS compatibility ([fca3aec](https://github.com/ory/lumen/commit/fca3aec7dfef0bff40db0be033d6667dbe62c50a))
+
 ## [0.0.28](https://github.com/ory/lumen/compare/v0.0.27...v0.0.28) (2026-04-02)
 
 
