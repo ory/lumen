@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.30](https://github.com/ory/lumen/compare/v0.0.29...v0.0.30) (2026-04-05)
+
+
+### Features
+
+* align Lumen packaging across Codex, Cursor, and OpenCode ([#73](https://github.com/ory/lumen/issues/73)) ([665c8db](https://github.com/ory/lumen/commit/665c8db8eef8f8d3b9b48e6f0781af766106e0b1))
+
+
+### Bug Fixes
+
+* **e2e:** add LUMEN_REINDEX_TIMEOUT to prevent premature search during indexing ([1131bbb](https://github.com/ory/lumen/commit/1131bbb4203743357d0ca9de79a81c9dc90c6af6))
+* **e2e:** increase reindex timeout to 10m for PHP fixture set ([19e6b83](https://github.com/ory/lumen/commit/19e6b83dd9486b3baef2d52aa84621366bd30253))
+* prevent Search() from blocking during indexing by using separate read connection ([bdb837a](https://github.com/ory/lumen/commit/bdb837a46a1123a73608c6b84e886d949052461a)), closes [#94](https://github.com/ory/lumen/issues/94)
+* use query_only pragma instead of read-only mode for WAL compatibility ([34e5123](https://github.com/ory/lumen/commit/34e5123d8770e37d4c6b8732b95e507ec4fd0563))
+
 ## [0.0.29](https://github.com/ory/lumen/compare/v0.0.28...v0.0.29) (2026-04-03)
 
 
