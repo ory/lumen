@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.31](https://github.com/ory/lumen/compare/v0.0.30...v0.0.31) (2026-04-06)
+
+
+### Features
+
+* **config:** resolve ModelAliases before KnownModels lookup ([08989a4](https://github.com/ory/lumen/commit/08989a401ddf9879930d0eddcb0a70ffbd215ec2))
+
+
+### Bug Fixes
+
+* harden concurrent indexer lifecycle (close cancellation, reindex dedup, reader consistency) ([e943a79](https://github.com/ory/lumen/commit/e943a7980fdce68c35fcbf7dfad16c17d856a793))
+* **mcp:** rename n_results to limit in semantic_search tool ([ca74157](https://github.com/ory/lumen/commit/ca74157885694100e3352747b478ef7a9ca92527))
+
 ## [0.0.30](https://github.com/ory/lumen/compare/v0.0.29...v0.0.30) (2026-04-05)
 
 
