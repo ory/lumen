@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.32](https://github.com/ory/lumen/compare/v0.0.31...v0.0.32) (2026-04-07)
+
+
+### Bug Fixes
+
+* **opencode:** invoke run.cmd directly instead of wrapping with sh ([f3fd945](https://github.com/ory/lumen/commit/f3fd945878f3bd3e97cd5c01be54fd82eba5401c))
+
 ## [0.0.31](https://github.com/ory/lumen/compare/v0.0.30...v0.0.31) (2026-04-06)
 
 
