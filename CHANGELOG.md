@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.0.32](https://github.com/ory/lumen/compare/v0.0.31...v0.0.32) (2026-04-08)
+
+
+### Features
+
+* **config:** add ConfigService with koanf defaults, YAML, env, validation, and hot reload ([e0eee81](https://github.com/ory/lumen/commit/e0eee812186dc37a9766afa890bd63204c89600c))
+* **config:** add XDGConfigDir and DefaultConfigPath helpers ([dcf72f8](https://github.com/ory/lumen/commit/dcf72f836b0f393246bbf35669217f379a702c28))
+* download fallback to latest release + cross-platform CI ([#112](https://github.com/ory/lumen/issues/112)) ([a2e3701](https://github.com/ory/lumen/commit/a2e3701604c8cc673f5167fd13c37c482aaddf98))
+* **embedder:** add FailoverEmbedder with health-check-based server failover ([7f8009c](https://github.com/ory/lumen/commit/7f8009ce1f4ba7fe9e786e1a77cb873de68ef21e))
+* **embedder:** detect config hot-reload in FailoverEmbedder and add e2e config tests ([d06743f](https://github.com/ory/lumen/commit/d06743fbc7accf52e1e18b2abc850fdadcb9e1e8))
+
+
+### Bug Fixes
+
+* broken commit version ([fd5ba7e](https://github.com/ory/lumen/commit/fd5ba7eb378267e2b41eb778381c5d1ddc264ef4))
+* **ci:** skip config dir watch when directory absent, add return after t.Fatal ([1d34021](https://github.com/ory/lumen/commit/1d340216ea86155f8f61b3a914281cc20aeab0a7))
+* **config:** add blank assignments for Close() errors, lock Watch/Stop fields, improve doc comments ([0bd24bd](https://github.com/ory/lumen/commit/0bd24bd262ea8d915f143c2b18cdc5ba8154dbd9))
+* **config:** stabilize backend/model resolution and model-aware stdio cache ([4c0617e](https://github.com/ory/lumen/commit/4c0617e2133d3e31d3bc03912cc2b7b8bbba6d34))
+* **e2e:** replace removed config.EnvOrDefault with inline os.Getenv ([f49cac8](https://github.com/ory/lumen/commit/f49cac8c0b7ea272ac7f8e74ef36072bd5e129a1))
+* **embedder:** propagate ensureEmbedder error in initServers to prevent nil dereference ([694b5d4](https://github.com/ory/lumen/commit/694b5d4fe1c9269786ee8d99de232d011a6e5932))
+* **opencode:** invoke run.cmd directly instead of wrapping with sh ([f3fd945](https://github.com/ory/lumen/commit/f3fd945878f3bd3e97cd5c01be54fd82eba5401c))
+* **scripts:** skip download in stdio mode on Windows ([d827d4d](https://github.com/ory/lumen/commit/d827d4d6b05841dfe09b92b00f3fb7a43552d9f6))
+* **scripts:** skip download in stdio mode to prevent MCP connection race ([54df9b5](https://github.com/ory/lumen/commit/54df9b53a138ba8e181e58adc84f4da13886aa52))
+* **search:** resolve index root from search path, not cwd ([47cb457](https://github.com/ory/lumen/commit/47cb4577fde1bbdd81a17920a81ad1cb26c993ae)), closes [#97](https://github.com/ory/lumen/issues/97)
+
 ## [0.0.31](https://github.com/ory/lumen/compare/v0.0.30...v0.0.31) (2026-04-06)
 
 
