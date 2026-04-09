@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.33](https://github.com/ory/lumen/compare/v0.0.32...v0.0.33) (2026-04-09)
+
+
+### Bug Fixes
+
+* run.sh env defaults override user config file ([8082075](https://github.com/ory/lumen/commit/8082075db94f5d60000266ec1604aaa6ebfdaee7))
+
 ## [0.0.32](https://github.com/ory/lumen/compare/v0.0.31...v0.0.32) (2026-04-08)
 
 
