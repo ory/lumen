@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.34](https://github.com/ory/lumen/compare/v0.0.33...v0.0.34) (2026-04-09)
+
+
+### Bug Fixes
+
+* **ci:** configure npm trusted publishing for OIDC auth ([95c476e](https://github.com/ory/lumen/commit/95c476e6196d9a6208414c1bce506f9349e2a51b))
+* **ci:** restore Windows MCP server support and add cross-platform script tests ([b66a339](https://github.com/ory/lumen/commit/b66a339aa9b3cc1e253bbf67aea04690a6021a79))
+
 ## [0.0.33](https://github.com/ory/lumen/compare/v0.0.32...v0.0.33) (2026-04-09)
 
 
