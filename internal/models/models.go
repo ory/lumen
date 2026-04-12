@@ -59,12 +59,13 @@ func DimensionAwareMinScore(dims int) float64 {
 
 // KnownModels maps model names to their specifications.
 var KnownModels = map[string]ModelSpec{
-	"ordis/jina-embeddings-v2-base-code": {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.35},
-	"nomic-embed-text":                   {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.30},
-	"nomic-ai/nomic-embed-code-GGUF":     {Dims: 3584, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.15},
-	"qwen3-embedding:8b":                 {Dims: 4096, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
-	"qwen3-embedding:4b":                 {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
-	"qwen3-embedding:0.6b":               {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
-	"all-minilm":                         {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
-	"manutic/nomic-embed-code:7b":        {Dims: 3584, CtxLength: 32768, Backend: "ollama", MinScore: 0.15},
+	"ordis/jina-embeddings-v2-base-code":  {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.35},
+	"nomic-embed-text":                    {Dims: 768, CtxLength: 8192, Backend: "ollama", MinScore: 0.30},
+	"nomic-ai/nomic-embed-code-GGUF":      {Dims: 3584, CtxLength: 8192, Backend: "lmstudio", MinScore: 0.15},
+	"qwen3-embedding:8b":                  {Dims: 4096, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
+	"qwen3-embedding:4b":                  {Dims: 2560, CtxLength: 40960, Backend: "ollama", MinScore: 0.30},
+	"qwen3-embedding:0.6b":                {Dims: 1024, CtxLength: 32768, Backend: "ollama", MinScore: 0.30},
+	"all-minilm":                          {Dims: 384, CtxLength: 512, Backend: "ollama", MinScore: 0.20},
+	"manutic/nomic-embed-code:7b":         {Dims: 3584, CtxLength: 32768, Backend: "ollama", MinScore: 0.15},
+	"text-embedding-voyage-4-nano":        {Dims: 1024, CtxLength: 2048, Backend: "lmstudio", MinScore: 0.30},
 }

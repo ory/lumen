@@ -252,6 +252,7 @@ func TestGenerateSessionContextInternal_SpawnsWhenNoDB(t *testing.T) {
 func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	cfg, err := config.NewConfigService("")
 	if err != nil {
@@ -332,6 +333,7 @@ func TestGenerateSessionContextInternal_NormalizesToGitRoot(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	// Create a git repo with a subdirectory.
 	repoDir := filepath.Join(t.TempDir(), "repo")
@@ -384,6 +386,7 @@ func TestGenerateSessionContextInternal_NormalizesToGitRoot(t *testing.T) {
 func TestGenerateSessionContextInternal_NonGitUsesParentIndex(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
 	// Create a non-git directory hierarchy.
 	parentDir := filepath.Join(tmpDir, "parent")

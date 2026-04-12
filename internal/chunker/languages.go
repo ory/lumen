@@ -44,6 +44,7 @@ var supportedExtensions = []string{
 	".php",
 	".cs",
 	".dart",
+	".svelte",
 	".md", ".mdx",
 	".yaml", ".yml", ".json",
 }
@@ -249,6 +250,31 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		},
 	})
 
+	// svelteTS reuses the TypeScript grammar for script block injection.
+	// It is intentionally a separate instance so its Language pointer is
+	// the same *sitter.Language used elsewhere for .ts files.
+	svelteTS := mustTreeSitterChunker(LanguageDef{
+		Language: sitter_ts.GetLanguage(),
+		Queries: []QueryDef{
+			{Pattern: `(export_statement (lexical_declaration (variable_declarator name: (identifier) @name))) @decl`, Kind: "const"},
+			{Pattern: `(function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(abstract_class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(interface_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
+			{Pattern: `(type_alias_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(method_definition name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(method_signature name: (property_identifier) @name) @decl`, Kind: "method"},
+			{Pattern: `(internal_module name: (identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(ambient_declaration (function_signature name: (identifier) @name)) @decl`, Kind: "function"},
+		},
+	})
+
+	svelte := NewSvelteChunker(svelteTS)
+
 	dart := mustTreeSitterChunker(LanguageDef{
 		Language: sitter.NewLanguage(sitter_dart.GetLanguage()),
 		Queries: []QueryDef{
@@ -293,8 +319,9 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".hpp":  cpp,
 		".php":  php,
 		".cs":   cs,
-		".dart": dart,
-		".md":   md,
+		".dart":   dart,
+		".svelte": svelte,
+		".md":     md,
 		".mdx":  md,
 		".yaml": structured,
 		".yml":  structured,
