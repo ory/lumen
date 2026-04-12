@@ -157,42 +157,45 @@ assert_eq "pre-release version preserved" \
   "$(printf '{\n  ".": "0.0.1-alpha.4"\n}\n' | grep '"[.]"' | sed 's/.*"[^"]*"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/v\1/')"
 
 echo ""
-echo "=== stdio early-exit guard tests ==="
+echo "=== stdio download-on-first-run integration test ==="
 
-# Mirrors the guard condition in run.sh: first arg == "stdio" → early exit
-stdio_guard_fires() {
-  [ "${1:-}" = "stdio" ]
-}
+# Verifies that run.sh does NOT fast-exit when called with 'stdio' and no
+# binary present. It should fall through to the download path instead.
+# curl is stubbed in PATH so no real network calls are made.
+(
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TMPROOT="$(mktemp -d)"
+  _FAKE_CURL_DIR="$(mktemp -d)"
+  trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR"' EXIT
 
-if stdio_guard_fires "stdio"; then
-  ok "stdio guard fires for 'stdio' arg"
-else
-  fail "stdio guard fires for 'stdio' arg" "true" "false"
-fi
+  printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
+  mkdir -p "${_TMPROOT}/bin"
 
-if ! stdio_guard_fires "index"; then
-  ok "stdio guard does not fire for 'index' arg"
-else
-  fail "stdio guard does not fire for 'index' arg" "false" "true"
-fi
+  # Stub: write a minimal executable to the -o destination and succeed
+  cat > "${_FAKE_CURL_DIR}/curl" <<'FAKECURL'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) mkdir -p "$(dirname "$2")"; printf '#!/usr/bin/env bash\nexit 0\n' > "$2"; chmod +x "$2"; shift 2 ;;
+    *)  shift ;;
+  esac
+done
+exit 0
+FAKECURL
+  chmod +x "${_FAKE_CURL_DIR}/curl"
 
-if ! stdio_guard_fires "hook"; then
-  ok "stdio guard does not fire for 'hook' arg"
-else
-  fail "stdio guard does not fire for 'hook' arg" "false" "true"
-fi
+  EXIT_CODE=0
+  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" PATH="${_FAKE_CURL_DIR}:${PATH}" \
+    bash "${_SCRIPT_DIR}/run.sh" stdio >/dev/null 2>&1 || EXIT_CODE=$?
 
-if ! stdio_guard_fires ""; then
-  ok "stdio guard does not fire for empty arg"
-else
-  fail "stdio guard does not fire for empty arg" "false" "true"
-fi
-
-if ! stdio_guard_fires; then
-  ok "stdio guard does not fire for no args"
-else
-  fail "stdio guard does not fire for no args" "false" "true"
-fi
+  if [ "$EXIT_CODE" -eq 1 ]; then
+    echo "  FAIL: run.sh stdio with missing binary should attempt download, not exit 1"
+    echo "        expected: exit code != 1"
+    echo "        got:      exit code 1 (fast-fail still present)"
+    exit 1
+  fi
+  echo "  PASS: run.sh stdio with missing binary attempts download instead of fast-failing"
+) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
 
 echo ""
 echo "=== GitHub API tag parsing tests ==="

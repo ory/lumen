@@ -24,13 +24,6 @@ set "BINARY=%PLUGIN_ROOT%\bin\lumen-windows-%ARCH%.exe"
 
 :: Download on first run if binary is missing
 if not exist "%BINARY%" (
-  :: MCP stdio mode: fail fast if binary missing — the SessionStart hook
-  :: downloads the binary, so by the time stdio is retried it will be ready.
-  if "%~1"=="stdio" (
-    echo Binary not yet downloaded; waiting for SessionStart hook to complete. >&2
-    exit /b 1
-  )
-
   set "REPO=ory/lumen"
 
   :: Always use the version pinned in the manifest — keeps plugin and binary in sync
