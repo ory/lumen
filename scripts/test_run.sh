@@ -197,6 +197,37 @@ FAKECURL
   echo "  PASS: run.sh stdio with missing binary attempts download instead of fast-failing"
 ) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
 
+# Verifies that run.sh stdio exits cleanly when the binary appears during the
+# poll window (simulating the SessionStart hook delivering the binary).
+(
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TMPROOT="$(mktemp -d)"
+  trap 'rm -rf "$_TMPROOT"' EXIT
+
+  printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
+  mkdir -p "${_TMPROOT}/bin"
+
+  OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  ARCH_RAW="$(uname -m)"
+  case "$ARCH_RAW" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; *) ARCH="$ARCH_RAW" ;; esac
+  _BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}"
+
+  # Simulate SessionStart hook: write the binary after a short delay
+  ( sleep 2; printf '#!/usr/bin/env bash\nexit 0\n' > "$_BINARY"; chmod +x "$_BINARY" ) &
+  _HOOK_PID=$!
+
+  EXIT_CODE=0
+  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" \
+    bash "${_SCRIPT_DIR}/run.sh" stdio >/dev/null 2>&1 || EXIT_CODE=$?
+  wait "$_HOOK_PID" 2>/dev/null || true
+
+  if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "  FAIL: run.sh stdio should exec binary once hook delivers it (exit $EXIT_CODE)"
+    exit 1
+  fi
+  echo "  PASS: run.sh stdio polls and execs binary once SessionStart hook delivers it"
+) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
+
 echo ""
 echo "=== GitHub API tag parsing tests ==="
 

@@ -24,6 +24,24 @@ set "BINARY=%PLUGIN_ROOT%\bin\lumen-windows-%ARCH%.exe"
 
 :: Download on first run if binary is missing
 if not exist "%BINARY%" (
+  :: In stdio mode poll for the SessionStart hook to finish downloading
+  :: rather than blocking with a curl download ourselves.
+  if "%~1"=="stdio" (
+    set "_waited=0"
+    :poll_loop
+    if exist "%BINARY%" goto poll_done
+    if !_waited! GEQ 30 goto poll_done
+    ping -n 2 127.0.0.1 >nul
+    set /a "_waited+=1"
+    goto poll_loop
+    :poll_done
+    if exist "%BINARY%" (
+      "%BINARY%" %*
+      exit /b %ERRORLEVEL%
+    )
+    :: Binary still missing after 30 s — fall through and download it now
+  )
+
   set "REPO=ory/lumen"
 
   :: Always use the version pinned in the manifest — keeps plugin and binary in sync
