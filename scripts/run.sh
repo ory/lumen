@@ -29,22 +29,6 @@ done
 if [ -z "$BINARY" ]; then
   BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
 
-  # In stdio mode the MCP server and SessionStart hook start concurrently.
-  # Poll for the hook to finish downloading rather than doing it ourselves —
-  # this keeps the process alive so Claude Code doesn't time out waiting for
-  # the MCP initialise handshake.
-  if [ "${1:-}" = "stdio" ]; then
-    _waited=0
-    while [ $_waited -lt 30 ] && [ ! -x "$BINARY" ]; do
-      sleep 1
-      _waited=$((_waited + 1))
-    done
-    if [ -x "$BINARY" ]; then
-      exec "$BINARY" "$@"
-    fi
-    # Binary still missing after 30 s — fall through and download it now
-  fi
-
   REPO="ory/lumen"
 
   # Always use the version pinned in the manifest — keeps plugin and binary in sync
