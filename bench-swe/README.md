@@ -85,6 +85,7 @@ git diff BASE_COMMIT FIX_COMMIT > /path/to/bench-swe/patches/lang-hard.patch
 | Rust       | BurntSushi/ripgrep, tokio-rs/tokio              |
 | Ruby       | rails/rails, jekyll/jekyll                      |
 | Java       | spring-projects/spring-boot, google/guava       |
+| Kotlin     | ktorio/ktor, JetBrains/Exposed                  |
 | C          | redis/redis, curl/curl                          |
 | C++        | nlohmann/json, opencv/opencv                    |
 | PHP        | laravel/framework, symfony/symfony              |

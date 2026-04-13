@@ -17,7 +17,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -47,11 +46,6 @@ var indexCmd = &cobra.Command{
 }
 
 func runIndex(cmd *cobra.Command, args []string) error {
-	logger, logFile := newDebugLogger()
-	if logFile != nil {
-		defer func() { _ = logFile.Close() }()
-	}
-
 	if err := applyModelFlag(cmd); err != nil {
 		return err
 	}
@@ -85,55 +79,36 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	// only contain "loose" files not belonging to any nested repo).
 	for _, repo := range git.DiscoverNestedGitRepos(projectPath) {
 		p := tui.NewProgress(os.Stderr)
+		defer p.RestoreCursor()
 		p.Info(fmt.Sprintf("Indexing nested repo %s", repo))
-		stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, repo, p, logger)
+		stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, repo, p)
 		switch {
 		case err != nil:
-			logger.Error("indexing nested repo failed", "repo", repo, "err", err)
 			fmt.Fprintf(os.Stderr, "Warning: failed to index nested repo %s: %v\n", repo, err)
 		case skipped:
-			logger.Info("index skipped: another indexer is already running", "project", repo)
 			fmt.Fprintf(os.Stderr, "Skipping %s: another indexer is already running.\n", repo)
 		default:
-			logger.Info("nested repo indexed", "project", repo,
-				"indexed_files", stats.IndexedFiles, "chunks_created", stats.ChunksCreated,
-				"elapsed", elapsed.String())
 			fmt.Printf("Nested repo %s: %d files, %d chunks in %s.\n", repo, stats.IndexedFiles, stats.ChunksCreated, elapsed)
 		}
 	}
 
 	p := tui.NewProgress(os.Stderr)
+	defer p.RestoreCursor()
 	dims := cfg.ServerDims(0)
-	logger.Info("indexing started", "project", projectPath, "model", modelName, "dims", dims)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, modelName, dims))
-	stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, projectPath, p, logger)
+	stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, projectPath, p)
 	if err != nil {
-		logger.Error("indexing failed", "project", projectPath, "err", err)
 		return err
 	}
 	if skipped {
-		logger.Info("index skipped: another indexer is already running", "project", projectPath)
 		fmt.Fprintln(os.Stderr, "Another indexer is already running for this project. Skipping.")
 		return nil
 	}
 
 	if stats.Reason == "already fresh" {
-		logger.Info("index already fresh", "project", projectPath, "elapsed", elapsed.String())
+		fmt.Printf("Index already fresh: %s\n", elapsed)
 	} else {
-		logger.Info("indexing complete",
-			"project", projectPath,
-			"reason", stats.Reason,
-			"total_files", stats.TotalFiles,
-			"files_unchanged", stats.TotalFiles-stats.FilesChanged,
-			"files_added", stats.FilesAdded,
-			"files_modified", stats.FilesModified,
-			"files_removed", stats.FilesRemoved,
-			"indexed_files", stats.IndexedFiles,
-			"chunks_created", stats.ChunksCreated,
-			"old_root_hash", stats.OldRootHash,
-			"new_root_hash", stats.NewRootHash,
-			"elapsed", elapsed.String(),
-		)
+		fmt.Printf("Indexing complete: %d files, %d chunks in %s.\n", stats.IndexedFiles, stats.ChunksCreated, elapsed)
 	}
 	if stats.Reason != "" {
 		fmt.Printf("Reason: %s\n", stats.Reason)
@@ -168,19 +143,18 @@ func applyModelFlag(cmd *cobra.Command) error {
 }
 
 // setupIndexer receives dbPath so it is computed exactly once in runIndex.
-func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath string, logger *slog.Logger) (*index.Indexer, error) {
+func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath string) (*index.Indexer, error) {
 	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens())
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}
-	idx.SetLogger(logger)
 	return idx, nil
 }
 
 // runIndexer acquires the index lock for projectPath, runs performIndexing, and
 // returns the stats and elapsed time. skipped is true when another indexer holds
 // the lock. err is nil if indexing was cancelled by a signal.
-func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.FailoverEmbedder, projectPath string, p *tui.Progress, logger *slog.Logger) (stats index.Stats, elapsed time.Duration, skipped bool, err error) {
+func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.FailoverEmbedder, projectPath string, p *tui.Progress) (stats index.Stats, elapsed time.Duration, skipped bool, err error) {
 	dbPath := config.DBPathForProject(projectPath, emb.ModelName())
 	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
 		err = fmt.Errorf("create db directory: %w", mkErr)
@@ -204,7 +178,7 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	idx, setupErr := setupIndexer(cfg, emb, dbPath, logger)
+	idx, setupErr := setupIndexer(cfg, emb, dbPath)
 	if setupErr != nil {
 		err = setupErr
 		return
@@ -216,7 +190,6 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	elapsed = time.Since(start).Round(time.Millisecond)
 	if err != nil && ctx.Err() != nil {
 		// A signal arrived; treat as clean exit.
-		logger.Info("indexing cancelled by signal", "project", projectPath)
 		err = nil
 	}
 	return

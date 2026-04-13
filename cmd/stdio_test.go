@@ -123,7 +123,6 @@ func TestIndexerCache_ConcurrentReads(t *testing.T) {
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      newTestConfigService(t, 2048),
-		log:      discardLog,
 	}
 
 	const goroutines = 20
@@ -267,7 +266,6 @@ func TestIndexerCache_GetOrCreate_ReusesParentIndex(t *testing.T) {
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      newTestConfigService(t, 512),
-		log:      discardLog,
 	}
 
 	// First call: index the parent directory — creates an indexer and DB on disk.
@@ -331,7 +329,6 @@ func TestIndexerCache_GetOrCreate_FastPathEffectiveRoot(t *testing.T) {
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      newTestConfigService(t, 512),
-		log:      discardLog,
 	}
 
 	parentDir := filepath.Join(tmpDir, "project")
@@ -375,7 +372,6 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 	ic := &indexerCache{
 		embedder: emb,
 		cfg:      newTestConfigService(t, 512),
-		log:      discardLog,
 	}
 
 	idxA, rootA, _, err := ic.getOrCreate(projectDir, "")
@@ -505,7 +501,6 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      newTestConfigService(t, 512),
-		log:      discardLog,
 	}
 
 	// cwd=parentRepo is passed as preferredRoot (the outer monorepo).
@@ -1101,7 +1096,6 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
 		cfg:      newTestConfigService(t, 512),
-		log:      discardLog,
 	}
 
 	idx, effectiveRoot, _, err := ic.getOrCreate(projectPath, "")
@@ -1904,7 +1898,6 @@ func TestEnsureIndexed_DeduplicatesInProcessGoroutines(t *testing.T) {
 		},
 		reindexTimeout: 200 * time.Millisecond,
 		freshnessTTL:   1 * time.Nanosecond,
-		log:            discardLog,
 		closeCtx:       closeCtx,
 		closeFn:        closeFn,
 		ensureFreshFunc: func(ctx context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
@@ -1982,7 +1975,6 @@ func TestIndexerCache_CloseCancelsBackgroundGoroutines(t *testing.T) {
 		},
 		reindexTimeout: 200 * time.Millisecond,
 		freshnessTTL:   1 * time.Nanosecond,
-		log:            discardLog,
 		closeCtx:       closeCtx,
 		closeFn:        closeFn,
 		ensureFreshFunc: func(ctx context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {

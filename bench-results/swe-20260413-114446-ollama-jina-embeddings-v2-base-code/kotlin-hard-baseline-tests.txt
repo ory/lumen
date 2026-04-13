@@ -1,0 +1,84 @@
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors
+> Task :buildSrc:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :buildSrc:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :buildSrc:compilePluginsBlocks UP-TO-DATE
+> Task :buildSrc:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :buildSrc:generateScriptPluginAdapters UP-TO-DATE
+> Task :buildSrc:compileKotlin UP-TO-DATE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :
+warning: Dokka Gradle plugin V1 is deprecated
+    
+    Dokka Gradle plugin V1 is deprecated, and will be removed in Dokka version 2.1.0
+    Please migrate to Dokka Gradle plugin V2. This will require updating your project.
+    To learn about migrating read the migration guide https://kotl.in/dokka-gradle-migration
+    
+    To start migrating to Dokka Gradle plugin V2 add
+        org.jetbrains.dokka.experimental.gradle.pluginMode=V2EnabledWithHelpers
+    into your project's `gradle.properties` file.
+    
+    We would appreciate your feedback!
+     - Please report any feedback or problems https://kotl.in/dokka-issues
+     - Chat with the community visit #dokka in https://kotlinlang.slack.com/ (To sign up visit https://kotl.in/slack)
+    
+Project is using Kotlin Gradle plugin version: 2.1.20
+
+> Task :kotlinx-serialization-json-okio:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kotlinx-serialization-json-io:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kotlinx-serialization-json-tests:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kotlinx-serialization-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kotlinx-serialization-json:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kotlinx-serialization-json-io:jvmProcessResources NO-SOURCE
+> Task :kotlinx-serialization-json:jvmProcessResources NO-SOURCE
+> Task :kotlinx-serialization-json-okio:jvmProcessResources NO-SOURCE
+> Task :kotlinx-serialization-json-io:processJvmMainResources SKIPPED
+> Task :kotlinx-serialization-json:processJvmMainResources SKIPPED
+> Task :kotlinx-serialization-json-okio:processJvmMainResources SKIPPED
+> Task :kotlinx-serialization-json-tests:compileKotlinJvm NO-SOURCE
+> Task :kotlinx-serialization-json-tests:compileJvmMainJava NO-SOURCE
+> Task :kotlinx-serialization-json-tests:jvmProcessResources NO-SOURCE
+> Task :kotlinx-serialization-json-tests:processJvmMainResources SKIPPED
+> Task :kotlinx-serialization-json-tests:jvmMainClasses UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:jvmJar UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:jvmTestProcessResources UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:processJvmTestResources SKIPPED
+> Task :kotlinx-serialization-json-tests:koverFindJar UP-TO-DATE
+> Task :kotlinx-serialization-core:compileKotlinJvm UP-TO-DATE
+> Task :kotlinx-serialization-core:compileJvmMainJava NO-SOURCE
+> Task :kotlinx-serialization-core:compileKotlinJvmModule UP-TO-DATE
+> Task :kotlinx-serialization-core:jvmProcessResources NO-SOURCE
+> Task :kotlinx-serialization-core:processJvmMainResources SKIPPED
+> Task :kotlinx-serialization-core:jvmMainClasses UP-TO-DATE
+> Task :kotlinx-serialization-core:jvmJar UP-TO-DATE
+> Task :kotlinx-serialization-json:compileKotlinJvm UP-TO-DATE
+> Task :kotlinx-serialization-json:compileJvmMainJava NO-SOURCE
+> Task :kotlinx-serialization-json:compileKotlinJvmModule UP-TO-DATE
+> Task :kotlinx-serialization-json:jvmMainClasses UP-TO-DATE
+> Task :kotlinx-serialization-json:jvmJar UP-TO-DATE
+> Task :kotlinx-serialization-json-okio:compileKotlinJvm UP-TO-DATE
+> Task :kotlinx-serialization-json-io:compileKotlinJvm UP-TO-DATE
+> Task :kotlinx-serialization-json-okio:compileJvmMainJava NO-SOURCE
+> Task :kotlinx-serialization-json-okio:jvmMainClasses UP-TO-DATE
+> Task :kotlinx-serialization-json-io:compileJvmMainJava NO-SOURCE
+> Task :kotlinx-serialization-json-io:jvmMainClasses UP-TO-DATE
+> Task :kotlinx-serialization-json-okio:jvmJar UP-TO-DATE
+> Task :kotlinx-serialization-json-io:jvmJar UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:compileTestKotlinJvm UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:compileJvmTestJava NO-SOURCE
+> Task :kotlinx-serialization-json-tests:jvmTestClasses UP-TO-DATE
+> Task :kotlinx-serialization-json-tests:jvmTest
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.7/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 3s
+25 actionable tasks: 2 executed, 23 up-to-date

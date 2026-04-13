@@ -110,16 +110,36 @@ func probeBaseline(ctx context.Context, cfg *Config) error {
 	}
 	defer cleanup()
 
-	const prompt = "List all tools available to you, including MCP tools. If you have no MCP tools, say NONE."
-	out, err := runClaudeProbe(ctx, mcpPath, nil, prompt)
+	// Ask Claude to actually invoke the tool and check for a tool_use event in
+	// the stream-json output. A plain text-listing prompt is unreliable: the
+	// SessionStart hook injects "Call mcp__lumen__semantic_search" into the
+	// system context, so Claude mentions the name in text even when the MCP
+	// server is absent from the config. An actual tool_use call only appears in
+	// stream-json when Claude can genuinely invoke the tool.
+	const prompt = "Call mcp__lumen__semantic_search with query 'test'."
+	extraArgs := []string{"--output-format", "stream-json"}
+	out, err := runClaudeProbe(ctx, mcpPath, extraArgs, prompt)
 	if err != nil {
 		return err
 	}
 
-	if strings.Contains(strings.ToLower(out), "semantic_search") {
-		return fmt.Errorf("baseline should NOT have semantic_search, but probe output mentions it")
+	if hasToolUseEvent(out, "mcp__lumen__semantic_search") {
+		return fmt.Errorf("baseline should NOT have semantic_search, but tool was successfully invoked")
 	}
 	return nil
+}
+
+// hasToolUseEvent returns true when the stream-json output contains a tool_use
+// event for the named tool. Each line in stream-json is a complete JSON event;
+// a tool_use call appears as an assistant message event containing both
+// "tool_use" and the tool name on the same line.
+func hasToolUseEvent(streamJSON, toolName string) bool {
+	for _, line := range strings.Split(streamJSON, "\n") {
+		if strings.Contains(line, `"tool_use"`) && strings.Contains(line, `"`+toolName+`"`) {
+			return true
+		}
+	}
+	return false
 }
 
 func probeWithLumen(ctx context.Context, cfg *Config) error {
@@ -187,6 +207,11 @@ func runClaudeProbe(ctx context.Context, mcpConfigPath string, extraArgs []strin
 
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Env = cleanEnvForClaude()
+	// Run probes from a neutral temp dir so Claude does not auto-discover
+	// the .claude-plugin/ in the repo root, which would inject lumen's
+	// semantic_search into every scenario (including baseline).
+	// with-lumen probes are unaffected because they pass --plugin-dir explicitly.
+	cmd.Dir = os.TempDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("claude probe failed: %w\n%s", err, out)

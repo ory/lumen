@@ -1,0 +1,18 @@
+diff --git a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+index 14e70a4..9725ad8 100644
+--- a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
++++ b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+@@ -132,9 +132,13 @@ internal class JsonPath {
+     private fun prettyString(it: Any?) = (it as? SerialDescriptor)?.serialName ?: it.toString()
+ 
+     private fun resize() {
++        val oldSize = indicies.size
+         val newSize = currentDepth * 2
+         currentObjectPath = currentObjectPath.copyOf(newSize)
+         indicies = indicies.copyOf(newSize)
++        for (i in oldSize until newSize) {
++            indicies[i] = -1
++        }
+     }
+ 
+     override fun toString(): String = getPath()

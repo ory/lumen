@@ -131,7 +131,7 @@ func TestSetupIndexer_DBPathVsDirectory(t *testing.T) {
 	modelName := emb.ModelName()
 
 	// RED: directory path → SQLite PRAGMA error (the pre-fix behaviour).
-	_, dirErr := setupIndexer(cfg, emb, dir, nil)
+	_, dirErr := setupIndexer(cfg, emb, dir)
 	if dirErr == nil {
 		t.Fatal("expected error when passing a directory as the db path, got nil")
 	}
@@ -144,7 +144,7 @@ func TestSetupIndexer_DBPathVsDirectory(t *testing.T) {
 	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
 		t.Fatalf("MkdirAll: %v", mkErr)
 	}
-	idx, err := setupIndexer(cfg, emb, dbPath, nil)
+	idx, err := setupIndexer(cfg, emb, dbPath)
 	if err != nil {
 		t.Fatalf("setupIndexer with db path failed: %v", err)
 	}

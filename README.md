@@ -225,32 +225,35 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 8 runs across 8 languages, hard difficulty, real GitHub
+**Key results** — 9 runs across 9 languages, hard difficulty, real GitHub
 issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
-| Language   | Cost Reduction | Time Reduction | Output Token Reduction  | Quality        |
-| ---------- | -------------- | -------------- | ----------------------- | -------------- |
-| Rust       | **-39%**       | **-34%**       | **-31%** (18K → 12K)    | Poor (both)    |
-| JavaScript | **-33%**       | **-53%**       | **-66%** (14K → 5K)     | Perfect (both) |
-| TypeScript | **-27%**       | **-33%**       | **-64%** (5K → 1.8K)    | Good (both)    |
-| PHP        | **-27%**       | **-34%**       | **-59%** (1.9K → 0.8K)  | Good (both)    |
-| Ruby       | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)    |
-| Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both) |
-| Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
-| C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
+| Language      | Cost Reduction | Time Reduction | Output Token Reduction  | Quality               |
+| ------------- | -------------- | -------------- | ----------------------- | --------------------- |
+| Rust          | **-39%**       | **-34%**       | **-31%** (18K → 12K)    | Poor (both)           |
+| JavaScript    | **-33%**       | **-53%**       | **-66%** (14K → 5K)     | Perfect (both)        |
+| Kotlin        | **-37%**       | **-34%**       | -10% (15K → 14K)         | Good → **Perfect** ↑  |
+| TypeScript    | **-27%**       | **-33%**       | **-64%** (5K → 1.8K)    | Good (both)           |
+| PHP           | **-27%**       | **-34%**       | **-59%** (1.9K → 0.8K)  | Good (both)           |
+| Ruby          | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)           |
+| Python        | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both)        |
+| Go            | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)           |
+| C++           | **-8%**        | -3%            | +42% (feature task)      | Good (both)           |
 
-**Cost was reduced in every language tested. Quality was maintained in every
-task — zero regressions.** JavaScript and TypeScript show the most dramatic
-efficiency gains: same quality fixes in half the time with two-thirds fewer
-tokens. Even on tasks too hard for either approach (Rust), Lumen cuts the cost
-of failure by 39%.
+**Cost was reduced in every language tested. Quality was maintained or improved
+in every task — zero regressions.** Kotlin is the first task where Lumen lifted
+quality (Good → Perfect): semantic search surfaced `JsonPath.resize()` in one
+query, giving Claude precise context for a tighter patch. JavaScript and
+TypeScript show the most dramatic efficiency gains: same quality fixes in half
+the time with two-thirds fewer tokens. Even on tasks too hard for either
+approach (Rust), Lumen cuts the cost of failure by 39%.
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 8 per-language deep dives,
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 9 per-language deep dives,
 judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **12 language families** with semantic chunking (9 benchmarked):
+Supports **13 language families** with semantic chunking (9 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
@@ -258,6 +261,7 @@ Supports **12 language families** with semantic chunking (9 benchmarked):
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens     |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time           |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time           |
+| Kotlin           | tree-sitter | `.kt`, `.kts`                             | Benchmarked: -31% cost, -37% time, Good → Perfect quality |
 | Dart             | tree-sitter | `.dart`                                   | Benchmarked: -76% cost, -82% tokens, -79% time |
 | Rust             | tree-sitter | `.rs`                                     | Benchmarked: -39% cost, -34% time             |
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |

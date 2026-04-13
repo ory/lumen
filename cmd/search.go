@@ -141,7 +141,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create db directory: %w", err)
 	}
-	idx, err := setupIndexer(cfg, emb, dbPath, nil)
+	idx, err := setupIndexer(cfg, emb, dbPath)
 	if err != nil {
 		return fmt.Errorf("setup indexer: %w", err)
 	}

@@ -136,7 +136,6 @@ func TriggerReindex() {}
 		embedder:       &stubEmbedder{}, // for embedQuery (separate from indexer's embedder)
 		reindexTimeout: shortTimeout,
 		freshnessTTL:   1 * time.Nanosecond, // force merkle walk, don't trust LastIndexedAt
-		log:            discardLog,
 		// ensureFreshFunc intentionally nil → real idx.EnsureFresh
 	}
 
@@ -262,7 +261,6 @@ func Extra() {}
 		embedder:       &stubEmbedder{},
 		reindexTimeout: shortTimeout,
 		freshnessTTL:   1 * time.Nanosecond,
-		log:            discardLog,
 	}
 
 	start := time.Now()

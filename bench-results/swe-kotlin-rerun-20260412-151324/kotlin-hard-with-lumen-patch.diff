@@ -1,0 +1,43 @@
+diff --git a/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt b/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
+index 8d31ba2..3ac1035 100644
+--- a/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
++++ b/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
+@@ -156,6 +156,24 @@ class JsonPathTest : JsonTestBase() {
+         expectPath(expectedPath) { json.decodeFromString(Sealed.serializer(), malformed) }
+     }
+ 
++    @Serializable
++    data class FooWithDataObject(val bar: FooWithDataObject?, val baz: DataObjectBaz?)
++
++    @Serializable
++    data object DataObjectBaz
++
++    @Test
++    fun testDeepNestingWithDataObject() {
++        // Regression test: deeply nested data object should produce SerializationException with
++        // a readable path, not ArrayIndexOutOfBoundsException caused by uninitialized indicies
++        // after JsonPath.resize().
++        expectPath("$.bar.bar.bar.bar.bar.bar.bar.baz") {
++            Json.decodeFromString<FooWithDataObject>(
++                """{"bar": {"bar": {"bar": {"bar": {"bar": {"bar": {"bar": {"baz": false}}}}}}}}"""
++            )
++        }
++    }
++
+     private inline fun expectPath(path: String, block: () -> Unit) {
+         val message = runCatching { block() }
+             .exceptionOrNull()!!.message!!
+diff --git a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+index 14e70a4..0607669 100644
+--- a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
++++ b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+@@ -134,7 +134,9 @@ internal class JsonPath {
+     private fun resize() {
+         val newSize = currentDepth * 2
+         currentObjectPath = currentObjectPath.copyOf(newSize)
++        val oldSize = indicies.size
+         indicies = indicies.copyOf(newSize)
++        indicies.fill(-1, oldSize, newSize)
+     }
+ 
+     override fun toString(): String = getPath()

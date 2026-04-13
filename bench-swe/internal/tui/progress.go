@@ -2,27 +2,36 @@
 package tui
 
 import (
+	"fmt"
 	"io"
+	"math"
 	"os"
 
 	"github.com/pterm/pterm"
 	"golang.org/x/term"
 )
 
-// Progress wraps PTerm components to display benchmark progress, status
-// messages, and completion summaries. All output is written to the
-// configured writer (typically os.Stderr).
+// Progress wraps a custom progress renderer and PTerm prefix printers to
+// display benchmark progress, status messages, and completion summaries.
+// All output is written to the configured writer (typically os.Stderr).
 //
-// NOTE: NewProgress sets PTerm's global output and styling state.
+// NOTE: NewProgress sets PTerm's global styling state for non-terminals.
 // Create only one Progress instance per process.
 type Progress struct {
-	writer     io.Writer
-	bar        *pterm.ProgressbarPrinter
-	spinner    *pterm.SpinnerPrinter
-	info       pterm.PrefixPrinter
-	success    pterm.PrefixPrinter
-	warn       pterm.PrefixPrinter
-	errPrinter pterm.PrefixPrinter
+	writer       io.Writer
+	isTerminal   bool
+	info         pterm.PrefixPrinter
+	success      pterm.PrefixPrinter
+	warn         pterm.PrefixPrinter
+	errPrinter   pterm.PrefixPrinter
+	spinner      *pterm.SpinnerPrinter
+	widthFunc    func() int // overridable for tests; nil means use real terminal width
+
+	// Custom progress bar state (replaces pterm ProgressbarPrinter).
+	total        int
+	current      int
+	active       bool
+	cursorHidden bool
 }
 
 // NewProgress creates a new Progress that writes to w.
@@ -30,12 +39,13 @@ type Progress struct {
 // escape sequences from corrupting piped output.
 func NewProgress(w io.Writer) *Progress {
 	f, isFile := w.(*os.File)
-	if !isFile || !term.IsTerminal(int(f.Fd())) {
+	isTerm := isFile && term.IsTerminal(int(f.Fd()))
+	if !isTerm {
 		pterm.DisableStyling()
 	}
-	pterm.SetDefaultOutput(w)
 	return &Progress{
 		writer:     w,
+		isTerminal: isTerm,
 		info:       *pterm.Info.WithWriter(w),
 		success:    *pterm.Success.WithWriter(w),
 		warn:       *pterm.Warning.WithWriter(w),
@@ -45,39 +55,79 @@ func NewProgress(w io.Writer) *Progress {
 
 // Start initialises and displays a progress bar with the given title and total.
 func (p *Progress) Start(title string, total int) {
-	bar, err := pterm.DefaultProgressbar.
-		WithTitle(title).
-		WithTotal(total).
-		WithWriter(p.writer).
-		WithShowCount(true).
-		WithShowPercentage(true).
-		Start()
-	if err != nil {
-		p.errPrinter.Println("failed to start progress bar: " + err.Error())
+	if total <= 0 {
 		return
 	}
-	p.bar = bar
+	p.total = total
+	p.current = 0
+	p.active = true
+	if p.isTerminal {
+		_, _ = fmt.Fprint(p.writer, "\x1b[?25l") // hide cursor
+		p.cursorHidden = true
+	}
+	p.render(title)
 }
 
 // Update sets the progress bar to current and updates the title.
 func (p *Progress) Update(current int, message string) {
-	if p.bar == nil {
+	if !p.active {
 		return
 	}
-	p.bar.UpdateTitle(message)
-	delta := current - p.bar.Current
-	if delta > 0 {
-		p.bar.Add(delta)
+	p.current = current
+	p.render(message)
+}
+
+// render writes a single progress line, clearing the current line first.
+func (p *Progress) render(message string) {
+	if p.total <= 0 {
+		return
 	}
+
+	pct := 0
+	if p.total > 0 {
+		pct = p.current * 100 / p.total
+	}
+
+	// Format: message [NNNN/TOTAL] PP%
+	padding := 1 + int(math.Log10(float64(p.total)))
+	suffix := fmt.Sprintf(" [%0*d/%d] %3d%%", padding, p.current, p.total, pct)
+
+	width := p.termWidth()
+	maxMsg := max(width-len(suffix), 0)
+	if len(message) > maxMsg {
+		if maxMsg > 3 {
+			message = message[:maxMsg-3] + "..."
+		} else {
+			message = ""
+		}
+	}
+
+	// \r returns to column 0; \033[K clears to end of line.
+	_, _ = fmt.Fprintf(p.writer, "\r\033[K%s%s", message, suffix)
 }
 
 // Stop stops the progress bar.
 func (p *Progress) Stop() {
-	if p.bar == nil {
+	if !p.active {
 		return
 	}
-	_, _ = p.bar.Stop()
-	p.bar = nil
+	p.active = false
+	// Clear the progress line and move to a new line.
+	_, _ = fmt.Fprint(p.writer, "\r\033[K")
+	if p.cursorHidden {
+		_, _ = fmt.Fprint(p.writer, "\x1b[?25h") // show cursor
+		p.cursorHidden = false
+	}
+}
+
+// RestoreCursor ensures the terminal cursor is visible. Safe to call
+// multiple times or even if Start was never called. Intended for use
+// with defer to guarantee cursor restoration on all exit paths.
+func (p *Progress) RestoreCursor() {
+	if p.cursorHidden {
+		_, _ = fmt.Fprint(p.writer, "\x1b[?25h")
+		p.cursorHidden = false
+	}
 }
 
 // StartSpinner shows an indeterminate spinner with the given message.
@@ -119,3 +169,16 @@ func (p *Progress) Warn(msg string) { p.warn.Println(msg) }
 
 // Error prints an error-styled message.
 func (p *Progress) Error(msg string) { p.errPrinter.Println(msg) }
+
+// termWidth returns the terminal width, falling back to 80.
+func (p *Progress) termWidth() int {
+	if p.widthFunc != nil {
+		return p.widthFunc()
+	}
+	if f, ok := p.writer.(*os.File); ok {
+		if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 0 {
+			return w
+		}
+	}
+	return 80
+}

@@ -16,6 +16,7 @@ package chunker
 
 import (
 	sitter_dart "github.com/alexaandru/go-sitter-forest/dart"
+	sitter_kotlin "github.com/alexaandru/go-sitter-forest/kotlin"
 	sitter "github.com/smacker/go-tree-sitter"
 	sitter_c "github.com/smacker/go-tree-sitter/c"
 	sitter_cpp "github.com/smacker/go-tree-sitter/cpp"
@@ -43,6 +44,7 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".cs",
+	".kt", ".kts",
 	".dart",
 	".md", ".mdx",
 	".yaml", ".yml", ".json",
@@ -268,6 +270,19 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		},
 	})
 
+	kotlin := mustTreeSitterChunker(LanguageDef{
+		Language: sitter.NewLanguage(sitter_kotlin.GetLanguage()),
+		Queries: []QueryDef{
+			{Pattern: `(function_declaration (simple_identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(class_declaration (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(object_declaration (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(companion_object (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(property_declaration (variable_declaration (simple_identifier) @name)) @decl`, Kind: "var"},
+			{Pattern: `(type_alias (type_identifier) @name) @decl`, Kind: "type"},
+			{Pattern: `(enum_entry (simple_identifier) @name) @decl`, Kind: "var"},
+		},
+	})
+
 	goChunker := NewGoAST()
 
 	md := NewMarkdownChunker()
@@ -293,6 +308,8 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		".hpp":  cpp,
 		".php":  php,
 		".cs":   cs,
+		".kt":   kotlin,
+		".kts":  kotlin,
 		".dart": dart,
 		".md":   md,
 		".mdx":  md,

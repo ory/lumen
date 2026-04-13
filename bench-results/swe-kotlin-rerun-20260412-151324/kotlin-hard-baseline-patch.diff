@@ -1,0 +1,44 @@
+diff --git a/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt b/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
+index 8d31ba2..3ed80bc 100644
+--- a/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
++++ b/formats/json-tests/commonTest/src/kotlinx/serialization/JsonPathTest.kt
+@@ -156,6 +156,25 @@ class JsonPathTest : JsonTestBase() {
+         expectPath(expectedPath) { json.decodeFromString(Sealed.serializer(), malformed) }
+     }
+ 
++    @Serializable
++    data class FooNested(val bar: FooNested?, val baz: BazObject?)
++
++    @Serializable
++    data object BazObject
++
++    @Test
++    fun testDeepNestingWithDataObject() {
++        // Shallow nesting (6 levels): produces a readable SerializationException
++        expectPath("$.bar.bar.bar.bar.bar.bar.baz") {
++            Json.decodeFromString<FooNested>("""{"bar": {"bar": {"bar": {"bar": {"bar": {"bar": {"baz": false}}}}}}}""")
++        }
++        // Deep nesting (7 levels): previously threw ArrayIndexOutOfBoundsException because
++        // indicies[] elements were zero-initialized after resize instead of -1
++        expectPath("$.bar.bar.bar.bar.bar.bar.bar.baz") {
++            Json.decodeFromString<FooNested>("""{"bar": {"bar": {"bar": {"bar": {"bar": {"bar": {"bar": {"baz": false}}}}}}}}""")
++        }
++    }
++
+     private inline fun expectPath(path: String, block: () -> Unit) {
+         val message = runCatching { block() }
+             .exceptionOrNull()!!.message!!
+diff --git a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+index 14e70a4..0607669 100644
+--- a/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
++++ b/formats/json/commonMain/src/kotlinx/serialization/json/internal/JsonPath.kt
+@@ -134,7 +134,9 @@ internal class JsonPath {
+     private fun resize() {
+         val newSize = currentDepth * 2
+         currentObjectPath = currentObjectPath.copyOf(newSize)
++        val oldSize = indicies.size
+         indicies = indicies.copyOf(newSize)
++        indicies.fill(-1, oldSize, newSize)
+     }
+ 
+     override fun toString(): String = getPath()
