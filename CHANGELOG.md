@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.35](https://github.com/ory/lumen/compare/v0.0.34...v0.0.35) (2026-04-14)
+
+
+### Bug Fixes
+
+* **scripts:** download binary synchronously in stdio mode on first install ([#127](https://github.com/ory/lumen/issues/127)) ([9cbff58](https://github.com/ory/lumen/commit/9cbff58dfad49a16074024230844f9fbe401a97d))
+* **scripts:** use call curl in run.bat so batch control returns after download ([#131](https://github.com/ory/lumen/issues/131)) ([e8c8817](https://github.com/ory/lumen/commit/e8c8817d01913d2d59da9dc93ed0fdbdf86b3379))
+
 ## [0.0.34](https://github.com/ory/lumen/compare/v0.0.33...v0.0.34) (2026-04-09)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@ory/lumen-opencode",
-  "version": "0.0.34",
+  "version": "0.0.35",
   "description": "Precise local semantic code search plugin for OpenCode — indexes with Go AST/tree-sitter and embeds with Ollama or LM Studio",
   "type": "module",
   "main": ".opencode/plugins/lumen.js",
