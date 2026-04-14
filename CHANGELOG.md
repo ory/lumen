@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.36](https://github.com/ory/lumen/compare/v0.0.35...v0.0.36) (2026-04-14)
+
+
+### Bug Fixes
+
+* **embedder:** re-probe unhealthy servers and resolve dimension mismatch on failover ([#132](https://github.com/ory/lumen/issues/132)) ([7979d7f](https://github.com/ory/lumen/commit/7979d7f275db142e8968985a0683d69f14490656))
+
 ## [0.0.35](https://github.com/ory/lumen/compare/v0.0.34...v0.0.35) (2026-04-14)
 
 
