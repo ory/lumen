@@ -1629,9 +1629,9 @@ func TestE2E_SvelteIndexing(t *testing.T) {
 	session := startServer(t)
 	projectPath := sampleProjectPath(t)
 
-	// Search for a concept that maps to Dashboard.svelte symbols.
+	// Search for a concept that maps to mcp-server-card.svelte symbols.
 	out := callSearch(t, session, map[string]any{
-		"query": "load user activity dashboard refresh",
+		"query": "server health check enable disable",
 		"path":  projectPath,
 		"limit": 10,
 	})
@@ -1643,19 +1643,19 @@ func TestE2E_SvelteIndexing(t *testing.T) {
 		t.Errorf("expected 6 indexed files (5 Go + 1 Svelte), got %d", out.IndexedFiles)
 	}
 
-	// Dashboard.svelte must appear in results.
-	svelteResult := findResult(out.Results, "loadUserActivity")
+	// mcp-server-card.svelte must appear in results.
+	svelteResult := findResult(out.Results, "setEnabled")
 	if svelteResult == nil {
-		svelteResult = findResult(out.Results, "handleRefresh")
+		svelteResult = findResult(out.Results, "handleHealthCheck")
 	}
 	if svelteResult == nil {
-		svelteResult = findResult(out.Results, "ActivityCache")
+		svelteResult = findResult(out.Results, "handleDelete")
 	}
 	if svelteResult == nil {
-		t.Fatalf("expected at least one symbol from Dashboard.svelte in results, got: %v", resultSymbols(out.Results))
+		t.Fatalf("expected at least one symbol from mcp-server-card.svelte in results, got: %v", resultSymbols(out.Results))
 	}
-	if !strings.HasSuffix(svelteResult.FilePath, "Dashboard.svelte") {
-		t.Errorf("expected result from Dashboard.svelte, got %s", svelteResult.FilePath)
+	if !strings.HasSuffix(svelteResult.FilePath, "mcp-server-card.svelte") {
+		t.Errorf("expected result from mcp-server-card.svelte, got %s", svelteResult.FilePath)
 	}
 	if svelteResult.StartLine < 2 {
 		t.Errorf("expected file-relative line number (>= 2), got StartLine=%d", svelteResult.StartLine)
