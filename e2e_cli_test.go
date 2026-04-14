@@ -180,8 +180,8 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	if err := db.QueryRow("SELECT count(*) FROM files").Scan(&fileCount); err != nil {
 		t.Fatalf("count files: %v", err)
 	}
-	if fileCount != 5 {
-		t.Errorf("expected 5 files, got %d", fileCount)
+	if fileCount != 6 {
+		t.Errorf("expected 6 files, got %d", fileCount)
 	}
 
 	// All file paths should end in .go and have valid hashes.
@@ -197,8 +197,8 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 			t.Fatalf("scan file row: %v", err)
 		}
 		filePaths = append(filePaths, path)
-		if !strings.HasSuffix(path, ".go") {
-			t.Errorf("file path should end in .go: %s", path)
+		if !strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".svelte") {
+			t.Errorf("file path should end in .go or .svelte: %s", path)
 		}
 		if len(hash) != 64 { // SHA-256 hex
 			t.Errorf("file hash should be 64 hex chars, got %d: %s", len(hash), hash)
@@ -455,8 +455,8 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	db.QueryRow("SELECT count(*) FROM files").Scan(&initialFiles)
 	db.QueryRow("SELECT count(*) FROM chunks").Scan(&initialChunks)
 
-	if initialFiles != 5 {
-		t.Fatalf("expected 5 initial files, got %d", initialFiles)
+	if initialFiles != 6 {
+		t.Fatalf("expected 6 initial files, got %d", initialFiles)
 	}
 
 	// Get initial root hash.
@@ -483,8 +483,8 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	// Verify file count increased.
 	var newFileCount int
 	db.QueryRow("SELECT count(*) FROM files").Scan(&newFileCount)
-	if newFileCount != 6 {
-		t.Errorf("expected 6 files after adding one, got %d", newFileCount)
+	if newFileCount != 7 {
+		t.Errorf("expected 7 files after adding one, got %d", newFileCount)
 	}
 
 	// Verify chunk count increased.

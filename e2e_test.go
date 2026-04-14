@@ -91,6 +91,35 @@ func TestMain(m *testing.M) {
 	}
 	resp.Body.Close()
 
+	// Check that the all-minilm model is available in Ollama.
+	tagsResp, err := http.Get(ollamaHost + "/api/tags")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to list Ollama models: %v\n", err)
+		os.Exit(1)
+	}
+	var tagsBody struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(tagsResp.Body).Decode(&tagsBody); err != nil {
+		tagsResp.Body.Close()
+		fmt.Fprintf(os.Stderr, "failed to decode Ollama model list: %v\n", err)
+		os.Exit(1)
+	}
+	tagsResp.Body.Close()
+	hasMinilm := false
+	for _, m := range tagsBody.Models {
+		if strings.HasPrefix(m.Name, "all-minilm") {
+			hasMinilm = true
+			break
+		}
+	}
+	if !hasMinilm {
+		fmt.Fprintf(os.Stderr, "E2E tests require the all-minilm model in Ollama — run: ollama pull all-minilm\n")
+		os.Exit(1)
+	}
+
 	serverBinary = bin
 	os.Exit(m.Run())
 }
@@ -121,6 +150,7 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 		// chars) to stay within the model's 512-token context window.
 		"LUMEN_MAX_CHUNK_TOKENS=100",
 		"XDG_DATA_HOME=" + dataHome,
+		"XDG_CONFIG_HOME=" + dataHome,
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 	}
@@ -461,8 +491,8 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 	if !out.Reindexed {
 		t.Error("expected Reindexed=true on first search")
 	}
-	if out.IndexedFiles != 5 {
-		t.Errorf("expected IndexedFiles=5, got %d", out.IndexedFiles)
+	if out.IndexedFiles != 6 {
+		t.Errorf("expected IndexedFiles=6, got %d", out.IndexedFiles)
 	}
 
 	// Limit respected.
@@ -869,11 +899,11 @@ func TestE2E_IndexStatus(t *testing.T) {
 	status := callStatus(t, session, map[string]any{
 		"path": projectPath,
 	})
-	if status.TotalFiles != 5 {
-		t.Errorf("expected TotalFiles=5, got %d", status.TotalFiles)
+	if status.TotalFiles != 6 {
+		t.Errorf("expected TotalFiles=6, got %d", status.TotalFiles)
 	}
-	if status.IndexedFiles != 5 {
-		t.Errorf("expected IndexedFiles=5, got %d", status.IndexedFiles)
+	if status.IndexedFiles != 6 {
+		t.Errorf("expected IndexedFiles=6, got %d", status.IndexedFiles)
 	}
 	if status.TotalChunks <= 10 {
 		t.Errorf("expected TotalChunks > 10 (fixture has ~16 symbols, no package chunks), got %d", status.TotalChunks)
@@ -1591,5 +1621,43 @@ func ServeHTTP() {}
 	})
 	if out3.Reindexed {
 		t.Error("call 3 (path inside worktree): unexpected re-index triggered")
+	}
+}
+
+func TestE2E_SvelteIndexing(t *testing.T) {
+	t.Parallel()
+	session := startServer(t)
+	projectPath := sampleProjectPath(t)
+
+	// Search for a concept that maps to Dashboard.svelte symbols.
+	out := callSearch(t, session, map[string]any{
+		"query": "load user activity dashboard refresh",
+		"path":  projectPath,
+		"limit": 10,
+	})
+
+	if !out.Reindexed {
+		t.Error("expected Reindexed=true on first search")
+	}
+	if out.IndexedFiles != 6 {
+		t.Errorf("expected 6 indexed files (5 Go + 1 Svelte), got %d", out.IndexedFiles)
+	}
+
+	// Dashboard.svelte must appear in results.
+	svelteResult := findResult(out.Results, "loadUserActivity")
+	if svelteResult == nil {
+		svelteResult = findResult(out.Results, "handleRefresh")
+	}
+	if svelteResult == nil {
+		svelteResult = findResult(out.Results, "ActivityCache")
+	}
+	if svelteResult == nil {
+		t.Fatalf("expected at least one symbol from Dashboard.svelte in results, got: %v", resultSymbols(out.Results))
+	}
+	if !strings.HasSuffix(svelteResult.FilePath, "Dashboard.svelte") {
+		t.Errorf("expected result from Dashboard.svelte, got %s", svelteResult.FilePath)
+	}
+	if svelteResult.StartLine < 2 {
+		t.Errorf("expected file-relative line number (>= 2), got StartLine=%d", svelteResult.StartLine)
 	}
 }
