@@ -1,0 +1,15 @@
+{
+  "id": "svelte-hard",
+  "language": "svelte",
+  "repo": "https://github.com/huggingface/chat-ui",
+  "base_commit": "b2bdeb4436fa468935002ef433be6b0d70075658",
+  "fix_commit": "b8985b50cb04106ccdfab16f6b481a0d2616df1a",
+  "issue_url": "https://github.com/huggingface/chat-ui/issues/2033",
+  "issue_title": "Hovering on Close button makes it disappears in dark theme.",
+  "issue_body": "## Bug description\n\nWhen we are hovering on Close button to close the `Pasted Content` panel. So the button disappears in dark theme.\n\n## Steps to reproduce\n\nPaste a big file into the chat.\nThan open pasted content in dark theme.\n\n### Specs\n\n- **OS**: Linux\n- **Browser**: Chrome",
+  "gold_patch_file": "patches/svelte-hard.patch",
+  "expected_files": ["src/lib/components/chat/UploadedFile.svelte"],
+  "setup_commands": ["npm install"],
+  "test_command": "npx vitest run",
+  "timeout_s": 300
+}

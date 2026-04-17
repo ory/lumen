@@ -1,0 +1,163 @@
+▲ [WARNING] Cannot find base config file "./.svelte-kit/tsconfig.json" [tsconfig.json]
+
+    tsconfig.json:2:12:
+      2 │   "extends": "./.svelte-kit/tsconfig.json",
+        ╵              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ DEPRECATED  The `workspace` option is deprecated and will be removed in the next major. To hide this warning, rename `workspace` option to `projects`.
+
+ RUN  v3.2.2 /private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo
+
+The following Vite config options will be overridden by SvelteKit:
+  - base
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: browserType.launch: Executable doesn't exist at /Users/mini/Library/Caches/ms-playwright/chromium_headless_shell-1193/chrome-mac/headless_shell
+╔═════════════════════════════════════════════════════════════════════════╗
+║ Looks like Playwright Test or Playwright was just installed or updated. ║
+║ Please run the following command to download new browsers:              ║
+║                                                                         ║
+║     npx playwright install                                              ║
+║                                                                         ║
+║ <3 Playwright Team                                                      ║
+╚═════════════════════════════════════════════════════════════════════════╝
+ ❯ node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:80:54
+ ❯ PlaywrightBrowserProvider.createContext node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:206:19
+ ❯ PlaywrightBrowserProvider.openBrowserPage node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:266:19
+ ❯ PlaywrightBrowserProvider.openPage node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:280:23
+ ❯ BrowserPool.openPage node_modules/@vitest/browser/dist/index.js:3458:3
+ ❯ BrowserPool.runTests node_modules/@vitest/browser/dist/index.js:3449:3
+ ❯ runWorkspaceTests node_modules/@vitest/browser/dist/index.js:3357:3
+ ❯ executeTests node_modules/vitest/dist/chunks/coverage.ChgzEmIc.js:3398:4
+ ❯ node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9610:6
+ ❯ Vitest.runFiles node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9638:10
+ ❯ Vitest.start node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9526:18
+ ❯ startVitest node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:10480:8
+ ❯ start node_modules/vitest/dist/chunks/cac.DId3f5oR.js:1411:15
+ ❯ CAC.run node_modules/vitest/dist/chunks/cac.DId3f5oR.js:1390:2
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files   (12)
+      Tests  no tests
+     Errors  1 error
+   Start at  22:14:48
+   Duration  353ms (transform 114ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 0ms)
+
+error during close browserType.launch: Executable doesn't exist at /Users/mini/Library/Caches/ms-playwright/chromium_headless_shell-1193/chrome-mac/headless_shell
+╔═════════════════════════════════════════════════════════════════════════╗
+║ Looks like Playwright Test or Playwright was just installed or updated. ║
+║ Please run the following command to download new browsers:              ║
+║                                                                         ║
+║     npx playwright install                                              ║
+║                                                                         ║
+║ <3 Playwright Team                                                      ║
+╚═════════════════════════════════════════════════════════════════════════╝
+    at /private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:80:54
+    at async PlaywrightBrowserProvider.createContext (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:206:19)
+    at async PlaywrightBrowserProvider.openBrowserPage (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:266:19)
+    at async PlaywrightBrowserProvider.openPage (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js:280:23)
+    at async BrowserPool.openPage (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js:3458:3)
+    at async BrowserPool.runTests (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js:3449:3)
+    at async runWorkspaceTests (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js:3357:3)
+    at async executeTests (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/coverage.ChgzEmIc.js:3398:4)
+    at async file:///private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9610:6
+    at async Vitest.runFiles (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9638:10)
+    at async Vitest.start (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:9526:18)
+    at async startVitest (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js:10480:8)
+    at async start (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cac.DId3f5oR.js:1411:15)
+    at async CAC.run (/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cac.DId3f5oR.js:1390:2) {
+  name: 'Error',
+  type: 'Unhandled Error',
+  stacks: [
+    {
+      method: '',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js',
+      line: 80,
+      column: 54
+    },
+    {
+      method: 'PlaywrightBrowserProvider.createContext',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js',
+      line: 206,
+      column: 19
+    },
+    {
+      method: 'PlaywrightBrowserProvider.openBrowserPage',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js',
+      line: 266,
+      column: 19
+    },
+    {
+      method: 'PlaywrightBrowserProvider.openPage',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/webdriver-B1QbgqhC.js',
+      line: 280,
+      column: 23
+    },
+    {
+      method: 'BrowserPool.openPage',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js',
+      line: 3458,
+      column: 3
+    },
+    {
+      method: 'BrowserPool.runTests',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js',
+      line: 3449,
+      column: 3
+    },
+    {
+      method: 'runWorkspaceTests',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/@vitest/browser/dist/index.js',
+      line: 3357,
+      column: 3
+    },
+    {
+      method: 'executeTests',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/coverage.ChgzEmIc.js',
+      line: 3398,
+      column: 4
+    },
+    {
+      method: '',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js',
+      line: 9610,
+      column: 6
+    },
+    {
+      method: 'Vitest.runFiles',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js',
+      line: 9638,
+      column: 10
+    },
+    {
+      method: 'Vitest.start',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js',
+      line: 9526,
+      column: 18
+    },
+    {
+      method: 'startVitest',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cli-api.DYcKW0ri.js',
+      line: 10480,
+      column: 8
+    },
+    {
+      method: 'start',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cac.DId3f5oR.js',
+      line: 1411,
+      column: 15
+    },
+    {
+      method: 'CAC.run',
+      file: '/private/var/folders/q5/qt7z1d_s2dg3c98yct2nt17m0000gn/T/bench-swe-1708149819/repo/node_modules/vitest/dist/chunks/cac.DId3f5oR.js',
+      line: 1390,
+      column: 2
+    }
+  ]
+}

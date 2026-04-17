@@ -57,19 +57,36 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	}
 	repoDir := filepath.Join(workdir, "repo")
 
-	// Shallow clone: only fetch the single base commit (no history).
-	// init → remote add → fetch --depth=1 <sha> → checkout FETCH_HEAD
+	// Shallow clone: try fetching the single base commit directly first.
+	// If the remote rejects the SHA (GitHub doesn't support allowReachableSHA1InWant),
+	// fall back to a full clone and checkout the commit.
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cloneCancel()
 	for _, args := range [][]string{
 		{"init", "--quiet", repoDir},
 		{"-C", repoDir, "remote", "add", "origin", t.Repo},
-		{"-C", repoDir, "fetch", "--quiet", "--depth=1", "--filter=blob:none", "origin", t.BaseCommit},
-		{"-C", repoDir, "checkout", "--quiet", "FETCH_HEAD"},
 	} {
 		if out, err := exec.CommandContext(cloneCtx, "git", args...).CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("git %s: %w\n%s", args[0], err, out)
 		}
+	}
+
+	// Try direct SHA fetch first (fastest, works on some Git servers)
+	shallowArgs := []string{"-C", repoDir, "fetch", "--quiet", "--depth=1", "--filter=blob:none", "origin", t.BaseCommit}
+	if _, err := exec.CommandContext(cloneCtx, "git", shallowArgs...).CombinedOutput(); err != nil {
+		// Direct SHA fetch failed — remove partial repo and do a full clone instead.
+		// Partial clone config left behind by --filter=blob:none would cause checkout
+		// to lazily fetch objects by SHA, which GitHub also rejects.
+		fmt.Printf("  %-20s direct SHA fetch failed, falling back to full clone\n", t.ID)
+		_ = os.RemoveAll(repoDir)
+		cloneArgs := []string{"clone", "--quiet", t.Repo, repoDir}
+		if out, err := exec.CommandContext(cloneCtx, "git", cloneArgs...).CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("git clone fallback: %w\n%s", err, out)
+		}
+	}
+
+	if out, err := exec.CommandContext(cloneCtx, "git", "-C", repoDir, "checkout", "--quiet", t.BaseCommit).CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("git checkout: %w\n%s", err, out)
 	}
 
 	// For Python tasks, create an isolated venv to avoid system/conda package conflicts

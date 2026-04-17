@@ -13,7 +13,7 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 8 benchmark runs on 8
+The payoff is measurable and reproducible: across 9 benchmark runs on 9
 languages and real GitHub bug-fix tasks, Lumen cuts cost in **every single
 language** — up to 39%. Output tokens drop by up to 66%, sessions complete up to
 53% faster, and patch quality is maintained in every task. All verified with a
@@ -29,7 +29,8 @@ run yourself.
 | Rust (toml)            | **$0.38, 204s** (-39%, -34%)  | $0.61, 310s          |
 | PHP (monolog)          | **$0.14, 34s** (-27%, -34%)   | $0.19, 52s           |
 | TypeScript (commander) | **$0.14, 56s** (-27%, -33%)   | $0.19, 84s           |
-| Patch quality          | **Maintained in all 8 tasks** | —                    |
+| Svelte (chat-ui)       | **$0.10, 56s** (-26%, -31%)   | $0.14, 80s           |
+| Patch quality          | **Maintained in all 9 tasks** | —                    |
 
 ## Table of contents
 
@@ -192,8 +193,8 @@ or refreshes the index automatically.
   via Merkle tree diffing
 - **Incremental updates** — re-indexes only what changed; large codebases
   re-index in seconds after the first run
-- **11 language families** — Go, Python, TypeScript, JavaScript, Rust, Ruby,
-  Java, PHP, C/C++, C#
+- **12 language families** — Go, Python, TypeScript, JavaScript, Svelte, Rust,
+  Ruby, Java, PHP, C/C++, C#, Dart
 - **Git worktree support** — worktrees share index data automatically; a new
   worktree seeds from a sibling's index and only re-indexes changed files,
   turning minutes of embedding into seconds
@@ -225,7 +226,7 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 8 runs across 8 languages, hard difficulty, real GitHub
+**Key results** — 9 runs across 9 languages, hard difficulty, real GitHub
 issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
 | Language   | Cost Reduction | Time Reduction | Output Token Reduction  | Quality        |
@@ -238,19 +239,20 @@ issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 | Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both) |
 | Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
 | C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
+| Svelte     | **-26%**       | **-31%**       | **-26%** (4.0K → 3.0K)  | Poor (both)    |
 
 **Cost was reduced in every language tested. Quality was maintained in every
 task — zero regressions.** JavaScript and TypeScript show the most dramatic
 efficiency gains: same quality fixes in half the time with two-thirds fewer
-tokens. Even on tasks too hard for either approach (Rust), Lumen cuts the cost
-of failure by 39%.
+tokens. Even on tasks too hard for either approach (Rust, Svelte), Lumen cuts
+the cost of failure by 26–39%.
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 8 per-language deep dives,
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 9 per-language deep dives,
 judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **12 language families** with semantic chunking (9 benchmarked):
+Supports **12 language families** with semantic chunking (10 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
@@ -263,12 +265,13 @@ Supports **12 language families** with semantic chunking (9 benchmarked):
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time           |
 | C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -8% cost (C++ feature task)      |
+| Svelte           | tree-sitter | `.svelte`                                 | Benchmarked: -26% cost, -31% time             |
 | Java             | tree-sitter | `.java`                                   | Supported                                     |
 | C#               | tree-sitter | `.cs`                                     | Supported                                     |
 
 Go uses the native Go AST parser for the most precise chunks. All other
 languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
-for all 9 per-language benchmark deep dives.
+for all 10 per-language benchmark deep dives.
 
 ## Configuration
 
