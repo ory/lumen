@@ -9,7 +9,7 @@
   "issue_body": "## Bug description\n\nWhen we are hovering on Close button to close the `Pasted Content` panel. So the button disappears in dark theme.\n\n## Steps to reproduce\n\nPaste a big file into the chat.\nThan open pasted content in dark theme.\n\n### Specs\n\n- **OS**: Linux\n- **Browser**: Chrome",
   "gold_patch_file": "patches/svelte-hard.patch",
   "expected_files": ["src/lib/components/chat/UploadedFile.svelte"],
-  "setup_commands": ["npm install"],
+  "setup_commands": ["npm install", "npm run prepare", "npx playwright install chromium"],
   "test_command": "npx vitest run",
   "timeout_s": 300
 }

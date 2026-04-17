@@ -28,4 +28,5 @@ package config
 //	1 — initial stable version; removed markdown/YAML from chunker pipeline
 //	2 — leading comments included in tree-sitter chunk content; Ruby methods
 //	    now produce class-qualified symbols (e.g. Animal.speak)
-const IndexVersion = "2"
+//	3 — Svelte chunker added; .svelte files now indexed via two-phase TS injection
+const IndexVersion = "3"

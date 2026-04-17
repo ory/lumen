@@ -74,38 +74,49 @@ func TestSvelteChunker_ScriptSymbols(t *testing.T) {
 	// Line numbers must be file-relative (1-based), not script-block-relative.
 	// greet is on line 10 of the file (first line of script is line 1, content
 	// starts on line 2, greet starts on the 10th line of the file).
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one chunk from script symbols")
+	}
 	if chunks[0].StartLine < 2 {
 		t.Errorf("expected file-relative line numbers (>= 2), got StartLine=%d for first chunk", chunks[0].StartLine)
 	}
 }
 
-func TestSvelteChunker_EmptyScript(t *testing.T) {
-	empty := []byte(`<script>
+func TestSvelteChunker_NoSymbolsCases(t *testing.T) {
+	langs := chunker.DefaultLanguages(512)
+	c := langs[".svelte"]
+
+	cases := []struct {
+		name    string
+		path    string
+		content []byte
+	}{
+		{
+			name: "empty script block",
+			path: "empty.svelte",
+			content: []byte(`<script>
 </script>
 <p>hello</p>
-`)
-	langs := chunker.DefaultLanguages(512)
-	c := langs[".svelte"]
-	chunks, err := c.Chunk("empty.svelte", empty)
-	if err != nil {
-		t.Fatalf("Chunk: %v", err)
-	}
-	if len(chunks) != 0 {
-		t.Errorf("expected 0 chunks for empty script, got %d", len(chunks))
-	}
-}
-
-func TestSvelteChunker_NoScript(t *testing.T) {
-	noScript := []byte(`<h1>Static page</h1>
+`),
+		},
+		{
+			name: "no script block",
+			path: "static.svelte",
+			content: []byte(`<h1>Static page</h1>
 <p>No script block here.</p>
-`)
-	langs := chunker.DefaultLanguages(512)
-	c := langs[".svelte"]
-	chunks, err := c.Chunk("static.svelte", noScript)
-	if err != nil {
-		t.Fatalf("Chunk: %v", err)
+`),
+		},
 	}
-	if len(chunks) != 0 {
-		t.Errorf("expected 0 chunks for file with no script, got %d", len(chunks))
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			chunks, err := c.Chunk(tc.path, tc.content)
+			if err != nil {
+				t.Fatalf("Chunk: %v", err)
+			}
+			if len(chunks) != 0 {
+				t.Errorf("expected 0 chunks, got %d", len(chunks))
+			}
+		})
 	}
 }

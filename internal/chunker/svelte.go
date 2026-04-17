@@ -53,13 +53,18 @@ func (s *SvelteChunker) Chunk(filePath string, content []byte) ([]Chunk, error) 
 	}
 
 	var chunks []Chunk
+	var firstErr error
 	var walk func(node *sitter.Node)
 	walk = func(node *sitter.Node) {
 		if node.Type() == "script_element" {
 			sc, err := s.chunkScriptElement(filePath, content, node)
-			if err == nil {
-				chunks = append(chunks, sc...)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("chunk script element in %s: %w", filePath, err)
+				}
+				return
 			}
+			chunks = append(chunks, sc...)
 			// Do not recurse further; script content is handled by the TS parser.
 			return
 		}
@@ -69,12 +74,16 @@ func (s *SvelteChunker) Chunk(filePath string, content []byte) ([]Chunk, error) 
 	}
 	walk(root)
 
-	return chunks, nil
+	return chunks, firstErr
 }
 
 // chunkScriptElement finds the raw_text child of a script_element, re-parses
 // it with TypeScript, and adjusts all chunk line numbers to be file-relative.
 func (s *SvelteChunker) chunkScriptElement(filePath string, content []byte, node *sitter.Node) ([]Chunk, error) {
+	if s.tsChunker == nil {
+		return nil, fmt.Errorf("chunk svelte %s: nil TypeScript chunker", filePath)
+	}
+
 	rawText := findRawText(node)
 	if rawText == nil {
 		return nil, nil
