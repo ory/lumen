@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.38](https://github.com/ory/lumen/compare/v0.0.37...v0.0.38) (2026-04-24)
+
+
+### Features
+
+* **cmd:** select configured server via --model/--backend ([#137](https://github.com/ory/lumen/issues/137)) ([6d6d195](https://github.com/ory/lumen/commit/6d6d1958f298aae047991098021b02a7ae15688c))
+* **purge:** support purging individual project directories ([#135](https://github.com/ory/lumen/issues/135)) ([f16af79](https://github.com/ory/lumen/commit/f16af79a1c2fdc8bfe6192a0252be34ba33bca2d))
+
 ## [0.0.37](https://github.com/ory/lumen/compare/v0.0.36...v0.0.37) (2026-04-24)
 
 
