@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.37](https://github.com/ory/lumen/compare/v0.0.36...v0.0.37) (2026-04-24)
+
+
+### Features
+
+* **chunker:** add .svelte support with two-phase TypeScript injection ([#128](https://github.com/ory/lumen/issues/128)) ([8c92e2e](https://github.com/ory/lumen/commit/8c92e2e3eccddcf5bed57bc8a76f6074a6a2831c))
+
 ## [0.0.36](https://github.com/ory/lumen/compare/v0.0.35...v0.0.36) (2026-04-14)
 
 
