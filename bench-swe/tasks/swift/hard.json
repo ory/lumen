@@ -1,0 +1,15 @@
+{
+  "id": "swift-hard",
+  "language": "swift",
+  "repo": "https://github.com/vapor/vapor",
+  "base_commit": "6c5ed03efe8f678f33203b6673f8afa764a9dfa1",
+  "fix_commit": "a8db2dbda8b3cdc8a61bd35128590bd296e85563",
+  "issue_url": "https://github.com/vapor/vapor/issues/3435",
+  "issue_title": "Only the first cookie is received over HTTP/2",
+  "issue_body": "## Bug description\n\nWhen connecting via HTTP/2, only the first cookie is parsed. HTTP/2 sends each cookie as a separate `cookie:` header line, but Vapor's parser calls `.first.map` instead of `.flatMap`, so only the first cookie is processed. HTTP/1.1 clients are unaffected because cookies arrive in a single header.\n\n## Steps to reproduce\n\n1. Connect to a Vapor server over HTTP/2 (e.g., Safari)\n2. Set multiple cookies\n3. Observe that only the first cookie is available in the request\n\n### Specs\n\n- **Framework**: Vapor 4.x\n- **Protocol**: HTTP/2\n- **Browser**: Safari (uses HTTP/2 by default)",
+  "gold_patch_file": "patches/swift-hard.patch",
+  "expected_files": ["Sources/Vapor/HTTP/Headers/HTTPCookies.swift"],
+  "setup_commands": ["swift package resolve"],
+  "test_command": "swift test --filter HTTPHeaderTests",
+  "timeout_s": 900
+}

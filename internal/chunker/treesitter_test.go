@@ -818,6 +818,7 @@ func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 		".hpp":  []byte("void foo() {}"),
 		".php":  []byte("<?php\nfunction foo() {}"),
 		".cs":   []byte("class Foo {}"),
+		".swift":  []byte("func foo() {}"),
 		".dart":   []byte("void foo() {}"),
 		".svelte": []byte("<script lang=\"ts\">\nfunction hello(): string { return 'hi'; }\n</script>\n<p>hi</p>\n"),
 		".md":   []byte("# Introduction\nSome content here.\n"),

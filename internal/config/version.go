@@ -29,4 +29,5 @@ package config
 //	2 — leading comments included in tree-sitter chunk content; Ruby methods
 //	    now produce class-qualified symbols (e.g. Animal.speak)
 //	3 — Svelte chunker added; .svelte files now indexed via two-phase TS injection
-const IndexVersion = "3"
+//	4 — Swift support added; .swift files now indexed via tree-sitter
+const IndexVersion = "4"

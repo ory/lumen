@@ -1,0 +1,38 @@
+diff --git a/Sources/Vapor/HTTP/Headers/HTTPCookies.swift b/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
+index a7d3f4797..6eb57fe72 100644
+--- a/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
++++ b/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
+@@ -6,9 +6,7 @@ extension HTTPHeaders {
+     /// This accesses the `"Cookie"` header.
+     public var cookie: HTTPCookies? {
+         get {
+-            self.parseDirectives(name: .cookie).first.map {
+-                HTTPCookies(directives: $0)
+-            }
++            HTTPCookies(directives: self.parseDirectives(name: .cookie).flatMap { $0 })
+         }
+         set {
+             if let cookieHeader = newValue?.cookieHeader {
+diff --git a/Tests/VaporTests/HTTPHeaderTests.swift b/Tests/VaporTests/HTTPHeaderTests.swift
+index abaa4f375..c195f4984 100644
+--- a/Tests/VaporTests/HTTPHeaderTests.swift
++++ b/Tests/VaporTests/HTTPHeaderTests.swift
+@@ -233,6 +233,18 @@ final class HTTPHeaderTests: XCTestCase {
+         XCTAssertEqual(headers.cookie?["!#$%&'*+-.^_`~"]?.string, "symbols")
+     }
+ 
++    // https://github.com/vpor/vapor/issues/3435
++    func testMultipleCookieHeaders() throws {
++        let headers = HTTPHeaders([
++            ("cookie", "a=1"),
++            ("cookie", "b=2"),
++            ("cookie", "c=3"),
++        ])
++        XCTAssertEqual(headers.cookie?["a"]?.string, "1")
++        XCTAssertEqual(headers.cookie?["b"]?.string, "2")
++        XCTAssertEqual(headers.cookie?["c"]?.string, "3")
++    }
++
+     // https://github.com/vapor/vapor/issues/2316
+     func testCookie_complexParsing() throws {
+         let headers = HTTPHeaders([

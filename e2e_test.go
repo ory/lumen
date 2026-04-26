@@ -483,16 +483,16 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 	projectPath := sampleProjectPath(t)
 
 	out := callSearch(t, session, map[string]any{
-		"query":     "authentication token validation",
-		"path":      projectPath,
+		"query": "authentication token validation",
+		"path":  projectPath,
 		"limit": 5,
 	})
 
 	if !out.Reindexed {
 		t.Error("expected Reindexed=true on first search")
 	}
-	if out.IndexedFiles != 6 {
-		t.Errorf("expected IndexedFiles=6, got %d", out.IndexedFiles)
+	if out.IndexedFiles != 7 {
+		t.Errorf("expected IndexedFiles=7, got %d", out.IndexedFiles)
 	}
 
 	// Limit respected.
@@ -560,8 +560,8 @@ func TestE2E_PlaintextContent(t *testing.T) {
 
 	// Get raw result to inspect Content (text) alongside StructuredContent.
 	result := callSearchRaw(t, session, map[string]any{
-		"query":     "authentication token validation",
-		"path":      projectPath,
+		"query": "authentication token validation",
+		"path":  projectPath,
 		"limit": 3,
 	})
 
@@ -624,7 +624,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out := callSearch(t, session, map[string]any{
 		"query":     "HTTP request handler for health check endpoint",
 		"path":      projectPath,
-		"limit": 50,
+		"limit":     50,
 		"min_score": -1,
 	})
 	healthRank := rankOf(out.Results, "HandleHealth")
@@ -634,7 +634,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 		raw := callSearchRaw(t, session, map[string]any{
 			"query":     "HTTP request handler for health check endpoint",
 			"path":      projectPath,
-			"limit": 50,
+			"limit":     50,
 			"min_score": -1,
 		})
 		t.Logf("raw text:\n%s", getTextContent(t, raw))
@@ -652,7 +652,7 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "database query pagination",
 		"path":      projectPath,
-		"limit": 50,
+		"limit":     50,
 		"min_score": -1,
 	})
 	queryRank := rankOf(out2.Results, "QueryUsers")
@@ -678,7 +678,7 @@ func TestE2E_LimitParameter(t *testing.T) {
 	out1 := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,
-		"limit": 1,
+		"limit":     1,
 		"min_score": -1,
 	})
 	if len(out1.Results) != 1 {
@@ -689,7 +689,7 @@ func TestE2E_LimitParameter(t *testing.T) {
 	out3 := callSearch(t, session, map[string]any{
 		"query":     "user",
 		"path":      projectPath,
-		"limit": 3,
+		"limit":     3,
 		"min_score": -1,
 	})
 	if len(out3.Results) > 3 {
@@ -716,7 +716,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outAll := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"limit": 50,
+		"limit":     50,
 		"min_score": -1,
 	})
 	if len(outAll.Results) == 0 {
@@ -727,7 +727,7 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 	outFiltered := callSearch(t, session, map[string]any{
 		"query":     "authentication token validation",
 		"path":      projectPath,
-		"limit": 50,
+		"limit":     50,
 		"min_score": 0.5,
 	})
 
@@ -899,11 +899,11 @@ func TestE2E_IndexStatus(t *testing.T) {
 	status := callStatus(t, session, map[string]any{
 		"path": projectPath,
 	})
-	if status.TotalFiles != 6 {
-		t.Errorf("expected TotalFiles=6, got %d", status.TotalFiles)
+	if status.TotalFiles != 7 {
+		t.Errorf("expected TotalFiles=7, got %d", status.TotalFiles)
 	}
-	if status.IndexedFiles != 6 {
-		t.Errorf("expected IndexedFiles=6, got %d", status.IndexedFiles)
+	if status.IndexedFiles != 7 {
+		t.Errorf("expected IndexedFiles=7, got %d", status.IndexedFiles)
 	}
 	if status.TotalChunks <= 10 {
 		t.Errorf("expected TotalChunks > 10 (fixture has ~16 symbols, no package chunks), got %d", status.TotalChunks)
@@ -928,7 +928,6 @@ func TestE2E_IndexStatus(t *testing.T) {
 		}
 	}
 }
-
 
 func TestE2E_ProgressNotifications(t *testing.T) {
 	t.Parallel()
@@ -1210,7 +1209,7 @@ func ValidateTokenV2(token string) bool {
 		"query":     "token validation",
 		"path":      wtDir,
 		"cwd":       wtDir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if !out1.Reindexed {
@@ -1301,7 +1300,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		"query":     "HTTP request handler",
 		"path":      subDir,
 		"cwd":       repoDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if !out1.Reindexed {
@@ -1314,7 +1313,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		"query":     "HTTP request handler",
 		"path":      subDir,
 		"cwd":       repoDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if out2.Reindexed {
@@ -1338,7 +1337,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 		"query":     "HTTP request handler",
 		"path":      subDir,
 		"cwd":       repoDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if out3.Reindexed {
@@ -1389,7 +1388,7 @@ func HandleLogin() {}
 	out1 := callSearch(t, session, map[string]any{
 		"query":     "start server",
 		"path":      pkgDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if !out1.Reindexed {
@@ -1404,7 +1403,7 @@ func HandleLogin() {}
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "login handler",
 		"path":      apiDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if out2.Reindexed {
@@ -1418,7 +1417,7 @@ func HandleLogin() {}
 	out3 := callSearch(t, session, map[string]any{
 		"query":     "start server",
 		"path":      repoDir,
-		"limit": 5,
+		"limit":     5,
 		"min_score": -1,
 	})
 	if findResult(out3.Results, "StartServer") == nil {
@@ -1558,7 +1557,7 @@ func FeatureFlag() bool { return false }
 		"query":     "feature flag rollout",
 		"path":      repoDir,
 		"cwd":       repoDir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if findResult(out2.Results, "FeatureFlag") != nil {
@@ -1639,8 +1638,8 @@ func TestE2E_SvelteIndexing(t *testing.T) {
 	if !out.Reindexed {
 		t.Error("expected Reindexed=true on first search")
 	}
-	if out.IndexedFiles != 6 {
-		t.Errorf("expected 6 indexed files (5 Go + 1 Svelte), got %d", out.IndexedFiles)
+	if out.IndexedFiles != 7 {
+		t.Errorf("expected 7 indexed files (5 Go + 1 Svelte + 1 Swift), got %d", out.IndexedFiles)
 	}
 
 	// mcp-server-card.svelte must appear in results.
@@ -1659,5 +1658,46 @@ func TestE2E_SvelteIndexing(t *testing.T) {
 	}
 	if svelteResult.StartLine < 2 {
 		t.Errorf("expected file-relative line number (>= 2), got StartLine=%d", svelteResult.StartLine)
+	}
+}
+
+func TestE2E_SwiftIndexing(t *testing.T) {
+	t.Parallel()
+	session := startServer(t)
+	projectPath := sampleProjectPath(t)
+
+	// Search for a concept that maps to CORSMiddleware.swift symbols.
+	out := callSearch(t, session, map[string]any{
+		"query": "CORS middleware origin allowed headers",
+		"path":  projectPath,
+		"limit": 10,
+	})
+
+	if !out.Reindexed {
+		t.Error("expected Reindexed=true on first search")
+	}
+	if out.IndexedFiles != 7 {
+		t.Errorf("expected 7 indexed files (5 Go + 1 Svelte + 1 Swift), got %d", out.IndexedFiles)
+	}
+
+	// CORSMiddleware.swift must appear in results.
+	swiftResult := findResult(out.Results, "CORSMiddleware")
+	if swiftResult == nil {
+		swiftResult = findResult(out.Results, "AllowOriginSetting")
+	}
+	if swiftResult == nil {
+		swiftResult = findResult(out.Results, "Configuration")
+	}
+	if swiftResult == nil {
+		swiftResult = findResult(out.Results, "respond")
+	}
+	if swiftResult == nil {
+		t.Fatalf("expected at least one symbol from CORSMiddleware.swift in results, got: %v", resultSymbols(out.Results))
+	}
+	if !strings.HasSuffix(swiftResult.FilePath, "CORSMiddleware.swift") {
+		t.Errorf("expected result from CORSMiddleware.swift, got %s", swiftResult.FilePath)
+	}
+	if swiftResult.StartLine < 1 {
+		t.Errorf("expected valid line number (>= 1), got StartLine=%d", swiftResult.StartLine)
 	}
 }

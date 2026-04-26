@@ -66,6 +66,11 @@ E2E test fixtures. They are used solely for testing purposes.
 
 - **rust-lang/book** (MIT/Apache 2.0) — https://github.com/rust-lang/book
 
+## Swift
+
+- **vapor/vapor** (MIT) — https://github.com/vapor/vapor
+  (commit a8db2dbda8b3cdc8a61bd35128590bd296e85563)
+
 ## Svelte
 
 - **huggingface/chat-ui** (Apache 2.0) — https://github.com/huggingface/chat-ui

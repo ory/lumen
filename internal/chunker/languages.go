@@ -16,6 +16,7 @@ package chunker
 
 import (
 	sitter_dart "github.com/alexaandru/go-sitter-forest/dart"
+	sitter_swift "github.com/alexaandru/go-sitter-forest/swift"
 	sitter "github.com/smacker/go-tree-sitter"
 	sitter_c "github.com/smacker/go-tree-sitter/c"
 	sitter_cpp "github.com/smacker/go-tree-sitter/cpp"
@@ -43,6 +44,7 @@ var supportedExtensions = []string{
 	".cpp", ".cc", ".cxx", ".hpp",
 	".php",
 	".cs",
+	".swift",
 	".dart",
 	".svelte",
 	".md", ".mdx",
@@ -250,6 +252,32 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		},
 	})
 
+	swift := mustTreeSitterChunker(LanguageDef{
+		Language: sitter.NewLanguage(sitter_swift.GetLanguage()),
+		Queries: []QueryDef{
+			// Functions (top-level and methods share the same node type).
+			{Pattern: `(function_declaration name: (simple_identifier) @name) @decl`, Kind: "function"},
+			// Protocol function declarations (no body).
+			{Pattern: `(protocol_function_declaration name: (simple_identifier) @name) @decl`, Kind: "function"},
+			// Class, struct, enum, actor, extension all parse as class_declaration.
+			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			// Extension where name is user_type > type_identifier.
+			{Pattern: `(class_declaration name: (user_type (type_identifier) @name)) @decl`, Kind: "type"},
+			// Protocol is its own node type.
+			{Pattern: `(protocol_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
+			// Typealias.
+			{Pattern: `(typealias_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			// Associated types in protocols.
+			{Pattern: `(associatedtype_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
+			// Properties (top-level and in types): name lives in pattern > simple_identifier.
+			{Pattern: `(property_declaration (pattern (simple_identifier) @name)) @decl`, Kind: "var"},
+			// Protocol property declarations.
+			{Pattern: `(protocol_property_declaration (pattern (simple_identifier) @name)) @decl`, Kind: "var"},
+			// Enum cases.
+			{Pattern: `(enum_entry name: (simple_identifier) @name) @decl`, Kind: "const"},
+		},
+	})
+
 	// svelteTS reuses the TypeScript grammar for script block injection.
 	// It is intentionally a separate instance so its Language pointer is
 	// the same *sitter.Language used elsewhere for .ts files.
@@ -301,30 +329,31 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 	structured := NewStructuredChunker(maxChunkTokens)
 
 	return map[string]Chunker{
-		".go":   goChunker,
-		".ts":   ts,
-		".tsx":  tsx,
-		".js":   js,
-		".jsx":  js,
-		".mjs":  js,
-		".py":   py,
-		".rs":   rs,
-		".rb":   rb,
-		".java": java,
-		".c":    c,
-		".h":    cpp,
-		".cpp":  cpp,
-		".cc":   cpp,
-		".cxx":  cpp,
-		".hpp":  cpp,
-		".php":  php,
-		".cs":   cs,
+		".go":     goChunker,
+		".ts":     ts,
+		".tsx":    tsx,
+		".js":     js,
+		".jsx":    js,
+		".mjs":    js,
+		".py":     py,
+		".rs":     rs,
+		".rb":     rb,
+		".java":   java,
+		".c":      c,
+		".h":      cpp,
+		".cpp":    cpp,
+		".cc":     cpp,
+		".cxx":    cpp,
+		".hpp":    cpp,
+		".php":    php,
+		".cs":     cs,
+		".swift":  swift,
 		".dart":   dart,
 		".svelte": svelte,
 		".md":     md,
-		".mdx":  md,
-		".yaml": structured,
-		".yml":  structured,
-		".json": structured,
+		".mdx":    md,
+		".yaml":   structured,
+		".yml":    structured,
+		".json":   structured,
 	}
 }
