@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.39](https://github.com/ory/lumen/compare/v0.0.38...v0.0.39) (2026-04-26)
+
+
+### Bug Fixes
+
+* **index:** skip files that fail to chunk instead of aborting the run ([#139](https://github.com/ory/lumen/issues/139)) ([835e0a0](https://github.com/ory/lumen/commit/835e0a06ab2194373acc28aca0cbe8d89e436b41))
+
 ## [0.0.38](https://github.com/ory/lumen/compare/v0.0.37...v0.0.38) (2026-04-24)
 
 
