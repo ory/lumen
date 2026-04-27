@@ -78,6 +78,14 @@ if [ -z "$BINARY" ]; then
 
   chmod +x "$BINARY"
   echo "Installed lumen to ${BINARY}" >&2
+
+  # Create a platform-agnostic symlink/copy so `lumen` works in PATH
+  GENERIC_BINARY="${PLUGIN_ROOT}/bin/lumen"
+  if [ ! -e "$GENERIC_BINARY" ] || [ ! -x "$GENERIC_BINARY" ]; then
+    cp "$BINARY" "$GENERIC_BINARY"
+    chmod +x "$GENERIC_BINARY"
+    echo "Created ${GENERIC_BINARY} for direct CLI usage" >&2
+  fi
 fi
 
 exec "$BINARY" "$@"

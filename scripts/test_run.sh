@@ -204,6 +204,58 @@ FAKECURL
 ) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
 
 echo ""
+echo "=== generic binary creation test ==="
+
+# Verifies that run.sh creates bin/lumen alongside the platform-specific binary
+# so users can add it to PATH. Addresses GitHub issue #143.
+(
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TMPROOT="$(mktemp -d)"
+  _FAKE_CURL_DIR="$(mktemp -d)"
+  trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR"' EXIT
+
+  OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  ARCH_RAW="$(uname -m)"
+  case "$ARCH_RAW" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; *) ARCH="$ARCH_RAW" ;; esac
+  _PLATFORM_BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}"
+  _GENERIC_BINARY="${_TMPROOT}/bin/lumen"
+
+  printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
+  mkdir -p "${_TMPROOT}/bin"
+
+  # Stub curl: write a minimal executable to the -o destination
+  cat > "${_FAKE_CURL_DIR}/curl" <<'FAKECURL'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) mkdir -p "$(dirname "$2")"; printf '#!/usr/bin/env bash\nexit 0\n' > "$2"; chmod +x "$2"; shift 2 ;;
+    *)  shift ;;
+  esac
+done
+exit 0
+FAKECURL
+  chmod +x "${_FAKE_CURL_DIR}/curl"
+
+  EXIT_CODE=0
+  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" PATH="${_FAKE_CURL_DIR}:${PATH}" \
+    bash "${_SCRIPT_DIR}/run.sh" stdio >/dev/null 2>&1 || EXIT_CODE=$?
+
+  if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "  FAIL: run.sh stdio with missing binary should download and exec (exit $EXIT_CODE)"
+    exit 1
+  fi
+  if [ ! -x "$_PLATFORM_BINARY" ]; then
+    echo "  FAIL: platform-specific binary not created at ${_PLATFORM_BINARY}"
+    exit 1
+  fi
+  if [ ! -x "$_GENERIC_BINARY" ]; then
+    echo "  FAIL: generic binary not created at ${_GENERIC_BINARY} (issue #143)"
+    exit 1
+  fi
+  echo "  PASS: run.sh creates both platform-specific and generic binaries"
+) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
+
+echo ""
 echo "=== GitHub API tag parsing tests ==="
 
 # Simulates the sed command used in run.sh to extract tag_name from JSON

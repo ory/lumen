@@ -411,6 +411,25 @@ install it automatically.
 lumen help
 ```
 
+**Using lumen directly from your shell**
+
+When installed as a plugin, the `lumen` binary is available at:
+
+- **Claude Code**: `~/.claude/plugins/cache/ory/lumen/<version>/bin/lumen`
+- **Cursor**: `~/.cursor/extensions/lumen/bin/lumen`
+- **Codex**: `${CODEX_HOME:-~/.codex}/lumen/bin/lumen`
+- **OpenCode**: `~/.opencode/plugins/lumen/bin/lumen`
+
+Add the appropriate path to your `$PATH` to use `lumen` commands directly:
+
+```bash
+# Example for Claude Code (add to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.claude/plugins/cache/ory/lumen/latest/bin:$PATH"
+```
+
+The plugin's `run.sh`/`run.bat` scripts automatically create a platform-agnostic
+`lumen` binary (from `lumen-linux-amd64`, `lumen-darwin-arm64`, etc.) on first run.
+
 ## Troubleshooting
 
 **Ollama not running / "connection refused"**
