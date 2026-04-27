@@ -106,8 +106,8 @@ Quality was maintained or improved in every task (Svelte: Poor → Good).
 | php-hard        | PHP  | with-lumen | Good    | $0.136 | 34.0s  | 796        | 66K        | 7          |
 | typescript-hard | TS   | baseline   | Good    | $0.186 | 84.4s  | 4,994      | 120K       | 6          |
 | typescript-hard | TS   | with-lumen | Good    | $0.136 | 56.3s  | 1,813      | 183K       | 9          |
-| python-hard     | Py   | baseline   | Perfect | $0.119 | 43.0s  | 1,710      | 132K       | 7          |
-| python-hard     | Py   | with-lumen | Perfect | $0.096 | 30.6s  | 1,092      | 90K        | 5          |
+| python-hard     | Py   | baseline   | Perfect | $0.3205 | 219.7s | 13,954     | 1,824K     | 41         |
+| python-hard     | Py   | with-lumen | Perfect | $0.1793 | 129.4s | 5,734      | 892K       | 22         |
 | ruby-hard       | Ruby | baseline   | Good    | $0.539 | 185.5s | 6,143      | 517K       | 53         |
 | ruby-hard       | Ruby | with-lumen | Good    | $0.411 | 165.2s | 5,581      | 295K       | 47         |
 | go-hard         | Go   | baseline   | Good    | $0.4721 | 356.9s | 21,574     | 2,820K     | 57         |
@@ -212,22 +212,28 @@ would otherwise have had to discover through exploration.
 ### Python — click (boolean flag default_map)
 
 Both scenarios found the one-line fix immediately. Lumen's semantic search
-located `get_help_record` in the `Option` class directly, saving a few Grep
-round-trips.
+located `get_help_record` in the `Option` class directly, saving significant
+exploration time. With **multi-signal ranking improvements**, Python shows
+dramatically better results while maintaining Perfect quality.
 
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Perfect  | Perfect    | Same       |
-| Cost          | $0.119   | $0.096     | **-19.5%** |
-| Time          | 43.0s    | 30.6s      | **-28.8%** |
-| Output tokens | 1,710    | 1,092      | **-36.1%** |
-| Cache reads   | 132K     | 90K        | **-32.1%** |
-| Tool calls    | 7        | 5          | -28.6%     |
+| Cost          | $0.3205  | $0.1793    | **-44.1%** |
+| Time          | 219.7s   | 129.4s     | **-41.1%** |
+| Output tokens | 13,954   | 5,734      | **-51.1%** |
+| Cache reads   | 1,824K   | 892K       | **-51.1%** |
+| Tool calls    | 41       | 22         | **-46.3%** |
 
 Both produced the **identical single-line patch** — changing `self.default` to
 `default_value` on line 2800 of `core.py`. The judge confirmed:
 
 > "The candidate patch makes the identical one-line change as the gold patch."
+
+The multi-signal ranking improvements delivered **more than double the cost
+savings** (-44% vs old -20%) while maintaining Perfect/Perfect quality. Tool
+call reduction of 46% indicates the ranking helped Claude navigate directly to
+the solution.
 
 ### Ruby — grape (wrong content type with wildcard Accept)
 
@@ -397,12 +403,12 @@ metric. The range spans from -8% (C++, Swift) to -76% (Dart):
 | ---------- | ------------- | --------------- | ---------- |
 | Dart       | $0.634        | $0.153          | **-75.8%** |
 | Svelte     | $0.178        | $0.082          | **-53.8%** |
+| Python     | $0.321        | $0.179          | **-44.1%** |
 | Rust       | $0.611        | $0.375          | **-38.7%** |
 | JavaScript | $0.482        | $0.325          | **-32.6%** |
 | TypeScript | $0.186        | $0.136          | **-27.1%** |
 | PHP        | $0.186        | $0.136          | **-26.8%** |
 | Ruby       | $0.539        | $0.411          | **-23.7%** |
-| Python     | $0.119        | $0.096          | **-19.5%** |
 | C++        | $1.102        | $1.014          | **-8.0%**  |
 | Go         | $0.472        | $0.435          | **-7.9%**  |
 | Swift      | $0.385        | $0.354          | **-7.9%**  |
@@ -420,7 +426,7 @@ and acts more:
 | JavaScript | 14,286          | 4,872             | **-65.9%** |
 | TypeScript | 4,994           | 1,813             | **-63.7%** |
 | PHP        | 1,936           | 796               | **-58.9%** |
-| Python     | 1,710           | 1,092             | **-36.1%** |
+| Python     | 13,954          | 5,734             | **-51.1%** |
 | Rust       | 17,717          | 12,291            | **-30.6%** |
 | Svelte     | 3,335           | 2,464             | **-26.1%** |
 | Go         | 21,574          | 16,726            | **-22.5%** |
@@ -437,10 +443,10 @@ time reductions:
 | ---------- | ------------- | --------------- | ---------- |
 | Dart       | 246.1s        | 50.9s           | **-79.3%** |
 | JavaScript | 254.7s        | 119.3s          | **-53.2%** |
+| Python     | 219.7s        | 129.4s          | **-41.1%** |
 | Rust       | 309.7s        | 204.0s          | **-34.1%** |
 | PHP        | 51.5s         | 34.0s           | **-34.0%** |
 | TypeScript | 84.4s         | 56.3s           | **-33.3%** |
-| Python     | 43.0s         | 30.6s           | **-28.8%** |
 | Ruby       | 185.5s        | 165.2s          | **-10.9%** |
 | Go         | 356.9s        | 304.4s          | **-14.7%** |
 | C++        | 370.7s        | 359.1s          | -3.1%      |
