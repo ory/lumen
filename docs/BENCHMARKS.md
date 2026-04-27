@@ -110,8 +110,8 @@ Quality was maintained or improved in every task (Svelte: Poor → Good).
 | python-hard     | Py   | with-lumen | Perfect | $0.096 | 30.6s  | 1,092      | 90K        | 5          |
 | ruby-hard       | Ruby | baseline   | Good    | $0.539 | 185.5s | 6,143      | 517K       | 53         |
 | ruby-hard       | Ruby | with-lumen | Good    | $0.411 | 165.2s | 5,581      | 295K       | 47         |
-| go-hard         | Go   | baseline   | Good    | $0.646 | 291.2s | 11,475     | 658K       | 51         |
-| go-hard         | Go   | with-lumen | Good    | $0.568 | 264.1s | 10,283     | 538K       | 35         |
+| go-hard         | Go   | baseline   | Good    | $0.4721 | 356.9s | 21,574     | 2,820K     | 57         |
+| go-hard         | Go   | with-lumen | Good    | $0.4349 | 304.4s | 16,726     | 2,676K     | 49         |
 | dart-hard       | Dart   | baseline   | Good    | $0.634  | 246.1s | 21,286     | 4,126K     | 61         |
 | dart-hard       | Dart   | with-lumen | Good    | $0.153  | 50.9s  | 3,862      | 663K       | 14         |
 | swift-hard      | Swift  | baseline   | Good    | $0.3845 | 337.8s | 8,615      | 1,395K     | 59         |
@@ -251,20 +251,23 @@ project.
 ### Go — go-yaml (null value decoder)
 
 Lumen helped Claude find `createDecodedNewValue` in `decode.go` and produce a
-complete patch including test files.
+complete patch including test files. With the **multi-signal ranking
+improvements**, Go shows better time reduction while maintaining quality.
 
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Good     | Good       | Same       |
-| Cost          | $0.646   | $0.568     | **-12.2%** |
-| Time          | 291.2s   | 264.1s     | -9.3%      |
-| Output tokens | 11,475   | 10,283     | -10.4%     |
-| Cache reads   | 658K     | 538K       | **-18.2%** |
-| Tool calls    | 51       | 35         | **-31.4%** |
+| Cost          | $0.4721  | $0.4349    | **-7.9%**  |
+| Time          | 356.9s   | 304.4s     | **-14.7%** |
+| Output tokens | 21,574   | 16,726     | **-22.5%** |
+| Cache reads   | 2,820K   | 2,676K     | -5.1%      |
+| Tool calls    | 57       | 49         | **-14.0%** |
 
 Both scenarios produced correct patches with test files. The with-lumen patch
 was more thorough — table-driven tests covering both null values and
-comments-only nodes, vs a single test case in the baseline.
+comments-only nodes, vs a single test case in the baseline. The multi-signal
+ranking improvements delivered **better time reduction** (-15% vs old -9%) while
+maintaining Good/Good quality.
 
 ### Dart — shelf (HEAD content-length RFC violation)
 
@@ -400,15 +403,16 @@ metric. The range spans from -8% (C++, Swift) to -76% (Dart):
 | PHP        | $0.186        | $0.136          | **-26.8%** |
 | Ruby       | $0.539        | $0.411          | **-23.7%** |
 | Python     | $0.119        | $0.096          | **-19.5%** |
-| Go         | $0.646        | $0.568          | **-12.2%** |
 | C++        | $1.102        | $1.014          | **-8.0%**  |
+| Go         | $0.472        | $0.435          | **-7.9%**  |
 | Swift      | $0.385        | $0.354          | **-7.9%**  |
 
 ### 2. Output Token Reduction Is the Primary Driver
 
-In 8/9 languages, output tokens dropped — up to 82% for Dart. The one
-exception is C++ where output tokens increased (+42%) due to more comprehensive
-code generation. Fewer output tokens means Claude explores less and acts more:
+In 9/10 languages, output tokens dropped — up to 82% for Dart. The exception is
+C++ where output tokens increased (+42%) due to more comprehensive code
+generation for the feature task. Fewer output tokens means Claude explores less
+and acts more:
 
 | Language   | Baseline output | With-Lumen output | Delta      |
 | ---------- | --------------- | ----------------- | ---------- |
@@ -418,7 +422,9 @@ code generation. Fewer output tokens means Claude explores less and acts more:
 | PHP        | 1,936           | 796               | **-58.9%** |
 | Python     | 1,710           | 1,092             | **-36.1%** |
 | Rust       | 17,717          | 12,291            | **-30.6%** |
-| Go         | 11,475          | 10,283            | -10.4%     |
+| Svelte     | 3,335           | 2,464             | **-26.1%** |
+| Go         | 21,574          | 16,726            | **-22.5%** |
+| Swift      | 8,615           | 10,491            | +21.8%     |
 | Ruby       | 6,143           | 5,581             | -9.1%      |
 | C++        | 15,506          | 22,056            | +42.2%     |
 
@@ -436,8 +442,10 @@ time reductions:
 | TypeScript | 84.4s         | 56.3s           | **-33.3%** |
 | Python     | 43.0s         | 30.6s           | **-28.8%** |
 | Ruby       | 185.5s        | 165.2s          | **-10.9%** |
-| Go         | 291.2s        | 264.1s          | -9.3%      |
+| Go         | 356.9s        | 304.4s          | **-14.7%** |
 | C++        | 370.7s        | 359.1s          | -3.1%      |
+| Svelte     | 122.7s        | 53.8s           | **-56.2%** |
+| Swift      | 337.8s        | 642.6s          | +90.2%     |
 
 ### 4. Search Calls Are Modest
 

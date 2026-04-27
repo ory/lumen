@@ -237,7 +237,7 @@ issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 | PHP        | **-27%**       | **-34%**       | **-59%** (1.9K → 0.8K)  | Good (both)    |
 | Ruby       | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)    |
 | Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both) |
-| Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
+| Go         | **-8%**        | **-15%**       | **-22%** (21.6K → 16.7K) | Good (both)    |
 | Swift      | **-8%**        | +90%           | +22% (8.6K → 10.5K)     | Good (both)    |
 | C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
 | Svelte     | **-54%**       | **-56%**       | **-26%** (3.3K → 2.5K)  | Poor → Good ⭐  |
@@ -258,7 +258,7 @@ Supports **13 language families** with semantic chunking (11 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
-| Go               | Native AST  | `.go`                                     | Benchmarked: -12% cost, Good quality          |
+| Go               | Native AST  | `.go`                                     | Benchmarked: -8% cost, -15% time, Good quality |
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens     |
 | TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time           |
 | JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time           |
