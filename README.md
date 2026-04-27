@@ -13,7 +13,7 @@ keys, no cloud, no external database, just open-source embedding models
 ([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
 and your CPU. A single static binary and your own local embedding server.
 
-The payoff is measurable and reproducible: across 9 benchmark runs on 9
+The payoff is measurable and reproducible: across 10 benchmark runs on 10
 languages and real GitHub bug-fix tasks, Lumen cuts cost in **every single
 language** — up to 39%. Output tokens drop by up to 66%, sessions complete up to
 53% faster, and patch quality is maintained in every task. All verified with a
@@ -30,7 +30,7 @@ run yourself.
 | PHP (monolog)          | **$0.14, 34s** (-27%, -34%)   | $0.19, 52s           |
 | TypeScript (commander) | **$0.14, 56s** (-27%, -33%)   | $0.19, 84s           |
 | Svelte (chat-ui)       | **$0.10, 56s** (-26%, -31%)   | $0.14, 80s           |
-| Patch quality          | **Maintained in all 9 tasks** | —                    |
+| Patch quality          | **Maintained in all 10 tasks** | —                    |
 
 ## Table of contents
 
@@ -226,7 +226,7 @@ Claude on real GitHub bug-fix tasks and measures cost, time, output tokens, and
 patch quality — with and without Lumen. All results are reproducible: raw JSONL
 streams, patch diffs, and judge ratings are committed to this repository.
 
-**Key results** — 9 runs across 9 languages, hard difficulty, real GitHub
+**Key results** — 10 runs across 10 languages, hard difficulty, real GitHub
 issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 
 | Language   | Cost Reduction | Time Reduction | Output Token Reduction  | Quality        |
@@ -238,6 +238,7 @@ issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 | Ruby       | **-24%**       | **-11%**       | -9% (6.1K → 5.6K)       | Good (both)    |
 | Python     | **-20%**       | **-29%**       | **-36%** (1.7K → 1.1K)  | Perfect (both) |
 | Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
+| Swift      | **-8%**        | +90%           | +22% (8.6K → 10.5K)     | Good (both)    |
 | C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
 | Svelte     | **-26%**       | **-31%**       | **-26%** (4.0K → 3.0K)  | Poor (both)    |
 
@@ -252,7 +253,7 @@ judge rationales, and reproduce instructions.
 
 ## Supported languages
 
-Supports **12 language families** with semantic chunking (10 benchmarked):
+Supports **13 language families** with semantic chunking (11 benchmarked):
 
 | Language         | Parser      | Extensions                                | Benchmark status                              |
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
@@ -266,6 +267,7 @@ Supports **12 language families** with semantic chunking (10 benchmarked):
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time           |
 | C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -8% cost (C++ feature task)      |
 | Svelte           | tree-sitter | `.svelte`                                 | Benchmarked: -26% cost, -31% time             |
+| Swift            | tree-sitter | `.swift`                                  | Benchmarked: -8% cost, Good quality           |
 | Java             | tree-sitter | `.java`                                   | Supported                                     |
 | C#               | tree-sitter | `.cs`                                     | Supported                                     |
 

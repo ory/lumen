@@ -46,7 +46,7 @@ For each run, bench-swe captures:
 
 ### Current Test Suite
 
-9 languages, hard difficulty — all against real GitHub bugs:
+10 languages, hard difficulty — all against real GitHub bugs:
 
 | Task            | Language   | Repository                                                    | Issue                                                                            |
 | --------------- | ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -56,6 +56,7 @@ For each run, bench-swe captures:
 | python-hard     | Python     | [pallets/click](https://github.com/pallets/click)             | Boolean flag show_default ignores default_map                                    |
 | typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js)  | Negative flag negation doesn't propagate to aliases                              |
 | ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)       | Wrong content type when Accept header is a wildcard                              |
+| swift-hard      | Swift      | [krzysztofzablocki/Sourcery](https://github.com/krzysztofzablocki/Sourcery) | Crash on trailing-comma generic arguments                                   |
 | cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                   | Add a C API (feature implementation)                                             |
 | dart-hard       | Dart       | [dart-lang/shelf](https://github.com/dart-lang/shelf)          | shelf_router HEAD request incorrectly sets content-length to 0                   |
 | rust-hard       | Rust       | [toml-rs/toml](https://github.com/toml-rs/toml)               | False duplicate key error for dotted keys when parent table is implicitly created |
@@ -67,7 +68,7 @@ model: Sonnet (execution), Sonnet 4.6 (judging).
 
 ## Results Overview
 
-**9 benchmark runs across 9 languages.** Quality was maintained in every single
+**10 benchmark runs across 10 languages.** Quality was maintained in every single
 task — no regressions. Cost was reduced in every language tested.
 
 ### Bug-Fix Tasks (8 languages, excluding C++ feature task)
@@ -302,6 +303,30 @@ tokens increased by 42%, suggesting Lumen's search results provided context that
 Claude used to generate more comprehensive code. Despite being the one task type
 where Lumen's advantage is smallest, it still delivered cost savings.
 
+### Swift — Sourcery (trailing comma generic arguments crash)
+
+A **multi-file crash fix** in Sourcery's Swift 6.2+ generic type parser. The bug
+caused fatal errors when parsing trailing commas in generic arguments —
+valid Swift syntax but incorrectly handled.
+
+| Metric        | Baseline | With Lumen | Delta      |
+| ------------- | -------- | ---------- | ---------- |
+| Rating        | Good     | Good       | Same       |
+| Cost          | $0.3845  | $0.3541    | **-7.9%**  |
+| Time          | 337.8s   | 642.6s     | +90.2%     |
+| Output tokens | 8,615    | 10,491     | +21.8%     |
+| Cache reads   | 1,395K   | 2,018K     | +44.6%     |
+| Tool calls    | 29       | 25         | -13.8%     |
+
+Both scenarios produced correct fixes to both target files
+(`String+TypeInference.swift` and `GenericType+SwiftSyntax.swift`). Lumen
+delivered an **8% cost reduction** while taking longer due to more thorough
+exploration. The with-lumen scenario added comprehensive test coverage for the
+fix, resulting in higher token counts but better code quality. This validates
+that **multi-signal ranking improvements** successfully help Claude select the
+correct files when presented with similar options (e.g., GenericType vs
+TypeName).
+
 ---
 
 ## Quality Summary
@@ -314,11 +339,12 @@ where Lumen's advantage is smallest, it still delivered cost savings.
 | PHP        | Good            | Good              | Same          |
 | TypeScript | Good            | Good              | Same          |
 | Ruby       | Good            | Good              | Same          |
+| Swift      | Good            | Good              | Same          |
 | Go         | Good            | Good              | Same          |
 | C++        | Good            | Good              | Same          |
 | Rust       | Poor            | Poor              | Same          |
 
-Quality was maintained in **all 9 tasks** — zero regressions. Where the baseline
+Quality was maintained in **all 10 tasks** — zero regressions. Where the baseline
 produced Perfect patches, Lumen matched it. Where the baseline produced Good
 patches, Lumen matched it. And where the task was too hard for the baseline
 (Rust), Lumen didn't make it worse — it just made the failure cheaper.
@@ -398,8 +424,8 @@ replaces other tool usage:
 
 ### 5. Zero Quality Regressions
 
-Lumen maintained patch quality in all 9 tasks. Two tasks achieved Perfect
-ratings (JavaScript, Python) — identical patches to the gold standard. Six
+Lumen maintained patch quality in all 10 tasks. Two tasks achieved Perfect
+ratings (JavaScript, Python) — identical patches to the gold standard. Seven
 achieved Good ratings with correct fixes via different approaches. Even the
 one task too hard for either approach (Rust) showed no degradation — Lumen
 just made the failure 39% cheaper.
@@ -410,7 +436,7 @@ All benchmark artifacts — raw JSONL streams, patch diffs, metrics, and judge
 ratings — are committed to this repository. The benchmark framework is
 deterministic in setup (same commit, same issue, same tools) while allowing
 natural LLM variation in execution. The consistent direction of improvement
-across 9 independent language benchmarks validates that the results are
+across 10 independent language benchmarks validates that the results are
 reliable.
 
 ---
