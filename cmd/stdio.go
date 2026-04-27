@@ -618,6 +618,11 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		fillSnippets(effectiveRoot, items, input.MaxLines)
 	}
 
+	// Final sort to guarantee descending score order before returning.
+	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
+
 	out.Results = items
 	text := formatSearchResults(input.Path, out)
 	return &mcp.CallToolResult{
@@ -1433,51 +1438,33 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	}
 	b.WriteString(":\n")
 
-	// Group results by relative file path.
-	type fileGroup struct {
-		rel      string
-		results  []SearchResultItem
-		maxScore float32
-	}
-	var order []string
-	groups := make(map[string]*fileGroup)
+	// Output results in global score order (already sorted), but group consecutive
+	// chunks from the same file under one <result:file> tag for readability.
+	currentFile := ""
 	for _, r := range out.Results {
 		rel, err := filepath.Rel(projectPath, r.FilePath)
 		if err != nil {
 			rel = r.FilePath
 		}
-		if _, ok := groups[rel]; !ok {
-			order = append(order, rel)
-			groups[rel] = &fileGroup{rel: rel}
-		}
-		g := groups[rel]
-		g.results = append(g.results, r)
-		if r.Score > g.maxScore {
-			g.maxScore = r.Score
-		}
-	}
 
-	// Sort files by best chunk score descending.
-	slices.SortFunc(order, func(a, b string) int {
-		return cmp.Compare(groups[b].maxScore, groups[a].maxScore)
-	})
-
-	for _, rel := range order {
-		g := groups[rel]
-		// Sort chunks within each file by score descending.
-		slices.SortFunc(g.results, func(a, b SearchResultItem) int {
-			return cmp.Compare(b.Score, a.Score)
-		})
-		fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(g.rel))
-		for _, r := range g.results {
-			fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
-				r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
-			if r.Content != "" {
-				b.WriteString(r.Content)
-				b.WriteByte('\n')
+		// Start a new file group if the file changed.
+		if rel != currentFile {
+			if currentFile != "" {
+				b.WriteString("</result:file>")
 			}
-			b.WriteString("  </result:chunk>\n")
+			currentFile = rel
+			fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(rel))
 		}
+
+		fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+			r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
+		if r.Content != "" {
+			b.WriteString(r.Content)
+			b.WriteByte('\n')
+		}
+		b.WriteString("  </result:chunk>\n")
+	}
+	if currentFile != "" {
 		b.WriteString("</result:file>")
 	}
 
