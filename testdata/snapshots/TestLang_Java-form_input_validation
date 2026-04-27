@@ -2,7 +2,7 @@ results: 7
 Owner.java:135-145  getPet (method)
 Owner.java:166-176  Owner (type)
 OwnerController.java:77-83  processCreationForm+OwnerController (type)
-OwnerController.java:141-154  processUpdateOwnerForm+OwnerController (type)
+OwnerController.java:141-154  processUpdateOwnerForm+OwnerController (method)
 PetController.java:50-54  VIEWS_PETS_CREATE_OR_UPDATE_FORM+owners+types (var)
 PetController.java:93-145  initPetBinder+initCreationForm+PetController+processCreationForm+initUpdateForm+processUpdateForm (method)
 VisitController.java:92-97  processNewVisitForm (method)

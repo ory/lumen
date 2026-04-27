@@ -1,6 +1,6 @@
 results: 10
 rg-globset-lib.rs:243-255  Error+ErrorKind (type)
-rg-ignore-lib.rs:137-142  clone (function)
+rg-globset-lib.rs:264-269  ErrorKind+fmt (type)
 rg-ignore-lib.rs:200-213  io_error+Error (type)
 rg-ignore-lib.rs:225-229  Error+into_io_error (type)
 rg-ignore-lib.rs:322-329  Error (type)

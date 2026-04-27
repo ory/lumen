@@ -1,12 +1,12 @@
 results: 10
+compose-compose.yaml:19-28  services.wordpress (section)
 compose-nginx-flask-mongo.yaml:2-12  services.web (section)
 k8s-ingress.yaml:9-27  spec.rules (section)
 k8s-service.yaml:1-27  root (document)
+k8s-statefulset.yaml:20-22  spec.template.spec.containers[0].ports (section)
 kube-prometheus-stack-values.yaml:742-748  alertmanager.service.nodePort (section)
 kube-prometheus-stack-values.yaml:2763-2773  prometheusOperator.admissionWebhooks.deployment.service.nodePort+prometheusOperator.admissionWebhooks.deployment.service.additionalPorts (section)
 kube-prometheus-stack-values.yaml:3075-3085  prometheusOperator.service.nodePort+prometheusOperator.service.additionalPorts (section)
-kube-prometheus-stack-values.yaml:3543-3544  prometheus.thanosServiceExternal.httpPortName (section)
 kube-prometheus-stack-values.yaml:3608-3617  prometheus.service.additionalPorts (section)
-kube-prometheus-stack-values.yaml:3641-3643  prometheus.servicePerReplica.port (section)
 kube-prometheus-stack-values.yaml:5039-5045  thanosRuler.service.nodePort (section)
 

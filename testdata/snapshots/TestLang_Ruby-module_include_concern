@@ -2,11 +2,11 @@ results: 10
 concern.rb:3-20  ActiveSupport (type)
 concern.rb:38-63  ActiveSupport (type)
 concern.rb:78-107  ActiveSupport (type)
-concern.rb:133-141  ActiveSupport+Concern.append_features (type)
+concern.rb:133-141  ActiveSupport+Concern.append_features (function)
 engine.rb:204-217  Rails (type)
-engine.rb:415-420  Engine.isolate_namespace (function)
 engine.rb:494-508  Rails.Engine+Engine.helpers (function)
 metal.rb:31-43  ActionController.MiddlewareStack+MiddlewareStack.INCLUDE+MiddlewareStack.EXCLUDE+MiddlewareStack.NULL (var)
+sinatra-base.rb:1327-1334  Base.extensions (function)
 sinatra-base.rb:1555-1561  Sinatra.Base+Base.helpers (type)
 sinatra-base.rb:2159-2168  Sinatra (type)
 

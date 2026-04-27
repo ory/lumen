@@ -1,12 +1,12 @@
 results: 10
+application.rb:162-174  Rails.Application (type)
 engine.rb:138-151  Rails (type)
 engine.rb:415-422  Rails.Engine+Engine.isolate_namespace (type)
-engine.rb:525-529  Engine.endpoint (function)
+engine.rb:542-549  Rails.Engine+Engine.routes (function)
 engine.rb:606-612  Rails.Engine (type)
 engine.rb:675-688  Rails.Engine+Engine.routes? (function)
 metal.rb:108-119  ActionController (type)
-sinatra-base.rb:1033-1038  Base.pass (function)
+sinatra-base.rb:1079-1086  Base.route! (function)
 sinatra-base.rb:1098-1105  Base.process_route (function)
-sinatra-base.rb:1510-1515  Sinatra.Base+Base.condition (type)
 sinatra-base.rb:1551-1551  Base.link (function)
 

@@ -1,12 +1,12 @@
 results: 10
 Builder.php:424-438  Builder+hydrate (type)
+Builder.php:450-462  fromQuery (method)
 Builder.php:956-965  Builder+cursor (type)
+Builder.php:1867-1878  Builder+getUnionBuilders (type)
 HasMany.php:7-13  HasMany (type)
 HasMany.php:47-60  HasMany+match (type)
 Model.php:41-57  Model (type)
 Model.php:226-239  collectionClass+Model (var)
-Model.php:764-775  Model+loadAggregate (type)
 Model.php:1096-1106  push (method)
-Model.php:1376-1385  Model (type)
 Model.php:2018-2027  getQueueableRelations (method)
 

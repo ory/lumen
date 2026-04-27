@@ -1,12 +1,12 @@
 results: 10
 event.ts:69-73  Event (type)
 event.ts:208-213  snapshot.onWillAddFirstListener+snapshot.onDidRemoveLastListener (method)
+event.ts:245-250  Event (type)
 event.ts:329-337  Event (type)
 event.ts:436-436  Event (type)
+event.ts:485-491  Event (type)
 event.ts:545-550  buffer.onDidRemoveLastListener (method)
-event.ts:858-874  EmitterOptions (interface)
-event.ts:884-896  EmitterOptions (interface)
-event.ts:921-924  start (method)
+event.ts:685-685  fromDOMEventEmitter.onFirstListenerAdd (function)
 event.ts:1170-1174  event+Emitter (method)
 event.ts:1347-1359  EventDeliveryQueuePrivate (type)
 

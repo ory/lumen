@@ -6,7 +6,7 @@ node-events.js:385-396  emitUnhandledRejectionOrErr (function)
 node-events.js:1083-1092  on (function)
 node-events.js:1106-1116  on.throw (method)
 node-events.js:1183-1188  on.errorHandler (function)
-node-net.js:1905-1916  createServerHandle (function)
+node-net.js:2043-2045  emitErrorNT (function)
 node-net.js:2081-2096  listenInCluster.listenOnPrimaryHandle (function)
 node-util.js:329-375  getSystemErrorMessage+getSystemErrorName+_errnoException+_exceptionWithHostPort (function)
 

@@ -1,6 +1,6 @@
 results: 10
+api.go:70-74  statusSuccess+statusError+statusClientClosedConnection+checkContextEveryNIterations (const)
 api.go:236-238  API (type)
-api.go:277-289  NewAPI (function)
 api.go:391-415  API.Register (method)
 api.go:1937-1960  API.serveWALReplayStatus+API.notifications+API.notificationsSSE (method)
 api.go:2001-2024  API.remoteRead+API.remoteWrite+API.otlpWrite (method)

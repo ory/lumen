@@ -1,12 +1,12 @@
 results: 10
 Builder.php:37-53  Builder+query+model+pendingAttributes+eagerLoad+macros+localMacros+onDelete+propertyPassthru+passthru (type)
 Builder.php:92-96  query+model+pendingAttributes+eagerLoad+macros+localMacros+onDelete+propertyPassthru+passthru (var)
-Builder.php:167-176  __construct (method)
-Builder.php:337-345  firstWhere+Builder (method)
+Builder.php:337-345  firstWhere+Builder (type)
+Builder.php:382-391  Builder (type)
 Builder.php:844-851  eagerLoadRelation (method)
 Builder.php:870-873  getRelation (method)
-Builder.php:1533-1541  addNewWheresWithinGroup+Builder (method)
-Builder.php:1558-1566  groupWhereSliceForScope+Builder (method)
+Builder.php:1533-1541  addNewWheresWithinGroup+Builder (type)
+Builder.php:1558-1566  groupWhereSliceForScope+Builder (type)
 Builder.php:1879-1910  getQuery+Builder+setQuery+toBase (method)
 Connection.php:319-333  Connection+query (method)
 
