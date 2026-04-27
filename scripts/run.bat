@@ -96,12 +96,14 @@ if not exist "%BINARY%" (
   )
 
   echo Installed lumen to %BINARY% >&2
+)
 
-  :: Create a platform-agnostic copy so `lumen` works in PATH
-  set "GENERIC_BINARY=%PLUGIN_ROOT%\bin\lumen.exe"
-  if not exist "!GENERIC_BINARY!" (
-    copy "%BINARY%" "!GENERIC_BINARY!" >nul
-    echo Created !GENERIC_BINARY! for direct CLI usage >&2
+:: Always ensure generic binary exists for PATH usage (backfills old installs)
+set "GENERIC_BINARY=%PLUGIN_ROOT%\bin\lumen.exe"
+if not exist "%GENERIC_BINARY%" (
+  if exist "%BINARY%" (
+    copy "%BINARY%" "%GENERIC_BINARY%" >nul
+    echo Created %GENERIC_BINARY% for direct CLI usage >&2
   )
 )
 

@@ -256,6 +256,48 @@ FAKECURL
 ) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
 
 echo ""
+echo "=== generic binary backfill test (upgrade scenario) ==="
+
+# Verifies that run.sh backfills bin/lumen when only the platform-specific
+# binary exists (e.g., from an old installation). Addresses CodeRabbit feedback.
+(
+  _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  _TMPROOT="$(mktemp -d)"
+  trap 'rm -rf "$_TMPROOT"' EXIT
+
+  OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  ARCH_RAW="$(uname -m)"
+  case "$ARCH_RAW" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; *) ARCH="$ARCH_RAW" ;; esac
+  _PLATFORM_BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}"
+  _GENERIC_BINARY="${_TMPROOT}/bin/lumen"
+
+  printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
+  mkdir -p "${_TMPROOT}/bin"
+
+  # Simulate old installation: platform-specific binary exists, generic does not
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$_PLATFORM_BINARY"
+  chmod +x "$_PLATFORM_BINARY"
+
+  EXIT_CODE=0
+  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" \
+    bash "${_SCRIPT_DIR}/run.sh" stdio >/dev/null 2>&1 || EXIT_CODE=$?
+
+  if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "  FAIL: run.sh should succeed when platform binary exists (exit $EXIT_CODE)"
+    exit 1
+  fi
+  if [ ! -x "$_PLATFORM_BINARY" ]; then
+    echo "  FAIL: platform-specific binary should remain intact"
+    exit 1
+  fi
+  if [ ! -x "$_GENERIC_BINARY" ]; then
+    echo "  FAIL: generic binary not backfilled from existing platform binary"
+    exit 1
+  fi
+  echo "  PASS: run.sh backfills generic binary from existing platform-specific binary"
+) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
+
+echo ""
 echo "=== GitHub API tag parsing tests ==="
 
 # Simulates the sed command used in run.sh to extract tag_name from JSON

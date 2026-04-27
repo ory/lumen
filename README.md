@@ -424,11 +424,15 @@ Add the appropriate path to your `$PATH` to use `lumen` commands directly:
 
 ```bash
 # Example for Claude Code (add to ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/.claude/plugins/cache/ory/lumen/latest/bin:$PATH"
+# Replace 0.0.38 with your installed version, or use a glob pattern
+export PATH="$HOME/.claude/plugins/cache/ory/lumen/0.0.38/bin:$PATH"
+
+# For Codex
+export PATH="${CODEX_HOME:-$HOME/.codex}/lumen/bin:$PATH"
 ```
 
 The plugin's `run.sh`/`run.bat` scripts automatically create a platform-agnostic
-`lumen` binary (from `lumen-linux-amd64`, `lumen-darwin-arm64`, etc.) on first run.
+`lumen` binary (from `lumen-linux-amd64`, `lumen-darwin-arm64`, etc.) when first invoked.
 
 ## Troubleshooting
 
