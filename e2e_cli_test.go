@@ -180,11 +180,11 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	if err := db.QueryRow("SELECT count(*) FROM files").Scan(&fileCount); err != nil {
 		t.Fatalf("count files: %v", err)
 	}
-	if fileCount != 6 {
-		t.Errorf("expected 6 files, got %d", fileCount)
+	if fileCount != 7 {
+		t.Errorf("expected 7 files, got %d", fileCount)
 	}
 
-	// All file paths should end in .go and have valid hashes.
+	// All file paths should end in .go, .svelte, or .swift and have valid hashes.
 	rows, err := db.Query("SELECT path, hash FROM files ORDER BY path")
 	if err != nil {
 		t.Fatalf("query files: %v", err)
@@ -197,8 +197,8 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 			t.Fatalf("scan file row: %v", err)
 		}
 		filePaths = append(filePaths, path)
-		if !strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".svelte") {
-			t.Errorf("file path should end in .go or .svelte: %s", path)
+		if !strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, ".svelte") && !strings.HasSuffix(path, ".swift") {
+			t.Errorf("file path should end in .go, .svelte, or .swift: %s", path)
 		}
 		if len(hash) != 64 { // SHA-256 hex
 			t.Errorf("file hash should be 64 hex chars, got %d: %s", len(hash), hash)
@@ -455,8 +455,8 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	db.QueryRow("SELECT count(*) FROM files").Scan(&initialFiles)
 	db.QueryRow("SELECT count(*) FROM chunks").Scan(&initialChunks)
 
-	if initialFiles != 6 {
-		t.Fatalf("expected 6 initial files, got %d", initialFiles)
+	if initialFiles != 7 {
+		t.Fatalf("expected 7 initial files, got %d", initialFiles)
 	}
 
 	// Get initial root hash.
@@ -483,8 +483,8 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	// Verify file count increased.
 	var newFileCount int
 	db.QueryRow("SELECT count(*) FROM files").Scan(&newFileCount)
-	if newFileCount != 7 {
-		t.Errorf("expected 7 files after adding one, got %d", newFileCount)
+	if newFileCount != 8 {
+		t.Errorf("expected 8 files after adding one, got %d", newFileCount)
 	}
 
 	// Verify chunk count increased.

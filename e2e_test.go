@@ -505,8 +505,13 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 
 	// Validate every result has well-formed fields.
 	for i, r := range out.Results {
-		if r.FilePath == "" || !strings.HasSuffix(r.FilePath, ".go") {
-			t.Errorf("result[%d]: FilePath should be non-empty and end in .go, got %q", i, r.FilePath)
+		if r.FilePath == "" {
+			t.Errorf("result[%d]: FilePath should be non-empty, got %q", i, r.FilePath)
+		}
+		// Results can be .go, .svelte, or .swift files
+		validExt := strings.HasSuffix(r.FilePath, ".go") || strings.HasSuffix(r.FilePath, ".svelte") || strings.HasSuffix(r.FilePath, ".swift")
+		if !validExt {
+			t.Errorf("result[%d]: FilePath should end in .go, .svelte, or .swift, got %q", i, r.FilePath)
 		}
 		if r.Symbol == "" {
 			t.Errorf("result[%d]: Symbol should be non-empty", i)
