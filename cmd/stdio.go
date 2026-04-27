@@ -1303,9 +1303,14 @@ afterGeneric:
 // applyDiversityBoost demotes results when a single file dominates the top N.
 // Files appearing 3+ times in the result set get their 3rd+ occurrences
 // penalized by 0.90x to make room for results from other files. Results are
-// re-sorted after adjustment.
+// ALWAYS re-sorted after adjustment to maintain descending score order.
 func applyDiversityBoost(items []SearchResultItem, limit int) []SearchResultItem {
+	// Skip diversity adjustment if too few results, but still ensure sort order.
 	if len(items) < limit || limit < 5 {
+		// Re-sort to ensure order even if no diversity adjustment applied.
+		slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+			return cmp.Compare(b.Score, a.Score)
+		})
 		return items
 	}
 
