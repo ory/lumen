@@ -44,6 +44,8 @@ var SkipFiles = map[string]bool{
 	"Gemfile.lock": true,
 	// Rust
 	"Cargo.lock": true,
+	// Swift
+	"Package.resolved": true,
 	// Dart/Flutter
 	"pubspec.lock": true,
 	// Elixir
