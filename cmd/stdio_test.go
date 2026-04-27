@@ -2029,3 +2029,219 @@ func TestIndexerCache_CloseCancelsBackgroundGoroutines(t *testing.T) {
 		t.Fatalf("expected context.Canceled in ensureFresh, got: %v", finalErr)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Enhanced Ranking Tests
+// ---------------------------------------------------------------------------
+
+func TestExtractKeywords(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{
+			name:  "basic keywords",
+			query: "generic type parsing",
+			want:  []string{"generic", "type", "parsing"},
+		},
+		{
+			name:  "with stopwords",
+			query: "the quick brown fox",
+			want:  []string{"quick", "brown"}, // "the" excluded, "fox" too short
+		},
+		{
+			name:  "with punctuation",
+			query: "decode null-value unmarshal",
+			want:  []string{"decode", "null", "value", "unmarshal"},
+		},
+		{
+			name:  "short words excluded",
+			query: "a b c decode",
+			want:  []string{"decode"},
+		},
+		{
+			name:  "empty query",
+			query: "",
+			want:  []string{},
+		},
+		{
+			name:  "only stopwords",
+			query: "the and or to from",
+			want:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractKeywords(tt.query)
+			if !slicesEqual(got, tt.want) {
+				t.Errorf("extractKeywords(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSplitIdentifier(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{
+			name:  "camelCase",
+			input: "parseRawArgs",
+			want:  []string{"parse", "raw", "args"},
+		},
+		{
+			name:  "snake_case",
+			input: "decode_value",
+			want:  []string{"decode", "value"},
+		},
+		{
+			name:  "kebab-case",
+			input: "generic-type",
+			want:  []string{"generic", "type"},
+		},
+		{
+			name:  "mixed with plus",
+			input: "GenericType+SwiftSyntax",
+			want:  []string{"generic", "type", "swift", "syntax"},
+		},
+		{
+			name:  "with dots",
+			input: "ArgumentParser.swift",
+			want:  []string{"argument", "parser", "swift"},
+		},
+		{
+			name:  "all uppercase",
+			input: "HTTP",
+			want:  []string{"h", "t", "t", "p"}, // Edge case: consecutive caps split per-letter
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := splitIdentifier(tt.input)
+			if !slicesEqual(got, tt.want) {
+				t.Errorf("splitIdentifier(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnhancedScore_FilenameBoost(t *testing.T) {
+	base := float32(0.60) // Lower base to avoid hitting 1.0 cap
+
+	matched := enhancedScore(base, "type", "src/GenericType.swift", "GenericType", "generic type parsing")
+	unmatched := enhancedScore(base, "type", "src/Parser.swift", "Parser", "generic type parsing")
+
+	if matched <= unmatched {
+		t.Errorf("Filename match should boost score: matched=%f vs unmatched=%f", matched, unmatched)
+	}
+}
+
+func TestEnhancedScore_SymbolBoost(t *testing.T) {
+	base := float32(0.60)
+
+	matched := enhancedScore(base, "function", "decode.go", "decodeValue", "decode null value")
+	unmatched := enhancedScore(base, "function", "decode.go", "parseData", "decode null value")
+
+	if matched <= unmatched {
+		t.Errorf("Symbol match should boost score: matched=%f vs unmatched=%f", matched, unmatched)
+	}
+}
+
+func TestEnhancedScore_GenericPenalty(t *testing.T) {
+	base := float32(0.70)
+
+	// Use query that doesn't match either filename/symbol, so only penalty differs
+	generic := enhancedScore(base, "type", "GenericType.swift", "GenericType", "data structure")
+	specific := enhancedScore(base, "type", "ArgumentParser.swift", "ArgumentParser", "data structure")
+
+	if generic >= specific {
+		t.Errorf("Generic file should score lower: generic=%f vs specific=%f", generic, specific)
+	}
+}
+
+func TestEnhancedScore_PathDepthBoost(t *testing.T) {
+	base := float32(0.60)
+
+	shallow := enhancedScore(base, "function", "utils.go", "Parse", "parse data")
+	deep := enhancedScore(base, "function", "src/parser/impl/utils.go", "Parse", "parse data")
+
+	if deep <= shallow {
+		t.Errorf("Deeper path should boost score: shallow=%f vs deep=%f", shallow, deep)
+	}
+}
+
+func TestApplyDiversityBoost(t *testing.T) {
+	items := []SearchResultItem{
+		{FilePath: "a.go", Symbol: "Func1", Score: 0.90},
+		{FilePath: "a.go", Symbol: "Func2", Score: 0.88},
+		{FilePath: "a.go", Symbol: "Func3", Score: 0.86},
+		{FilePath: "a.go", Symbol: "Func4", Score: 0.84},
+		{FilePath: "b.go", Symbol: "Func5", Score: 0.82},
+		{FilePath: "c.go", Symbol: "Func6", Score: 0.80},
+	}
+
+	result := applyDiversityBoost(items, 6)
+
+	var filesInTop3 []string
+	for i := 0; i < 3 && i < len(result); i++ {
+		filesInTop3 = append(filesInTop3, result[i].FilePath)
+	}
+
+	uniqueFiles := make(map[string]bool)
+	for _, f := range filesInTop3 {
+		uniqueFiles[f] = true
+	}
+
+	if len(uniqueFiles) < 2 {
+		t.Errorf("Diversity boost should promote different files: top 3 files = %v", filesInTop3)
+	}
+}
+
+func TestEnhancedScore_SwiftCase(t *testing.T) {
+	// Use realistic scores from actual benchmark
+	query := "trailing comma generic arguments crash"
+
+	genericTypeScore := enhancedScore(
+		0.65, // Lower base score
+		"type",
+		"SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift",
+		"GenericType",
+		query,
+	)
+
+	typeNameScore := enhancedScore(
+		0.70, // Higher raw score but should lose due to penalty
+		"type",
+		"SourceryFramework/Sources/Parsing/SwiftSyntax/AST/TypeName+SwiftSyntax.swift",
+		"TypeName",
+		query,
+	)
+
+	if genericTypeScore <= typeNameScore {
+		t.Errorf("GenericType should rank higher: generic=%f vs typeName=%f",
+			genericTypeScore, typeNameScore)
+	}
+}
+
+// slicesEqual is a simple helper for comparing string slices (for Go < 1.21 compat).
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
