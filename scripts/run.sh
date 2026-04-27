@@ -86,8 +86,14 @@ PLATFORM_BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
 if [ ! -e "$GENERIC_BINARY" ] || [ ! -x "$GENERIC_BINARY" ]; then
   # If we have a platform-specific binary, copy it to the generic name
   if [ -x "$PLATFORM_BINARY" ]; then
-    cp "$PLATFORM_BINARY" "$GENERIC_BINARY"
-    chmod +x "$GENERIC_BINARY"
+    if ! cp "$PLATFORM_BINARY" "$GENERIC_BINARY"; then
+      echo "Error: failed to create generic binary at ${GENERIC_BINARY}" >&2
+      exit 1
+    fi
+    if ! chmod +x "$GENERIC_BINARY"; then
+      echo "Error: failed to make ${GENERIC_BINARY} executable" >&2
+      exit 1
+    fi
     echo "Created ${GENERIC_BINARY} for direct CLI usage" >&2
   fi
 fi
