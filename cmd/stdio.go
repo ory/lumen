@@ -1201,13 +1201,22 @@ func extractKeywords(query string) []string {
 }
 
 // splitIdentifier breaks camelCase, snake_case, and kebab-case identifiers
-// into individual words for keyword matching.
+// into individual words for keyword matching. Consecutive uppercase runs
+// (acronyms like HTTP, UUID, AST) are kept as a single token.
 func splitIdentifier(s string) []string {
-	// Insert spaces before uppercase letters (for camelCase) BEFORE lowercasing.
+	// Insert spaces at camelCase boundaries while preserving acronyms.
+	runes := []rune(s)
 	var result strings.Builder
-	for i, r := range s {
+	for i, r := range runes {
 		if i > 0 && unicode.IsUpper(r) {
-			result.WriteRune(' ')
+			prev := runes[i-1]
+			// Split on lower→Upper (e.g. "camelCase" → "camel Case")
+			if unicode.IsLower(prev) {
+				result.WriteRune(' ')
+			} else if unicode.IsUpper(prev) && i+1 < len(runes) && unicode.IsLower(runes[i+1]) {
+				// Split on Upper→Upper+lower (e.g. "HTTPServer" → "HTTP Server")
+				result.WriteRune(' ')
+			}
 		}
 		result.WriteRune(r)
 	}

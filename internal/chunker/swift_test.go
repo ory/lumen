@@ -205,7 +205,10 @@ func TestSwiftChunker_Symbols(t *testing.T) {
 
 func TestSwiftChunker_NoSymbolsCases(t *testing.T) {
 	langs := chunker.DefaultLanguages(512)
-	c := langs[".swift"]
+	c, ok := langs[".swift"]
+	if !ok {
+		t.Fatal("no chunker registered for .swift")
+	}
 
 	cases := []struct {
 		name    string

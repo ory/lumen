@@ -2116,7 +2116,17 @@ func TestSplitIdentifier(t *testing.T) {
 		{
 			name:  "all uppercase",
 			input: "HTTP",
-			want:  []string{"h", "t", "t", "p"}, // Edge case: consecutive caps split per-letter
+			want:  []string{"http"}, // Acronyms stay as one token
+		},
+		{
+			name:  "acronym then word",
+			input: "HTTPServer",
+			want:  []string{"http", "server"}, // Acronym preserved, split before "Server"
+		},
+		{
+			name:  "word then acronym then word",
+			input: "myHTTPServer",
+			want:  []string{"my", "http", "server"},
 		},
 		{
 			name:  "empty string",

@@ -231,19 +231,23 @@ func finishSearch(
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     boostedScore(float32(1.0-r.Distance), r.Kind, r.FilePath),
+			Score:     enhancedScore(float32(1.0-r.Distance), r.Kind, r.FilePath, r.Symbol, query),
 		}
 	}
 	items = mergeOverlappingResults(items)
 	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
 		return cmp.Compare(b.Score, a.Score)
 	})
+	items = applyDiversityBoost(items, nResults)
 	if len(items) > nResults {
 		items = items[:nResults]
 	}
 	if !summary {
 		fillSnippets(indexRoot, items, maxLines)
 	}
+	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
 	tr.record("post-processing", fmt.Sprintf("merged %d→%d results, filled %d snippets", len(results), len(items), len(items)))
 
 	// Print trace to stderr, then results to stdout.
