@@ -1,38 +1,99 @@
-diff --git a/Sources/Vapor/HTTP/Headers/HTTPCookies.swift b/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
-index a7d3f4797..6eb57fe72 100644
---- a/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
-+++ b/Sources/Vapor/HTTP/Headers/HTTPCookies.swift
-@@ -6,9 +6,7 @@ extension HTTPHeaders {
-     /// This accesses the `"Cookie"` header.
-     public var cookie: HTTPCookies? {
-         get {
--            self.parseDirectives(name: .cookie).first.map {
--                HTTPCookies(directives: $0)
--            }
-+            HTTPCookies(directives: self.parseDirectives(name: .cookie).flatMap { $0 })
+diff --git a/SourceryFramework/Sources/Parsing/String+TypeInference.swift b/SourceryFramework/Sources/Parsing/String+TypeInference.swift
+index 8263e8b6..6a5a55d0 100644
+--- a/SourceryFramework/Sources/Parsing/String+TypeInference.swift
++++ b/SourceryFramework/Sources/Parsing/String+TypeInference.swift
+@@ -243,8 +243,9 @@ extension String {
          }
-         set {
-             if let cookieHeader = newValue?.cookieHeader {
-diff --git a/Tests/VaporTests/HTTPHeaderTests.swift b/Tests/VaporTests/HTTPHeaderTests.swift
-index abaa4f375..c195f4984 100644
---- a/Tests/VaporTests/HTTPHeaderTests.swift
-+++ b/Tests/VaporTests/HTTPHeaderTests.swift
-@@ -233,6 +233,18 @@ final class HTTPHeaderTests: XCTestCase {
-         XCTAssertEqual(headers.cookie?["!#$%&'*+-.^_`~"]?.string, "symbols")
+         
+         let body = trimmed[trimmed.index(after: start)..<trimmed.index(before: trimmed.endIndex)]
+-        return GenericType(name: String(trimmed[..<start]), typeParameters: String(body).commaSeparated().map({ value in
++        return GenericType(name: String(trimmed[..<start]), typeParameters: String(body).commaSeparated().compactMap({ value in
+             let stripped = value.stripped()
++            guard !stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+             return GenericTypeParameter(typeName: stripped.inferType ?? TypeName(stripped))
+         }))
      }
+diff --git a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
+index 1c59fa84..f9062ee4 100644
+--- a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
++++ b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
+@@ -6,17 +6,21 @@ extension GenericType {
+     convenience init(name: String, node: GenericArgumentClauseSyntax) {
+         #if compiler(>=6.2)
+         // TODO: ExprSyntax may need to be handled
+-        let parameters = node.arguments.map { argument -> GenericTypeParameter? in
++        let parameters = node.arguments.compactMap { argument -> GenericTypeParameter? in
+             switch argument.argument {
+             case .type(let type):
+-                return GenericTypeParameter(typeName: TypeName(type))
++                let typeName = TypeName(type)
++                guard !typeName.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
++                return GenericTypeParameter(typeName: typeName)
+             default: // case .expr
+                 return nil
+             }
+-        }.compactMap({ $0 })
++        }
+         #else
+-        let parameters = node.arguments.map { argument in
+-            GenericTypeParameter(typeName: TypeName(argument.argument))
++        let parameters = node.arguments.compactMap { argument -> GenericTypeParameter? in
++            let typeName = TypeName(argument.argument)
++            guard !typeName.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
++            return GenericTypeParameter(typeName: typeName)
+         }
+         #endif
  
-+    // https://github.com/vpor/vapor/issues/3435
-+    func testMultipleCookieHeaders() throws {
-+        let headers = HTTPHeaders([
-+            ("cookie", "a=1"),
-+            ("cookie", "b=2"),
-+            ("cookie", "c=3"),
-+        ])
-+        XCTAssertEqual(headers.cookie?["a"]?.string, "1")
-+        XCTAssertEqual(headers.cookie?["b"]?.string, "2")
-+        XCTAssertEqual(headers.cookie?["c"]?.string, "3")
-+    }
+diff --git a/SourceryRuntime/Sources/Common/Composer/ParserResultsComposed.swift b/SourceryRuntime/Sources/Common/Composer/ParserResultsComposed.swift
+index a855dd93..4acfb58c 100644
+--- a/SourceryRuntime/Sources/Common/Composer/ParserResultsComposed.swift
++++ b/SourceryRuntime/Sources/Common/Composer/ParserResultsComposed.swift
+@@ -551,10 +551,11 @@ internal struct ParserResultsComposed {
+         let hasGenericRequirements = containingType?.genericRequirements.isEmpty == false
+         || (method != nil && method?.genericRequirements.isEmpty == false)
+ 
+-        if hasGenericRequirements {
++        if hasGenericRequirements,
++           let typeNameForLookup = typeName.name.split(separator: " ").first,
++           !typeNameForLookup.isEmpty {
+             // we should consider if we are looking up return type of a method with generic constraints
+             // where `typeName` passed would include `... where ...` suffix
+-            let typeNameForLookup = typeName.name.split(separator: " ").first!
+             let genericRequirements: [GenericRequirement]
+             if let requirements = containingType?.genericRequirements, !requirements.isEmpty {
+                 genericRequirements = requirements
+diff --git a/SourceryTests/Parsing/ComposerSpec.swift b/SourceryTests/Parsing/ComposerSpec.swift
+index 9018e12a..10d2f975 100644
+--- a/SourceryTests/Parsing/ComposerSpec.swift
++++ b/SourceryTests/Parsing/ComposerSpec.swift
+@@ -2365,6 +2365,30 @@ class ParserComposerSpec: QuickSpec {
+                             let parsedFoo = types.first(where: { $0.globalName == "Foo" })
+                             expect(parsedFoo).to(equal(expectedBar))
+                         }
 +
-     // https://github.com/vapor/vapor/issues/2316
-     func testCookie_complexParsing() throws {
-         let headers = HTTPHeaders([
++                        it("ignores empty generic arguments created by trailing commas") {
++                            let types = parse("""
++                                struct Example<A: RandomAccessCollection, B: RandomAccessCollection>
++                                  where A.Element == String,
++                                  B.Element == String
++                                {
++                                  let asyncTaskData: OrderedDictionary<
++                                    String,
++                                    (status: Result<Int, Error>, messages: [String]),
++                                  >
++                                }
++                                """)
++
++                            let example = types.first(where: { $0.globalName == "Example" })
++                            expect(example).toNot(beNil())
++
++                            let variable = example?.variables.first(where: { $0.name == "asyncTaskData" })
++                            let parameters = variable?.typeName.generic?.typeParameters
++
++                            expect(parameters).to(haveCount(2))
++                            expect(parameters?.first?.typeName.name).to(equal("String"))
++                            expect(parameters?.last?.typeName.name).to(equal("(status: Result<Int, Error>, messages: [String])"))
++                        }
+                     }
+                 }
+ 
