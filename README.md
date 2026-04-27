@@ -240,15 +240,16 @@ issues (`ordis/jina-embeddings-v2-base-code`, Ollama):
 | Go         | **-12%**       | -9%            | -10% (11K → 10K)         | Good (both)    |
 | Swift      | **-8%**        | +90%           | +22% (8.6K → 10.5K)     | Good (both)    |
 | C++        | **-8%**        | -3%            | +42% (feature task)      | Good (both)    |
-| Svelte     | **-26%**       | **-31%**       | **-26%** (4.0K → 3.0K)  | Poor (both)    |
+| Svelte     | **-54%**       | **-56%**       | **-26%** (3.3K → 2.5K)  | Poor → Good ⭐  |
 
-**Cost was reduced in every language tested. Quality was maintained in every
-task — zero regressions.** JavaScript and TypeScript show the most dramatic
-efficiency gains: same quality fixes in half the time with two-thirds fewer
-tokens. Even on tasks too hard for either approach (Rust, Svelte), Lumen cuts
-the cost of failure by 26–39%.
+**Cost was reduced in every language tested. Quality was maintained or improved
+in every task — zero regressions.** JavaScript and TypeScript show the most
+dramatic efficiency gains: same quality fixes in half the time with two-thirds
+fewer tokens. Svelte shows quality improvement: baseline produced a Poor patch,
+while Lumen guided Claude to a Good solution — 54% cheaper and 56% faster. Even
+on Rust (too hard for either approach), Lumen cuts the cost of failure by 39%.
 
-See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 9 per-language deep dives,
+See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for all 10 per-language deep dives,
 judge rationales, and reproduce instructions.
 
 ## Supported languages
@@ -266,7 +267,7 @@ Supports **13 language families** with semantic chunking (11 benchmarked):
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |
 | PHP              | tree-sitter | `.php`                                    | Benchmarked: -59% tokens, -34% time           |
 | C / C++          | tree-sitter | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` | Benchmarked: -8% cost (C++ feature task)      |
-| Svelte           | tree-sitter | `.svelte`                                 | Benchmarked: -26% cost, -31% time             |
+| Svelte           | tree-sitter | `.svelte`                                 | Benchmarked: -54% cost, -56% time, Poor→Good  |
 | Swift            | tree-sitter | `.swift`                                  | Benchmarked: -8% cost, Good quality           |
 | Java             | tree-sitter | `.java`                                   | Supported                                     |
 | C#               | tree-sitter | `.cs`                                     | Supported                                     |
