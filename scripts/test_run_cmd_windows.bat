@@ -47,23 +47,53 @@ if "!OUTPUT!"=="delegated:hook session-start lumen --host claude" (
   set /a FAIL+=1
 )
 
-:: --- Test 3: run.cmd produces no unexpected stderr ---
+:: --- Test 3: run.cmd produces clean stderr ---
+:: The polyglot prologue must not surface command-not-found errors
+:: from cmd.exe trying to execute the shell-only lines.
+:: NOTE: invoke via `cmd /c` to match how MCP hosts spawn run.cmd
+:: (a fresh cmd.exe with default echo state, not inheriting `call`).
 set "STDERR_FILE=%TMP_DIR%\stderr.txt"
-"%TMP_DIR%\run.cmd" stdio 2>"%STDERR_FILE%" >NUL
+set "STDOUT_FILE=%TMP_DIR%\stdout.txt"
+cmd /c ""%TMP_DIR%\run.cmd" stdio" 2>"%STDERR_FILE%" >"%STDOUT_FILE%"
 
-:: Check stderr is empty or contains only the expected "not recognized" from shebang line
 set "STDERR_SIZE=0"
 for %%A in ("%STDERR_FILE%") do set "STDERR_SIZE=%%~zA"
 
-:: Stderr should only contain the harmless shebang error (if any)
-:: We check it doesn't contain "-S" which was the old broken error
-findstr /i "\-S" "%STDERR_FILE%" >NUL 2>&1
-if errorlevel 1 (
-  echo   PASS: no '-S' error in stderr
+if "!STDERR_SIZE!"=="0" (
+  echo   PASS: stderr is empty
   set /a PASS+=1
 ) else (
-  echo   FAIL: stderr contains '-S' error from old broken polyglot
+  echo   FAIL: stderr is not empty [size: !STDERR_SIZE! bytes]
   type "%STDERR_FILE%"
+  set /a FAIL+=1
+)
+
+:: --- Test 4: run.cmd produces clean stdout (no command-echo pollution) ---
+:: cmd.exe echoes commands to stdout before @echo off takes effect, so a
+:: polyglot whose first line is treated as a command (rather than a label
+:: or @-prefixed line) prepends prompt-prefixed text to stdout. This breaks
+:: MCP stdio JSON-RPC framing on Claude Code, Cursor, and other hosts that
+:: spawn run.cmd directly via .cmd file extension association.
+set "STDOUT_FIRST="
+for /f "usebackq delims=" %%i in ("%STDOUT_FILE%") do (
+  if not defined STDOUT_FIRST set "STDOUT_FIRST=%%i"
+)
+for /f %%i in ('find /c /v "" ^< "%STDOUT_FILE%"') do set "STDOUT_LINES=%%i"
+
+set "TEST4=fail"
+if "!STDOUT_FIRST!"=="delegated:stdio" if "!STDOUT_LINES!"=="1" set "TEST4=pass"
+
+if "!TEST4!"=="pass" (
+  echo   PASS: stdout has no command-echo pollution
+  set /a PASS+=1
+) else (
+  echo   FAIL: stdout polluted before run.bat output
+  echo         expected: 1 line "delegated:stdio"
+  echo         got first line: !STDOUT_FIRST!
+  echo         line count:     !STDOUT_LINES!
+  echo         --- full stdout ---
+  type "%STDOUT_FILE%"
+  echo         --- end ---
   set /a FAIL+=1
 )
 

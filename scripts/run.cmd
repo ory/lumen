@@ -1,5 +1,7 @@
-#!/bin/sh
-# 2>NUL & @goto batch
+:<<"::CMDLITERAL"
+@echo off
+goto :batch
+::CMDLITERAL
 exec "$(dirname "$0")/run.sh" "$@"
 
 :batch
