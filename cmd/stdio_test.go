@@ -2159,8 +2159,8 @@ func TestEnhancedScore_FilenameBoost(t *testing.T) {
 func TestEnhancedScore_SymbolBoost(t *testing.T) {
 	base := float32(0.60)
 
-	matched := enhancedScore(base, "function", "decode.go", "decodeValue", "decode null value")
-	unmatched := enhancedScore(base, "function", "decode.go", "parseData", "decode null value")
+	matched := enhancedScore(base, "function", "decode.swift", "decodeValue", "decode null value")
+	unmatched := enhancedScore(base, "function", "decode.swift", "parseData", "decode null value")
 
 	if matched <= unmatched {
 		t.Errorf("Symbol match should boost score: matched=%f vs unmatched=%f", matched, unmatched)
@@ -2182,8 +2182,8 @@ func TestEnhancedScore_GenericPenalty(t *testing.T) {
 func TestEnhancedScore_PathDepthBoost(t *testing.T) {
 	base := float32(0.60)
 
-	shallow := enhancedScore(base, "function", "utils.go", "Parse", "parse data")
-	deep := enhancedScore(base, "function", "src/parser/impl/utils.go", "Parse", "parse data")
+	shallow := enhancedScore(base, "function", "utils.swift", "Parse", "parse data")
+	deep := enhancedScore(base, "function", "src/parser/impl/utils.swift", "Parse", "parse data")
 
 	if deep <= shallow {
 		t.Errorf("Deeper path should boost score: shallow=%f vs deep=%f", shallow, deep)
@@ -2192,12 +2192,12 @@ func TestEnhancedScore_PathDepthBoost(t *testing.T) {
 
 func TestApplyDiversityBoost(t *testing.T) {
 	items := []SearchResultItem{
-		{FilePath: "a.go", Symbol: "Func1", Score: 0.90},
-		{FilePath: "a.go", Symbol: "Func2", Score: 0.88},
-		{FilePath: "a.go", Symbol: "Func3", Score: 0.86},
-		{FilePath: "a.go", Symbol: "Func4", Score: 0.84},
-		{FilePath: "b.go", Symbol: "Func5", Score: 0.82},
-		{FilePath: "c.go", Symbol: "Func6", Score: 0.80},
+		{FilePath: "a.swift", Symbol: "Func1", Score: 0.90},
+		{FilePath: "a.swift", Symbol: "Func2", Score: 0.88},
+		{FilePath: "a.swift", Symbol: "Func3", Score: 0.86},
+		{FilePath: "a.swift", Symbol: "Func4", Score: 0.84},
+		{FilePath: "b.swift", Symbol: "Func5", Score: 0.82},
+		{FilePath: "c.swift", Symbol: "Func6", Score: 0.80},
 	}
 
 	result := applyDiversityBoost(items, 6)

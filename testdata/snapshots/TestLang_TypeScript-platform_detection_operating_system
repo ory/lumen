@@ -1,8 +1,8 @@
 results: 10
-hash.ts:214-216  StringSHA1 (type)
 path.ts:293-306  win32 (const)
 path.ts:404-420  win32 (const)
 path.ts:453-473  isAbsolute+win32 (const)
+path.ts:656-662  win32 (const)
 path.ts:723-732  toNamespacedPath+win32 (method)
 path.ts:791-800  win32 (const)
 path.ts:1036-1044  win32 (const)

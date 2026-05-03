@@ -1,5 +1,5 @@
 results: 10
-tokio-mutex.rs:427-437  Mutex+lock (function)
+tokio-mutex.rs:320-325  bounds (function)
 tokio-mutex.rs:495-518  Mutex (type)
 tokio-mutex.rs:557-566  Mutex (type)
 tokio-mutex.rs:582-588  Mutex (type)

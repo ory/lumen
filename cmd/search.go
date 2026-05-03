@@ -238,6 +238,7 @@ func finishSearch(
 	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
 		return cmp.Compare(b.Score, a.Score)
 	})
+	// Apply diversity boost for Swift results to prefer different files.
 	items = applyDiversityBoost(items, nResults)
 	if len(items) > nResults {
 		items = items[:nResults]

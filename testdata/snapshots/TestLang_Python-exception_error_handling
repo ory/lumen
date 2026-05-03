@@ -1,9 +1,9 @@
 results: 7
-django-exceptions.py:147-152  __init__+ValidationError (type)
-django-exceptions.py:166-222  __init__+ValidationError+update_error_dict+__iter__ (type)
+django-exceptions.py:147-152  __init__+ValidationError (function)
+django-exceptions.py:166-222  __init__+ValidationError+update_error_dict+__iter__ (function)
 django-exceptions.py:245-247  __hash__ (function)
 flask-app.py:828-836  Flask+handle_http_exception (function)
 flask-app.py:867-872  handle_user_exception (function)
 flask-app.py:882-891  handle_user_exception (function)
-flask-app.py:948-953  Flask+log_exception (function)
+flask-app.py:948-953  Flask+log_exception (type)
 

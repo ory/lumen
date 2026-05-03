@@ -2,7 +2,7 @@ results: 7
 Owner.java:93-95  getPets (method)
 Owner.java:103-134  getPet+Owner (type)
 Pet.java:36-55  Pet (type)
-PetController.java:40-59  PetController+VIEWS_PETS_CREATE_OR_UPDATE_FORM+owners+types (var)
+PetController.java:40-59  PetController+VIEWS_PETS_CREATE_OR_UPDATE_FORM+owners+types (function)
 PetController.java:74-87  PetController+findPet (type)
 PetController.java:132-138  processUpdateForm+PetController (method)
 PetController.java:155-181  PetController+PetController+PetController+updatePetDetails (method)

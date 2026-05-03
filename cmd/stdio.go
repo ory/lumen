@@ -605,7 +605,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return cmp.Compare(b.Score, a.Score)
 	})
 
-	// Apply diversity boost to prefer results from different files.
+	// Apply diversity boost for Swift results to prefer different files.
 	items = applyDiversityBoost(items, input.Limit)
 
 	// Cap to the originally requested limit after diversity adjustment.
@@ -1232,17 +1232,17 @@ func splitIdentifier(s string) []string {
 	return strings.Fields(strings.ToLower(s))
 }
 
-// enhancedScore adjusts the raw cosine score using multiple ranking signals:
-// 1. Source code kind boost (1.15x) - original signal
-// 2. Test file demotion (0.75x) - original signal
-// 3. Filename relevance boost (1.10x) - new: query keywords in filename
-// 4. Symbol relevance boost (1.12x) - new: query keywords in symbol
-// 5. Generic name penalty (0.95x) - new: penalize abstract/utility names
-// 6. Path depth boost (1.02x per level) - new: deeper = more specific
+// enhancedScore adjusts the raw cosine score using ranking signals:
+//  1. Source code kind boost (1.15x) - all languages
+//  2. Test file demotion (0.75x) - all languages
+//  3-6. Swift-specific signals (filename, symbol, generic penalty, path depth) - Swift only
+//
+// The Swift-specific signals address disambiguation challenges in Swift codebases
+// where Type+Extension patterns and similar naming create ranking ambiguity.
 func enhancedScore(rawScore float32, kind, filePath, symbol, query string) float32 {
 	score := rawScore
 
-	// Signal 1: Source code kind boost (existing).
+	// Signal 1: Source code kind boost (original behavior for all languages).
 	if sourceCodeKinds[kind] {
 		if boosted := score * 1.15; boosted < 1.0 {
 			score = boosted
@@ -1251,12 +1251,25 @@ func enhancedScore(rawScore float32, kind, filePath, symbol, query string) float
 		}
 	}
 
-	// Signal 2: Test file demotion (existing).
+	// Signal 2: Test file demotion (original behavior for all languages).
 	if isTestFile(filePath) {
 		score *= 0.75
 	}
 
-	// Extract query keywords once for remaining signals.
+	// Swift-specific enhanced ranking (signals 3-6).
+	if filepath.Ext(filePath) == ".swift" {
+		score = applySwiftRanking(score, filePath, symbol, query)
+	}
+
+	return score
+}
+
+// applySwiftRanking applies Swift-specific ranking signals to address
+// disambiguation challenges in Swift codebases where similar file/symbol names
+// (e.g., GenericType vs TypeName, Type+Extension patterns) require additional
+// context beyond cosine similarity.
+func applySwiftRanking(score float32, filePath, symbol, query string) float32 {
+	// Extract query keywords once for all Swift signals.
 	keywords := extractKeywords(query)
 	if len(keywords) == 0 {
 		return score
@@ -1314,13 +1327,24 @@ afterGeneric:
 	return score
 }
 
-// applyDiversityBoost demotes results when a single file dominates the top N.
-// Files appearing 3+ times in the result set get their 3rd+ occurrences
-// penalized by 0.90x to make room for results from other files. Results are
-// ALWAYS re-sorted after adjustment to maintain descending score order.
+// applyDiversityBoost demotes Swift results when a single file dominates the top N.
+// Swift files appearing 3+ times in the result set get their 3rd+ occurrences
+// penalized by 0.90x to make room for results from other files. This addresses
+// Swift-specific issues where Type+Extension patterns cause file duplication.
+// Non-Swift files are unaffected. Results are ALWAYS re-sorted after adjustment
+// to maintain descending score order.
 func applyDiversityBoost(items []SearchResultItem, limit int) []SearchResultItem {
-	// Skip diversity adjustment if too few results, but still ensure sort order.
-	if len(items) < limit || limit < 5 {
+	// Check if any Swift files in results - skip diversity if none.
+	hasSwift := false
+	for i := range items {
+		if filepath.Ext(items[i].FilePath) == ".swift" {
+			hasSwift = true
+			break
+		}
+	}
+
+	// Skip diversity adjustment if no Swift files or too few results.
+	if !hasSwift || len(items) < limit || limit < 5 {
 		// Re-sort to ensure order even if no diversity adjustment applied.
 		slices.SortStableFunc(items, func(a, b SearchResultItem) int {
 			return cmp.Compare(b.Score, a.Score)
@@ -1328,16 +1352,21 @@ func applyDiversityBoost(items []SearchResultItem, limit int) []SearchResultItem
 		return items
 	}
 
-	// Count how many times each file appears in top-limit results.
+	// Count how many times each Swift file appears in top-limit results.
 	fileCounts := make(map[string]int)
 	for i := 0; i < min(len(items), limit); i++ {
-		fileCounts[items[i].FilePath]++
+		if filepath.Ext(items[i].FilePath) == ".swift" {
+			fileCounts[items[i].FilePath]++
+		}
 	}
 
-	// Apply penalty to 3rd+ occurrence of files that appear >2 times.
+	// Apply penalty to 3rd+ occurrence of Swift files that appear >2 times.
 	filesSeen := make(map[string]int)
 	for i := range items {
 		fp := items[i].FilePath
+		if filepath.Ext(fp) != ".swift" {
+			continue
+		}
 		filesSeen[fp]++
 		if filesSeen[fp] > 2 && fileCounts[fp] > 2 {
 			items[i].Score *= 0.90

@@ -1,4 +1,5 @@
 results: 10
+api.go:613-624  API.queryRange (method)
 api.go:1719-1735  API.rules (method)
 api.go:1759-1763  parseListRulesPaginationRequest (function)
 api.go:2162-2174  API.respondError (method)
@@ -7,6 +8,5 @@ config.go:1344-1350  AlertmanagerConfig.UnmarshalYAML (method)
 config.go:1373-1385  AlertmanagerConfig.Validate (method)
 config.go:1470-1533  RemoteWriteConfig.UnmarshalYAML+RemoteWriteConfig.Validate+validateAuthConfigs+validateHeadersForTracing (function)
 config.go:1622-1629  RemoteReadConfig.UnmarshalYAML (method)
-engine.go:606-613  Engine.validateOpts (method)
 relabel.go:131-133  Config.Validate (method)
 
