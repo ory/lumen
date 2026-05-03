@@ -111,4 +111,47 @@ if not exist "%GENERIC_BINARY%" (
   )
 )
 
+:: Auto-install to %USERPROFILE%\bin for CLI usage (no admin required).
+:: Copy instead of symlink because mklink requires elevation on Windows.
+if exist "%GENERIC_BINARY%" (
+  set "USER_BIN=%USERPROFILE%\bin"
+  set "USER_LUMEN=%USER_BIN%\lumen.exe"
+
+  :: Create %USERPROFILE%\bin if it doesn't exist
+  if not exist "!USER_BIN!" (
+    mkdir "!USER_BIN!" >nul 2>&1
+    if exist "!USER_BIN!" echo Created !USER_BIN! >&2
+  )
+
+  :: Copy to user bin if directory exists and file doesn't match
+  if exist "!USER_BIN!" (
+    set "NEEDS_COPY=0"
+    if not exist "!USER_LUMEN!" set "NEEDS_COPY=1"
+    if exist "!USER_LUMEN!" (
+      fc /b "%GENERIC_BINARY%" "!USER_LUMEN!" >nul 2>&1
+      if errorlevel 1 set "NEEDS_COPY=1"
+    )
+
+    if "!NEEDS_COPY!"=="1" (
+      copy /y "%GENERIC_BINARY%" "!USER_LUMEN!" >nul 2>&1
+      if exist "!USER_LUMEN!" (
+        echo Installed lumen CLI to !USER_LUMEN! >&2
+
+        :: Check if %USERPROFILE%\bin is in PATH
+        echo %PATH% | findstr /i /c:"!USER_BIN!" >nul
+        if errorlevel 1 (
+          echo. >&2
+          echo To use 'lumen' from anywhere, add to your PATH: >&2
+          echo. >&2
+          echo   1. Press Win+X, select "System" >&2
+          echo   2. Click "Advanced system settings" ^> "Environment Variables" >&2
+          echo   3. Under "User variables", edit "Path" >&2
+          echo   4. Add: %USERPROFILE%\bin >&2
+          echo. >&2
+        )
+      )
+    )
+  )
+)
+
 "%BINARY%" %*

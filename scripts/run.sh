@@ -98,4 +98,38 @@ if [ ! -e "$GENERIC_BINARY" ] || [ ! -x "$GENERIC_BINARY" ]; then
   fi
 fi
 
+# Auto-install symlink to $HOME/.local/bin for CLI usage (no sudo required).
+# Only attempt this if we have a working generic binary.
+if [ -x "$GENERIC_BINARY" ]; then
+  LOCAL_BIN="${HOME}/.local/bin"
+  SYMLINK_TARGET="${LOCAL_BIN}/lumen"
+
+  # Create ~/.local/bin if it doesn't exist
+  if [ ! -d "$LOCAL_BIN" ]; then
+    if mkdir -p "$LOCAL_BIN" 2>/dev/null; then
+      echo "Created ${LOCAL_BIN}" >&2
+    fi
+  fi
+
+  # Create symlink if directory exists and symlink doesn't point to our binary
+  if [ -d "$LOCAL_BIN" ] && [ ! -L "$SYMLINK_TARGET" ] || [ "$(readlink "$SYMLINK_TARGET" 2>/dev/null)" != "$GENERIC_BINARY" ]; then
+    # Remove old symlink/file if it exists
+    rm -f "$SYMLINK_TARGET" 2>/dev/null || true
+
+    if ln -sf "$GENERIC_BINARY" "$SYMLINK_TARGET" 2>/dev/null; then
+      echo "Installed lumen CLI to ${SYMLINK_TARGET}" >&2
+
+      # Check if $LOCAL_BIN is in PATH
+      if ! echo "$PATH" | tr ':' '\n' | grep -qx "$LOCAL_BIN"; then
+        echo "" >&2
+        echo "✨ To use 'lumen' from anywhere, add to your PATH:" >&2
+        echo "" >&2
+        echo "  # Add to ~/.bashrc or ~/.zshrc:" >&2
+        echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+        echo "" >&2
+      fi
+    fi
+  fi
+fi
+
 exec "$BINARY" "$@"

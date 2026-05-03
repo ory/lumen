@@ -420,19 +420,26 @@ When installed as a plugin, the `lumen` binary is available at:
 - **Codex**: `${CODEX_HOME:-~/.codex}/lumen/bin/lumen`
 - **OpenCode**: `~/.opencode/plugins/lumen/bin/lumen`
 
-Add the appropriate path to your `$PATH` to use `lumen` commands directly:
+### Automatic CLI Installation
+
+On first run, the plugin automatically installs the `lumen` CLI to a standard location:
+
+- **Linux/macOS**: `~/.local/bin/lumen` (symlinked)
+- **Windows**: `%USERPROFILE%\bin\lumen.exe` (copied)
+
+If these directories aren't in your PATH, add them once:
 
 ```bash
-# Example for Claude Code (add to ~/.bashrc or ~/.zshrc)
-# Replace 0.0.38 with your installed version, or use a glob pattern
-export PATH="$HOME/.claude/plugins/cache/ory/lumen/0.0.38/bin:$PATH"
-
-# For Codex
-export PATH="${CODEX_HOME:-$HOME/.codex}/lumen/bin:$PATH"
+# Linux/macOS - add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The plugin's `run.sh`/`run.bat` scripts automatically create a platform-agnostic
-`lumen` binary (from `lumen-linux-amd64`, `lumen-darwin-arm64`, etc.) when first invoked.
+```powershell
+# Windows - add %USERPROFILE%\bin to your user PATH via:
+# Settings → System → About → Advanced system settings → Environment Variables
+```
+
+After adding to PATH, you can run `lumen` commands from anywhere without going through the plugin.
 
 ## Troubleshooting
 
