@@ -799,6 +799,183 @@ func TestBoostedScore_TestDemotion(t *testing.T) {
 	}
 }
 
+func TestEnhancedScore_AllSignals(t *testing.T) {
+	keywords := []string{"decoder", "struct"}
+
+	t.Run("source code boost", func(t *testing.T) {
+		score := enhancedScore(0.6, "function", "pkg/foo.go", "parse", nil)
+		if score <= 0.6 {
+			t.Fatalf("source code kind should boost above 0.6, got %.4f", score)
+		}
+	})
+
+	t.Run("test file demotion", func(t *testing.T) {
+		score := enhancedScore(0.6, "function", "pkg/foo_test.go", "parse", nil)
+		scoreNonTest := enhancedScore(0.6, "function", "pkg/foo.go", "parse", nil)
+		if score >= scoreNonTest {
+			t.Fatalf("test file (%.4f) should score lower than non-test (%.4f)", score, scoreNonTest)
+		}
+	})
+
+	t.Run("filename relevance boost", func(t *testing.T) {
+		scoreMatch := enhancedScore(0.6, "function", "pkg/decoder.go", "parse", keywords)
+		scoreNoMatch := enhancedScore(0.6, "function", "pkg/encoder.go", "parse", keywords)
+		if scoreMatch <= scoreNoMatch {
+			t.Fatalf("filename match (%.4f) should score higher than no match (%.4f)", scoreMatch, scoreNoMatch)
+		}
+	})
+
+	t.Run("symbol relevance boost", func(t *testing.T) {
+		scoreMatch := enhancedScore(0.6, "function", "pkg/foo.go", "decodeStruct", keywords)
+		scoreNoMatch := enhancedScore(0.6, "function", "pkg/foo.go", "encodeValue", keywords)
+		if scoreMatch <= scoreNoMatch {
+			t.Fatalf("symbol match (%.4f) should score higher than no match (%.4f)", scoreMatch, scoreNoMatch)
+		}
+	})
+
+	t.Run("generic name penalty", func(t *testing.T) {
+		scoreGeneric := enhancedScore(0.6, "function", "pkg/foo.go", "genericHelper", nil)
+		scoreSpecific := enhancedScore(0.6, "function", "pkg/foo.go", "parseJSON", nil)
+		if scoreGeneric >= scoreSpecific {
+			t.Fatalf("generic name (%.4f) should score lower than specific (%.4f)", scoreGeneric, scoreSpecific)
+		}
+	})
+
+	t.Run("path depth boost", func(t *testing.T) {
+		scoreDeep := enhancedScore(0.6, "function", "a/b/c/d/foo.go", "parse", nil)
+		scoreShallow := enhancedScore(0.6, "function", "foo.go", "parse", nil)
+		if scoreDeep <= scoreShallow {
+			t.Fatalf("deep path (%.4f) should score higher than shallow (%.4f)", scoreDeep, scoreShallow)
+		}
+	})
+
+	t.Run("capped at 1.0", func(t *testing.T) {
+		score := enhancedScore(0.95, "function", "a/b/c/decoder.go", "decodeStruct", keywords)
+		if score > 1.0 {
+			t.Fatalf("score should not exceed 1.0, got %.4f", score)
+		}
+	})
+
+	t.Run("nil keywords safe", func(t *testing.T) {
+		score := enhancedScore(0.6, "function", "pkg/foo.go", "parse", nil)
+		if score <= 0 {
+			t.Fatalf("expected positive score, got %.4f", score)
+		}
+	})
+}
+
+func TestExtractKeywords(t *testing.T) {
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"find the decoder struct", []string{"decoder"}},
+		{"HTTP server handler", []string{"http", "server"}},
+		{"how does authentication work", []string{"authentication", "work"}},
+		{"ParseJSON function in utils", []string{"parsejson", "utils"}},
+		{"a b c", nil}, // all too short
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			got := extractKeywords(tt.query)
+			if len(got) != len(tt.want) {
+				t.Fatalf("extractKeywords(%q) = %v, want %v", tt.query, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("extractKeywords(%q)[%d] = %q, want %q", tt.query, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSplitIdentifier(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		{"decodeStruct", []string{"decode", "struct"}},
+		{"HTTPServer", []string{"http", "server"}},
+		{"parseJSON", []string{"parse", "json"}},
+		{"snake_case_name", []string{"snake", "case", "name"}},
+		{"kebab-case-name", []string{"kebab", "case", "name"}},
+		{"simple", []string{"simple"}},
+		{"UUIDGenerator", []string{"uuid", "generator"}},
+		{"getHTTPResponse", []string{"get", "http", "response"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := splitIdentifier(tt.input)
+			if len(got) != len(tt.want) {
+				t.Fatalf("splitIdentifier(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("splitIdentifier(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestApplyDiversityBoost(t *testing.T) {
+	items := []SearchResultItem{
+		{FilePath: "a.go", Score: 0.9},
+		{FilePath: "a.go", Score: 0.8},
+		{FilePath: "a.go", Score: 0.7},
+		{FilePath: "a.go", Score: 0.6},
+		{FilePath: "b.go", Score: 0.5},
+	}
+	applyDiversityBoost(items)
+
+	// First two from a.go should be unchanged.
+	if items[0].Score != 0.9 {
+		t.Fatalf("items[0] should be unchanged, got %.4f", items[0].Score)
+	}
+	if items[1].Score != 0.8 {
+		t.Fatalf("items[1] should be unchanged, got %.4f", items[1].Score)
+	}
+	// 3rd and 4th from a.go should be penalized.
+	if items[2].Score >= 0.7 {
+		t.Fatalf("items[2] should be penalized below 0.7, got %.4f", items[2].Score)
+	}
+	if items[3].Score >= 0.6 {
+		t.Fatalf("items[3] should be penalized below 0.6, got %.4f", items[3].Score)
+	}
+	// b.go should be unchanged (only 1 result from it).
+	if items[4].Score != 0.5 {
+		t.Fatalf("items[4] should be unchanged, got %.4f", items[4].Score)
+	}
+}
+
+func TestFormatSearchResults_GlobalOrder(t *testing.T) {
+	// Verify that results from different files maintain global score order,
+	// with consecutive same-file chunks grouped together.
+	items := []SearchResultItem{
+		{FilePath: "/proj/a.go", Symbol: "Foo", Kind: "function", StartLine: 1, EndLine: 10, Score: 0.9},
+		{FilePath: "/proj/b.go", Symbol: "Bar", Kind: "function", StartLine: 1, EndLine: 10, Score: 0.85},
+		{FilePath: "/proj/a.go", Symbol: "Baz", Kind: "function", StartLine: 20, EndLine: 30, Score: 0.7},
+	}
+	out := SemanticSearchOutput{Results: items}
+	got := formatSearchResults("/proj", out)
+
+	// a.go should appear first (highest score), then b.go, then a.go again.
+	aFirst := strings.Index(got, `filename="a.go"`)
+	bIdx := strings.Index(got, `filename="b.go"`)
+	aSecond := strings.LastIndex(got, `filename="a.go"`)
+
+	if aFirst == -1 || bIdx == -1 {
+		t.Fatalf("expected both a.go and b.go in output, got:\n%s", got)
+	}
+	if aFirst >= bIdx {
+		t.Fatalf("a.go (score 0.9) should appear before b.go (score 0.85)")
+	}
+	if bIdx >= aSecond {
+		t.Fatalf("b.go should appear between the two a.go groups")
+	}
+}
+
 func TestMergeOverlappingResults_EdgeCases(t *testing.T) {
 	t.Run("empty input", func(t *testing.T) {
 		merged := mergeOverlappingResults(nil)

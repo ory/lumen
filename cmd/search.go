@@ -223,6 +223,7 @@ func finishSearch(
 	tr.record("knn search", fmt.Sprintf("%d candidates fetched (limit=%d, fetch=%d)", len(results), nResults, fetchLimit))
 
 	// Span 6: post-processing
+	queryKeywords := extractKeywords(query)
 	items := make([]SearchResultItem, len(results))
 	for i, r := range results {
 		items[i] = SearchResultItem{
@@ -231,10 +232,14 @@ func finishSearch(
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     boostedScore(float32(1.0-r.Distance), r.Kind, r.FilePath),
+			Score:     enhancedScore(float32(1.0-r.Distance), r.Kind, r.FilePath, r.Symbol, queryKeywords),
 		}
 	}
 	items = mergeOverlappingResults(items)
+	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
+	applyDiversityBoost(items)
 	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
 		return cmp.Compare(b.Score, a.Score)
 	})

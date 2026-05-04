@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ory/lumen/internal/config"
@@ -582,7 +584,8 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		}
 	}
 
-	// Convert store results to SearchResultItems with boosted scores.
+	// Convert store results to SearchResultItems with enhanced scores.
+	queryKeywords := extractKeywords(input.Query)
 	items := make([]SearchResultItem, len(results))
 	for i, r := range results {
 		items[i] = SearchResultItem{
@@ -591,7 +594,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 			Kind:      r.Kind,
 			StartLine: r.StartLine,
 			EndLine:   r.EndLine,
-			Score:     boostedScore(float32(1.0-r.Distance), r.Kind, r.FilePath),
+			Score:     enhancedScore(float32(1.0-r.Distance), r.Kind, r.FilePath, r.Symbol, queryKeywords),
 		}
 	}
 
@@ -599,7 +602,13 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	// duplicates caused by split chunks and to present cohesive results.
 	items = mergeOverlappingResults(items)
 
-	// Re-sort by boosted score so documentation does not outrank source code.
+	// Re-sort by enhanced score so documentation does not outrank source code.
+	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
+		return cmp.Compare(b.Score, a.Score)
+	})
+
+	// Penalize excessive results from a single file, then re-sort.
+	applyDiversityBoost(items)
 	slices.SortStableFunc(items, func(a, b SearchResultItem) int {
 		return cmp.Compare(b.Score, a.Score)
 	})
@@ -1188,6 +1197,166 @@ func boostedScore(score float32, kind, filePath string) float32 {
 	return score
 }
 
+// enhancedScore applies 6 ranking signals to the raw cosine similarity score.
+// It subsumes boostedScore by including the same source-code and test-file
+// signals, then adds filename relevance, symbol relevance, generic-name
+// penalty, and path-depth boost. The query keywords are used to match against
+// the file and symbol names so that results mentioning the query terms rank
+// higher. The result is capped at 1.0.
+func enhancedScore(score float32, kind, filePath, symbol string, queryKeywords []string) float32 {
+	// Signal 1: source code kind boost (1.15x).
+	if sourceCodeKinds[kind] {
+		if boosted := score * 1.15; boosted < 1.0 {
+			score = boosted
+		} else {
+			score = 1.0
+		}
+	}
+
+	// Signal 2: test file demotion (0.75x).
+	if isTestFile(filePath) {
+		score *= 0.75
+	}
+
+	// Signal 3: filename relevance boost (1.10x).
+	if len(queryKeywords) > 0 {
+		lowerBase := strings.ToLower(filepath.Base(filePath))
+		for _, kw := range queryKeywords {
+			if strings.Contains(lowerBase, kw) {
+				score *= 1.10
+				break
+			}
+		}
+	}
+
+	// Signal 4: symbol relevance boost (1.12x).
+	if len(queryKeywords) > 0 && symbol != "" {
+		symbolWords := splitIdentifier(symbol)
+		for _, kw := range queryKeywords {
+			for _, sw := range symbolWords {
+				if strings.EqualFold(kw, sw) {
+					score *= 1.12
+					goto doneSymbol
+				}
+			}
+		}
+	}
+doneSymbol:
+
+	// Signal 5: generic name penalty (0.95x).
+	lowerSymbol := strings.ToLower(symbol)
+	for _, g := range genericNames {
+		if lowerSymbol == g || strings.Contains(lowerSymbol, g) {
+			score *= 0.95
+			break
+		}
+	}
+
+	// Signal 6: path depth boost (1.02x per level, max 1.08x).
+	depth := float32(strings.Count(filepath.ToSlash(filePath), "/"))
+	depthBoost := float32(math.Pow(1.02, float64(min(depth, 4))))
+	score *= depthBoost
+
+	if score > 1.0 {
+		score = 1.0
+	}
+	return score
+}
+
+var genericNames = []string{"generic", "base", "util", "helper", "core", "types", "common", "misc"}
+
+// extractKeywords pulls significant words from a search query for use in
+// filename and symbol matching. Words shorter than 4 characters and common
+// stopwords are excluded.
+func extractKeywords(query string) []string {
+	stopwords := map[string]bool{
+		"what": true, "where": true, "which": true, "when": true,
+		"this": true, "that": true, "with": true, "from": true,
+		"have": true, "does": true, "will": true, "would": true,
+		"could": true, "should": true, "about": true, "into": true,
+		"find": true, "show": true, "like": true, "make": true,
+		"function": true, "method": true, "class": true, "file": true,
+		"struct": true, "type": true, "interface": true, "variable": true,
+		"package": true, "module": true, "return": true, "error": true,
+		"code": true, "implementation": true, "define": true, "defined": true,
+		"handle": true, "handler": true, "handles": true, "uses": true,
+		"used": true, "using": true, "implement": true, "implements": true,
+	}
+
+	words := strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+
+	var keywords []string
+	seen := make(map[string]bool)
+	for _, w := range words {
+		if len(w) >= 4 && !stopwords[w] && !seen[w] {
+			seen[w] = true
+			keywords = append(keywords, w)
+		}
+	}
+	return keywords
+}
+
+// splitIdentifier breaks a camelCase, snake_case, or kebab-case identifier
+// into lowercase words. Consecutive uppercase letters (acronyms like HTTP,
+// UUID) are kept as a single token.
+func splitIdentifier(s string) []string {
+	var words []string
+	var current strings.Builder
+
+	flush := func() {
+		if current.Len() > 0 {
+			words = append(words, strings.ToLower(current.String()))
+			current.Reset()
+		}
+	}
+
+	hasLower := func() bool {
+		for _, c := range current.String() {
+			if unicode.IsLower(c) {
+				return true
+			}
+		}
+		return false
+	}
+
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case r == '_' || r == '-' || r == '.':
+			flush()
+		case unicode.IsUpper(r):
+			if current.Len() > 0 {
+				if hasLower() {
+					flush()
+				} else if i+1 < len(runes) && !unicode.IsUpper(runes[i+1]) {
+					flush()
+				}
+			}
+			current.WriteRune(r)
+		default:
+			current.WriteRune(r)
+		}
+	}
+	flush()
+	return words
+}
+
+// applyDiversityBoost penalizes the 3rd and subsequent results from the same
+// file by multiplying their score by 0.90. This prevents a single file from
+// dominating the result list.
+func applyDiversityBoost(items []SearchResultItem) {
+	counts := make(map[string]int)
+	for i := range items {
+		counts[items[i].FilePath]++
+		if counts[items[i].FilePath] >= 3 {
+			items[i].Score *= 0.90
+		}
+	}
+}
+
 // isTestFile reports whether filePath looks like a test file across common
 // language conventions: Go (*_test.go), Rust (*_test.rs), Ruby (*_spec.rb),
 // JS/TS (*.test.*, *.spec.*), Python (test_*.py, tests/ directory),
@@ -1228,10 +1397,11 @@ var xmlEscaper = strings.NewReplacer(
 )
 
 // formatSearchResults builds an XML-tagged representation of search results
-// for LLM consumption. File paths are shown relative to the project root.
-// Chunks from the same file are grouped under a <result:file> element to
-// reduce repetition. Overlapping chunks are merged before this function is
-// called, so no per-file cap is needed.
+// for LLM consumption. Results are output in global score order (the input
+// slice must already be sorted). Consecutive chunks from the same file are
+// grouped under a single <result:file> element for readability, but the
+// global ranking is preserved — unlike the old implementation which grouped
+// all chunks by file and lost the true interleaved ordering.
 func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if len(out.Results) == 0 {
 		var b strings.Builder
@@ -1267,51 +1437,31 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	}
 	b.WriteString(":\n")
 
-	// Group results by relative file path.
-	type fileGroup struct {
-		rel      string
-		results  []SearchResultItem
-		maxScore float32
-	}
-	var order []string
-	groups := make(map[string]*fileGroup)
+	// Output in global score order, grouping consecutive same-file chunks.
+	var currentFile string
 	for _, r := range out.Results {
 		rel, err := filepath.Rel(projectPath, r.FilePath)
 		if err != nil {
 			rel = r.FilePath
 		}
-		if _, ok := groups[rel]; !ok {
-			order = append(order, rel)
-			groups[rel] = &fileGroup{rel: rel}
-		}
-		g := groups[rel]
-		g.results = append(g.results, r)
-		if r.Score > g.maxScore {
-			g.maxScore = r.Score
-		}
-	}
 
-	// Sort files by best chunk score descending.
-	slices.SortFunc(order, func(a, b string) int {
-		return cmp.Compare(groups[b].maxScore, groups[a].maxScore)
-	})
-
-	for _, rel := range order {
-		g := groups[rel]
-		// Sort chunks within each file by score descending.
-		slices.SortFunc(g.results, func(a, b SearchResultItem) int {
-			return cmp.Compare(b.Score, a.Score)
-		})
-		fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(g.rel))
-		for _, r := range g.results {
-			fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
-				r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
-			if r.Content != "" {
-				b.WriteString(r.Content)
-				b.WriteByte('\n')
+		if rel != currentFile {
+			if currentFile != "" {
+				b.WriteString("</result:file>")
 			}
-			b.WriteString("  </result:chunk>\n")
+			currentFile = rel
+			fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(rel))
 		}
+
+		fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+			r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
+		if r.Content != "" {
+			b.WriteString(r.Content)
+			b.WriteByte('\n')
+		}
+		b.WriteString("  </result:chunk>\n")
+	}
+	if currentFile != "" {
 		b.WriteString("</result:file>")
 	}
 
