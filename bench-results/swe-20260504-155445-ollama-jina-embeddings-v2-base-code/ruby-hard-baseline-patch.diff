@@ -1,0 +1,49 @@
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac35..50cac42 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -140,6 +140,9 @@ module Grape
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+         return if accept_header.blank?
+ 
++        # A purely wildcard Accept header means "I accept anything" — fall back to default_format
++        return if accept_header.split(',').map { |part| part.split(';').first.strip }.all?('*/*')
++
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type
+       end
+diff --git a/spec/grape/middleware/formatter_spec.rb b/spec/grape/middleware/formatter_spec.rb
+index cb353aa..7b2de25 100644
+--- a/spec/grape/middleware/formatter_spec.rb
++++ b/spec/grape/middleware/formatter_spec.rb
+@@ -166,6 +166,30 @@ describe Grape::Middleware::Formatter do
+       expect(subject.env[Grape::Env::API_FORMAT]).to eq(:xml)
+     end
+ 
++    it 'uses the default format when Accept is a wildcard' do
++      subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => '*/*')
++      expect(subject.env[Grape::Env::API_FORMAT]).to eq(:txt)
++    end
++
++    it 'uses the default format when Accept is a wildcard with quality' do
++      subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => '*/*;q=1.0')
++      expect(subject.env[Grape::Env::API_FORMAT]).to eq(:txt)
++    end
++
++    context 'with multiple content types and a specific default format' do
++      subject { described_class.new(app, content_types: { xml: 'application/xml', json: 'application/json' }, default_format: :json) }
++
++      it 'uses the configured default format when Accept is a wildcard' do
++        subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => '*/*')
++        expect(subject.env[Grape::Env::API_FORMAT]).to eq(:json)
++      end
++
++      it 'still negotiates when Accept has a specific type alongside a wildcard' do
++        subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => 'application/xml,*/*;q=0.5')
++        expect(subject.env[Grape::Env::API_FORMAT]).to eq(:xml)
++      end
++    end
++
+     context 'with custom vendored content types' do
+       context 'when registered' do
+         subject { described_class.new(app, content_types: { custom: 'application/vnd.test+json' }) }

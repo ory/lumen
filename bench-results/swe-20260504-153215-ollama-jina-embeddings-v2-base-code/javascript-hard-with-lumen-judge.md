@@ -1,0 +1,3 @@
+## Rating: Perfect
+
+The candidate patch implements exactly the same logic as the gold patch: adding `blockquoteBeginRegex` to `src/rules.ts` with the identical regex pattern, and using it in `src/Tokenizer.ts` to break out of the list item loop when a blockquote is detected. The only difference is placement within the while loop (after line 336 vs after line 326 in the gold), but both positions are before the indent/dedent logic that would otherwise consume the blockquote line, so the functional behavior is equivalent. The candidate omits the test spec files, but those are test fixtures rather than logic, and do not affect the correctness of the fix.

@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the core regression by returning early from `format_from_header` when the Accept header is a pure wildcard, allowing the default format to be used instead. However, it uses a more sophisticated approach (`Rack::Utils.q_values` to check all parsed MIME types) compared to the gold patch's simple string equality check (`accept_header == ALL_MEDIA_TYPES`). The candidate also adds a more comprehensive test suite, including an extra test case for mixed Accept headers like `application/xml, */*;q=0.5`, which the gold patch does not cover — making it arguably more thorough, just not identical in approach.

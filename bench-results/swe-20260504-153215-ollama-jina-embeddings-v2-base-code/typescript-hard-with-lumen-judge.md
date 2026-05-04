@@ -1,0 +1,3 @@
+## Rating: Perfect
+
+The candidate patch implements the same core logic as the gold patch in `src/_parser.ts`: for each negated flag, it sets the flag itself to false, then resolves to the main option via `aliasToMain.get()` and sets it false, then iterates all aliases via `mainToAliases.get()` and sets those false too. The minor stylistic differences (`if (main !== undefined)` vs `if (mainName)`, and `|| []` vs explicit null check) are functionally equivalent. The candidate also adds a `package-lock.json` file (not in the gold patch) and omits the new test cases, but the actual bug fix logic is correct and complete.

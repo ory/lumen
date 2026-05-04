@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly identifies and fixes the core issue — a pure wildcard `Accept: */*` header should fall back to the default format rather than matching the first registered content type. However, the implementation is more complex than the gold patch: instead of a simple string equality check (`accept_header == ALL_MEDIA_TYPES`), it parses and splits the header to check if all parts are `*/*`, which also handles edge cases like `*/*;q=1.0`. The test coverage in the candidate is actually broader than the gold patch, explicitly testing wildcard-with-quality and mixed specific+wildcard cases, and the comment added in the implementation is a minor style violation per the codebase's no-comments convention.
