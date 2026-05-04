@@ -1,0 +1,7 @@
+00:00 +0: loading test/timeout_test.dart
+00:00 +0: catch DioException when connect timeout
+00:00 +1: catch DioException when receiveTimeout
+00:00 +2: no DioException when receiveTimeout > request duration
+00:03 +3: change connectTimeout in run time 
+00:03 +4: ignores zero duration timeouts
+00:12 +5: All tests passed!

@@ -1,0 +1,99 @@
+diff --git a/src/Illuminate/Queue/Failed/DatabaseFailedJobProvider.php b/src/Illuminate/Queue/Failed/DatabaseFailedJobProvider.php
+index 49cb3b9..491cf4c 100644
+--- a/src/Illuminate/Queue/Failed/DatabaseFailedJobProvider.php
++++ b/src/Illuminate/Queue/Failed/DatabaseFailedJobProvider.php
+@@ -59,7 +59,13 @@ public function log($connection, $queue, $payload, $exception)
+ 
+         $exception = (string) mb_convert_encoding($exception, 'UTF-8');
+ 
+-        return $this->getTable()->insertGetId(compact(
++        $db = $this->resolver->connection($this->database);
++
++        while ($db->transactionLevel() > 0) {
++            $db->rollBack();
++        }
++
++        return $db->table($this->table)->insertGetId(compact(
+             'connection', 'queue', 'payload', 'exception', 'failed_at'
+         ));
+     }
+diff --git a/src/Illuminate/Queue/Failed/DatabaseUuidFailedJobProvider.php b/src/Illuminate/Queue/Failed/DatabaseUuidFailedJobProvider.php
+index b3192f2..45ebc39 100644
+--- a/src/Illuminate/Queue/Failed/DatabaseUuidFailedJobProvider.php
++++ b/src/Illuminate/Queue/Failed/DatabaseUuidFailedJobProvider.php
+@@ -55,7 +55,13 @@ public function __construct(ConnectionResolverInterface $resolver, $database, $t
+      */
+     public function log($connection, $queue, $payload, $exception)
+     {
+-        $this->getTable()->insert([
++        $db = $this->resolver->connection($this->database);
++
++        while ($db->transactionLevel() > 0) {
++            $db->rollBack();
++        }
++
++        $db->table($this->table)->insert([
+             'uuid' => $uuid = json_decode($payload, true)['uuid'],
+             'connection' => $connection,
+             'queue' => $queue,
+diff --git a/tests/Queue/DatabaseFailedJobProviderTest.php b/tests/Queue/DatabaseFailedJobProviderTest.php
+index 31d1714..218b5e4 100644
+--- a/tests/Queue/DatabaseFailedJobProviderTest.php
++++ b/tests/Queue/DatabaseFailedJobProviderTest.php
+@@ -99,6 +99,18 @@ public function testCanFlushFailedJobs()
+         $this->assertSame(0, $this->failedJobsTable()->count());
+     }
+ 
++    public function testLogRollsBackOpenTransactionBeforeInserting()
++    {
++        $connection = $this->db->getConnection();
++
++        $connection->beginTransaction();
++
++        $this->provider->log('database', 'default', json_encode(['uuid' => (string) Str::uuid()]), new RuntimeException());
++
++        $this->assertSame(0, $connection->transactionLevel());
++        $this->assertSame(1, $this->failedJobsTable()->count());
++    }
++
+     public function testCanProperlyLogFailedJob()
+     {
+         $uuid = Str::uuid();
+diff --git a/tests/Queue/DatabaseUuidFailedJobProviderTest.php b/tests/Queue/DatabaseUuidFailedJobProviderTest.php
+index c490037..c018f56 100644
+--- a/tests/Queue/DatabaseUuidFailedJobProviderTest.php
++++ b/tests/Queue/DatabaseUuidFailedJobProviderTest.php
+@@ -12,6 +12,33 @@
+ 
+ class DatabaseUuidFailedJobProviderTest extends TestCase
+ {
++    public function testLogRollsBackOpenTransactionBeforeInserting()
++    {
++        $db = new DB;
++        $db->addConnection([
++            'driver' => 'sqlite',
++            'database' => ':memory:',
++        ]);
++        $db->getConnection()->getSchemaBuilder()->create('failed_jobs', function (Blueprint $table) {
++            $table->uuid();
++            $table->text('connection');
++            $table->text('queue');
++            $table->longText('payload');
++            $table->longText('exception');
++            $table->timestamp('failed_at')->useCurrent();
++        });
++
++        $provider = new DatabaseUuidFailedJobProvider($db->getDatabaseManager(), 'default', 'failed_jobs');
++        $connection = $db->getConnection();
++
++        $connection->beginTransaction();
++
++        $provider->log('connection-1', 'queue-1', json_encode(['uuid' => 'uuid-1']), new RuntimeException());
++
++        $this->assertSame(0, $connection->transactionLevel());
++        $this->assertSame(1, $connection->table('failed_jobs')->count());
++    }
++
+     public function testGettingIdsOfAllFailedJobs()
+     {
+         $provider = $this->getFailedJobProvider();

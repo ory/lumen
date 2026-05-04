@@ -1,0 +1,43 @@
+diff --git a/src/click/core.py b/src/click/core.py
+index 6dc44f3..037b276 100644
+--- a/src/click/core.py
++++ b/src/click/core.py
+@@ -2897,7 +2897,7 @@ class Option(Parameter):
+         # (instead of eagerly in __init__) prevents callable flag_values
+         # (like classes) from being instantiated by the callable check below.
+         # https://github.com/pallets/click/issues/3121
+-        if value is True and self.is_flag:
++        if value is True and self.is_flag and not self.is_bool_flag:
+             value = self.flag_value
+         elif call and callable(value):
+             value = value()
+diff --git a/tests/test_options.py b/tests/test_options.py
+index 85f6224..7dda50e 100644
+--- a/tests/test_options.py
++++ b/tests/test_options.py
+@@ -1459,7 +1459,7 @@ def test_type_from_flag_value():
+         # Not passing --foo returns the default value as-is, in its Python type, then
+         # converted by the option type.
+         ({"type": bool, "default": True, "flag_value": True}, [], True),
+-        ({"type": bool, "default": True, "flag_value": False}, [], False),
++        ({"type": bool, "default": True, "flag_value": False}, [], True),
+         ({"type": bool, "default": False, "flag_value": True}, [], False),
+         ({"type": bool, "default": False, "flag_value": False}, [], False),
+         ({"type": bool, "default": None, "flag_value": True}, [], None),
+diff --git a/tests/test_termui.py b/tests/test_termui.py
+index be0c2df..74ddf7b 100644
+--- a/tests/test_termui.py
++++ b/tests/test_termui.py
+@@ -825,9 +825,9 @@ FLAG_VALUE_PROMPT_CASES = [
+     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "", True),
+     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "y", True),
+     ({"prompt": True, "default": True, "flag_value": True}, [], "[Y/n]", "n", False),
+-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "", False),
+-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "y", True),
+-    ({"prompt": True, "default": True, "flag_value": False}, [], "[y/N]", "n", False),
++    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "", True),
++    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "y", True),
++    ({"prompt": True, "default": True, "flag_value": False}, [], "[Y/n]", "n", False),
+     # default=False
+     ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "", False),
+     ({"prompt": True, "default": False, "flag_value": True}, [], "[y/N]", "y", True),

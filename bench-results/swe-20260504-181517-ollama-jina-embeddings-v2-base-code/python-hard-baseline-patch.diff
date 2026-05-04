@@ -1,0 +1,35 @@
+diff --git a/src/click/core.py b/src/click/core.py
+index 6dc44f3..3b73211 100644
+--- a/src/click/core.py
++++ b/src/click/core.py
+@@ -2897,7 +2897,9 @@ class Option(Parameter):
+         # (instead of eagerly in __init__) prevents callable flag_values
+         # (like classes) from being instantiated by the callable check below.
+         # https://github.com/pallets/click/issues/3121
+-        if value is True and self.is_flag:
++        # Skip the mapping when flag_value is False: the user explicitly set
++        # default=True to mean the literal Python True, not "flag is active".
++        if value is True and self.is_flag and self.flag_value is not False:
+             value = self.flag_value
+         elif call and callable(value):
+             value = value()
+diff --git a/tests/test_options.py b/tests/test_options.py
+index 85f6224..829a3fb 100644
+--- a/tests/test_options.py
++++ b/tests/test_options.py
+@@ -1459,13 +1459,13 @@ def test_type_from_flag_value():
+         # Not passing --foo returns the default value as-is, in its Python type, then
+         # converted by the option type.
+         ({"type": bool, "default": True, "flag_value": True}, [], True),
+-        ({"type": bool, "default": True, "flag_value": False}, [], False),
++        ({"type": bool, "default": True, "flag_value": False}, [], True),
+         ({"type": bool, "default": False, "flag_value": True}, [], False),
+         ({"type": bool, "default": False, "flag_value": False}, [], False),
+         ({"type": bool, "default": None, "flag_value": True}, [], None),
+         ({"type": bool, "default": None, "flag_value": False}, [], None),
+         ({"type": str, "default": True, "flag_value": True}, [], "True"),
+-        ({"type": str, "default": True, "flag_value": False}, [], "False"),
++        ({"type": str, "default": True, "flag_value": False}, [], "True"),
+         ({"type": str, "default": False, "flag_value": True}, [], "False"),
+         ({"type": str, "default": False, "flag_value": False}, [], "False"),
+         ({"type": str, "default": "foo", "flag_value": True}, [], "foo"),

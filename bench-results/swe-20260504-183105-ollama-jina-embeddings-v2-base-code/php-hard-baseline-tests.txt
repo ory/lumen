@@ -1,0 +1,53 @@
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.5.5
+Configuration: /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/phpunit.xml.dist
+
+E                                                                   1 / 1 (100%)
+
+Time: 00:00.095, Memory: 28.00 MB
+
+There was 1 error:
+
+1) Illuminate\Tests\Integration\Database\Queue\QueueTransactionTest::testItCanHandleTimeoutJob
+Error: Call to a member function make() on null
+
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Console/Command.php:177
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/symfony/console/Application.php:1094
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/symfony/console/Application.php:356
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/symfony/console/Application.php:195
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Console/Application.php:164
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Foundation/Console/Kernel.php:427
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Testing/PendingCommand.php:331
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Testing/PendingCommand.php:532
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Foundation/Testing/Concerns/InteractsWithConsole.php:87
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Foundation/Testing/DatabaseMigrations.php:37
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Foundation/Testing/DatabaseMigrations.php:20
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/Testing.php:124
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/HandlesDatabases.php:62
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/Testing.php:118
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/TestCase.php:71
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/Testing.php:44
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/ApplicationTestingHooks.php:89
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/Testing.php:43
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Collections/helpers.php:236
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/sidekick/src/functions.php:109
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/src/Illuminate/Collections/helpers.php:236
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/Concerns/Testing.php:57
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/vendor/orchestra/testbench-core/src/TestCase.php:50
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/tests/Integration/Database/DatabaseTestCase.php:27
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/tests/Integration/Database/Queue/QueueTransactionTest.php:25
+
+--
+
+There was 1 risky test:
+
+1) Illuminate\Tests\Integration\Database\Queue\QueueTransactionTest::testItCanHandleTimeoutJob
+* Test code or tested code did not remove its own error handlers
+
+* Test code or tested code did not remove its own exception handlers
+
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2725684723/repo/tests/Integration/Database/Queue/QueueTransactionTest.php:32
+
+ERRORS!
+Tests: 1, Assertions: 0, Errors: 1, Deprecations: 2, Risky: 1.

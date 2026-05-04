@@ -1,0 +1,11 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.0.3, pluggy-1.6.0 -- /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1889459252/venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1889459252/repo
+configfile: pyproject.toml
+collecting ... ERROR: not found: /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1889459252/repo/tests/test_options.py::test_bool_flag_pair_default
+(no match in any of [<Module test_options.py>])
+
+collected 1 item
+
+============================ no tests ran in 0.02s =============================

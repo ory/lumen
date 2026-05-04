@@ -1,0 +1,24 @@
+diff --git a/src/Illuminate/Queue/Jobs/Job.php b/src/Illuminate/Queue/Jobs/Job.php
+index a41b401..72cd670 100755
+--- a/src/Illuminate/Queue/Jobs/Job.php
++++ b/src/Illuminate/Queue/Jobs/Job.php
+@@ -204,6 +204,19 @@ public function fail($e = null)
+             }
+         }
+ 
++        // If the exception is due to a job timing out, we need to rollback any open
++        // database transactions so that the failed_jobs record is not lost when the
++        // database rolls back the transaction after the process is killed.
++        if ($e instanceof TimeoutExceededException) {
++            try {
++                foreach ($this->resolve('db')->getConnections() as $connection) {
++                    $connection->rollBack(0);
++                }
++            } catch (Throwable) {
++                // ...
++            }
++        }
++
+         try {
+             // If the job has failed, we will delete it, call the "failed" method and then call
+             // an event indicating the job has failed so it can be logged if needed. This is

@@ -1,0 +1,43 @@
+00:00 +0: loading test/timeout_test.dart
+00:00 +0 -1: loading test/timeout_test.dart [E]
+  Failed to load "test/timeout_test.dart":
+  lib/src/dio/dio_for_native.dart:134:17: Error: Local variable 'subscription' can't be referenced before it is declared.
+            await subscription.cancel();
+                  ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:148:29: Context: This is the declaration of the variable 'subscription'.
+      late StreamSubscription subscription;
+                              ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:134:17: Error: The getter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'subscription'.
+            await subscription.cancel();
+                  ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:153:9: Error: The getter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'subscription'.
+          subscription.pause();
+          ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:161:13: Error: The getter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'subscription'.
+              subscription.resume();
+              ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:165:19: Error: The getter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'subscription'.
+              await subscription.cancel();
+                    ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:149:5: Error: The setter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing setter, or defining a setter or field named 'subscription'.
+      subscription = stream.listen(
+      ^^^^^^^^^^^^
+  lib/src/dio/dio_for_native.dart:205:13: Error: The getter 'subscription' isn't defined for the type 'DioForNative'.
+   - 'DioForNative' is from 'package:dio/src/dio/dio_for_native.dart' ('lib/src/dio/dio_for_native.dart').
+  Try correcting the name to the name of an existing getter, or defining a getter or field named 'subscription'.
+        await subscription.cancel();
+              ^^^^^^^^^^^^
+00:00 +0 -1: Some tests failed.
+
+Failing tests:
+  test/timeout_test.dart: loading test/timeout_test.dart

@@ -1,0 +1,100 @@
+diff --git a/dio/lib/src/adapters/io_adapter.dart b/dio/lib/src/adapters/io_adapter.dart
+index 5c7d94e..9b530fd 100644
+--- a/dio/lib/src/adapters/io_adapter.dart
++++ b/dio/lib/src/adapters/io_adapter.dart
+@@ -220,6 +220,9 @@ class IOHttpClientAdapter implements HttpClientAdapter {
+             );
+             responseStream.detachSocket().then((socket) => socket.destroy());
+           } else {
++            // Reset so the next chunk measures the gap since this one.
++            stopwatch.reset();
++            stopwatch.start();
+             sink.add(Uint8List.fromList(data));
+           }
+         },
+diff --git a/dio/lib/src/dio/dio_for_native.dart b/dio/lib/src/dio/dio_for_native.dart
+index d16fa41..819e63e 100644
+--- a/dio/lib/src/dio/dio_for_native.dart
++++ b/dio/lib/src/dio/dio_for_native.dart
+@@ -124,9 +124,32 @@ class DioForNative with DioMixin implements Dio {
+       }
+     }
+ 
++    final timeout = response.requestOptions.receiveTimeout;
++    Timer? receiveTimer;
++
++    void resetReceiveTimer() {
++      receiveTimer?.cancel();
++      if (timeout != null && timeout > Duration.zero) {
++        receiveTimer = Timer(timeout, () async {
++          await subscription.cancel();
++          await closeAndDelete();
++          if (!completer.isCompleted) {
++            completer.completeError(
++              DioException.receiveTimeout(
++                timeout: timeout,
++                requestOptions: response.requestOptions,
++              ),
++            );
++          }
++        });
++      }
++    }
++
+     late StreamSubscription subscription;
+     subscription = stream.listen(
+       (data) {
++        // Each arriving chunk resets the inter-byte timer.
++        resetReceiveTimer();
+         subscription.pause();
+         // Write file asynchronously
+         asyncWrite = raf.writeFrom(data).then((result) {
+@@ -153,6 +176,7 @@ class DioForNative with DioMixin implements Dio {
+         });
+       },
+       onDone: () async {
++        receiveTimer?.cancel();
+         try {
+           await asyncWrite;
+           closed = true;
+@@ -165,6 +189,7 @@ class DioForNative with DioMixin implements Dio {
+         }
+       },
+       onError: (e) async {
++        receiveTimer?.cancel();
+         try {
+           await closeAndDelete();
+         } finally {
+@@ -176,28 +201,14 @@ class DioForNative with DioMixin implements Dio {
+       cancelOnError: true,
+     );
+     cancelToken?.whenCancel.then((_) async {
++      receiveTimer?.cancel();
+       await subscription.cancel();
+       await closeAndDelete();
+     });
+ 
+-    final timeout = response.requestOptions.receiveTimeout;
+-    if (timeout != null) {
+-      future = future.timeout(timeout).catchError(
+-        (dynamic e, StackTrace s) async {
+-          await subscription.cancel();
+-          await closeAndDelete();
+-          if (e is TimeoutException) {
+-            throw DioException.receiveTimeout(
+-              timeout: timeout,
+-              requestOptions: response.requestOptions,
+-              error: e,
+-            );
+-          } else {
+-            throw e;
+-          }
+-        },
+-      );
+-    }
++    // Start the timer to catch the case where no first byte ever arrives.
++    resetReceiveTimer();
++
+     return DioMixin.listenCancelForAsyncTask(cancelToken, future);
+   }
+ }
