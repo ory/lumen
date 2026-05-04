@@ -185,6 +185,12 @@ exit /b 0
             -ExpectedRepo 'def324/lumen' `
             -OriginUrl 'https://github.com/def324/lumen.git' `
             -PassMessage 'run.bat stdio derives first-install download repo from git origin'
+
+        Invoke-RunBatScenario `
+            -Name 'origin-remote-ssh' `
+            -ExpectedRepo 'def324/lumen' `
+            -OriginUrl 'git@github.com:def324/lumen.git' `
+            -PassMessage 'run.bat stdio derives first-install download repo from git origin (ssh)'
         }
 } finally {
     $env:PATH = $origPath
