@@ -1,0 +1,133 @@
+diff --git a/Package.resolved b/Package.resolved
+index 97abb9a..ddd0764 100644
+--- a/Package.resolved
++++ b/Package.resolved
+@@ -95,8 +95,8 @@
+       "kind" : "remoteSourceControl",
+       "location" : "https://github.com/apple/swift-argument-parser.git",
+       "state" : {
+-        "revision" : "8f4d2753f0e4778c76d5f05ad16c74f707390531",
+-        "version" : "1.2.3"
++        "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
++        "version" : "1.7.1"
+       }
+     },
+     {
+@@ -138,28 +138,28 @@
+     {
+       "identity" : "swift-driver",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-driver.git",
++      "location" : "https://github.com/swiftlang/swift-driver.git",
+       "state" : {
+-        "revision" : "1c07ced84c1dfc1f9c3253dcbaa216fc9c76ee25",
+-        "version" : "1.0.1"
++        "branch" : "release/6.2",
++        "revision" : "aedacc6c1583db4f2989a367e3c41968558a5b8e"
+       }
+     },
+     {
+       "identity" : "swift-llbuild",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-llbuild.git",
++      "location" : "https://github.com/swiftlang/swift-llbuild.git",
+       "state" : {
+-        "revision" : "783aec21649a6c47d1a8314db4144bdceb11df30",
+-        "version" : "1.0.0"
++        "branch" : "release/6.2",
++        "revision" : "073dff55529d7c4ecbd615ab5f5ac52ae5b380da"
+       }
+     },
+     {
+       "identity" : "swift-package-manager",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-package-manager.git",
++      "location" : "https://github.com/swiftlang/swift-package-manager.git",
+       "state" : {
+-        "revision" : "7df9321541e544d711dd93f5b97dd4e8bf7e100e",
+-        "version" : "1.0.8"
++        "branch" : "swift-6.2-RELEASE",
++        "revision" : "3cf1cb66ebde00dab737dcebad96218e2017530d"
+       }
+     },
+     {
+@@ -167,8 +167,8 @@
+       "kind" : "remoteSourceControl",
+       "location" : "https://github.com/swiftlang/swift-syntax.git",
+       "state" : {
+-        "revision" : "0687f71944021d616d34d922343dcef086855920",
+-        "version" : "600.0.1"
++        "branch" : "release/6.2",
++        "revision" : "5a87516fc3dddbd23cb76358eb489915ee86b444"
+       }
+     },
+     {
+@@ -180,13 +180,22 @@
+         "version" : "1.1.1"
+       }
+     },
++    {
++      "identity" : "swift-toolchain-sqlite",
++      "kind" : "remoteSourceControl",
++      "location" : "https://github.com/swiftlang/swift-toolchain-sqlite",
++      "state" : {
++        "revision" : "c0ecc1e0fd1b4fbc38db1efa6113bc12c2a4e559",
++        "version" : "1.0.9"
++      }
++    },
+     {
+       "identity" : "swift-tools-support-core",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-tools-support-core.git",
++      "location" : "https://github.com/swiftlang/swift-tools-support-core.git",
+       "state" : {
+-        "revision" : "930e82e5ae2432c71fe05f440b5d778285270bdb",
+-        "version" : "1.0.0"
++        "branch" : "release/6.2",
++        "revision" : "5a993c8848487c934d53ffceef8e1cad0a241dc1"
+       }
+     },
+     {
+diff --git a/SourceryFramework/Sources/Parsing/String+TypeInference.swift b/SourceryFramework/Sources/Parsing/String+TypeInference.swift
+index 8263e8b..6ca6d1b 100644
+--- a/SourceryFramework/Sources/Parsing/String+TypeInference.swift
++++ b/SourceryFramework/Sources/Parsing/String+TypeInference.swift
+@@ -243,8 +243,9 @@ extension String {
+         }
+         
+         let body = trimmed[trimmed.index(after: start)..<trimmed.index(before: trimmed.endIndex)]
+-        return GenericType(name: String(trimmed[..<start]), typeParameters: String(body).commaSeparated().map({ value in
++        return GenericType(name: String(trimmed[..<start]), typeParameters: String(body).commaSeparated().compactMap({ value in
+             let stripped = value.stripped()
++            guard !stripped.isEmpty else { return nil }
+             return GenericTypeParameter(typeName: stripped.inferType ?? TypeName(stripped))
+         }))
+     }
+diff --git a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
+index 1c59fa8..7767279 100644
+--- a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
++++ b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/GenericType+SwiftSyntax.swift
+@@ -6,17 +6,19 @@ extension GenericType {
+     convenience init(name: String, node: GenericArgumentClauseSyntax) {
+         #if compiler(>=6.2)
+         // TODO: ExprSyntax may need to be handled
+-        let parameters = node.arguments.map { argument -> GenericTypeParameter? in
++        let parameters = node.arguments.compactMap { argument -> GenericTypeParameter? in
+             switch argument.argument {
+             case .type(let type):
++                guard !type.is(MissingTypeSyntax.self) else { return nil }
+                 return GenericTypeParameter(typeName: TypeName(type))
+             default: // case .expr
+                 return nil
+             }
+-        }.compactMap({ $0 })
++        }
+         #else
+-        let parameters = node.arguments.map { argument in
+-            GenericTypeParameter(typeName: TypeName(argument.argument))
++        let parameters = node.arguments.compactMap { argument -> GenericTypeParameter? in
++            guard !argument.argument.is(MissingTypeSyntax.self) else { return nil }
++            return GenericTypeParameter(typeName: TypeName(argument.argument))
+         }
+         #endif
+ 
