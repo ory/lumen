@@ -132,8 +132,8 @@ exit /b 0
             # closed by the time we try to write — that IS the #125 symptom,
             # so swallow the broken-pipe exception and let the exit-code check
             # below produce the real diagnostic.
-            try { $script:proc.StandardInput.WriteLine($initReq) } catch { }
-            try { $script:proc.StandardInput.Close() } catch { }
+            try { $script:proc.StandardInput.WriteLine($initReq) } catch { $null = $_ }
+            try { $script:proc.StandardInput.Close() } catch { $null = $_ }
 
             $stdout = $script:proc.StandardOutput.ReadToEnd()
             $stderr = $script:proc.StandardError.ReadToEnd()
@@ -191,6 +191,17 @@ exit /b 0
             -ExpectedRepo 'def324/lumen' `
             -OriginUrl 'git@github.com:def324/lumen.git' `
             -PassMessage 'run.bat stdio derives first-install download repo from git origin (ssh)'
+
+        Invoke-RunBatScenario `
+            -Name 'origin-remote-ssh-url' `
+            -ExpectedRepo 'def324/lumen' `
+            -OriginUrl 'ssh://git@github.com/def324/lumen.git' `
+            -PassMessage 'run.bat stdio derives first-install download repo from git origin (ssh://)'
+
+        Invoke-RunBatScenario `
+            -Name 'fallback-ory-lumen' `
+            -ExpectedRepo 'ory/lumen' `
+            -PassMessage 'run.bat stdio falls back to ory/lumen when no origin or env override is set'
         }
 } finally {
     $env:PATH = $origPath
