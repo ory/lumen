@@ -101,13 +101,13 @@ echo ""
 echo "=== release repository resolution tests ==="
 
 release_repo_from_remote_url() {
-  local url="$1"
+  local url="$1" repo
   case "$url" in
-    https://github.com/*/*.git) echo "${url#https://github.com/}" | sed 's/[.]git$//' ;;
+    https://github.com/*/*.git) repo="${url#https://github.com/}"; echo "${repo%.git}" ;;
     https://github.com/*/*) echo "${url#https://github.com/}" ;;
-    git@github.com:*/*.git) echo "${url#git@github.com:}" | sed 's/[.]git$//' ;;
+    git@github.com:*/*.git) repo="${url#git@github.com:}"; echo "${repo%.git}" ;;
     git@github.com:*/*) echo "${url#git@github.com:}" ;;
-    ssh://git@github.com/*/*.git) echo "${url#ssh://git@github.com/}" | sed 's/[.]git$//' ;;
+    ssh://git@github.com/*/*.git) repo="${url#ssh://git@github.com/}"; echo "${repo%.git}" ;;
     ssh://git@github.com/*/*) echo "${url#ssh://git@github.com/}" ;;
     *) echo "" ;;
   esac
@@ -121,6 +121,10 @@ assert_eq "parse SSH origin with .git" "def324/lumen" \
   "$(release_repo_from_remote_url "git@github.com:def324/lumen.git")"
 assert_eq "parse ssh:// origin with .git" "def324/lumen" \
   "$(release_repo_from_remote_url "ssh://git@github.com/def324/lumen.git")"
+assert_eq "parse SSH origin without .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "git@github.com:def324/lumen")"
+assert_eq "parse ssh:// origin without .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "ssh://git@github.com/def324/lumen")"
 assert_eq "ignore non-GitHub origin" "" \
   "$(release_repo_from_remote_url "git@example.com:def324/lumen.git")"
 

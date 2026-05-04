@@ -27,7 +27,28 @@ if not exist "%BINARY%" (
   if defined LUMEN_RELEASE_REPO (
     set "REPO=%LUMEN_RELEASE_REPO%"
   ) else (
-    set "REPO=ory/lumen"
+    set "REPO="
+    set "ORIGIN_URL="
+    for /f "delims=" %%u in ('git -C "%PLUGIN_ROOT%" remote get-url origin 2^>nul') do (
+      if not defined ORIGIN_URL set "ORIGIN_URL=%%u"
+    )
+    if defined ORIGIN_URL (
+      set "CANDIDATE="
+      set "_TMP=!ORIGIN_URL!"
+      if /I "!_TMP:~0,19!"=="https://github.com/" (
+        set "CANDIDATE=!_TMP:~19!"
+      ) else if /I "!_TMP:~0,15!"=="git@github.com:" (
+        set "CANDIDATE=!_TMP:~15!"
+      ) else if /I "!_TMP:~0,21!"=="ssh://git@github.com/" (
+        set "CANDIDATE=!_TMP:~21!"
+      )
+      if defined CANDIDATE (
+        if "!CANDIDATE:~-4!"==".git" set "CANDIDATE=!CANDIDATE:~0,-4!"
+        echo !CANDIDATE! | findstr /r "^[^/][^/]*/[^/][^/]*$" >nul 2>&1
+        if not errorlevel 1 set "REPO=!CANDIDATE!"
+      )
+    )
+    if not defined REPO set "REPO=ory/lumen"
   )
 
   :: Always use the version pinned in the manifest — keeps plugin and binary in sync

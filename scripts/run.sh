@@ -7,13 +7,13 @@ set -euo pipefail
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
 
 release_repo_from_remote_url() {
-  local url="$1"
+  local url="$1" repo
   case "$url" in
-    https://github.com/*/*.git) echo "${url#https://github.com/}" | sed 's/[.]git$//' ;;
+    https://github.com/*/*.git) repo="${url#https://github.com/}"; echo "${repo%.git}" ;;
     https://github.com/*/*) echo "${url#https://github.com/}" ;;
-    git@github.com:*/*.git) echo "${url#git@github.com:}" | sed 's/[.]git$//' ;;
+    git@github.com:*/*.git) repo="${url#git@github.com:}"; echo "${repo%.git}" ;;
     git@github.com:*/*) echo "${url#git@github.com:}" ;;
-    ssh://git@github.com/*/*.git) echo "${url#ssh://git@github.com/}" | sed 's/[.]git$//' ;;
+    ssh://git@github.com/*/*.git) repo="${url#ssh://git@github.com/}"; echo "${repo%.git}" ;;
     ssh://git@github.com/*/*) echo "${url#ssh://git@github.com/}" ;;
     *) echo "" ;;
   esac
