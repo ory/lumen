@@ -98,6 +98,33 @@ assert_eq "Windows amd64 URL" \
   "$(download_url "$REPO" "$VERSION" "windows" "amd64")"
 
 echo ""
+echo "=== release repository resolution tests ==="
+
+release_repo_from_remote_url() {
+  local url="$1"
+  case "$url" in
+    https://github.com/*/*.git) echo "${url#https://github.com/}" | sed 's/[.]git$//' ;;
+    https://github.com/*/*) echo "${url#https://github.com/}" ;;
+    git@github.com:*/*.git) echo "${url#git@github.com:}" | sed 's/[.]git$//' ;;
+    git@github.com:*/*) echo "${url#git@github.com:}" ;;
+    ssh://git@github.com/*/*.git) echo "${url#ssh://git@github.com/}" | sed 's/[.]git$//' ;;
+    ssh://git@github.com/*/*) echo "${url#ssh://git@github.com/}" ;;
+    *) echo "" ;;
+  esac
+}
+
+assert_eq "parse HTTPS origin with .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "https://github.com/def324/lumen.git")"
+assert_eq "parse HTTPS origin without .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "https://github.com/def324/lumen")"
+assert_eq "parse SSH origin with .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "git@github.com:def324/lumen.git")"
+assert_eq "parse ssh:// origin with .git" "def324/lumen" \
+  "$(release_repo_from_remote_url "ssh://git@github.com/def324/lumen.git")"
+assert_eq "ignore non-GitHub origin" "" \
+  "$(release_repo_from_remote_url "git@example.com:def324/lumen.git")"
+
+echo ""
 echo "=== arch normalisation tests ==="
 assert_eq "x86_64 → amd64"  "amd64" "$(normalise_arch "x86_64")"
 assert_eq "aarch64 → arm64" "arm64" "$(normalise_arch "aarch64")"
@@ -165,6 +192,7 @@ echo "=== stdio download-on-first-run integration test ==="
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   _TMPROOT="$(mktemp -d)"
   _FAKE_CURL_DIR="$(mktemp -d)"
+  _URL_LOG="${_TMPROOT}/curl-urls.txt"
   trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR"' EXIT
 
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -181,6 +209,7 @@ echo "=== stdio download-on-first-run integration test ==="
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) mkdir -p "$(dirname "$2")"; printf '#!/usr/bin/env bash\nexit 0\n' > "$2"; chmod +x "$2"; shift 2 ;;
+    https://*) printf '%s\n' "$1" >> "$LUMEN_CURL_URL_LOG"; shift ;;
     *)  shift ;;
   esac
 done
@@ -189,7 +218,10 @@ FAKECURL
   chmod +x "${_FAKE_CURL_DIR}/curl"
 
   EXIT_CODE=0
-  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" PATH="${_FAKE_CURL_DIR}:${PATH}" \
+  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" \
+    LUMEN_RELEASE_REPO="def324/lumen" \
+    LUMEN_CURL_URL_LOG="${_URL_LOG}" \
+    PATH="${_FAKE_CURL_DIR}:${PATH}" \
     bash "${_SCRIPT_DIR}/run.sh" stdio >/dev/null 2>&1 || EXIT_CODE=$?
 
   if [ "$EXIT_CODE" -ne 0 ]; then
@@ -198,6 +230,12 @@ FAKECURL
   fi
   if [ ! -x "$_EXPECTED_BINARY" ]; then
     echo "  FAIL: run.sh stdio should have downloaded binary to ${_EXPECTED_BINARY}"
+    exit 1
+  fi
+  if ! grep -q "https://github.com/def324/lumen/releases/download/v0.0.1/" "${_URL_LOG}"; then
+    echo "  FAIL: run.sh stdio should use LUMEN_RELEASE_REPO for download URL"
+    echo "        URLs:"
+    sed 's/^/          /' "${_URL_LOG}"
     exit 1
   fi
   echo "  PASS: run.sh stdio downloads binary and execs it on first install"
@@ -301,6 +339,7 @@ echo "=== stdio first-install MCP handshake test ==="
   _TMPROOT="$(mktemp -d)"
   _FAKE_CURL_DIR="$(mktemp -d)"
   _MOCK_BIN_DIR="$(mktemp -d)"
+  _URL_LOG="${_TMPROOT}/curl-urls.txt"
   trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR" "$_MOCK_BIN_DIR"' EXIT
 
   _OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -321,6 +360,8 @@ echo "=== stdio first-install MCP handshake test ==="
 
   printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
   mkdir -p "${_TMPROOT}/bin"
+  git -C "${_TMPROOT}" init -q
+  git -C "${_TMPROOT}" remote add origin git@github.com:def324/lumen.git
 
   # Stub curl: parse -o <target> and copy the prebuilt mock into place.
   cat > "${_FAKE_CURL_DIR}/curl" <<'FAKECURL'
@@ -328,6 +369,7 @@ echo "=== stdio first-install MCP handshake test ==="
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) mkdir -p "$(dirname "$2")"; cp "$LUMEN_MOCK_BINARY" "$2"; chmod +x "$2"; shift 2 ;;
+    https://*) printf '%s\n' "$1" >> "$LUMEN_CURL_URL_LOG"; shift ;;
     *)  shift ;;
   esac
 done
@@ -343,6 +385,7 @@ FAKECURL
   printf '%s\n' "$_INIT_REQ" | \
     CLAUDE_PLUGIN_ROOT="${_TMPROOT}" \
     PATH="${_FAKE_CURL_DIR}:${PATH}" \
+    LUMEN_CURL_URL_LOG="${_URL_LOG}" \
     LUMEN_MOCK_BINARY="${_MOCK_BIN}" \
     bash "${_SCRIPT_DIR}/run.sh" stdio >"${_STDOUT}" 2>"${_STDERR}" \
     || EXIT_CODE=$?
@@ -355,6 +398,12 @@ FAKECURL
   fi
   if [ ! -x "$_EXPECTED_BINARY" ]; then
     echo "  FAIL: run.sh stdio did not place artefact at ${_EXPECTED_BINARY}"
+    exit 1
+  fi
+  if ! grep -q "https://github.com/def324/lumen/releases/download/v0.0.1/" "${_URL_LOG}"; then
+    echo "  FAIL: run.sh stdio should derive release repo from plugin root origin"
+    echo "        URLs:"
+    sed 's/^/          /' "${_URL_LOG}"
     exit 1
   fi
   if ! grep -q '"jsonrpc":"2.0"' "${_STDOUT}"; then

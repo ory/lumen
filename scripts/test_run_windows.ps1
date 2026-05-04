@@ -21,6 +21,7 @@ $RepoRoot  = (Resolve-Path (Join-Path $ScriptDir '..')).Path
 $TmpRoot     = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lumen-stdio-$([guid]::NewGuid().ToString('N'))")).FullName
 $FakeCurlDir = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "fakecurl-$([guid]::NewGuid().ToString('N'))")).FullName
 $MockBinDir  = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "mockbin-$([guid]::NewGuid().ToString('N'))")).FullName
+$CurlArgsLog = Join-Path $TmpRoot 'curl-args.txt'
 
 $origPath = $env:PATH
 $buildOK  = $false
@@ -59,6 +60,7 @@ try {
         $curlStub = @'
 @echo off
 setlocal enabledelayedexpansion
+echo %*>>"%LUMEN_CURL_ARGS_LOG%"
 :loop
 if "%~1"=="" goto done
 if "%~1"=="-o" (
@@ -91,6 +93,8 @@ exit /b 0
         $psi.WorkingDirectory = $RepoRoot
         $psi.Environment['CLAUDE_PLUGIN_ROOT'] = $TmpRoot
         $psi.Environment['LUMEN_MOCK_BINARY']  = $mockBin
+        $psi.Environment['LUMEN_RELEASE_REPO'] = 'def324/lumen'
+        $psi.Environment['LUMEN_CURL_ARGS_LOG'] = $CurlArgsLog
         $psi.Environment['PATH'] = "$FakeCurlDir;$origPath"
 
         $proc = [System.Diagnostics.Process]::Start($psi)
@@ -120,6 +124,12 @@ exit /b 0
                 Fail "run.bat stdio exited $exitCode — MCP server would be dead for the session"
             } elseif (-not (Test-Path $expectedBinary)) {
                 Fail "run.bat stdio did not place artefact at $expectedBinary"
+            } elseif (-not (Test-Path $CurlArgsLog)) {
+                Fail "fake curl did not capture launcher download arguments"
+            } elseif ((Get-Content -Raw $CurlArgsLog) -notmatch 'https://github\.com/def324/lumen/releases/download/') {
+                Fail "run.bat stdio should use LUMEN_RELEASE_REPO for download URL"
+                Write-Host "        curl args:"
+                (Get-Content $CurlArgsLog) | ForEach-Object { Write-Host "          $_" }
             } elseif ($stdout -notmatch '"jsonrpc":"2\.0"') {
                 Fail "MCP initialize produced no JSON-RPC 2.0 response on stdout"
                 Write-Host "        stdout:"

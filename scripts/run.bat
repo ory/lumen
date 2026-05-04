@@ -24,7 +24,11 @@ set "BINARY=%PLUGIN_ROOT%\bin\lumen-windows-%ARCH%.exe"
 
 :: Download on first run if binary is missing
 if not exist "%BINARY%" (
-  set "REPO=ory/lumen"
+  if defined LUMEN_RELEASE_REPO (
+    set "REPO=%LUMEN_RELEASE_REPO%"
+  ) else (
+    set "REPO=ory/lumen"
+  )
 
   :: Always use the version pinned in the manifest — keeps plugin and binary in sync
   set "MANIFEST=%PLUGIN_ROOT%\.release-please-manifest.json"
