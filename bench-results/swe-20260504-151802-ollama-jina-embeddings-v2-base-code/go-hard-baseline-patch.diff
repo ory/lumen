@@ -1,0 +1,64 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..34f5535 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,12 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		// For non-pointer struct types, preserve the caller-supplied default
++		// rather than zeroing it out. Pointer-typed fields are already handled
++		// before this call (set to nil by the caller).
++		if defaultVal.IsValid() && typ.Kind() == reflect.Struct {
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/decode_test.go b/decode_test.go
+index f0b0c08..0fa42f5 100644
+--- a/decode_test.go
++++ b/decode_test.go
+@@ -1945,6 +1945,42 @@ w: w_value
+ 	}
+ }
+ 
++func TestDecoder_DefaultValuesWithNullNestedStruct(t *testing.T) {
++	type Inner struct {
++		Key string `yaml:"key"`
++	}
++	type Outer struct {
++		First  string `yaml:"first"`
++		Second Inner  `yaml:"second"`
++	}
++
++	tests := []struct {
++		name string
++		src  string
++	}{
++		{
++			name: "null node",
++			src:  "first: Test\nsecond:\n",
++		},
++		{
++			name: "comments only",
++			src:  "first: Test\nsecond:\n  # just a comment\n",
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			v := Outer{Second: Inner{Key: "My default Value"}}
++			if err := yaml.NewDecoder(strings.NewReader(tt.src)).Decode(&v); err != nil {
++				t.Fatalf("unexpected decode error: %s", err)
++			}
++			if v.Second.Key != "My default Value" {
++				t.Fatalf("v.Second.Key should be `My default Value`, got `%s`", v.Second.Key)
++			}
++		})
++	}
++}
++
+ func Example_YAMLTags() {
+ 	yml := `---
+ foo: 1
