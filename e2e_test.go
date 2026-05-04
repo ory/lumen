@@ -530,11 +530,13 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 		}
 	}
 
-	// Results sorted by score descending.
+	// Results are grouped by file (not globally sorted), so verify
+	// that chunks within each file group are sorted by score descending.
 	for i := 1; i < len(out.Results); i++ {
-		if out.Results[i].Score > out.Results[i-1].Score {
-			t.Errorf("results not sorted by score descending: result[%d].Score=%f > result[%d].Score=%f",
-				i, out.Results[i].Score, i-1, out.Results[i-1].Score)
+		if out.Results[i].FilePath == out.Results[i-1].FilePath &&
+			out.Results[i].Score > out.Results[i-1].Score {
+			t.Errorf("results in file %q not sorted by score descending: result[%d].Score=%f > result[%d].Score=%f",
+				out.Results[i].FilePath, i, out.Results[i].Score, i-1, out.Results[i-1].Score)
 		}
 	}
 
