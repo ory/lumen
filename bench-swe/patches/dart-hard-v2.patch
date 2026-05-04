@@ -1,0 +1,931 @@
+diff --git a/dio/lib/src/adapters/browser_adapter.dart b/dio/lib/src/adapters/browser_adapter.dart
+index a4601ca..cae27d0 100644
+--- a/dio/lib/src/adapters/browser_adapter.dart
++++ b/dio/lib/src/adapters/browser_adapter.dart
+@@ -161,20 +161,27 @@ class BrowserHttpClientAdapter implements HttpClientAdapter {
+       }
+     }
+ 
+-    final downloadStopwatch = Stopwatch();
+-    xhr.onProgress.listen((event) {
+-      if (connectTimeoutTimer != null) {
+-        connectTimeoutTimer!.cancel();
+-        connectTimeoutTimer = null;
+-      }
++    final receiveStopwatch = Stopwatch();
++    Timer? receiveTimer;
+ 
+-      if (receiveTimeout > Duration.zero) {
+-        if (!downloadStopwatch.isRunning) {
+-          downloadStopwatch.start();
+-        }
+-        final duration = downloadStopwatch.elapsed;
+-        if (duration > receiveTimeout) {
+-          downloadStopwatch.stop();
++    void stopWatchReceiveTimeout() {
++      receiveTimer?.cancel();
++      receiveTimer = null;
++      receiveStopwatch.stop();
++    }
++
++    void watchReceiveTimeout() {
++      if (receiveTimeout <= Duration.zero) {
++        return;
++      }
++      receiveStopwatch.reset();
++      if (!receiveStopwatch.isRunning) {
++        receiveStopwatch.start();
++      }
++      receiveTimer?.cancel();
++      receiveTimer = Timer(receiveTimeout, () {
++        if (!completer.isCompleted) {
++          xhr.abort();
+           completer.completeError(
+             DioException.receiveTimeout(
+               timeout: receiveTimeout,
+@@ -182,16 +189,26 @@ class BrowserHttpClientAdapter implements HttpClientAdapter {
+             ),
+             StackTrace.current,
+           );
+-          xhr.abort();
+         }
+-      }
++        stopWatchReceiveTimeout();
++      });
++    }
+ 
+-      if (options.onReceiveProgress != null) {
+-        if (event.loaded != null && event.total != null) {
++    xhr.onProgress.listen(
++      (ProgressEvent event) {
++        if (connectTimeoutTimer != null) {
++          connectTimeoutTimer!.cancel();
++          connectTimeoutTimer = null;
++        }
++        watchReceiveTimeout();
++        if (options.onReceiveProgress != null &&
++            event.loaded != null &&
++            event.total != null) {
+           options.onReceiveProgress!(event.loaded!, event.total!);
+         }
+-      }
+-    });
++      },
++      onDone: () => stopWatchReceiveTimeout(),
++    );
+ 
+     xhr.onError.first.then((_) {
+       connectTimeoutTimer?.cancel();
+diff --git a/dio/lib/src/adapters/io_adapter.dart b/dio/lib/src/adapters/io_adapter.dart
+index 5c7d94e..85de893 100644
+--- a/dio/lib/src/adapters/io_adapter.dart
++++ b/dio/lib/src/adapters/io_adapter.dart
+@@ -168,13 +168,13 @@ class IOHttpClientAdapter implements HttpClientAdapter {
+       await future;
+     }
+ 
+-    final stopwatch = Stopwatch()..start();
+     Future<HttpClientResponse> future = request.close();
+-    final receiveTimeout = options.receiveTimeout;
+-    if (receiveTimeout != null && receiveTimeout > Duration.zero) {
++    final receiveTimeout = options.receiveTimeout ?? Duration.zero;
++    if (receiveTimeout > Duration.zero) {
+       future = future.timeout(
+         receiveTimeout,
+         onTimeout: () {
++          request.abort();
+           throw DioException.receiveTimeout(
+             timeout: receiveTimeout,
+             requestOptions: options,
+@@ -182,7 +182,6 @@ class IOHttpClientAdapter implements HttpClientAdapter {
+         },
+       );
+     }
+-
+     final responseStream = await future;
+ 
+     if (validateCertificate != null) {
+@@ -203,26 +202,50 @@ class IOHttpClientAdapter implements HttpClientAdapter {
+       }
+     }
+ 
++    final receiveStopwatch = Stopwatch();
++    Timer? receiveTimer;
++
++    void stopWatchReceiveTimeout() {
++      receiveTimer?.cancel();
++      receiveTimer = null;
++      receiveStopwatch.stop();
++    }
++
++    void watchReceiveTimeout(EventSink<Uint8List> sink) {
++      if (receiveTimeout <= Duration.zero) {
++        return;
++      }
++      receiveStopwatch.reset();
++      if (!receiveStopwatch.isRunning) {
++        receiveStopwatch.start();
++      }
++      receiveTimer?.cancel();
++      receiveTimer = Timer(receiveTimeout, () {
++        sink.addError(
++          DioException.receiveTimeout(
++            timeout: receiveTimeout,
++            requestOptions: options,
++          ),
++        );
++        sink.close();
++        responseStream.detachSocket().then((socket) => socket.destroy());
++        stopWatchReceiveTimeout();
++      });
++    }
++
+     final stream = responseStream.transform<Uint8List>(
+       StreamTransformer.fromHandlers(
+         handleData: (data, sink) {
+-          stopwatch.stop();
+-          final duration = stopwatch.elapsed;
+-          final receiveTimeout = options.receiveTimeout;
+-          if (receiveTimeout != null &&
+-              receiveTimeout > Duration.zero &&
+-              duration > receiveTimeout) {
+-            sink.addError(
+-              DioException.receiveTimeout(
+-                timeout: receiveTimeout,
+-                requestOptions: options,
+-              ),
+-            );
+-            responseStream.detachSocket().then((socket) => socket.destroy());
+-          } else {
+-            sink.add(Uint8List.fromList(data));
++          watchReceiveTimeout(sink);
++          // Always true if the receive timeout was not set.
++          if (receiveStopwatch.elapsed <= receiveTimeout) {
++            sink.add(data is Uint8List ? data : Uint8List.fromList(data));
+           }
+         },
++        handleDone: (sink) {
++          stopWatchReceiveTimeout();
++          sink.close();
++        },
+       ),
+     );
+ 
+@@ -245,8 +268,11 @@ class IOHttpClientAdapter implements HttpClientAdapter {
+ 
+   HttpClient _configHttpClient(Duration? connectionTimeout) {
+     _cachedHttpClient ??= _createHttpClient();
+-    if (connectionTimeout != null && connectionTimeout > Duration.zero) {
++    connectionTimeout ??= Duration.zero;
++    if (connectionTimeout > Duration.zero) {
+       _cachedHttpClient!.connectionTimeout = connectionTimeout;
++    } else {
++      _cachedHttpClient!.connectionTimeout = null;
+     }
+     return _cachedHttpClient!;
+   }
+diff --git a/dio/lib/src/dio/dio_for_native.dart b/dio/lib/src/dio/dio_for_native.dart
+index d16fa41..a725abd 100644
+--- a/dio/lib/src/dio/dio_for_native.dart
++++ b/dio/lib/src/dio/dio_for_native.dart
+@@ -36,13 +36,12 @@ class DioForNative with DioMixin implements Dio {
+     Object? data,
+     Options? options,
+   }) async {
+-    // We set the `responseType` to [ResponseType.STREAM] to retrieve the
+-    // response stream.
+     options ??= DioMixin.checkOptions('GET', options);
+-
+-    // Receive data with stream.
+-    options.responseType = ResponseType.stream;
+-    Response<ResponseBody> response;
++    // Manually set the `responseType` to [ResponseType.stream]
++    // to retrieve the response stream.
++    // Do not modify previous options.
++    options = options.copyWith(responseType: ResponseType.stream);
++    final Response<ResponseBody> response;
+     try {
+       response = await request<ResponseBody>(
+         urlPath,
+@@ -53,14 +52,22 @@ class DioForNative with DioMixin implements Dio {
+       );
+     } on DioException catch (e) {
+       if (e.type == DioExceptionType.badResponse) {
+-        if (e.response!.requestOptions.receiveDataWhenStatusError == true) {
++        final response = e.response!;
++        if (response.requestOptions.receiveDataWhenStatusError == true) {
++          final ResponseType implyResponseType;
++          final contentType = response.headers.value(Headers.contentTypeHeader);
++          if (contentType != null && contentType.startsWith('text/')) {
++            implyResponseType = ResponseType.plain;
++          } else {
++            implyResponseType = ResponseType.json;
++          }
+           final res = await transformer.transformResponse(
+-            e.response!.requestOptions..responseType = ResponseType.json,
+-            e.response!.data as ResponseBody,
++            response.requestOptions.copyWith(responseType: implyResponseType),
++            response.data as ResponseBody,
+           );
+-          e.response!.data = res;
++          response.data = res;
+         } else {
+-          e.response!.data = null;
++          response.data = null;
+         }
+       }
+       rethrow;
+@@ -92,7 +99,6 @@ class DioForNative with DioMixin implements Dio {
+ 
+     // Create a Completer to notify the success/error state.
+     final completer = Completer<Response>();
+-    Future<Response> future = completer.future;
+     int received = 0;
+ 
+     // Stream<Uint8List>
+@@ -139,7 +145,7 @@ class DioForNative with DioMixin implements Dio {
+           }
+         }).catchError((Object e) async {
+           try {
+-            await subscription.cancel();
++            await subscription.cancel().catchError((_) {});
+             closed = true;
+             await raf.close().catchError((_) => raf);
+             if (deleteOnError && file.existsSync()) {
+@@ -179,25 +185,6 @@ class DioForNative with DioMixin implements Dio {
+       await subscription.cancel();
+       await closeAndDelete();
+     });
+-
+-    final timeout = response.requestOptions.receiveTimeout;
+-    if (timeout != null) {
+-      future = future.timeout(timeout).catchError(
+-        (dynamic e, StackTrace s) async {
+-          await subscription.cancel();
+-          await closeAndDelete();
+-          if (e is TimeoutException) {
+-            throw DioException.receiveTimeout(
+-              timeout: timeout,
+-              requestOptions: response.requestOptions,
+-              error: e,
+-            );
+-          } else {
+-            throw e;
+-          }
+-        },
+-      );
+-    }
+-    return DioMixin.listenCancelForAsyncTask(cancelToken, future);
++    return DioMixin.listenCancelForAsyncTask(cancelToken, completer.future);
+   }
+ }
+diff --git a/dio/lib/src/dio_exception.dart b/dio/lib/src/dio_exception.dart
+index b39fff0..a5bd2d4 100644
+--- a/dio/lib/src/dio_exception.dart
++++ b/dio/lib/src/dio_exception.dart
+@@ -133,7 +133,7 @@ class DioException implements Exception {
+       DioException(
+         type: DioExceptionType.receiveTimeout,
+         message: 'The request took longer than $timeout to receive data. '
+-            'It was aborted.'
++            'It was aborted. '
+             'To get rid of this exception, try raising the '
+             'RequestOptions.receiveTimeout above the duration of $timeout or '
+             'improve the response time of the server.',
+diff --git a/dio/lib/src/options.dart b/dio/lib/src/options.dart
+index b95994f..8a816ae 100644
+--- a/dio/lib/src/options.dart
++++ b/dio/lib/src/options.dart
+@@ -84,7 +84,7 @@ typedef ResponseDecoder = FutureOr<String?> Function(
+   ResponseBody responseBody,
+ );
+ 
+-/// The type of a response encoding callback.
++/// The type of a request encoding callback.
+ typedef RequestEncoder = FutureOr<List<int>> Function(
+   String request,
+   RequestOptions options,
+@@ -100,14 +100,14 @@ mixin OptionsMixin {
+   /// List values use the default [ListFormat.multiCompatible].
+   /// The value can be overridden per parameter by adding a [ListParam]
+   /// object wrapping the actual List value and the desired format.
+-  late Map<String, dynamic> queryParameters;
++  late Map<String, dynamic /*String|Iterable<String>*/ > queryParameters;
+ 
+-  /// Timeout when opening url.
++  /// Timeout when opening a request.
+   ///
+-  /// [Dio] will throw the [DioException] with
++  /// Throws the [DioException] with
+   /// [DioExceptionType.connectionTimeout] type when time out.
+   ///
+-  /// `null` or `Duration.zero` meanings no timeout limit.
++  /// `null` or `Duration.zero` means no timeout limit.
+   Duration? get connectTimeout => _connectTimeout;
+   Duration? _connectTimeout;
+ 
+@@ -362,7 +362,7 @@ class Options {
+ 
+   /// HTTP request headers.
+   ///
+-  /// The equality of the header keys is case-insensitive,
++  /// The keys of the header are case-insensitive,
+   /// e.g.: `content-type` and `Content-Type` will be treated as the same key.
+   Map<String, dynamic>? headers;
+ 
+@@ -377,10 +377,10 @@ class Options {
+ 
+   /// Timeout when sending data.
+   ///
+-  /// [Dio] will throw the [DioException] with
++  /// Throws the [DioException] with
+   /// [DioExceptionType.sendTimeout] type when timed out.
+   ///
+-  /// `null` or `Duration.zero` meanings no timeout limit.
++  /// `null` or `Duration.zero` means no timeout limit.
+   Duration? get sendTimeout => _sendTimeout;
+   Duration? _sendTimeout;
+ 
+@@ -393,13 +393,16 @@ class Options {
+ 
+   /// Timeout when receiving data.
+   ///
+-  /// The timeout represents the timeout during data transfer of each bytes,
+-  /// rather than the overall timing during the receiving.
++  /// The timeout represents:
++  ///  - a timeout before the connection is established
++  ///    and the first received response bytes.
++  ///  - the duration during data transfer of each byte event,
++  ///    rather than the total duration of the receiving.
+   ///
+-  /// [Dio] will throw the [DioException] with
+-  /// [DioExceptionType.receiveTimeout] type when time out.
++  /// Throws the [DioException] with
++  /// [DioExceptionType.receiveTimeout] type when timed out.
+   ///
+-  /// `null` or `Duration.zero` meanings no timeout limit.
++  /// `null` or `Duration.zero` means no timeout limit.
+   Duration? get receiveTimeout => _receiveTimeout;
+   Duration? _receiveTimeout;
+ 
+@@ -415,20 +418,20 @@ class Options {
+   /// {@macro dio.interceptors.ImplyContentTypeInterceptor}
+   String? contentType;
+ 
+-  /// Indicates the type of data that the server will respond with options.
++  /// The type of data that [Dio] handles with options.
+   ///
+-  /// The default value is [ResponseType.json], [Dio] will parse response string
+-  /// to JSON object automatically when the content-type of response is
+-  /// [Headers.jsonContentType].
++  /// The default value is [ResponseType.json].
++  /// [Dio] will parse response string to JSON object automatically
++  /// when the content-type of response is [Headers.jsonContentType].
+   ///
+-  /// If you want to receive response data with binary bytes, use `stream`.
+-  ///
+-  /// If you want to receive the response data with String, use `plain`.
+-  ///
+-  /// If you want to receive the response data with original bytes, use `bytes`.
++  /// See also:
++  ///  - `plain` if you want to receive the data as `String`.
++  ///  - `bytes` if you want to receive the data as the complete bytes.
++  ///  - `stream` if you want to receive the data as streamed binary bytes.
+   ResponseType? responseType;
+ 
+-  /// Defines whether the request is succeed with the given status code.
++  /// Defines whether the request is considered to be successful
++  /// with the given status code.
+   /// The request will be treated as succeed if the callback returns true.
+   ValidateStatus? validateStatus;
+ 
+@@ -459,12 +462,14 @@ class Options {
+   /// Defaults to true.
+   bool? persistentConnection;
+ 
+-  /// The default request encoder is utf8encoder, you can set custom
+-  /// encoder by this option.
++  /// The type of a request encoding callback.
++  ///
++  /// Defaults to [Utf8Encoder].
+   RequestEncoder? requestEncoder;
+ 
+-  /// The default response decoder is utf8decoder, you can set custom
+-  /// decoder by this option, it will be used in [Transformer].
++  /// The type of a response decoding callback.
++  ///
++  /// Defaults to [Utf8Decoder].
+   ResponseDecoder? responseDecoder;
+ 
+   /// Indicates the format of collection data in request query parameters and
+diff --git a/dio/test/download_test.dart b/dio/test/download_test.dart
+index 9f341ab..74ad399 100644
+--- a/dio/test/download_test.dart
++++ b/dio/test/download_test.dart
+@@ -11,8 +11,17 @@ import 'utils.dart';
+ void main() {
+   setUp(startServer);
+   tearDown(stopServer);
++
++  test('download does not change the response type', () async {
++    const savePath = 'test/download/_test.md';
++    final dio = Dio()..options.baseUrl = serverUrl.toString();
++    final options = Options(responseType: ResponseType.plain);
++    await dio.download('/download', savePath, options: options);
++    expect(options.responseType, ResponseType.plain);
++  });
++
+   test('download1', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final dio = Dio()..options.baseUrl = serverUrl.toString();
+     await dio.download('/download', savePath);
+ 
+@@ -22,7 +31,7 @@ void main() {
+   });
+ 
+   test('download2', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final dio = Dio()..options.baseUrl = serverUrl.toString();
+     await dio.downloadUri(
+       serverUrl.replace(path: '/download'),
+@@ -35,7 +44,7 @@ void main() {
+   });
+ 
+   test('download error', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final dio = Dio()..options.baseUrl = serverUrl.toString();
+     Response response = await dio
+         .download('/error', savePath)
+@@ -52,23 +61,35 @@ void main() {
+   });
+ 
+   test('download timeout', () async {
+-    const savePath = 'test/_download_test.md';
+-    final dio = Dio(
+-      BaseOptions(
+-        receiveTimeout: Duration(milliseconds: 1),
+-        baseUrl: serverUrl.toString(),
++    final dio = Dio();
++    final timeoutMatcher = allOf([
++      throwsA(isA<DioException>()),
++      throwsA(
++        predicate<DioException>(
++          (e) => e.type == DioExceptionType.receiveTimeout,
++        ),
+       ),
++    ]);
++    await expectLater(
++      dio.downloadUri(
++        Uri.parse('$serverUrl/download').replace(
++          queryParameters: {'count': '3', 'gap': '2'},
++        ),
++        'test/download/_test.md',
++        options: Options(receiveTimeout: Duration(seconds: 1)),
++      ),
++      timeoutMatcher,
+     );
+-    expect(
+-      dio
+-          .download('/download', savePath)
+-          .catchError((e) => throw (e as DioException).type),
+-      throwsA(DioExceptionType.receiveTimeout),
++    // Throws nothing if it constantly gets response bytes.
++    await dio.download(
++      'https://github.com/cfug/flutter.cn/archive/refs/heads/main.zip',
++      'test/download/main.zip',
++      options: Options(receiveTimeout: Duration(seconds: 1)),
+     );
+   });
+ 
+   test('download cancellation', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final cancelToken = CancelToken();
+     Future.delayed(Duration(milliseconds: 100), () {
+       cancelToken.cancel();
+@@ -86,7 +107,7 @@ void main() {
+   });
+ 
+   test('delete on error', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final f = File(savePath)..createSync(recursive: true);
+     expect(f.existsSync(), isTrue);
+ 
+@@ -106,7 +127,7 @@ void main() {
+   });
+ 
+   test('delete on cancel', () async {
+-    const savePath = 'test/_download_test.md';
++    const savePath = 'test/download/_test.md';
+     final f = File(savePath)..createSync(recursive: true);
+     expect(f.existsSync(), isTrue);
+ 
+diff --git a/dio/test/timeout_test.dart b/dio/test/timeout_test.dart
+index 367b7fd..7626baa 100644
+--- a/dio/test/timeout_test.dart
++++ b/dio/test/timeout_test.dart
+@@ -12,7 +12,7 @@ void main() {
+     dio.options.baseUrl = 'https://httpbun.com/';
+   });
+ 
+-  test('catch DioException when connect timeout', () {
++  test('catch DioException when connectTimeout', () {
+     dio.options.connectTimeout = Duration(milliseconds: 3);
+ 
+     expectLater(
+@@ -26,23 +26,36 @@ void main() {
+     );
+   });
+ 
+-  test('catch DioException when receiveTimeout', () {
+-    dio.options.receiveTimeout = Duration(milliseconds: 10);
++  test('catch DioException when receiveTimeout', () async {
++    dio.options.receiveTimeout = Duration(seconds: 1);
+ 
+-    expectLater(
++    final matcher = allOf([
++      throwsA(isA<DioException>()),
++      throwsA(
++        predicate<DioException>(
++          (e) => e.type == DioExceptionType.receiveTimeout,
++        ),
++      ),
++      throwsA(
++        predicate<DioException>((e) => e.message!.contains('0:00:01.000000')),
++      ),
++    ]);
++    await expectLater(
++      dio.get(
++        '/drip',
++        queryParameters: {'delay': 2},
++      ),
++      matcher,
++    );
++    await expectLater(
+       dio.get(
+-        '/bytes/${1024 * 1024 * 20}',
++        '/drip',
++        queryParameters: {'delay': 0, 'duration:': 1},
+         options: Options(responseType: ResponseType.stream),
+       ),
+-      allOf([
+-        throwsA(isA<DioException>()),
+-        throwsA(predicate(
+-            (DioException e) => e.type == DioExceptionType.receiveTimeout)),
+-        throwsA(predicate(
+-            (DioException e) => e.message!.contains('0:00:00.010000'))),
+-      ]),
++      matcher,
+     );
+-  }, testOn: 'vm');
++  });
+ 
+   test('no DioException when receiveTimeout > request duration', () async {
+     dio.options.receiveTimeout = Duration(seconds: 5);
+@@ -76,25 +89,51 @@ void main() {
+       BaseOptions(
+         baseUrl: 'https://httpbun.com/',
+         connectTimeout: Duration.zero,
+-        sendTimeout: Duration.zero,
+         receiveTimeout: Duration.zero,
+       ),
+     );
+     // Ignores zero duration timeouts from the base options.
+     await dio.get('/drip-lines?delay=1');
+     // Reset the base options.
+-    dio.options
+-      ..connectTimeout = Duration(seconds: 10)
+-      ..sendTimeout = Duration(seconds: 10)
+-      ..receiveTimeout = Duration(seconds: 10);
++    dio.options.receiveTimeout = Duration(milliseconds: 10);
++    await expectLater(
++      dio.get('/drip-lines?delay=1'),
++      allOf([
++        throwsA(isA<DioException>()),
++        throwsA(
++          predicate<DioException>(
++            (e) => e.type == DioExceptionType.receiveTimeout,
++          ),
++        ),
++        throwsA(
++          predicate<DioException>(
++            (e) => e.message!.contains('0:00:00.010000'),
++          ),
++        ),
++      ]),
++    );
++    dio.options.connectTimeout = Duration(milliseconds: 10);
++    await expectLater(
++      dio.get('/drip-lines?delay=1'),
++      allOf([
++        throwsA(isA<DioException>()),
++        throwsA(
++          predicate<DioException>(
++            (e) => e.type == DioExceptionType.connectionTimeout,
++          ),
++        ),
++        throwsA(
++          predicate<DioException>(
++            (e) => e.message!.contains('0:00:00.010000'),
++          ),
++        ),
++      ]),
++    );
++    dio.options.connectTimeout = Duration.zero;
+     // Override with request options.
+     await dio.get(
+       '/drip-lines?delay=1',
+-      options: Options(
+-        sendTimeout: Duration.zero,
+-        receiveTimeout: Duration.zero,
+-      ),
++      options: Options(receiveTimeout: Duration.zero),
+     );
+-    await dio.get('/drip-lines?delay=1');
+   });
+ }
+diff --git a/dio/test/utils.dart b/dio/test/utils.dart
+index 90bd036..fb4c066 100644
+--- a/dio/test/utils.dart
++++ b/dio/test/utils.dart
+@@ -91,14 +91,24 @@ Future<void> startServer() async {
+       }
+ 
+       if (path == '/download') {
++        final count = int.parse(request.uri.queryParameters['count'] ?? '1');
++        final gap = int.parse(request.uri.queryParameters['gap'] ?? '0');
+         const content = 'I am a text file';
+-        response.headers.set('content-encoding', 'plain');
++        final contentBytes = utf8.encode(content);
+         response
+-          ..statusCode = 200
+-          ..contentLength = content.length
+-          ..write(content);
+-
+-        Future.delayed(Duration(milliseconds: 300), () => response.close());
++          ..bufferOutput = gap <= 0
++          ..contentLength = contentBytes.length * count
++          ..headers.set('content-encoding', 'plain')
++          ..statusCode = 200;
++        for (int i = 0; i < count; i++) {
++          response.add(contentBytes);
++          await response.flush();
++          if (i < count - 1 && gap > 0) {
++            await Future.delayed(Duration(seconds: gap));
++          }
++        }
++        await Future.delayed(const Duration(milliseconds: 300));
++        await response.close();
+         return;
+       }
+ 
+diff --git a/plugins/http2_adapter/lib/src/http2_adapter.dart b/plugins/http2_adapter/lib/src/http2_adapter.dart
+index 0c57d62..b27b847 100644
+--- a/plugins/http2_adapter/lib/src/http2_adapter.dart
++++ b/plugins/http2_adapter/lib/src/http2_adapter.dart
+@@ -1,3 +1,4 @@
++// ignore_for_file: void_checks
+ import 'dart:async';
+ import 'dart:convert';
+ import 'dart:io';
+@@ -89,35 +90,68 @@ class Http2Adapter implements HttpClientAdapter {
+     }
+ 
+     if (hasRequestData) {
+-      final requestStreamFuture = requestStream!.listen((data) {
++      Future<void> requestStreamFuture = requestStream!.listen((data) {
+         stream.outgoingMessages.add(DataStreamMessage(data));
+       }).asFuture();
+       final sendTimeout = options.sendTimeout ?? Duration.zero;
+       if (sendTimeout > Duration.zero) {
+-        await requestStreamFuture.timeout(
++        requestStreamFuture = requestStreamFuture.timeout(
+           sendTimeout,
+           onTimeout: () {
++            stream.terminate();
+             throw DioException.sendTimeout(
+               timeout: sendTimeout,
+               requestOptions: options,
+             );
+           },
+         );
+-      } else {
+-        await requestStreamFuture;
+       }
++      await requestStreamFuture;
+     }
+     await stream.outgoingMessages.close();
+ 
+     final sc = StreamController<Uint8List>();
+     final responseHeaders = Headers();
+-    final completer = Completer();
+-    late int statusCode;
++    final responseCompleter = Completer<void>();
+     bool needRedirect = false;
+-    late StreamSubscription subscription;
+     bool needResponse = false;
++
++    final receiveTimeout = options.receiveTimeout ?? Duration.zero;
++    final receiveStopwatch = Stopwatch();
++    Timer? receiveTimer;
++
++    void stopWatchReceiveTimeout() {
++      receiveTimer?.cancel();
++      receiveTimer = null;
++      receiveStopwatch.stop();
++    }
++
++    void watchReceiveTimeout() {
++      if (receiveTimeout <= Duration.zero) {
++        return;
++      }
++      receiveStopwatch.reset();
++      if (!receiveStopwatch.isRunning) {
++        receiveStopwatch.start();
++      }
++      receiveTimer?.cancel();
++      receiveTimer = Timer(receiveTimeout, () {
++        sc.addError(
++          DioException.receiveTimeout(
++            timeout: receiveTimeout,
++            requestOptions: options,
++          ),
++        );
++        sc.close();
++        stream.terminate();
++        stopWatchReceiveTimeout();
++      });
++    }
++
++    late int statusCode;
++    late StreamSubscription subscription;
+     subscription = stream.incomingMessages.listen(
+-      (message) async {
++      (StreamMessage message) async {
+         if (message is HeadersStreamMessage) {
+           for (final header in message.headers) {
+             final name = utf8.decode(header.name);
+@@ -133,34 +167,47 @@ class Http2Adapter implements HttpClientAdapter {
+             needResponse =
+                 !needRedirect && options.validateStatus(statusCode) ||
+                     options.receiveDataWhenStatusError;
+-            completer.complete();
++            responseCompleter.complete();
+           }
+         } else if (message is DataStreamMessage) {
+           if (needResponse) {
+-            sc.add(Uint8List.fromList(message.bytes));
++            watchReceiveTimeout();
++            sc.add(
++              message.bytes is Uint8List
++                  ? message.bytes as Uint8List
++                  : Uint8List.fromList(message.bytes),
++            );
+           } else {
+-            subscription.cancel().whenComplete(() => sc.close());
++            stopWatchReceiveTimeout();
++            subscription.cancel().whenComplete(() {
++              stream.terminate();
++              sc.close();
++            });
+           }
+         }
+       },
+-      onDone: () => sc.close(),
++      onDone: () {
++        stopWatchReceiveTimeout();
++        sc.close();
++      },
+       onError: (Object error, StackTrace stackTrace) {
+-        // If connection is being forcefully terminated, remove the connection
++        // If connection is being forcefully terminated, remove the connection.
+         if (error is TransportConnectionException) {
+           _connectionMgr.removeConnection(transport);
+         }
+-        if (!completer.isCompleted) {
+-          completer.completeError(error, stackTrace);
++        if (!responseCompleter.isCompleted) {
++          responseCompleter.completeError(error, stackTrace);
+         } else {
+           sc.addError(error, stackTrace);
+         }
++        stopWatchReceiveTimeout();
+       },
+       cancelOnError: true,
+     );
+ 
+-    final receiveTimeout = options.receiveTimeout ?? Duration.zero;
++    Future<void> responseFuture = responseCompleter.future;
+     if (receiveTimeout > Duration.zero) {
+-      await completer.future.timeout(
++      responseFuture = responseFuture.timeout(
+         receiveTimeout,
+         onTimeout: () {
+           subscription.cancel().whenComplete(() => sc.close());
+@@ -170,11 +217,10 @@ class Http2Adapter implements HttpClientAdapter {
+           );
+         },
+       );
+-    } else {
+-      await completer.future;
+     }
++    await responseFuture;
+ 
+-    // Handle redirection
++    // Handle redirection.
+     if (needRedirect) {
+       final url = responseHeaders.value('location');
+       redirects.add(
+diff --git a/plugins/http2_adapter/test/http2_test.dart b/plugins/http2_adapter/test/http2_test.dart
+index feb18b9..9725583 100644
+--- a/plugins/http2_adapter/test/http2_test.dart
++++ b/plugins/http2_adapter/test/http2_test.dart
+@@ -12,7 +12,7 @@ void main() {
+ 
+   test('adds one to input values', () async {
+     final dio = Dio()
+-      ..options.baseUrl = 'https://pub.dev/'
++      ..options.baseUrl = 'https://httpbun.com/'
+       ..interceptors.add(LogInterceptor())
+       ..httpClientAdapter = Http2Adapter(
+         ConnectionManager(
+@@ -22,7 +22,7 @@ void main() {
+       );
+ 
+     Response<String> response;
+-    response = await dio.get('?xx=6');
++    response = await dio.get('get');
+     assert(response.statusCode == 200);
+     response = await dio.get(
+       'nkjnjknjn.html',
+diff --git a/plugins/http2_adapter/test/timeout_test.dart b/plugins/http2_adapter/test/timeout_test.dart
+new file mode 100644
+index 0000000..507c5c2
+--- /dev/null
++++ b/plugins/http2_adapter/test/timeout_test.dart
+@@ -0,0 +1,61 @@
++@TestOn('vm')
++import 'package:dio/dio.dart';
++import 'package:dio_http2_adapter/dio_http2_adapter.dart';
++import 'package:test/test.dart';
++
++void main() {
++  late Dio dio;
++
++  setUp(() {
++    dio = Dio();
++    dio.options.baseUrl = 'https://httpbun.com/';
++    dio.httpClientAdapter = Http2Adapter(
++      ConnectionManager(idleTimeout: Duration(seconds: 30)),
++    );
++  });
++
++  test('catch DioException when connectTimeout', () {
++    dio.options.connectTimeout = Duration(milliseconds: 3);
++
++    expectLater(
++      dio.get('/drip-lines?delay=2'),
++      allOf(
++        throwsA(isA<DioException>()),
++        throwsA(predicate((DioException e) =>
++            e.type == DioExceptionType.connectionTimeout &&
++            e.message!.contains('0:00:00.003000'))),
++      ),
++    );
++  });
++
++  test('catch DioException when receiveTimeout', () async {
++    dio.options.receiveTimeout = Duration(seconds: 1);
++
++    final matcher = allOf([
++      throwsA(isA<DioException>()),
++      throwsA(
++        predicate<DioException>(
++          (e) => e.type == DioExceptionType.receiveTimeout,
++        ),
++      ),
++      throwsA(
++        predicate<DioException>((e) => e.message!.contains('0:00:01.000000')),
++      ),
++    ]);
++    await expectLater(
++      dio.get(
++        '/drip',
++        queryParameters: {'delay': 2},
++      ),
++      matcher,
++    );
++    await expectLater(
++      dio.get(
++        '/drip',
++        queryParameters: {'delay': 0, 'duration:': 1},
++        options: Options(responseType: ResponseType.stream),
++      ),
++      matcher,
++    );
++  });
++}

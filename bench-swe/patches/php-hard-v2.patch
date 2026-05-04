@@ -1,0 +1,177 @@
+diff --git a/src/Illuminate/Bus/DatabaseBatchRepository.php b/src/Illuminate/Bus/DatabaseBatchRepository.php
+index d6130ede6c..2e0c7c68a9 100644
+--- a/src/Illuminate/Bus/DatabaseBatchRepository.php
++++ b/src/Illuminate/Bus/DatabaseBatchRepository.php
+@@ -319,7 +319,7 @@ public function transaction(Closure $callback)
+      */
+     public function rollBack()
+     {
+-        $this->connection->rollBack();
++        $this->connection->rollBack(toLevel: 0);
+     }
+ 
+     /**
+diff --git a/src/Illuminate/Queue/Jobs/Job.php b/src/Illuminate/Queue/Jobs/Job.php
+index a41b401ddd..8c5c7c7627 100755
+--- a/src/Illuminate/Queue/Jobs/Job.php
++++ b/src/Illuminate/Queue/Jobs/Job.php
+@@ -204,6 +204,12 @@ public function fail($e = null)
+             }
+         }
+ 
++        if ($this->shouldRollBackDatabaseTransaction($e)) {
++            $this->container->make('db')
++                ->connection($this->container['config']['queue.failed.database'])
++                ->rollBack(toLevel: 0);
++        }
++
+         try {
+             // If the job has failed, we will delete it, call the "failed" method and then call
+             // an event indicating the job has failed so it can be logged if needed. This is
+@@ -218,6 +224,20 @@ public function fail($e = null)
+         }
+     }
+ 
++    /**
++     * Determine if the current database transaction should be rolled back to level zero.
++     *
++     * @param  \Throwable  $e
++     * @return bool
++     */
++    protected function shouldRollBackDatabaseTransaction($e)
++    {
++        return ($e instanceof TimeoutExceededException &&
++            $this->container['config']['queue.failed.database'] &&
++            in_array($this->container['config']['queue.failed.driver'], ['database', 'database-uuids']) &&
++            $this->container->bound('db'));
++    }
++
+     /**
+      * Process an exception that caused the job to fail.
+      *
+diff --git a/tests/Integration/Database/Queue/Fixtures/TimeOutJobWithNestedTransactions.php b/tests/Integration/Database/Queue/Fixtures/TimeOutJobWithNestedTransactions.php
+new file mode 100644
+index 0000000000..821b7bcac3
+--- /dev/null
++++ b/tests/Integration/Database/Queue/Fixtures/TimeOutJobWithNestedTransactions.php
+@@ -0,0 +1,24 @@
++<?php
++
++namespace Illuminate\Tests\Integration\Database\Queue\Fixtures;
++
++use Illuminate\Bus\Batchable;
++use Illuminate\Bus\Queueable;
++use Illuminate\Contracts\Queue\ShouldQueue;
++use Illuminate\Queue\InteractsWithQueue;
++use Illuminate\Support\Facades\DB;
++
++class TimeOutJobWithNestedTransactions implements ShouldQueue
++{
++    use InteractsWithQueue, Queueable, Batchable;
++
++    public int $tries = 1;
++    public int $timeout = 2;
++
++    public function handle(): void
++    {
++        DB::transaction(function () {
++            DB::transaction(fn () => sleep(20));
++        });
++    }
++}
+diff --git a/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithNestedTransactions.php b/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithNestedTransactions.php
+new file mode 100644
+index 0000000000..1d383e90b8
+--- /dev/null
++++ b/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithNestedTransactions.php
+@@ -0,0 +1,23 @@
++<?php
++
++namespace Illuminate\Tests\Integration\Database\Queue\Fixtures;
++
++use Illuminate\Bus\Queueable;
++use Illuminate\Contracts\Queue\ShouldQueue;
++use Illuminate\Queue\InteractsWithQueue;
++use Illuminate\Support\Facades\DB;
++
++class TimeOutNonBatchableJobWithNestedTransactions implements ShouldQueue
++{
++    use InteractsWithQueue, Queueable;
++
++    public int $tries = 1;
++    public int $timeout = 2;
++
++    public function handle(): void
++    {
++        DB::transaction(function () {
++            DB::transaction(fn () => sleep(20));
++        });
++    }
++}
+diff --git a/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithTransaction.php b/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithTransaction.php
+new file mode 100644
+index 0000000000..494e9fbdd7
+--- /dev/null
++++ b/tests/Integration/Database/Queue/Fixtures/TimeOutNonBatchableJobWithTransaction.php
+@@ -0,0 +1,21 @@
++<?php
++
++namespace Illuminate\Tests\Integration\Database\Queue\Fixtures;
++
++use Illuminate\Bus\Queueable;
++use Illuminate\Contracts\Queue\ShouldQueue;
++use Illuminate\Queue\InteractsWithQueue;
++use Illuminate\Support\Facades\DB;
++
++class TimeOutNonBatchableJobWithTransaction implements ShouldQueue
++{
++    use InteractsWithQueue, Queueable;
++
++    public int $tries = 1;
++    public int $timeout = 2;
++
++    public function handle(): void
++    {
++        DB::transaction(fn () => sleep(20));
++    }
++}
+diff --git a/tests/Integration/Database/Queue/QueueTransactionTest.php b/tests/Integration/Database/Queue/QueueTransactionTest.php
+index 9bfa3ca87a..eac0c3fc45 100644
+--- a/tests/Integration/Database/Queue/QueueTransactionTest.php
++++ b/tests/Integration/Database/Queue/QueueTransactionTest.php
+@@ -7,6 +7,7 @@
+ use Illuminate\Tests\Integration\Database\DatabaseTestCase;
+ use Orchestra\Testbench\Attributes\WithConfig;
+ use Orchestra\Testbench\Attributes\WithMigration;
++use PHPUnit\Framework\Attributes\DataProvider;
+ use PHPUnit\Framework\Attributes\RequiresPhpExtension;
+ use Symfony\Component\Process\Exception\ProcessSignaledException;
+ use Throwable;
+@@ -29,9 +30,10 @@ protected function setUp(): void
+         }
+     }
+ 
+-    public function testItCanHandleTimeoutJob()
++    #[DataProvider('timeoutJobs')]
++    public function testItCanHandleTimeoutJob($job)
+     {
+-        dispatch(new Fixtures\TimeOutJobWithTransaction);
++        dispatch($job);
+ 
+         $this->assertSame(1, DB::table('jobs')->count());
+         $this->assertSame(0, DB::table('failed_jobs')->count());
+@@ -49,4 +51,14 @@ public function testItCanHandleTimeoutJob()
+         $this->assertSame(0, DB::table('jobs')->count());
+         $this->assertSame(1, DB::table('failed_jobs')->count());
+     }
++
++    public static function timeoutJobs(): array
++    {
++        return [
++            [new Fixtures\TimeOutJobWithTransaction()],
++            [new Fixtures\TimeOutJobWithNestedTransactions()],
++            [new Fixtures\TimeOutNonBatchableJobWithTransaction()],
++            [new Fixtures\TimeOutNonBatchableJobWithNestedTransactions()],
++        ];
++    }
+ }

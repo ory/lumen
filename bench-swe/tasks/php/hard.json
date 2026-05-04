@@ -1,20 +1,20 @@
 {
   "id": "php-hard",
   "language": "php",
-  "repo": "https://github.com/Seldaek/monolog",
-  "base_commit": "daa0acaec23ef0a6e2c39422362cb505a5167ab3",
-  "fix_commit": "05c6b188963c47b961d75a071c34e00a4b05c023",
-  "issue_url": "https://github.com/Seldaek/monolog/issues/1969",
-  "issue_title": "JsonFormatter crashes when stringable object has an error",
-  "issue_body": "When using JsonFormatter with a stringable object, if the __toString() method throws an exception the whole normalization process crashes.\n\nTo reproduce:\n1. Create a class that implements Stringable (has a __toString() method)\n2. Make the __toString() method throw an exception\n3. Pass an instance of that class as context data to a log record\n4. Format the record using JsonFormatter\n\nExpected behavior: The formatter should gracefully handle the exception and continue logging. It should not throw an exception while trying to log something. A reasonable fallback would be to use the class name of the object instead of its string representation.\n\nActual behavior: The JsonFormatter crashes with an unhandled exception propagating from the __toString() call during normalization, which prevents the log entry from being written at all.\n\nThis is particularly problematic because logging should be a reliable operation that does not itself become a source of failures. If a stringable object's __toString() is broken, the logger should degrade gracefully rather than failing entirely.",
-  "gold_patch_file": "patches/php-hard.patch",
+  "repo": "https://github.com/laravel/framework",
+  "base_commit": "eb3918e2e1a1149be94980518ba838a8194d7e3e",
+  "fix_commit": "08c2101b41e1c74826741b9a121428bd958b7c6e",
+  "issue_url": "https://github.com/laravel/framework/issues/49389",
+  "issue_title": "Jobs that fail inside a DB transaction are silently lost — no failed_jobs record, no JobFailed event",
+  "issue_body": "We had a 'phantom' problem that jobs that failed, were not logged to the failed_jobs table.\n\nAfter investigation, we found that when a job times out while executing inside a database transaction, the job is never recorded in the `failed_jobs` table and the `JobFailed` event is never dispatched.\n\nThe transaction rollback triggered by the timeout undoes the failed-job insert before it can be committed.\n\nReproduction:\n\n```php\nclass MyJob implements ShouldQueue\n{\n    public $timeout = 5;\n\n    public function handle(): void\n    {\n        DB::transaction(function (): void {\n            sleep(10);\n        });\n    }\n}\n```\n\nDispatch this job. It will time out after 5 seconds, but:\n- No row appears in the `failed_jobs` table\n- The `JobFailed` event is never fired\n- The job simply vanishes without a trace\n\nExpected: timeout should still result in a `failed_jobs` entry and a fired `JobFailed` event, even when the job was executing inside a transaction.\n\nActual: neither occurs; the job disappears silently.\n\nEnvironment: Laravel 10.37.3, PHP 8.2.7, MariaDB 10.3.27",
+  "gold_patch_file": "patches/php-hard-v2.patch",
   "expected_files": [
-    "src/Monolog/Formatter/JsonFormatter.php",
-    "tests/Monolog/Formatter/JsonFormatterTest.php"
+    "src/Illuminate/Queue/Jobs/Job.php",
+    "src/Illuminate/Bus/DatabaseBatchRepository.php"
   ],
   "setup_commands": [
-    "COMPOSER_ROOT_VERSION=3.x-dev composer install --no-interaction --prefer-dist --ignore-platform-req=ext-mongodb"
+    "composer install --no-interaction --prefer-dist --no-scripts"
   ],
-  "test_command": "vendor/bin/phpunit --filter=JsonFormatter",
+  "test_command": "vendor/bin/phpunit tests/Integration/Database/Queue/QueueTransactionTest.php",
   "timeout_s": 900
 }

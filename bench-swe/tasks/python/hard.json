@@ -2,20 +2,21 @@
   "id": "python-hard",
   "language": "python",
   "repo": "https://github.com/pallets/click",
-  "base_commit": "5b1624bf09947d6f10eaffd63d6fb737dfe7656a",
-  "fix_commit": "bc16dbf788861266177661b576291a1b264fb5de",
-  "issue_url": "https://github.com/pallets/click/issues/2632",
-  "issue_title": "Flag option with secondary opts: show_default=True does not show value from default_map in help output",
-  "issue_body": "When setting the `default_map` from a config file, the values from the `default_map` are not correctly shown in the `--help` output when `show_default=True` is set on a boolean flag option with secondary opts.\n\nGiven an option defined like this:\n\n```python\n@click.option(\n    \"--long/--short\",\n    \"-l/-s\",\n    is_flag=True,\n    show_default=True,\n    help=\"show additional information like size and creation date\",\n)\n```\n\nAnd a custom command class that sets a `default_map` via `context_settings`:\n\n```python\nclass ConfigAwareCommand(click.Command):\n    def __init__(self, *args, **kwargs):\n        kwargs[\"context_settings\"] = {\n            \"default_map\": {\"long\": True}\n        }\n        super().__init__(*args, **kwargs)\n```\n\nThe `default_map` value is `{'long': True}`. When executing the command, the default value from the `default_map` is used correctly (`long` defaults to `True`). However, in the `--help` output, the default value is shown incorrectly:\n\n```\n  -l, --long / -s, --short        show additional information like size and\n                                  creation date  [default: short]\n```\n\nThe help text shows `[default: short]` instead of `[default: long]`, because the help rendering for boolean flags with secondary opts uses the option's own default attribute rather than the resolved default value that accounts for the `default_map`.\n\nEnvironment:\n- Python version: 3.10.12\n- Click version: 8.1.7",
-  "gold_patch_file": "patches/python-hard.patch",
+  "base_commit": "878de46100e9c29aea9dab5b385b8116863cb5e3",
+  "fix_commit": "c653ec820093ed1dda41aae8d35bff7834b0344a",
+  "issue_url": "https://github.com/pallets/click/issues/3111",
+  "issue_title": "New 'default' behaviour in Click 8.3.x is broken for negative boolean flags",
+  "issue_body": "The behaviour of `default=...` for flag values changed in Click 8.3.0, as documented in the release notes. The new behaviour is broken for negative flags, unless I am holding it wrong.\n\nHere's a minimal repro:\n\n```python\nimport click\n\n@click.command('foo')\n@click.option('--without-xyz', 'enable_xyz',\n              help=\"Disable xyz\", flag_value=False, default=True, show_default=True)\ndef foo(enable_xyz):\n    print(f'enable_xyz = {enable_xyz}')\n\nfoo()\n```\n\nExpected (Click 8.2.x):\n- `./foo.py` → `enable_xyz = True`\n- `./foo.py --without-xyz` → `enable_xyz = False`\n\nActual (Click 8.3.0+):\n- `./foo.py` → `enable_xyz = False`\n- `./foo.py --without-xyz` → `enable_xyz = False`\n\nSo the default value of `True` is being silently replaced by the `flag_value` of `False`, making the flag completely useless — it always returns `False` regardless of whether it was passed or not.\n\nThis is a regression from Click 8.2.x where `default=True` was respected as a literal Python value for boolean flags.\n\nQuestions:\n1. Is the `default=True` special case truly necessary?\n2. Should it produce an explicit error rather than a silent behavioral change?\n3. What is the canonical approach for negative options that default to \"off\"?\n4. Would improved documentation help?\n\nEnvironment: Python 3.10, Click 8.3.x",
+  "gold_patch_file": "patches/python-hard-v2.patch",
   "expected_files": [
-    "CHANGES.rst",
     "src/click/core.py",
-    "tests/test_defaults.py"
+    "tests/test_options.py",
+    "tests/test_termui.py",
+    "docs/options.md"
   ],
   "setup_commands": [
-    "pip install -e . && pip install -r requirements/tests.txt"
+    "pip install -e . && pip install pytest"
   ],
-  "test_command": "pytest tests/test_defaults.py::test_flag_default_map -v",
+  "test_command": "pytest tests/test_options.py::test_bool_flag_pair_default tests/test_options.py::test_type_from_flag_value -v",
   "timeout_s": 900
 }
