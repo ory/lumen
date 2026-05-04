@@ -1,0 +1,1878 @@
+▲ [WARNING] Cannot find base config file "./.svelte-kit/tsconfig.json" [tsconfig.json]
+
+    tsconfig.json:2:12:
+      2 │   "extends": "./.svelte-kit/tsconfig.json",
+        ╵              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ DEPRECATED  The `workspace` option is deprecated and will be removed in the next major. To hide this warning, rename `workspace` option to `projects`.
+
+ RUN  v3.2.2 /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo
+
+The following Vite config options will be overridden by SvelteKit:
+  - base
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+ ✓ |client (chromium)| src/lib/components/chat/MarkdownRenderer.svelte.test.ts (11 tests) 71ms
+[15:11:36.760] [32mINFO[39m (3495):
+    message: "Connecting to database"
+[15:11:36.756] [32mINFO[39m (3492):
+    message: "Connecting to database"
+[15:11:36.754] [32mINFO[39m (3493):
+    message: "Connecting to database"
+[15:11:36.766] [32mINFO[39m (3493):
+    message: "Connected to database"
+[15:11:36.756] [32mINFO[39m (3491):
+    message: "Connecting to database"
+[15:11:36.754] [32mINFO[39m (3494):
+    message: "Connecting to database"
+[15:11:36.768] [32mINFO[39m (3494):
+    message: "Connected to database"
+[15:11:36.755] [32mINFO[39m (3496):
+    message: "Connecting to database"
+[15:11:36.770] [32mINFO[39m (3495):
+    message: "Connected to database"
+[15:11:36.772] [32mINFO[39m (3492):
+    message: "Connected to database"
+[15:11:36.777] [32mINFO[39m (3496):
+    message: "Connected to database"
+[15:11:36.779] [32mINFO[39m (3491):
+    message: "Connected to database"
+ ✓ |server| src/lib/utils/template.spec.ts (4 tests) 1451ms
+[15:11:38.432] [32mINFO[39m (3492):
+    baseURL: "https://router.huggingface.co/v1"
+    message: "[models] Using OpenAI-compatible base URL"
+[15:11:38.567] [32mINFO[39m (3492):
+    status: 200
+    message: "[models] First fetch status"
+[15:11:38.574] [32mINFO[39m (3492):
+    keys: [
+      "object",
+      "data"
+    ]
+    message: "[models] Response keys"
+[15:11:38.576] [32mINFO[39m (3492):
+    count: 129
+    message: "[models] Parsed models count"
+[15:11:38.581] [32mINFO[39m (3492):
+    total: 129
+    added: [
+      "deepseek-ai/DeepSeek-V4-Pro",
+      "deepseek-ai/DeepSeek-V4-Flash",
+      "Qwen/Qwen3.6-35B-A3B",
+      "google/gemma-4-31B-it",
+      "moonshotai/Kimi-K2.6",
+      "inclusionAI/Ling-2.6-1T",
+      "zai-org/GLM-5.1",
+      "google/gemma-4-26B-A4B-it",
+      "MiniMaxAI/MiniMax-M2.7",
+      "Qwen/Qwen3.5-9B",
+      "meta-llama/Llama-3.1-8B-Instruct",
+      "openai/gpt-oss-20b",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "openai/gpt-oss-120b",
+      "Qwen/Qwen3.5-35B-A3B",
+      "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      "Qwen/Qwen3-Coder-Next",
+      "zai-org/GLM-4.7-Flash",
+      "meta-llama/Llama-3.3-70B-Instruct",
+      "Qwen/Qwen3.5-27B",
+      "Qwen/Qwen3.5-122B-A10B",
+      "moonshotai/Kimi-K2.5",
+      "Qwen/Qwen2.5-Coder-7B-Instruct",
+      "zai-org/GLM-5",
+      "Qwen/Qwen3-4B-Instruct-2507",
+      "MiniMaxAI/MiniMax-M2.5",
+      "meta-llama/Llama-3.2-1B-Instruct",
+      "XiaomiMiMo/MiMo-V2-Flash",
+      "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "Qwen/Qwen3-8B",
+      "meta-llama/Meta-Llama-3-8B-Instruct",
+      "Qwen/Qwen2.5-Coder-32B-Instruct",
+      "google/gemma-3-27b-it",
+      "zai-org/GLM-4.6",
+      "Qwen/Qwen3-VL-8B-Instruct",
+      "deepseek-ai/DeepSeek-V3.2",
+      "katanemo/Arch-Router-1.5B",
+      "openai/gpt-oss-safeguard-20b",
+      "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+      "google/gemma-3n-E4B-it",
+      "CohereLabs/c4ai-command-r7b-12-2024",
+      "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "Qwen/Qwen2.5-Coder-3B-Instruct",
+      "Sao10K/L3-8B-Stheno-v3.2",
+      "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "Qwen/Qwen2.5-72B-Instruct",
+      "stepfun-ai/Step-3.5-Flash",
+      "zai-org/GLM-5.1-FP8",
+      "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "Qwen/Qwen3-30B-A3B",
+      "zai-org/GLM-4.7",
+      "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "deepseek-ai/DeepSeek-Prover-V2-671B",
+      "Qwen/Qwen3.5-397B-A17B",
+      "Qwen/Qwen2.5-VL-72B-Instruct",
+      "deepseek-ai/DeepSeek-V3",
+      "moonshotai/Kimi-K2-Instruct-0905",
+      "Qwen/Qwen3-32B",
+      "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "meta-llama/Llama-Guard-4-12B",
+      "Qwen/Qwen3-Coder-Next-FP8",
+      "deepseek-ai/DeepSeek-R1",
+      "swiss-ai/Apertus-8B-Instruct-2509",
+      "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+      "deepseek-ai/DeepSeek-V3-0324",
+      "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "swiss-ai/Apertus-70B-Instruct-2509",
+      "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+      "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "EssentialAI/rnj-1-instruct",
+      "Qwen/Qwen3-14B",
+      "Qwen/Qwen3-VL-30B-A3B-Thinking",
+      "Qwen/Qwen3-235B-A22B",
+      "meta-llama/Meta-Llama-3-70B-Instruct",
+      "CohereLabs/aya-expanse-32b",
+      "deepseek-ai/DeepSeek-V3.1-Terminus",
+      "CohereLabs/command-a-reasoning-08-2025",
+      "deepseek-ai/DeepSeek-V3.2-Exp",
+      "Qwen/QwQ-32B",
+      "Qwen/Qwen3-VL-235B-A22B-Thinking",
+      "meta-llama/Llama-3.1-70B-Instruct",
+      "alpindale/WizardLM-2-8x22B",
+      "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+      "baidu/ERNIE-4.5-VL-424B-A47B-Base-PT",
+      "aisingapore/Gemma-SEA-LION-v4-27B-IT",
+      "NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "Qwen/Qwen3-4B-Thinking-2507",
+      "zai-org/GLM-4.5V",
+      "aisingapore/Qwen-SEA-LION-v4-32B-IT",
+      "Sao10K/L3-70B-Euryale-v2.1",
+      "zai-org/GLM-4.5V-FP8",
+      "Qwen/Qwen3-VL-235B-A22B-Instruct",
+      "allenai/Olmo-3-7B-Instruct",
+      "Sao10K/L3-8B-Lunaris-v1",
+      "zai-org/GLM-4.6V-Flash",
+      "zai-org/AutoGLM-Phone-9B-Multilingual",
+      "dicta-il/DictaLM-3.0-24B-Thinking",
+      "zai-org/GLM-4-32B-0414",
+      "zai-org/GLM-4.6V",
+      "zai-org/GLM-4.5",
+      "utter-project/EuroLLM-22B-Instruct-2512",
+      "MiniMaxAI/MiniMax-M1-80k",
+      "zai-org/GLM-4.6V-FP8",
+      "zai-org/GLM-4.5-Air",
+      "deepcogito/cogito-671b-v2.1",
+      "CohereLabs/c4ai-command-r-08-2024",
+      "baidu/ERNIE-4.5-300B-A47B-Base-PT",
+      "zai-org/GLM-4.6-FP8",
+      "deepcogito/cogito-671b-v2.1-FP8",
+      "CohereLabs/c4ai-command-r7b-arabic-02-2025",
+      "moonshotai/Kimi-K2-Instruct",
+      "zai-org/GLM-4.7-FP8",
+      "CohereLabs/c4ai-command-a-03-2025",
+      "Qwen/Qwen3-235B-A22B-Thinking-2507",
+      "deepseek-ai/DeepSeek-R1-0528",
+      "CohereLabs/command-a-translate-08-2025",
+      "Qwen/Qwen3-Next-80B-A3B-Instruct",
+      "CohereLabs/aya-vision-32b",
+      "CohereLabs/tiny-aya-global",
+      "Qwen/Qwen3-Next-80B-A3B-Thinking",
+      "CohereLabs/command-a-vision-07-2025",
+      "CohereLabs/tiny-aya-water",
+      "deepseek-ai/DeepSeek-V3.1",
+      "MiniMaxAI/MiniMax-M2",
+      "CohereLabs/tiny-aya-earth",
+      "moonshotai/Kimi-K2-Thinking",
+      "CohereLabs/tiny-aya-fire",
+      "MiniMaxAI/MiniMax-M2.1"
+    ]
+    removed: []
+    changed: []
+    durationMs: 149
+    message: "[models] Model cache refreshed"
+[15:11:39.089] [32mINFO[39m (3525):
+    message: "Connecting to database"
+[15:11:39.098] [32mINFO[39m (3525):
+    message: "Connected to database"
+[15:11:39.367] [32mINFO[39m (3492):
+    login_username: "new-username"
+    login_name: "name"
+    message: "user login"
+[15:11:39.410] [32mINFO[39m (3492):
+    login_username: "new-username"
+    login_name: "name"
+    message: "user login"
+[15:11:39.419] [32mINFO[39m (3492):
+    login_username: "new-username"
+    login_name: "name"
+    message: "user login"
+[15:11:39.431] [32mINFO[39m (3492):
+    login_username: "new-username"
+    login_name: "name"
+    message: "user login"
+[15:11:39.442] [31mERROR[39m (3492):
+    message: "Error creating index for assistants by last24HoursCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 591f3bd8-abf2-4626-bd6c-e87f8de66543: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 591f3bd8-abf2-4626-bd6c-e87f8de66543: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.445] [31mERROR[39m (3492):
+    message: "Index build failed: 4046c536-e0c3-4eec-bdd5-97e8c9317176: Collection chat-ui-test.sessions ( 6fd75cb7-bb7a-42f5-a18b-a110eec36c8b ) :: caused by :: interrupted at shutdown"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 4046c536-e0c3-4eec-bdd5-97e8c9317176: Collection chat-ui-test.sessions ( 6fd75cb7-bb7a-42f5-a18b-a110eec36c8b ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 4046c536-e0c3-4eec-bdd5-97e8c9317176: Collection chat-ui-test.sessions ( 6fd75cb7-bb7a-42f5-a18b-a110eec36c8b ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.446] [31mERROR[39m (3492):
+    message: "Error creating index for assistants by review and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.446] [31mERROR[39m (3492):
+    message: "Error creating index for reports by createdBy and assistantId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: aa13405d-dcc1-4baa-924c-7fb590f224a5: Collection chat-ui-test.reports ( 8778ae45-801d-4785-8081-f91d3e093ac6 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: aa13405d-dcc1-4baa-924c-7fb590f224a5: Collection chat-ui-test.reports ( 8778ae45-801d-4785-8081-f91d3e093ac6 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.446] [31mERROR[39m (3492):
+    message: "Error creating index for assistants by searchTokens"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 586c3654-3030-4c63-acc3-eb32cb28c4fd: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 586c3654-3030-4c63-acc3-eb32cb28c4fd: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.446] [31mERROR[39m (3492):
+    message: "Error creating index for settings by userId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: c21135e2-2d85-4d57-b8ab-f13577256784: Collection chat-ui-test.settings ( e4ffc467-0411-4631-8ff9-d6e2c00c77cb ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: c21135e2-2d85-4d57-b8ab-f13577256784: Collection chat-ui-test.settings ( e4ffc467-0411-4631-8ff9-d6e2c00c77cb ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.446] [31mERROR[39m (3492):
+    message: "Error creating index for settings by assistants"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 0c9ed96b-3777-411f-a356-9e21e214fcb8: Collection chat-ui-test.settings ( e4ffc467-0411-4631-8ff9-d6e2c00c77cb ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 0c9ed96b-3777-411f-a356-9e21e214fcb8: Collection chat-ui-test.settings ( e4ffc467-0411-4631-8ff9-d6e2c00c77cb ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.447] [31mERROR[39m (3492):
+    message: "Error creating index for conversations by messages createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: b1c554c7-208c-452a-92d8-7d1f9d2aef36: Collection chat-ui-test.conversations ( 2ec862ee-7e90-414c-828d-c5855a68b069 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: b1c554c7-208c-452a-92d8-7d1f9d2aef36: Collection chat-ui-test.conversations ( 2ec862ee-7e90-414c-828d-c5855a68b069 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.447] [31mERROR[39m (3492):
+    message: "Error creating index for assistants by last24HoursUseCount and useCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 96d89315-8897-4bdb-b546-d06425679162: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 96d89315-8897-4bdb-b546-d06425679162: Collection chat-ui-test.assistants ( 8d769354-aa30-45ee-8332-2aec34db30c0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.447] [31mERROR[39m (3492):
+    message: "Error creating index for abortedGenerations by updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 6f372668-18bf-4039-8b40-bfdaf3e90cc0: Collection chat-ui-test.conversations.stats ( 02bf4d4f-bed4-417f-89b4-2203faea591b ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 6f372668-18bf-4039-8b40-bfdaf3e90cc0: Collection chat-ui-test.conversations.stats ( 02bf4d4f-bed4-417f-89b4-2203faea591b ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.447] [31mERROR[39m (3492):
+    message: "Error creating index for users by username"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 9a167d9b-d97f-40de-a741-dae2b394dee9: Collection chat-ui-test.users ( 5d22161f-4c03-4027-aadd-1b34821c250f ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 9a167d9b-d97f-40de-a741-dae2b394dee9: Collection chat-ui-test.users ( 5d22161f-4c03-4027-aadd-1b34821c250f ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.447] [31mERROR[39m (3492):
+    message: "Error creating index for conversations by messages from and createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 498edceb-595e-48aa-9110-6068cd5c2576: Collection chat-ui-test.conversations ( 2ec862ee-7e90-414c-828d-c5855a68b069 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 498edceb-595e-48aa-9110-6068cd5c2576: Collection chat-ui-test.conversations ( 2ec862ee-7e90-414c-828d-c5855a68b069 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.500] [31mERROR[39m (3492):
+    message: "interrupted at shutdown"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.563] [31mERROR[39m (3492):
+    message: "Error creating index for tokenCaches by tokenHash"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.733] [31mERROR[39m (3493):
+    message: "Error creating index for sessions by sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 1cd6fde5-b394-4382-b84d-3c8e22e9eb2e: Collection chat-ui-test.sessions ( 4362bce5-b5d1-4379-868d-44ef2df993da ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 1cd6fde5-b394-4382-b84d-3c8e22e9eb2e: Collection chat-ui-test.sessions ( 4362bce5-b5d1-4379-868d-44ef2df993da ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.737] [31mERROR[39m (3493):
+    message: "Error creating index for settings by userId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: cb9131d6-fd5e-45f9-9a29-07295138c88c: Collection chat-ui-test.settings ( d785bc43-12a7-4547-9a26-006f6acf34f5 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: cb9131d6-fd5e-45f9-9a29-07295138c88c: Collection chat-ui-test.settings ( d785bc43-12a7-4547-9a26-006f6acf34f5 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.737] [31mERROR[39m (3493):
+    message: "Error creating index for users by username"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 053d9892-67c1-47c5-b90b-089a599b1db1: Collection chat-ui-test.users ( b385f3eb-552d-4b1b-83e1-191306ab83df ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 053d9892-67c1-47c5-b90b-089a599b1db1: Collection chat-ui-test.users ( b385f3eb-552d-4b1b-83e1-191306ab83df ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.738] [31mERROR[39m (3493):
+    message: "Error creating index for conversations by userId and updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: b9ce6cfe-d669-458d-998a-ff3dbb712e49: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: b9ce6cfe-d669-458d-998a-ff3dbb712e49: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.738] [31mERROR[39m (3493):
+    message: "Error creating index for conversations by messageId and ancestors"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d04315ab-1c34-4c25-97f1-9452cb4d18cf: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d04315ab-1c34-4c25-97f1-9452cb4d18cf: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.738] [31mERROR[39m (3493):
+    message: "Index build failed: d4a30a01-59c4-4915-bbe3-6dd59eeefcaa: Collection chat-ui-test.semaphores ( 67279944-8769-4138-b3cb-8c43f12df4f3 ) :: caused by :: interrupted at shutdown"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d4a30a01-59c4-4915-bbe3-6dd59eeefcaa: Collection chat-ui-test.semaphores ( 67279944-8769-4138-b3cb-8c43f12df4f3 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d4a30a01-59c4-4915-bbe3-6dd59eeefcaa: Collection chat-ui-test.semaphores ( 67279944-8769-4138-b3cb-8c43f12df4f3 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.738] [31mERROR[39m (3493):
+    message: "Error creating index for assistants by last24HoursCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 18a0c99f-8a4d-4a48-9ce0-87d95dbffecf: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 18a0c99f-8a4d-4a48-9ce0-87d95dbffecf: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.738] [31mERROR[39m (3493):
+    message: "Error creating index for settings by sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: b19af3dc-0c75-4f48-b64e-9201583318ce: Collection chat-ui-test.settings ( d785bc43-12a7-4547-9a26-006f6acf34f5 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: b19af3dc-0c75-4f48-b64e-9201583318ce: Collection chat-ui-test.settings ( d785bc43-12a7-4547-9a26-006f6acf34f5 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.739] [31mERROR[39m (3493):
+    message: "Error creating index for conversations by userId and sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 27e392ad-427e-4687-a130-f5ae40cb596b: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 27e392ad-427e-4687-a130-f5ae40cb596b: Collection chat-ui-test.conversations ( 94597861-4e40-40fa-b8e3-1b31e38f3979 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.739] [31mERROR[39m (3493):
+    message: "Error creating index for assistants by createdById and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: e1b673f8-477a-49da-91e8-06d0e0fa0d62: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: e1b673f8-477a-49da-91e8-06d0e0fa0d62: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.739] [31mERROR[39m (3493):
+    message: "Error creating index for assistants by modelId and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: ed8c0762-9b98-40de-898d-1decfc036ed3: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: ed8c0762-9b98-40de-898d-1decfc036ed3: Collection chat-ui-test.assistants ( 842ab5f4-a3a9-4d58-a3d4-e3adda17613c ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.739] [31mERROR[39m (3493):
+    message: "Error creating index for reports by createdBy and assistantId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 53180c98-653f-4d86-a92f-a498f0ad77cc: Collection chat-ui-test.reports ( ba88d8e0-ca97-4384-9f93-cf7fd80e2630 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 53180c98-653f-4d86-a92f-a498f0ad77cc: Collection chat-ui-test.reports ( ba88d8e0-ca97-4384-9f93-cf7fd80e2630 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.739] [31mERROR[39m (3493):
+    message: "Error creating index for abortedGenerations by updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: deca8965-8fea-4c5b-aaf1-85b53b23bec6: Collection chat-ui-test.conversations.stats ( f553417b-fedb-4cac-b69d-bbb1bf4921b2 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: deca8965-8fea-4c5b-aaf1-85b53b23bec6: Collection chat-ui-test.conversations.stats ( f553417b-fedb-4cac-b69d-bbb1bf4921b2 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.740] [31mERROR[39m (3493):
+    message: "Error creating index for abortedGenerations by conversationId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 4d07f1e6-92af-4a65-bb75-882c4577791a: Collection chat-ui-test.abortedGenerations ( e6ebe7d7-6d76-4b45-8f77-53a7bc6cb532 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 4d07f1e6-92af-4a65-bb75-882c4577791a: Collection chat-ui-test.abortedGenerations ( e6ebe7d7-6d76-4b45-8f77-53a7bc6cb532 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.781] [31mERROR[39m (3493):
+    message: "Error creating index for tokenCaches by createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.630] [31mERROR[39m (3495):
+    message: "Error creating index for reports by createdBy and assistantId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 7762d3ab-ce03-4b18-8779-241c5d5d530b: Collection chat-ui-test.reports ( a1809501-d156-47f5-95d7-03bc6a9e3006 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 7762d3ab-ce03-4b18-8779-241c5d5d530b: Collection chat-ui-test.reports ( a1809501-d156-47f5-95d7-03bc6a9e3006 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.972] [31mERROR[39m (3494):
+    message: "Error creating index for settings by assistants"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 7c14f19e-6ce1-473f-b8e4-6cbbd0b6c1da: Collection chat-ui-test.settings ( 2313e1cc-4625-426e-b95b-e95eb7ebcb7d ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 7c14f19e-6ce1-473f-b8e4-6cbbd0b6c1da: Collection chat-ui-test.settings ( 2313e1cc-4625-426e-b95b-e95eb7ebcb7d ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.635] [31mERROR[39m (3495):
+    message: "Error creating index for abortedGenerations by conversationId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 35deceb9-4dd9-4b41-a5bd-bcbc93ab7b8b: Collection chat-ui-test.abortedGenerations ( 5daf9d45-a9e9-46ac-be57-c57ed951b902 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 35deceb9-4dd9-4b41-a5bd-bcbc93ab7b8b: Collection chat-ui-test.abortedGenerations ( 5daf9d45-a9e9-46ac-be57-c57ed951b902 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.636] [31mERROR[39m (3495):
+    message: "Error creating index for conversations by messages from and createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 148e8ca9-18d0-4269-a6de-dcce25da039a: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 148e8ca9-18d0-4269-a6de-dcce25da039a: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.636] [31mERROR[39m (3495):
+    message: "Error creating index for assistants by last24HoursCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 92225609-21a1-4639-b9ad-ef1475a48718: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 92225609-21a1-4639-b9ad-ef1475a48718: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.636] [31mERROR[39m (3495):
+    message: "Error creating index for conversations by messageId and ancestors"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 56b4d359-93d1-4976-9216-7659920d5a7e: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 56b4d359-93d1-4976-9216-7659920d5a7e: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.637] [31mERROR[39m (3495):
+    message: "Error creating index for users by sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: fad780f2-1b9c-4979-8933-a6783cdd6de6: Collection chat-ui-test.users ( d2eb9f82-f37f-4a60-a833-1010fb308656 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: fad780f2-1b9c-4979-8933-a6783cdd6de6: Collection chat-ui-test.users ( d2eb9f82-f37f-4a60-a833-1010fb308656 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.637] [31mERROR[39m (3495):
+    message: "Error creating index for assistants by modelId and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d11dd059-00bc-47ce-99bb-9ebd4b6cf3f6: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d11dd059-00bc-47ce-99bb-9ebd4b6cf3f6: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.637] [31mERROR[39m (3495):
+    message: "Error creating index for settings by assistants"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 10764f2e-3ba2-48d5-9271-bcc368cb06c1: Collection chat-ui-test.settings ( b01a54bd-7467-4d59-9e09-ddb45fe34d83 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 10764f2e-3ba2-48d5-9271-bcc368cb06c1: Collection chat-ui-test.settings ( b01a54bd-7467-4d59-9e09-ddb45fe34d83 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.637] [31mERROR[39m (3495):
+    message: "Error creating index for assistants by last24HoursUseCount and useCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 1f1d25c0-4dea-4608-b27e-e39c29274351: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 1f1d25c0-4dea-4608-b27e-e39c29274351: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.637] [31mERROR[39m (3495):
+    message: "Error creating index for semaphores by deleteAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: a3053900-7f31-476c-8a67-f432971a009a: Collection chat-ui-test.semaphores ( 83d69c19-1663-41bd-87fd-7ecac8d8ecb8 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: a3053900-7f31-476c-8a67-f432971a009a: Collection chat-ui-test.semaphores ( 83d69c19-1663-41bd-87fd-7ecac8d8ecb8 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.638] [31mERROR[39m (3495):
+    message: "Error creating index for conversations by userId and updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 29c254cc-c819-4ae5-bc24-01a3f8ad5fd9: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 29c254cc-c819-4ae5-bc24-01a3f8ad5fd9: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.977] [31mERROR[39m (3494):
+    message: "Error creating index for users by hfUserId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: ed19b111-cb7b-4783-8e3f-f997a2ec2627: Collection chat-ui-test.users ( 8f630a7c-b864-489e-9556-f015d1a55322 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: ed19b111-cb7b-4783-8e3f-f997a2ec2627: Collection chat-ui-test.users ( 8f630a7c-b864-489e-9556-f015d1a55322 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.977] [31mERROR[39m (3494):
+    message: "Error creating index for settings by userId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: f3bfc972-ade6-4bc0-a026-46dbeccae9c1: Collection chat-ui-test.settings ( 2313e1cc-4625-426e-b95b-e95eb7ebcb7d ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: f3bfc972-ade6-4bc0-a026-46dbeccae9c1: Collection chat-ui-test.settings ( 2313e1cc-4625-426e-b95b-e95eb7ebcb7d ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.978] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 70db14f5-c831-4d12-806a-89a71844f333: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 70db14f5-c831-4d12-806a-89a71844f333: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.978] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by searchTokens"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 8a4e2d57-9072-4f38-9f0a-92b430eff909: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 8a4e2d57-9072-4f38-9f0a-92b430eff909: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.978] [31mERROR[39m (3494):
+    message: "Error creating index for conversations by messages createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: c5c87cd9-078e-49ae-89e8-d89938edc173: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: c5c87cd9-078e-49ae-89e8-d89938edc173: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.978] [31mERROR[39m (3494):
+    message: "Error creating index for conversations by userId and sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: b43f94ef-5888-40fe-b207-ea337d70369c: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: b43f94ef-5888-40fe-b207-ea337d70369c: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.978] [31mERROR[39m (3494):
+    message: "Error creating index for conversations by messageId and ancestors"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: f709948f-99a6-4dde-829e-1fd0e2b5d9fa: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: f709948f-99a6-4dde-829e-1fd0e2b5d9fa: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.979] [31mERROR[39m (3494):
+    message: "Error creating index for users by sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: b561b750-f572-422d-a679-6d8f383e00a2: Collection chat-ui-test.users ( 8f630a7c-b864-489e-9556-f015d1a55322 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: b561b750-f572-422d-a679-6d8f383e00a2: Collection chat-ui-test.users ( 8f630a7c-b864-489e-9556-f015d1a55322 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.979] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by last24HoursUseCount and useCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 4ad1e435-b0ec-4741-a4bc-b98cc168e24c: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 4ad1e435-b0ec-4741-a4bc-b98cc168e24c: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.638] [31mERROR[39m (3495):
+    message: "Error creating index for tokenCaches by tokenHash"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: c1958c9c-00e6-4cdf-b11f-83d634d107d5: Collection chat-ui-test.tokens ( 4003425d-ea45-47d5-b269-90851b4ed6a4 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: c1958c9c-00e6-4cdf-b11f-83d634d107d5: Collection chat-ui-test.tokens ( 4003425d-ea45-47d5-b269-90851b4ed6a4 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.638] [31mERROR[39m (3495):
+    message: "Error creating index for assistants by userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 27f1f7c4-58d1-44e3-b2d6-0fde8594a0f1: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 27f1f7c4-58d1-44e3-b2d6-0fde8594a0f1: Collection chat-ui-test.assistants ( 14f65120-bf59-4b98-a0da-0fca55716141 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.638] [31mERROR[39m (3495):
+    message: "Index build failed: 010d695e-04ee-4972-b3c9-786bd316f562: Collection chat-ui-test.sessions ( 7b1d3c44-4feb-40c4-9ec8-318ffc56e21c ) :: caused by :: interrupted at shutdown"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 010d695e-04ee-4972-b3c9-786bd316f562: Collection chat-ui-test.sessions ( 7b1d3c44-4feb-40c4-9ec8-318ffc56e21c ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 010d695e-04ee-4972-b3c9-786bd316f562: Collection chat-ui-test.sessions ( 7b1d3c44-4feb-40c4-9ec8-318ffc56e21c ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.679] [31mERROR[39m (3495):
+    message: "Error creating index for conversations by userId and sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: cc6e7fe6-9221-43fe-9fb5-e7e1833bea5f: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: cc6e7fe6-9221-43fe-9fb5-e7e1833bea5f: Collection chat-ui-test.conversations ( bda4c94c-2d89-4564-a64f-e838e32594a0 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.979] [31mERROR[39m (3494):
+    message: "Error creating index for conversations by messages from and createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 208c4a19-b22e-4cb6-bba8-80bb3cf2647b: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 208c4a19-b22e-4cb6-bba8-80bb3cf2647b: Collection chat-ui-test.conversations ( e671cba2-065b-45b4-ad65-201d2c6220a4 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.979] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by createdById and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: fc892beb-5740-444a-a4c1-e9f1185f950d: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: fc892beb-5740-444a-a4c1-e9f1185f950d: Collection chat-ui-test.assistants ( c234f3e4-06f6-4f63-97ae-4a518389ee63 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:38.979] [31mERROR[39m (3494):
+    message: "Error creating index for abortedGenerations by updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: ae0f908e-379d-4385-924a-d4fdc6e42c7c: Collection chat-ui-test.conversations.stats ( 87496cbb-532c-4b3b-a2b4-0bdf1f81349c ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: ae0f908e-379d-4385-924a-d4fdc6e42c7c: Collection chat-ui-test.conversations.stats ( 87496cbb-532c-4b3b-a2b4-0bdf1f81349c ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.205] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by modelId and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.234] [31mERROR[39m (3494):
+    message: "Error creating index for assistants by last24HoursCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.389] [31mERROR[39m (3494):
+    message: "Error creating index for semaphores by deleteAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.401] [31mERROR[39m (3494):
+    message: "Error creating index for tokenCaches by createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.406] [31mERROR[39m (3496):
+    message: "Error creating index for settings by userId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 3b6cbe00-9216-4cb7-9dad-e9193f85f717: Collection chat-ui-test.settings ( 221a51a8-446d-4cfb-ba99-4c434225905a ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 3b6cbe00-9216-4cb7-9dad-e9193f85f717: Collection chat-ui-test.settings ( 221a51a8-446d-4cfb-ba99-4c434225905a ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.410] [31mERROR[39m (3496):
+    message: "Error creating index for users by hfUserId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 5038a1c7-f2fa-4836-aacc-a55298cba112: Collection chat-ui-test.users ( 54e74e01-6329-421a-b0fc-9e31f5c4c7ff ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 5038a1c7-f2fa-4836-aacc-a55298cba112: Collection chat-ui-test.users ( 54e74e01-6329-421a-b0fc-9e31f5c4c7ff ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.411] [31mERROR[39m (3496):
+    message: "Error creating index for reports by createdBy and assistantId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d7a8056b-0efc-4bfd-b2a3-e9945c9e5321: Collection chat-ui-test.reports ( 90470fb0-15b1-4bd8-96af-32a4b1ce312b ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d7a8056b-0efc-4bfd-b2a3-e9945c9e5321: Collection chat-ui-test.reports ( 90470fb0-15b1-4bd8-96af-32a4b1ce312b ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.411] [31mERROR[39m (3496):
+    message: "Error creating index for settings by assistants"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d6a4543d-330f-4a9e-850c-01061eac1564: Collection chat-ui-test.settings ( 221a51a8-446d-4cfb-ba99-4c434225905a ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d6a4543d-330f-4a9e-850c-01061eac1564: Collection chat-ui-test.settings ( 221a51a8-446d-4cfb-ba99-4c434225905a ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.412] [31mERROR[39m (3496):
+    message: "Error creating index for conversations by userId and updatedAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 223d3e55-272d-40d5-b64b-41a236b9c25c: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 223d3e55-272d-40d5-b64b-41a236b9c25c: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.412] [31mERROR[39m (3496):
+    message: "Error creating index for conversations by userId and sessionId"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: d6003183-65a4-47ec-84a1-e75c680b62d5: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: d6003183-65a4-47ec-84a1-e75c680b62d5: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.412] [31mERROR[39m (3496):
+    message: "Error creating index for assistants by searchTokens"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 9f33834d-1adf-4610-b088-50ce0fd3ba24: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 9f33834d-1adf-4610-b088-50ce0fd3ba24: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.412] [31mERROR[39m (3496):
+    message: "Error creating index for assistants by last24HoursUseCount and useCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 8fd29c60-fca4-4610-80c6-2910aec4ec43: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 8fd29c60-fca4-4610-80c6-2910aec4ec43: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.412] [31mERROR[39m (3496):
+    message: "Error creating index for assistants by review and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 6aa87750-147a-41c1-84c9-57ca8164f491: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 6aa87750-147a-41c1-84c9-57ca8164f491: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.413] [31mERROR[39m (3496):
+    message: "Error creating index for conversations by messageId and ancestors"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 30483775-844b-4a8b-8b8a-77ba860036bd: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 30483775-844b-4a8b-8b8a-77ba860036bd: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.413] [31mERROR[39m (3496):
+    message: "Error creating index for conversations by messages from and createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: dbc9a9ea-eaeb-4c0b-b11b-b25ffe4717b2: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: dbc9a9ea-eaeb-4c0b-b11b-b25ffe4717b2: Collection chat-ui-test.conversations ( 9dca97c9-57be-42d7-95bb-ebff3a09de16 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.413] [31mERROR[39m (3496):
+    message: "Error creating index for assistants by modelId and userCount"
+    err: {
+      "type": "MongoServerError",
+      "message": "Index build failed: 04684b53-c616-469d-8591-7c6292439c7e: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown",
+      "stack":
+          MongoServerError: Index build failed: 04684b53-c616-469d-8591-7c6292439c7e: Collection chat-ui-test.assistants ( 5cfdd7ab-0d01-4bec-995d-de24e2631219 ) :: caused by :: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.457] [31mERROR[39m (3496):
+    message: "Error creating index for tokenCaches by createdAt"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.466] [31mERROR[39m (3496):
+    message: "interrupted at shutdown"
+    err: {
+      "type": "MongoServerError",
+      "message": "interrupted at shutdown",
+      "stack":
+          MongoServerError: interrupted at shutdown
+              at Connection.onMessage (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:413:18)
+              at MessageStream.<anonymous> (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/connection.ts:243:56)
+              at MessageStream.emit (node:events:508:20)
+              at processIncomingData (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:193:12)
+              at MessageStream._write (/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-1217796081/repo/node_modules/mongodb/src/cmap/message_stream.ts:74:5)
+              at writeOrBuffer (node:internal/streams/writable:570:12)
+              at _write (node:internal/streams/writable:499:10)
+              at MessageStream.Writable.write (node:internal/streams/writable:508:10)
+              at Socket.ondata (node:internal/streams/readable:1013:24)
+              at Socket.emit (node:events:508:20)
+      "ok": 0,
+      "code": 11600,
+      "codeName": "InterruptedAtShutdown"
+    }
+[15:11:39.298] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 1 conversations in total."
+[15:11:39.350] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.352] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 1 conversations in total."
+[15:11:39.353] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.354] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.356] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.357] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.359] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 1 conversations in total."
+[15:11:39.360] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.361] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 0 conversations in total."
+[15:11:39.363] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 1 conversations in total."
+[15:11:39.555] [32mINFO[39m (3491):
+    message: "[MIGRATIONS] Deleted 10010 conversations in total."
+ ✓ |server| src/lib/utils/tree/treeHelpers.spec.ts (3 tests) 3212ms
+   ✓ inserting conversations > should insert a legacy conversation  1744ms
+   ✓ inserting conversations > should insert a linear branch conversation  411ms
+ ✓ |server| src/lib/utils/tree/addSibling.spec.ts (8 tests) 3246ms
+   ✓ inserting conversations > should insert a legacy conversation  1670ms
+   ✓ inserting conversations > should insert a linear branch conversation  367ms
+   ✓ inserting conversations > should insert a side branches conversation  469ms
+ ✓ |server| src/routes/login/callback/updateUser.spec.ts (4 tests) 1617ms
+   ✓ login > should update user if existing  822ms
+ ✓ |server| src/lib/utils/tree/buildSubtree.spec.ts (9 tests) 3392ms
+   ✓ inserting conversations > should insert a legacy conversation  2089ms
+   ✓ inserting conversations > should insert a side branches conversation  509ms
+ ✓ |server| src/lib/utils/tree/addChildren.spec.ts (11 tests) 3406ms
+   ✓ inserting conversations > should insert a legacy conversation  1685ms
+   ✓ inserting conversations > should insert a linear branch conversation  819ms
+   ✓ addChildren > should let you append on legacy conversations  316ms
+ ✓ |server| src/lib/migrations/routines/09-delete-empty-conversations.spec.ts (12 tests) 3504ms
+   ✓ Deleting discarded conversations > a conversation with no messages should get deleted  666ms
+ ❯ |server| src/lib/server/isURLLocal.spec.ts (8 tests | 1 failed) 68ms
+   ✓ isURLLocal > should return true for localhost 10ms
+   ✓ isURLLocal > should return true for 127.0.0.1 0ms
+   ✓ isURLLocal > should return true for 127.254.254.254 0ms
+   ✓ isURLLocal > should return false for huggingface.co 14ms
+   ✓ isURLLocal > should return true for 127.0.0.1.nip.io 2ms
+   ✓ isURLLocal > should fail on ipv6 21ms
+   × isURLLocal > should fail on ipv6 --1.sslip.io 18ms
+     → promise resolved "true" instead of rejecting
+   ✓ isURLLocal > should fail on invalid domain names 2ms
+ ✓ |server| src/lib/utils/tree/isMessageId.spec.ts (3 tests) 2ms
+ ✓ |server| src/lib/migrations/migrations.spec.ts (4 tests) 1779ms
+[15:11:40.911] [32mINFO[39m (3530):
+    message: "Connecting to database"
+[15:11:40.917] [32mINFO[39m (3530):
+    message: "Connected to database"
+ ✓ |server| src/lib/utils/tree/convertLegacyConversation.spec.ts (5 tests) 757ms
+   ✓ inserting conversations > should insert a legacy conversation  494ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |server| src/lib/server/isURLLocal.spec.ts > isURLLocal > should fail on ipv6 --1.sslip.io
+AssertionError: promise resolved "true" instead of rejecting
+
+[32m- Expected:[39m 
+Error {
+  "message": "rejected promise",
+}
+
+[31m+ Received:[39m 
+true
+
+ ❯ src/lib/server/isURLLocal.spec.ts:24:58
+     22|  });
+     23|  it("should fail on ipv6 --1.sslip.io", async () => {
+     24|   await expect(isURLLocal(new URL("http://--1.sslip.io"))).rejects.toT…
+       |                                                          ^
+     25|  });
+     26|  it("should fail on invalid domain names", async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 11 passed (12)
+      Tests  1 failed | 81 passed (82)
+   Start at  15:11:30
+   Duration  10.71s (transform 947ms, setup 2.61s, collect 39.27s, tests 22.51s, environment 1ms, prepare 3.92s)
+
