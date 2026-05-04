@@ -186,7 +186,6 @@ exit /b 0
             -OriginUrl 'https://github.com/def324/lumen.git' `
             -PassMessage 'run.bat stdio derives first-install download repo from git origin'
         }
-    }
 } finally {
     $env:PATH = $origPath
     if ($proc -and -not $proc.HasExited) { try { $proc.Kill() } catch {} }
