@@ -1,0 +1,215 @@
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..6054bf3 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -308,7 +308,7 @@ impl State {
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+         let mixed_table_types = parent_table.is_dotted() == path.is_empty();
+-        if mixed_table_types {
++        if mixed_table_types && !parent_table.is_implicit() {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             return;
+diff --git a/crates/toml_edit/src/parser/inline_table.rs b/crates/toml_edit/src/parser/inline_table.rs
+index 5bc556c..e07068b 100644
+--- a/crates/toml_edit/src/parser/inline_table.rs
++++ b/crates/toml_edit/src/parser/inline_table.rs
+@@ -193,7 +193,7 @@ impl State {
+ 
+             // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+             let mixed_table_types = table.is_dotted() == path.is_empty();
+-            if mixed_table_types {
++            if mixed_table_types && !table.is_implicit() {
+                 let key_span = get_key_span(&key).unwrap_or_else(|| event.span());
+                 errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             } else {
+diff --git a/crates/toml_edit/tests/testsuite/edit.rs b/crates/toml_edit/tests/testsuite/edit.rs
+index 1ec8121..89006be 100644
+--- a/crates/toml_edit/tests/testsuite/edit.rs
++++ b/crates/toml_edit/tests/testsuite/edit.rs
+@@ -1681,3 +1681,72 @@ tool = { typst-test.tests = "tests" }
+ "#]]
+     );
+ }
++
++#[test]
++fn implicit_table_with_dotted_keys() {
++    let toml = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    let doc = toml.parse::<DocumentMut>();
++    assert!(doc.is_ok(), "Failed to parse: {:?}", doc.err());
++    let doc = doc.unwrap();
++
++    assert_eq!(doc["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(doc["fruit"]["apple"]["taste"]["sweet"].as_bool(), Some(true));
++    assert_eq!(doc["fruit"]["apple"]["texture"]["smooth"].as_bool(), Some(true));
++}
++
++#[test]
++fn dotted_keys_before_nested_header() {
++    let toml = r#"[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++
++[fruit.apple.texture]
++smooth = true
++"#;
++
++    let doc = toml.parse::<DocumentMut>();
++    assert!(doc.is_ok(), "Failed to parse: {:?}", doc.err());
++    let doc = doc.unwrap();
++
++    assert_eq!(doc["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(doc["fruit"]["apple"]["taste"]["sweet"].as_bool(), Some(true));
++    assert_eq!(doc["fruit"]["apple"]["texture"]["smooth"].as_bool(), Some(true));
++}
++
++#[test]
++fn nested_header_with_unrelated_key() {
++    let toml = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++banana = "yellow"
++"#;
++
++    let doc = toml.parse::<DocumentMut>();
++    assert!(doc.is_ok(), "Failed to parse: {:?}", doc.err());
++    let doc = doc.unwrap();
++
++    assert_eq!(doc["fruit"]["banana"].as_str(), Some("yellow"));
++    assert_eq!(doc["fruit"]["apple"]["texture"]["smooth"].as_bool(), Some(true));
++}
++
++#[test]
++fn reject_dotted_keys_on_explicit_inline_table() {
++    // This should fail: apple is defined as an inline table,
++    // then we try to use dotted keys to extend it
++    let toml = r#"[fruit]
++apple = { color = "red" }
++apple.taste = "sweet"
++"#;
++
++    let doc = toml.parse::<DocumentMut>();
++    // This should fail because we're trying to extend an explicitly-defined inline table with dotted keys
++    assert!(doc.is_err());
++}
+diff --git a/crates/toml_edit/verify_fix.rs b/crates/toml_edit/verify_fix.rs
+new file mode 100644
+index 0000000..eda899f
+--- /dev/null
++++ b/crates/toml_edit/verify_fix.rs
+@@ -0,0 +1,20 @@
++fn main() {
++    let toml = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    match toml.parse::<toml_edit::DocumentMut>() {
++        Ok(doc) => {
++            println!("✓ Parsed successfully!");
++            println!("\nDocument structure:");
++            println!("fruit.apple.color = {:?}", doc["fruit"]["apple"]["color"].as_str());
++            println!("fruit.apple.taste.sweet = {:?}", doc["fruit"]["apple"]["taste"]["sweet"].as_bool());
++            println!("fruit.apple.texture.smooth = {:?}", doc["fruit"]["apple"]["texture"]["smooth"].as_bool());
++        }
++        Err(e) => println!("✗ Parse error: {}", e),
++    }
++}
+diff --git a/test_bug.rs b/test_bug.rs
+new file mode 100644
+index 0000000..f583148
+--- /dev/null
++++ b/test_bug.rs
+@@ -0,0 +1,15 @@
++fn main() {
++    let toml_string = r#"
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    match toml_edit::parse(toml_string) {
++        Ok(doc) => println!("Parsed successfully: {:#?}", doc),
++        Err(e) => println!("Parse error: {}", e),
++    }
++}
+diff --git a/test_dotted_implicit.rs b/test_dotted_implicit.rs
+new file mode 100644
+index 0000000..3557868
+--- /dev/null
++++ b/test_dotted_implicit.rs
+@@ -0,0 +1,20 @@
++#[test]
++fn test_dotted_keys_on_implicit_table() {
++    let toml_str = r#"
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    let result = toml_str.parse::<toml_edit::DocumentMut>();
++    assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
++    let doc = result.unwrap();
++    assert_eq!(doc["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(doc["fruit"]["apple"]["taste"]["sweet"].as_bool(), Some(true));
++    assert_eq!(doc["fruit"]["apple"]["texture"]["smooth"].as_bool(), Some(true));
++}
++
++fn main() {}
+diff --git a/test_issue.rs b/test_issue.rs
+new file mode 100644
+index 0000000..48fdc2f
+--- /dev/null
++++ b/test_issue.rs
+@@ -0,0 +1,21 @@
++fn main() {
++    let toml_str = r#"
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    println!("Testing TOML parsing...");
++    match toml_str.parse::<toml_edit::DocumentMut>() {
++        Ok(doc) => {
++            println!("✓ Parsed successfully!");
++            println!("{}", doc);
++        }
++        Err(e) => {
++            println!("✗ Parse error: {}", e);
++        }
++    }
++}
+diff --git a/test_issue.toml b/test_issue.toml
+new file mode 100644
+index 0000000..10beb5d
+--- /dev/null
++++ b/test_issue.toml
+@@ -0,0 +1,6 @@
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true

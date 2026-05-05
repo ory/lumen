@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch implements a valid C API for fmt using a different design pattern — an opaque `fmt_args_t*` handle with explicit `fmt_push_*` functions (builder pattern) versus the gold patch's struct-based approach with `_Generic` macros for type dispatch. The candidate's approach is arguably more idiomatic for a C API and correctly solves the core issue, using `fmt::dynamic_format_arg_store` internally. However, the files don't match exactly: the candidate uses `include/fmt/c.h` (gold uses `include/fmt/fmt-c.h`), integrates into the main `fmt` library rather than a separate `fmt_c` static library, lacks a test file, and doesn't add CMake test infrastructure — making it incomplete relative to the gold patch's full solution.

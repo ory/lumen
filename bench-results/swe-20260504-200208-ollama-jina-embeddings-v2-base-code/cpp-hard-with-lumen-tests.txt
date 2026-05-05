@@ -1,0 +1,42 @@
+-- CMake version: 4.3.0
+-- {fmt} version: 12.1.1
+-- Build type: Release
+-- Target 'doc' disabled because doxygen not found
+-- FMT_PEDANTIC: OFF
+-- Configuring done (0.2s)
+-- Generating done (0.1s)
+-- Build files have been written to: /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2937309679/repo/build
+[  5%] Built target fmt
+[  7%] Built target gtest
+[ 13%] Built target test-main
+[ 15%] Built target args-test
+[ 18%] Built target base-test
+[ 21%] Built target c-test
+[ 23%] Built target assert-test
+[ 26%] Built target chrono-test
+[ 28%] Built target color-test
+[ 31%] Built target gtest-extra-test
+[ 34%] Built target format-test
+[ 43%] Built target format-impl-test
+[ 46%] Built target ostream-test
+[ 48%] Built target compile-test
+[ 51%] Built target printf-test
+[ 55%] Built target ranges-test
+[ 63%] Built target no-builtin-types-test
+[ 71%] Built target scan-test
+[ 73%] Built target std-test
+[ 81%] Built target unicode-test
+[ 84%] Built target xchar-test
+[ 86%] Built target enforce-checks-test
+[ 89%] Built target perf-sanity
+[ 97%] Built target posix-mock-test
+[100%] Built target os-test
+UpdateCTestConfiguration  from :/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2937309679/repo/build/DartConfiguration.tcl
+Test project /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-2937309679/repo/build
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+No tests were found!!!

@@ -1,0 +1,88 @@
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b1..7277f11 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -224,8 +224,9 @@ impl<'i> State<'i> {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
+-        if mixed_table_types {
++        // Only report an error if the parent table was explicitly defined (non-implicit) with a [table] header
++        // and we're trying to extend it with a dotted key path
++        if !parent_table.is_implicit() && !path.is_empty() {
+             let key_span = get_key_span(&key);
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             return;
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..54b411d 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -307,8 +307,9 @@ impl State {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
+-        if mixed_table_types {
++        // Only report an error if the parent table was explicitly defined with a [table] header (has a position)
++        let is_explicitly_defined = parent_table.position().is_some();
++        if is_explicitly_defined && !path.is_empty() {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+             return;
+@@ -478,7 +479,7 @@ fn descend_path<'t>(
+                         // Since tables cannot be defined more than once, redefining such tables using a
+                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
+                         // already defined in [table] form is not allowed.
+-                        if dotted && !sweet_child_of_mine.is_implicit() {
++                        if dotted && !sweet_child_of_mine.is_implicit() && sweet_child_of_mine.position().is_some() {
+                             let key_span = get_key_span(key).expect("all keys have spans");
+                             errors.report_error(
+                                 ParseError::new("duplicate key").with_unexpected(key_span),
+diff --git a/crates/toml_edit/tests/test_issue.rs b/crates/toml_edit/tests/test_issue.rs
+new file mode 100644
+index 0000000..1ad3799
+--- /dev/null
++++ b/crates/toml_edit/tests/test_issue.rs
+@@ -0,0 +1,15 @@
++#[test]
++fn test_dotted_key_extending_implicit_table() {
++    let toml = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++    
++    match toml.parse::<toml_edit::DocumentMut>() {
++        Ok(_) => println!("Test passed: parsed successfully"),
++        Err(e) => panic!("Parse error (should succeed): {}", e),
++    }
++}
+diff --git a/crates/toml_edit/tests/testsuite/edit.rs b/crates/toml_edit/tests/testsuite/edit.rs
+index 1ec8121..2a39fcf 100644
+--- a/crates/toml_edit/tests/testsuite/edit.rs
++++ b/crates/toml_edit/tests/testsuite/edit.rs
+@@ -1681,3 +1681,21 @@ tool = { typst-test.tests = "tests" }
+ "#]]
+     );
+ }
++
++#[test]
++fn dotted_key_extending_implicit_table() {
++    // Test case from: False duplicate key error for dotted keys when parent table is implicitly created
++    // This should parse successfully - dotted keys should be allowed to extend implicitly created tables
++    let toml = r#"[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++
++    match toml.parse::<DocumentMut>() {
++        Ok(_) => {}, // Success - test passes
++        Err(e) => panic!("Should parse successfully, but got error: {}", e),
++    }
++}

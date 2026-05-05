@@ -1,0 +1,105 @@
+diff --git a/src/main/java/org/jsoup/select/Evaluator.java b/src/main/java/org/jsoup/select/Evaluator.java
+index 8c93fba..6df184d 100644
+--- a/src/main/java/org/jsoup/select/Evaluator.java
++++ b/src/main/java/org/jsoup/select/Evaluator.java
+@@ -267,12 +267,12 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValue extends AttributeKeyPair {
+         public AttributeWithValue(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return element.hasAttr(key) && value.equalsIgnoreCase(element.attr(key).trim());
++            return element.hasAttr(key) && value.equalsIgnoreCase(lowerCase(element.attr(key)));
+         }
+ 
+         @Override protected int cost() {
+@@ -291,12 +291,12 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueNot extends AttributeKeyPair {
+         public AttributeWithValueNot(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return !value.equalsIgnoreCase(element.attr(key));
++            return !value.equalsIgnoreCase(lowerCase(element.attr(key)));
+         }
+ 
+         @Override protected int cost() {
+@@ -361,7 +361,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueContaining extends AttributeKeyPair {
+         public AttributeWithValueContaining(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+@@ -421,7 +421,7 @@ public abstract class Evaluator {
+ 
+         public AttributeKeyPair(String key, String value, boolean trimQuoted) {
+             Validate.notEmpty(key);
+-            Validate.notEmpty(value);
++            Validate.notNull(value);
+ 
+             this.key = normalize(key);
+             boolean quoted = value.startsWith("'") && value.endsWith("'")
+diff --git a/src/test/java/org/jsoup/select/SelectorTest.java b/src/test/java/org/jsoup/select/SelectorTest.java
+index 6207a6c..a01c970 100644
+--- a/src/test/java/org/jsoup/select/SelectorTest.java
++++ b/src/test/java/org/jsoup/select/SelectorTest.java
+@@ -1047,6 +1047,48 @@ public class SelectorTest {
+         assertEquals(1, els.size());
+     }
+ 
++    @Test public void containsWithLeadingAndTrailingSpaces() {
++        Document doc = Jsoup.parse("<body><article xxx=\"xpaywalled\"></article></body>");
++        // Should NOT match because " paywalled " (with spaces) is not contained in "xpaywalled"
++        Elements els = doc.select("article[xxx*=\" paywalled \"]");
++        assertEquals(0, els.size());
++    }
++
++    @Test public void containsWithLeadingAndTrailingSpacesMatches() {
++        Document doc = Jsoup.parse("<body><article xxx=\"x paywalled y\"></article></body>");
++        // Should match because " paywalled " is contained in "x paywalled y"
++        Elements els = doc.select("article[xxx*=\" paywalled \"]");
++        assertEquals(1, els.size());
++    }
++
++    @Test public void exactMatchWithSpaces() {
++        Document doc = Jsoup.parse("<body><article xxx=\" test \"></article></body>");
++        // Should match exact value with spaces
++        Elements els = doc.select("article[xxx=\" test \"]");
++        assertEquals(1, els.size());
++    }
++
++    @Test public void exactMatchWithSpacesShouldNotMatch() {
++        Document doc = Jsoup.parse("<body><article xxx=\"test\"></article></body>");
++        // Should NOT match because "test" is not equal to " test "
++        Elements els = doc.select("article[xxx=\" test \"]");
++        assertEquals(0, els.size());
++    }
++
++    @Test public void emptyAttributeValue() {
++        Document doc = Jsoup.parse("<body><div data=\"\"></div></body>");
++        // Should match elements with empty attribute value
++        Elements els = doc.select("div[data='']");
++        assertEquals(1, els.size());
++    }
++
++    @Test public void emptyAttributeValueWithContains() {
++        Document doc = Jsoup.parse("<body><div data=\"\"></div></body>");
++        // Should match elements where attribute contains empty string
++        Elements els = doc.select("div[data*='']");
++        assertEquals(1, els.size());
++    }
++
+     // https://github.com/jhy/jsoup/issues/1257
+     private final String mixedCase =
+         "<html xmlns:n=\"urn:ns\"><n:mixedCase>text</n:mixedCase></html>";

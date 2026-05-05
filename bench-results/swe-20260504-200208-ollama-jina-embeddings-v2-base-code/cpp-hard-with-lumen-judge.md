@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch implements a valid C API for fmt, but uses a fundamentally different design: an opaque `fmt_arg_store` with separate `fmt_add_*` functions and heap-allocated return strings, versus the gold patch's array-based `fmt_arg` struct with a buffer/capacity output pattern. The candidate's API works but requires heap allocation management by callers (`free()` on results), while the gold patch uses a more C-idiomatic buffer approach with a `_Generic`-based variadic macro for ergonomic usage. The candidate also integrates into the existing test framework (Google Test) while the gold patch adds a standalone C test executable, and the file naming differs (`c.h`/`c.cc` vs `fmt-c.h`/`fmt-c.cc`).

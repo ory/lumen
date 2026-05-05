@@ -1,0 +1,201 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 53afc51..c34d565 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -299,10 +299,10 @@ endfunction()
+ 
+ # Define the fmt library, its includes and the needed defines.
+ set(FMT_HEADERS)
+-add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
++add_headers(FMT_HEADERS args.h base.h c.h chrono.h color.h compile.h core.h format.h
+                         format-inl.h os.h ostream.h printf.h ranges.h std.h
+                         xchar.h)
+-set(FMT_SOURCES src/format.cc)
++set(FMT_SOURCES src/format.cc src/fmt-c.cc)
+ 
+ add_module_library(fmt src/fmt.cc FALLBACK
+                    ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
+diff --git a/include/fmt/c.h b/include/fmt/c.h
+new file mode 100644
+index 0000000..aed2bc0
+--- /dev/null
++++ b/include/fmt/c.h
+@@ -0,0 +1,93 @@
++// Formatting library for C++ - C API
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#ifndef FMT_C_H_
++#define FMT_C_H_
++
++#include <stddef.h>
++
++/**
++ * \file c.h
++ * \brief A type-safe C API for the {fmt} library.
++ *
++ * Unlike printf, type information is not encoded in the format string.
++ * Instead, each argument is pushed with an explicit typed function, making
++ * the API safe for use from C and languages with a C FFI.
++ *
++ * Example:
++ *
++ *   fmt_args_t* a = fmt_args_new();
++ *   fmt_push_int(a, 42);
++ *   fmt_push_cstr(a, "world");
++ *   char buf[256];
++ *   fmt_format_to(buf, sizeof(buf), "The answer is {} and hello {}", a);
++ *   fmt_args_free(a);
++ */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/** Opaque handle to a list of formatting arguments. */
++typedef struct fmt_args_s fmt_args_t;
++
++/** Allocates a new, empty argument list. Must be freed with fmt_args_free(). */
++fmt_args_t* fmt_args_new(void);
++
++/** Frees an argument list previously created with fmt_args_new(). */
++void fmt_args_free(fmt_args_t* args);
++
++/** Appends a signed integer argument. */
++void fmt_push_int(fmt_args_t* args, int value);
++
++/** Appends an unsigned integer argument. */
++void fmt_push_uint(fmt_args_t* args, unsigned int value);
++
++/** Appends a signed long long argument. */
++void fmt_push_long_long(fmt_args_t* args, long long value);
++
++/** Appends an unsigned long long argument. */
++void fmt_push_ulong_long(fmt_args_t* args, unsigned long long value);
++
++/** Appends a double argument. */
++void fmt_push_double(fmt_args_t* args, double value);
++
++/** Appends a boolean argument (zero is false, non-zero is true). */
++void fmt_push_bool(fmt_args_t* args, int value);
++
++/** Appends a null-terminated C string argument. */
++void fmt_push_cstr(fmt_args_t* args, const char* value);
++
++/** Appends a string argument given as a data pointer and length. */
++void fmt_push_str(fmt_args_t* args, const char* data, size_t size);
++
++/** Appends a pointer argument (formatted as a hex address). */
++void fmt_push_pointer(fmt_args_t* args, const void* value);
++
++/**
++ * Formats arguments according to the format string and writes the result into
++ * buf.
++ *
++ * Behaves like snprintf: returns the total number of characters that would
++ * have been written (excluding the null terminator), even if the buffer was
++ * too small. Returns -1 on error (e.g. invalid format string).
++ *
++ * The output is always null-terminated when buf is non-null and n > 0.
++ *
++ * @param buf     Output buffer (may be NULL when n == 0).
++ * @param n       Size of the output buffer in bytes.
++ * @param fmt_str Null-terminated format string using {fmt} syntax.
++ * @param args    Argument list built with fmt_push_* functions.
++ * @return        Number of characters written (excluding NUL), or -1 on error.
++ */
++int fmt_format_to(char* buf, size_t n, const char* fmt_str, fmt_args_t* args);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif  /* FMT_C_H_ */
+diff --git a/src/fmt-c.cc b/src/fmt-c.cc
+new file mode 100644
+index 0000000..2e07f31
+--- /dev/null
++++ b/src/fmt-c.cc
+@@ -0,0 +1,79 @@
++// Formatting library for C++ - C API implementation
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/c.h"
++
++#include <string.h>  // memcpy
++
++#include "fmt/args.h"
++#include "fmt/format.h"
++
++struct fmt_args_s {
++  fmt::dynamic_format_arg_store<fmt::context> store;
++};
++
++extern "C" {
++
++fmt_args_t* fmt_args_new(void) { return new fmt_args_t; }
++
++void fmt_args_free(fmt_args_t* args) { delete args; }
++
++void fmt_push_int(fmt_args_t* args, int value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_uint(fmt_args_t* args, unsigned int value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_long_long(fmt_args_t* args, long long value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_ulong_long(fmt_args_t* args, unsigned long long value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_double(fmt_args_t* args, double value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_bool(fmt_args_t* args, int value) {
++  args->store.push_back(value != 0);
++}
++
++void fmt_push_cstr(fmt_args_t* args, const char* value) {
++  args->store.push_back(value);
++}
++
++void fmt_push_str(fmt_args_t* args, const char* data, size_t size) {
++  args->store.push_back(fmt::string_view(data, size));
++}
++
++void fmt_push_pointer(fmt_args_t* args, const void* value) {
++  args->store.push_back(value);
++}
++
++int fmt_format_to(char* buf, size_t n, const char* fmt_str,
++                  fmt_args_t* args) {
++  try {
++    auto memory = fmt::memory_buffer();
++    fmt::detail::vformat_to(memory, fmt::string_view(fmt_str),
++                            fmt::format_args(args->store));
++    size_t len = memory.size();
++    if (buf && n > 0) {
++      size_t copy_len = len < n - 1 ? len : n - 1;
++      memcpy(buf, memory.data(), copy_len);
++      buf[copy_len] = '\0';
++    }
++    return static_cast<int>(len);
++  } catch (...) {
++    return -1;
++  }
++}
++
++}  // extern "C"

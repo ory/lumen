@@ -1,0 +1,47 @@
+warning: 'repo': found 7 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/artifactbundle.info.json.template
+warning: 'repo': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Tests/SourceryLibTests/Stub/Source_Linux/TestProject/TestProject/Info.plist
+warning: 'repo': found 6 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+[0/1] Planning build
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Plugins/SourceryCommandPlugin/SourceryCommandPlugin.swift:72:1: warning: extension declares a conformance of imported type 'String' to imported protocols 'LocalizedError', 'Error'; this will not behave correctly if the owners of 'Swift' introduce this conformance in the future
+70 | #endif
+71 | 
+72 | extension String: LocalizedError {
+   | |- warning: extension declares a conformance of imported type 'String' to imported protocols 'LocalizedError', 'Error'; this will not behave correctly if the owners of 'Swift' introduce this conformance in the future
+   | `- note: add '@retroactive' to silence this warning
+73 |     public var errorDescription: String? { return self }
+74 | }
+/private/var/folders/qy/7dsqmqmj0v71d0dty0l80sm00000gn/T/bench-swe-235633407/repo/Plugins/SourceryCommandPlugin/SourceryCommandPlugin.swift:72:1: warning: extension declares a conformance of imported type 'String' to imported protocols 'LocalizedError', 'Error'; this will not behave correctly if the owners of 'Swift' introduce this conformance in the future
+70 | #endif
+71 | 
+72 | extension String: LocalizedError {
+   | |- warning: extension declares a conformance of imported type 'String' to imported protocols 'LocalizedError', 'Error'; this will not behave correctly if the owners of 'Swift' introduce this conformance in the future
+   | `- note: add '@retroactive' to silence this warning
+73 |     public var errorDescription: String? { return self }
+74 | }
+[1/1] Compiling plugin SourceryCommandPlugin
+[2/2] Compiling plugin GenerateManual
+[3/3] Compiling plugin GenerateDoccReference
+Building for debugging...
+[3/7] Write swift-version--58304C5D6DBC2206.txt
+[4/6] Copying Templates
+Build complete! (5.69s)
+Test Suite 'Selected tests' started at 2026-05-04 21:05:06.862.
+Test Suite 'SourceryPackageTests.xctest' started at 2026-05-04 21:05:06.862.
+Test Suite 'SourceryPackageTests.xctest' passed at 2026-05-04 21:05:06.862.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-05-04 21:05:06.862.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds

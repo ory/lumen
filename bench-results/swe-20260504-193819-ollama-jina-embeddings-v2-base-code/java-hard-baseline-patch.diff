@@ -1,0 +1,43 @@
+diff --git a/src/main/java/org/jsoup/select/Evaluator.java b/src/main/java/org/jsoup/select/Evaluator.java
+index 8c93fba..64d0bca 100644
+--- a/src/main/java/org/jsoup/select/Evaluator.java
++++ b/src/main/java/org/jsoup/select/Evaluator.java
+@@ -267,12 +267,12 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValue extends AttributeKeyPair {
+         public AttributeWithValue(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return element.hasAttr(key) && value.equalsIgnoreCase(element.attr(key).trim());
++            return element.hasAttr(key) && value.equalsIgnoreCase(lowerCase(element.attr(key)));
+         }
+ 
+         @Override protected int cost() {
+@@ -291,12 +291,12 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueNot extends AttributeKeyPair {
+         public AttributeWithValueNot(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return !value.equalsIgnoreCase(element.attr(key));
++            return !value.equalsIgnoreCase(lowerCase(element.attr(key)));
+         }
+ 
+         @Override protected int cost() {
+@@ -361,7 +361,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueContaining extends AttributeKeyPair {
+         public AttributeWithValueContaining(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override

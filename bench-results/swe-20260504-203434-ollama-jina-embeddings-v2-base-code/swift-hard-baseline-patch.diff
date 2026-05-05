@@ -1,0 +1,169 @@
+diff --git a/Package.resolved b/Package.resolved
+index 97abb9a..ddd0764 100644
+--- a/Package.resolved
++++ b/Package.resolved
+@@ -95,8 +95,8 @@
+       "kind" : "remoteSourceControl",
+       "location" : "https://github.com/apple/swift-argument-parser.git",
+       "state" : {
+-        "revision" : "8f4d2753f0e4778c76d5f05ad16c74f707390531",
+-        "version" : "1.2.3"
++        "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
++        "version" : "1.7.1"
+       }
+     },
+     {
+@@ -138,28 +138,28 @@
+     {
+       "identity" : "swift-driver",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-driver.git",
++      "location" : "https://github.com/swiftlang/swift-driver.git",
+       "state" : {
+-        "revision" : "1c07ced84c1dfc1f9c3253dcbaa216fc9c76ee25",
+-        "version" : "1.0.1"
++        "branch" : "release/6.2",
++        "revision" : "aedacc6c1583db4f2989a367e3c41968558a5b8e"
+       }
+     },
+     {
+       "identity" : "swift-llbuild",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-llbuild.git",
++      "location" : "https://github.com/swiftlang/swift-llbuild.git",
+       "state" : {
+-        "revision" : "783aec21649a6c47d1a8314db4144bdceb11df30",
+-        "version" : "1.0.0"
++        "branch" : "release/6.2",
++        "revision" : "073dff55529d7c4ecbd615ab5f5ac52ae5b380da"
+       }
+     },
+     {
+       "identity" : "swift-package-manager",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-package-manager.git",
++      "location" : "https://github.com/swiftlang/swift-package-manager.git",
+       "state" : {
+-        "revision" : "7df9321541e544d711dd93f5b97dd4e8bf7e100e",
+-        "version" : "1.0.8"
++        "branch" : "swift-6.2-RELEASE",
++        "revision" : "3cf1cb66ebde00dab737dcebad96218e2017530d"
+       }
+     },
+     {
+@@ -167,8 +167,8 @@
+       "kind" : "remoteSourceControl",
+       "location" : "https://github.com/swiftlang/swift-syntax.git",
+       "state" : {
+-        "revision" : "0687f71944021d616d34d922343dcef086855920",
+-        "version" : "600.0.1"
++        "branch" : "release/6.2",
++        "revision" : "5a87516fc3dddbd23cb76358eb489915ee86b444"
+       }
+     },
+     {
+@@ -180,13 +180,22 @@
+         "version" : "1.1.1"
+       }
+     },
++    {
++      "identity" : "swift-toolchain-sqlite",
++      "kind" : "remoteSourceControl",
++      "location" : "https://github.com/swiftlang/swift-toolchain-sqlite",
++      "state" : {
++        "revision" : "c0ecc1e0fd1b4fbc38db1efa6113bc12c2a4e559",
++        "version" : "1.0.9"
++      }
++    },
+     {
+       "identity" : "swift-tools-support-core",
+       "kind" : "remoteSourceControl",
+-      "location" : "https://github.com/art-divin/swift-tools-support-core.git",
++      "location" : "https://github.com/swiftlang/swift-tools-support-core.git",
+       "state" : {
+-        "revision" : "930e82e5ae2432c71fe05f440b5d778285270bdb",
+-        "version" : "1.0.0"
++        "branch" : "release/6.2",
++        "revision" : "5a993c8848487c934d53ffceef8e1cad0a241dc1"
+       }
+     },
+     {
+diff --git a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/TypeName+SwiftSyntax.swift b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/TypeName+SwiftSyntax.swift
+index fb9f563..2330af3 100644
+--- a/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/TypeName+SwiftSyntax.swift
++++ b/SourceryFramework/Sources/Parsing/SwiftSyntax/AST/TypeName+SwiftSyntax.swift
+@@ -37,18 +37,30 @@ extension TypeName {
+                 // special treatment for spelled out literals
+                 switch (name, generic?.typeParameters.count) {
+                 case ("Array", 1?):
+-                    let elementTypeName = generic!.typeParameters[0].typeName
+-                    let array = ArrayType(name: "Array<\(elementTypeName.asSource)>", elementTypeName: elementTypeName)
+-                    self.init(name: array.name, array: array, generic: array.asGeneric)
++                    if let params = generic?.typeParameters, params.count > 0 {
++                        let elementTypeName = params[0].typeName
++                        let array = ArrayType(name: "Array<\(elementTypeName.asSource)>", elementTypeName: elementTypeName)
++                        self.init(name: array.name, array: array, generic: array.asGeneric)
++                    } else {
++                        self.init(name: typeIdentifier.sourcerySafeTypeIdentifier, generic: generic)
++                    }
+                 case ("Dictionary", 2?):
+-                    let keyTypeName = generic!.typeParameters[0].typeName
+-                    let valueTypeName = generic!.typeParameters[1].typeName
+-                    let dictionary = DictionaryType(name: "Dictionary<\(keyTypeName.asSource), \(valueTypeName.asSource)>", valueTypeName: valueTypeName, keyTypeName: keyTypeName)
+-                    self.init(name: dictionary.name, dictionary: dictionary, generic: dictionary.asGeneric)
++                    if let params = generic?.typeParameters, params.count >= 2 {
++                        let keyTypeName = params[0].typeName
++                        let valueTypeName = params[1].typeName
++                        let dictionary = DictionaryType(name: "Dictionary<\(keyTypeName.asSource), \(valueTypeName.asSource)>", valueTypeName: valueTypeName, keyTypeName: keyTypeName)
++                        self.init(name: dictionary.name, dictionary: dictionary, generic: dictionary.asGeneric)
++                    } else {
++                        self.init(name: typeIdentifier.sourcerySafeTypeIdentifier, generic: generic)
++                    }
+                 case ("Set", 1?):
+-                    let elementTypeName = generic!.typeParameters[0].typeName
+-                    let set = SetType(name: "Set<\(elementTypeName.asSource)>", elementTypeName: elementTypeName)
+-                    self.init(name: set.name, set: set, generic: set.asGeneric)
++                    if let params = generic?.typeParameters, params.count > 0 {
++                        let elementTypeName = params[0].typeName
++                        let set = SetType(name: "Set<\(elementTypeName.asSource)>", elementTypeName: elementTypeName)
++                        self.init(name: set.name, set: set, generic: set.asGeneric)
++                    } else {
++                        self.init(name: typeIdentifier.sourcerySafeTypeIdentifier, generic: generic)
++                    }
+                 default:
+                     self.init(name: typeIdentifier.sourcerySafeTypeIdentifier, generic: generic)
+                 }
+diff --git a/SourceryTests/Parsing/FileParser_TypeNameSpec.swift b/SourceryTests/Parsing/FileParser_TypeNameSpec.swift
+index 6f44521..b48bba0 100644
+--- a/SourceryTests/Parsing/FileParser_TypeNameSpec.swift
++++ b/SourceryTests/Parsing/FileParser_TypeNameSpec.swift
+@@ -139,6 +139,29 @@ class TypeNameSpec: QuickSpec {
+                 }
+             }
+ 
++            context("given generic type with trailing comma") {
++                it("handles Array with trailing comma") {
++                    expect(variableTypeName("Array<Int,>").isArray).to(beTrue())
++                    expect(variableTypeName("Array<Int,>").array?.elementTypeName.name).to(equal("Int"))
++                }
++
++                it("handles Dictionary with trailing comma") {
++                    expect(variableTypeName("Dictionary<String, Int,>").isDictionary).to(beTrue())
++                    expect(variableTypeName("Dictionary<String, Int,>").dictionary?.keyTypeName.name).to(equal("String"))
++                    expect(variableTypeName("Dictionary<String, Int,>").dictionary?.valueTypeName.name).to(equal("Int"))
++                }
++
++                it("handles Set with trailing comma") {
++                    expect(variableTypeName("Set<Int,>").isSet).to(beTrue())
++                    expect(variableTypeName("Set<Int,>").set?.elementTypeName.name).to(equal("Int"))
++                }
++
++                it("handles complex generic with trailing comma") {
++                    let complexType = variableTypeName("OrderedDictionary<String, (status: Result<Int, Error>, messages: [String]),>")
++                    expect(complexType.generic).toNot(beNil())
++                }
++            }
++
+             context("given closure type") {
+                 it("reports closure correctly") {
+                     expect(variableTypeName("() -> ()").isClosure).to(beTrue())

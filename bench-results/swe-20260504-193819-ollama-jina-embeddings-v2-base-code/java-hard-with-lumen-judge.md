@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch takes a fundamentally different approach: instead of removing the `trimQuoted` parameter and simplifying the constructor, it passes `trimQuoted=false` to preserve the existing two-constructor structure while still bypassing trimming. However, it misses the critical fix for `AttributeWithValueStarting` and `AttributeWithValueEnding` — neither is updated to pass `false` for `trimQuoted`, meaning those selectors still trim whitespace. The gold patch also changes `Validate.notEmpty` to `Validate.notNull` to allow empty attribute values, which the candidate does replicate, but the incomplete fix for starts-with/ends-with selectors means the bug is only partially resolved.
