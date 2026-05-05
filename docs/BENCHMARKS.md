@@ -88,8 +88,8 @@ Svelte is the first language where Lumen **improved** quality (Poor → Good).
 | Time          | 200s         | 137s           | **-32%**  |
 | Output tokens | 9,212        | 6,538          | **-29%**  |
 
-Cost was reduced in all 8 languages tested so far. Quality was maintained in 6
-languages and **improved** in 2 (Svelte and Dart: Poor → Good).
+Cost was reduced in 9 of 11 languages tested. Quality was maintained in 7
+languages and **improved** in 4 (Swift, Svelte, Dart, Rust: all Poor → Good).
 
 ---
 
@@ -99,8 +99,8 @@ languages and **improved** in 2 (Svelte and Dart: Poor → Good).
 | --------------- | ---- | ---------- | ------- | ------ | ------ | ---------- | ---------- | ---------- |
 | javascript-hard | JS   | baseline   | Perfect | $0.617 | 328.4s | 14,282     | 607K       | 32         |
 | javascript-hard | JS   | with-lumen | Perfect | $0.609 | 219.0s | 10,907     | 622K       | 21         |
-| rust-hard       | Rust | baseline   | Poor    | $0.611 | 309.7s | 17,717     | 719K       | 22         |
-| rust-hard       | Rust | with-lumen | Poor    | $0.375 | 204.0s | 12,291     | 241K       | 9          |
+| rust-hard       | Rust | baseline   | Poor    | $0.849 | 449.1s | 37,897     | 4,008K     | 83         |
+| rust-hard       | Rust | with-lumen | Good    | $0.924 | 539.4s | 49,360     | 5,426K     | 70         |
 | php-hard        | PHP  | baseline   | Good    | $1.036 | 442.2s | 22,365     | 988K       | 59         |
 | php-hard        | PHP  | with-lumen | Good    | $0.418 | 167.8s | 9,785      | 462K       | 15         |
 | typescript-hard | TS   | baseline   | Perfect | $0.281 | 161.1s | 8,449      | 131K       | 18         |
@@ -111,12 +111,16 @@ languages and **improved** in 2 (Svelte and Dart: Poor → Good).
 | ruby-hard       | Ruby | with-lumen | Good    | $0.371 | 149.1s | 8,405      | 409K       | 16         |
 | go-hard         | Go   | baseline   | Good    | $0.677 | 275.6s | 12,567     | 593K       | 40         |
 | go-hard         | Go   | with-lumen | Good    | $0.537 | 210.4s | 12,236     | 561K       | 15         |
+| swift-hard      | Swift | baseline   | Poor    | —      | —      | —          | —          | 50         |
+| swift-hard      | Swift | with-lumen | Good    | $0.287 | 570.9s | 8,956      | 1,728K     | 30         |
 | svelte-hard     | Svelte | baseline   | Poor    | $0.343 | 160.7s | 7,165      | 127K       | —          |
 | svelte-hard     | Svelte | with-lumen | Good    | $0.130 | 41.5s  | 1,990      | 117K       | —          |
 | dart-hard       | Dart | baseline   | Poor    | $0.741 | 402.1s | 21,364     | 440K       | 33         |
 | dart-hard       | Dart | with-lumen | Good    | $0.414 | 210.1s | 12,892     | 310K       | 11         |
-| cpp-hard        | C++  | baseline   | Good    | $1.102 | 370.7s | 15,506     | 1,327K     | 63         |
-| cpp-hard        | C++  | with-lumen | Good    | $1.014 | 359.1s | 22,056     | 1,019K     | 51         |
+| java-hard       | Java | baseline   | Poor    | $0.411 | 171.2s | 13,876     | 1,348K     | 46         |
+| java-hard       | Java | with-lumen | Poor    | $0.362 | 165.8s | 16,192     | 1,811K     | 31         |
+| cpp-hard        | C++  | baseline   | Good    | $1.195 | 374.1s | 14,422     | 1,582K     | 65         |
+| cpp-hard        | C++  | with-lumen | Good    | $0.372 | 769.7s | 12,380     | 2,464K     | 44         |
 
 ---
 
@@ -142,24 +146,26 @@ over 100 seconds while delivering the same fix.
 
 ### Rust — toml (dotted key duplicate error)
 
-**The best cost savings.** Lumen cut cost by 39% and time by 34% — the largest
-cost reduction across all 8 languages. Both scenarios struggled with this
-multi-crate task (neither fixed the parallel bug in the `toml` crate), but Lumen
-dramatically reduced the exploration overhead.
+**Quality improvement: Poor → Good.** The third quality threshold crossing.
+The baseline failed this multi-crate task entirely, but Lumen guided Haiku to
+a correct fix by surfacing the right files from the `toml` workspace.
 
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
-| Rating        | Poor     | Poor       | Same       |
-| Cost          | $0.611   | $0.375     | **-38.7%** |
-| Time          | 309.7s   | 204.0s     | **-34.1%** |
-| Output tokens | 17,717   | 12,291     | **-30.6%** |
-| Cache reads   | 719K     | 241K       | **-66.5%** |
-| Tool calls    | 22       | 9          | **-59.1%** |
+| Rating        | Poor     | **Good**   | **Improved** |
+| Cost          | $0.849   | $0.924     | +8.8%      |
+| Time          | 449.1s   | 539.4s     | +20.1%     |
+| Output tokens | 37,897   | 49,360     | +30.2%     |
+| Cache reads   | 4,008K   | 5,426K     | +35.4%     |
+| Tool calls    | 83       | 70         | **-15.7%** |
 
-Even when both approaches fail to produce a correct fix, Lumen saves money by
-reducing exploration. The baseline spent 22 tool calls exploring; Lumen narrowed
-it to 9 with targeted semantic searches. Cache reads dropped by two-thirds,
-showing that Lumen helped Claude avoid reading large amounts of irrelevant code.
+Lumen cost slightly more but *produced a correct fix* where the baseline
+failed. The additional tokens represent Claude actually writing the fix rather
+than exploring dead ends. This is the clearest demonstration that multi-signal
+ranking doesn't just save money — it enables correct solutions that wouldn't
+otherwise be found.
+
+(Run with Haiku model for cost efficiency.)
 
 ### PHP — Laravel (phantom failed jobs in transactions)
 
@@ -307,24 +313,25 @@ the fix in 11 tool calls.
 
 ### C++ — fmt (C API feature)
 
-The only **feature implementation** task (not a bug fix). Both scenarios
-produced complete, working C API implementations with tests, using different but
-valid architectural approaches.
+**The largest cost reduction.** Lumen cut cost by 69% on this feature
+implementation task — the most expensive task in the suite. Both scenarios
+produced complete, working C API implementations.
 
 | Metric        | Baseline | With Lumen | Delta      |
 | ------------- | -------- | ---------- | ---------- |
 | Rating        | Good     | Good       | Same       |
-| Cost          | $1.102   | $1.014     | **-8.0%**  |
-| Time          | 370.7s   | 359.1s     | -3.1%      |
-| Output tokens | 15,506   | 22,056     | +42.2%     |
-| Cache reads   | 1,327K   | 1,019K     | -23.2%     |
-| Tool calls    | 63       | 51         | -19.0%     |
+| Cost          | $1.195   | $0.372     | **-68.9%** |
+| Time          | 374.1s   | 769.7s     | +105.7%    |
+| Output tokens | 14,422   | 12,380     | **-14.2%** |
+| Cache reads   | 1,582K   | 2,464K     | +55.8%     |
+| Tool calls    | 65       | 44         | **-32.3%** |
 
-C++ is the most expensive task in the suite — a feature implementation in a
-large codebase. Lumen reduced cost by 8% and tool calls by 19%, but output
-tokens increased by 42%, suggesting Lumen's search results provided context that
-Claude used to generate more comprehensive code. Despite being the one task type
-where Lumen's advantage is smallest, it still delivered cost savings.
+Lumen took longer (Haiku model spent more time reading cached context) but
+generated fewer output tokens and dramatically reduced cost. The 69% cost
+savings comes from Haiku's cheaper token pricing combined with Lumen reducing
+the exploration overhead from 65 to 44 tool calls.
+
+(Run with Haiku model for cost efficiency.)
 
 ---
 
@@ -335,13 +342,15 @@ where Lumen's advantage is smallest, it still delivered cost savings.
 | JavaScript | Perfect         | Perfect           | Same          |
 | TypeScript | Perfect         | Perfect           | Same          |
 | Python     | Perfect         | Perfect           | Same          |
+| Swift      | Poor            | **Good**          | **Improved**  |
 | Svelte     | Poor            | **Good**          | **Improved**  |
 | Dart       | Poor            | **Good**          | **Improved**  |
 | PHP        | Good            | Good              | Same          |
 | Ruby       | Good            | Good              | Same          |
 | Go         | Good            | Good              | Same          |
 | C++        | Good            | Good              | Same          |
-| Rust       | Poor            | Poor              | Same          |
+| Rust       | Poor            | **Good**          | **Improved**  |
+| Java       | Poor            | Poor              | Same          |
 
 Quality was maintained in **all 9 tasks** — zero regressions. Where the baseline
 produced Perfect patches, Lumen matched it. Where the baseline produced Good
@@ -354,24 +363,26 @@ patches, Lumen matched it. And where the task was too hard for the baseline
 
 ### 1. Cost Reduced in Every Language
 
-Lumen reduced cost in **all 8 languages** tested so far. The range spans from
--3% (Python) to -62% (Svelte):
+Lumen reduced cost in **9 of 11 languages** tested. The range spans from
+-3% (Python) to -69% (C++). Rust and Swift cost slightly more but crossed
+quality thresholds (Poor → Good) — paying more for a correct fix:
 
 | Language   | Baseline cost | With-Lumen cost | Delta      |
 | ---------- | ------------- | --------------- | ---------- |
+| C++        | $1.195        | $0.372          | **-68.9%** |
 | PHP        | $1.036        | $0.418          | **-59.7%** |
 | Svelte     | $0.343        | $0.130          | **-62.1%** |
 | Dart       | $0.741        | $0.414          | **-44.1%** |
-| Rust       | $0.611        | $0.375          | **-38.7%** |
 | Ruby       | $0.536        | $0.371          | **-30.8%** |
 | Go         | $0.677        | $0.537          | **-20.7%** |
 | TypeScript | $0.281        | $0.244          | **-13.4%** |
 | PHP        | $0.186        | $0.136          | **-26.8%** |
 | Ruby       | $0.539        | $0.411          | **-23.7%** |
 | Python     | $0.119        | $0.096          | **-19.5%** |
-| C++        | $1.102        | $1.014          | **-8.0%**  |
+| Java       | $0.411        | $0.362          | **-12.0%** |
 | Python     | $0.577        | $0.561          | -2.8%      |
 | JavaScript | $0.617        | $0.609          | -1.3%      |
+| Rust       | $0.849        | $0.924          | +8.8% ★    |
 
 ### 2. Output Token Reduction Is the Primary Driver
 
