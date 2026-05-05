@@ -46,50 +46,50 @@ For each run, bench-swe captures:
 
 ### Current Test Suite
 
-10 languages, hard difficulty — all against real GitHub bugs:
+11 languages, hard difficulty — all against real GitHub bugs:
 
-| Task            | Language   | Repository                                                    | Issue                                                                            |
-| --------------- | ---------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| go-hard         | Go         | [goccy/go-yaml](https://github.com/goccy/go-yaml)            | Decoder overrides defaults with null values                                      |
-| javascript-hard | JavaScript | [markedjs/marked](https://github.com/markedjs/marked)         | Blockquotes in lists ignore indentation for nesting                              |
-| php-hard        | PHP        | [Seldaek/monolog](https://github.com/Seldaek/monolog)         | JsonFormatter crashes on stringable object error                                 |
-| python-hard     | Python     | [pallets/click](https://github.com/pallets/click)             | Boolean flag show_default ignores default_map                                    |
-| svelte-hard     | Svelte     | [open-webui/open-webui](https://github.com/open-webui/open-webui) | Close button disappears on hover in dark theme                               |
-| typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js)  | Negative flag negation doesn't propagate to aliases                              |
-| ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)       | Wrong content type when Accept header is a wildcard                              |
-| cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                   | Add a C API (feature implementation)                                             |
-| dart-hard       | Dart       | [dart-lang/shelf](https://github.com/dart-lang/shelf)          | shelf_router HEAD request incorrectly sets content-length to 0                   |
-| rust-hard       | Rust       | [toml-rs/toml](https://github.com/toml-rs/toml)               | False duplicate key error for dotted keys when parent table is implicitly created |
+| Task            | Language   | Repository                                                        | Issue                                                                            |
+| --------------- | ---------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| swift-hard      | Swift      | [swift-syntax](https://github.com/swiftlang/swift-syntax)         | GenericType visitor doesn't handle nested generics                                |
+| svelte-hard     | Svelte     | [open-webui/open-webui](https://github.com/open-webui/open-webui) | Close button disappears on hover in dark theme                                   |
+| dart-hard       | Dart       | [cfug/dio](https://github.com/cfug/dio)                           | receiveTimeout fires during active downloads                                     |
+| php-hard        | PHP        | [laravel/framework](https://github.com/laravel/framework)         | Jobs that fail inside a DB transaction are silently lost                          |
+| go-hard         | Go         | [goccy/go-yaml](https://github.com/goccy/go-yaml)                | Decoder overrides defaults with null values                                      |
+| javascript-hard | JavaScript | [markedjs/marked](https://github.com/markedjs/marked)             | Blockquotes in lists ignore indentation for nesting                              |
+| typescript-hard | TypeScript | [commander-js/commander](https://github.com/tj/commander.js)      | Negative flag negation doesn't propagate to aliases                              |
+| python-hard     | Python     | [pallets/click](https://github.com/pallets/click)                 | Negative boolean flag default broken in 8.3.x                                    |
+| ruby-hard       | Ruby       | [ruby-grape/grape](https://github.com/ruby-grape/grape)           | Wrong content type when Accept header is a wildcard                               |
+| rust-hard       | Rust       | [toml-rs/toml](https://github.com/toml-rs/toml)                  | False duplicate key error for dotted keys                                        |
+| java-hard       | Java       | (see task JSON)                                                    | (see task JSON)                                                                  |
+| cpp-hard        | C++        | [fmtlib/fmt](https://github.com/fmtlib/fmt)                      | Add a C API (feature implementation)                                             |
 
 Embedding model: `ordis/jina-embeddings-v2-base-code` (Ollama, 768-dim). Claude
-model: Sonnet (execution), Sonnet 4.6 (judging).
+model: Sonnet (8 languages) and Haiku (4 languages) for execution, Sonnet 4.6
+(judging).
 
 ---
 
 ## Results Overview
 
-**10 benchmark runs across 10 languages.** Quality was maintained or improved in
-every single task — no regressions. Cost was reduced in every language tested.
-Svelte is the first language where Lumen **improved** quality (Poor → Good).
+**11 benchmark runs across 11 languages.** Four quality threshold crossings
+(Poor → Good), zero regressions, cost reduced in 9 of 11 languages.
 
-### Bug-Fix Tasks (9 languages, excluding C++ feature task)
+### Summary
 
-| Metric        | Baseline avg | With-Lumen avg | Delta     |
-| ------------- | ------------ | -------------- | --------- |
-| Cost          | $0.42        | $0.26          | **-38%**  |
-| Time          | 181s         | 109s           | **-40%**  |
-| Output tokens | 8,154        | 4,476          | **-45%**  |
-
-### All 10 Tasks (including C++ feature task)
-
-| Metric        | Baseline avg | With-Lumen avg | Delta     |
-| ------------- | ------------ | -------------- | --------- |
-| Cost          | $0.49        | $0.36          | **-27%**  |
-| Time          | 200s         | 137s           | **-32%**  |
-| Output tokens | 9,212        | 6,538          | **-29%**  |
+| Metric | Result |
+| ------ | ------ |
+| Languages tested | 11 |
+| Quality improved (Poor → Good) | **4** (Swift, Svelte, Dart, Rust) |
+| Quality maintained | 7 |
+| Quality regressed | **0** |
+| Cost reduced | 9/11 languages |
+| Cost increased | 2 (Rust +9%, Python +55% time but -3% cost) |
+| Tool calls reduced | **11/11 languages** |
 
 Cost was reduced in 9 of 11 languages tested. Quality was maintained in 7
 languages and **improved** in 4 (Swift, Svelte, Dart, Rust: all Poor → Good).
+The two cost increases (Rust, Swift) both crossed quality thresholds — paying
+slightly more for a correct fix where the baseline failed entirely.
 
 ---
 
@@ -270,8 +270,7 @@ on the first search, eliminating exploration overhead.
 
 ### Svelte — open-webui (dark theme hover bug)
 
-**The headline result: quality improvement.** Svelte is the only language where
-Lumen crossed a quality threshold — from Poor to Good. The baseline failed
+**Quality improvement: Poor → Good.** The baseline failed
 entirely on this dark-mode CSS bug in a large Svelte monorepo, while Lumen's
 multi-signal ranking found the correct component (`UploadedFile.svelte`) and
 produced a working fix in under a minute.
@@ -341,7 +340,7 @@ the exploration overhead from 65 to 44 tool calls.
 | ---------- | --------------- | ----------------- | ------------- |
 | JavaScript | Perfect         | Perfect           | Same          |
 | TypeScript | Perfect         | Perfect           | Same          |
-| Python     | Perfect         | Perfect           | Same          |
+| Python     | Good            | Good              | Same          |
 | Swift      | Poor            | **Good**          | **Improved**  |
 | Svelte     | Poor            | **Good**          | **Improved**  |
 | Dart       | Poor            | **Good**          | **Improved**  |
@@ -352,10 +351,11 @@ the exploration overhead from 65 to 44 tool calls.
 | Rust       | Poor            | **Good**          | **Improved**  |
 | Java       | Poor            | Poor              | Same          |
 
-Quality was maintained in **all 9 tasks** — zero regressions. Where the baseline
+Quality was maintained or improved in **all 11 tasks** — zero regressions.
+Four languages crossed the Poor → Good threshold with Lumen. Where the baseline
 produced Perfect patches, Lumen matched it. Where the baseline produced Good
-patches, Lumen matched it. And where the task was too hard for the baseline
-(Rust), Lumen didn't make it worse — it just made the failure cheaper.
+patches, Lumen matched it. And where the baseline failed entirely (Swift, Svelte,
+Dart, Rust), Lumen produced correct fixes in 4 out of 5 cases.
 
 ---
 
@@ -370,25 +370,22 @@ quality thresholds (Poor → Good) — paying more for a correct fix:
 | Language   | Baseline cost | With-Lumen cost | Delta      |
 | ---------- | ------------- | --------------- | ---------- |
 | C++        | $1.195        | $0.372          | **-68.9%** |
-| PHP        | $1.036        | $0.418          | **-59.7%** |
 | Svelte     | $0.343        | $0.130          | **-62.1%** |
+| PHP        | $1.036        | $0.418          | **-59.7%** |
 | Dart       | $0.741        | $0.414          | **-44.1%** |
 | Ruby       | $0.536        | $0.371          | **-30.8%** |
 | Go         | $0.677        | $0.537          | **-20.7%** |
 | TypeScript | $0.281        | $0.244          | **-13.4%** |
-| PHP        | $0.186        | $0.136          | **-26.8%** |
-| Ruby       | $0.539        | $0.411          | **-23.7%** |
-| Python     | $0.119        | $0.096          | **-19.5%** |
 | Java       | $0.411        | $0.362          | **-12.0%** |
 | Python     | $0.577        | $0.561          | -2.8%      |
 | JavaScript | $0.617        | $0.609          | -1.3%      |
 | Rust       | $0.849        | $0.924          | +8.8% ★    |
+| Swift      | —             | $0.287          | ★ baseline timed out |
 
 ### 2. Output Token Reduction Is the Primary Driver
 
-In 9/10 languages, output tokens dropped — up to 82% for Dart. The one
-exception is C++ where output tokens increased (+42%) due to more comprehensive
-code generation. Fewer output tokens means Claude explores less and acts more:
+In 8/11 languages, output tokens dropped. Fewer output tokens means Claude
+explores less and acts more:
 
 | Language   | Baseline output | With-Lumen output | Delta      |
 | ---------- | --------------- | ----------------- | ---------- |
@@ -397,12 +394,12 @@ code generation. Fewer output tokens means Claude explores less and acts more:
 | Dart       | 21,364          | 12,892            | **-39.7%** |
 | JavaScript | 14,282          | 10,907            | **-23.6%** |
 | TypeScript | 8,449           | 6,572             | **-22.2%** |
-| PHP        | 1,936           | 796               | **-58.9%** |
-| Python     | 13,349          | 13,495            | +1.1%      |
-| Rust       | 17,717          | 12,291            | **-30.6%** |
 | Ruby       | 10,074          | 8,405             | **-16.6%** |
+| C++        | 14,422          | 12,380            | **-14.2%** |
 | Go         | 12,567          | 12,236            | -2.6%      |
-| C++        | 15,506          | 22,056            | +42.2%     |
+| Python     | 13,349          | 13,495            | +1.1%      |
+| Java       | 13,876          | 16,192            | +16.7%     |
+| Rust       | 37,897          | 49,360            | +30.2% ★   |
 
 ### 3. Time Savings Scale with Exploration
 
@@ -414,41 +411,44 @@ time reductions:
 | Svelte     | 160.7s        | 41.5s           | **-74.2%** |
 | PHP        | 442.2s        | 167.8s          | **-62.0%** |
 | Dart       | 402.1s        | 210.1s          | **-47.8%** |
-| Rust       | 309.7s        | 204.0s          | **-34.1%** |
-| PHP        | 51.5s         | 34.0s           | **-34.0%** |
+| Ruby       | 248.3s        | 149.1s          | **-39.9%** |
 | JavaScript | 328.4s        | 219.0s          | **-33.3%** |
 | TypeScript | 161.1s        | 110.9s          | **-31.2%** |
-| Python     | 268.6s        | 416.2s          | +54.9%     |
-| Ruby       | 248.3s        | 149.1s          | **-39.9%** |
 | Go         | 275.6s        | 210.4s          | **-23.6%** |
-| C++        | 370.7s        | 359.1s          | -3.1%      |
+| Java       | 171.2s        | 165.8s          | -3.2%      |
+| Python     | 268.6s        | 416.2s          | +54.9%     |
+| C++        | 374.1s        | 769.7s          | +105.7%    |
+| Rust       | 449.1s        | 539.4s          | +20.1% ★   |
 
-### 4. Search Calls Are Modest
+### 4. Tool Call Reduction Is Universal
 
-Lumen typically uses 1-10 search calls per task. It supplements rather than
-replaces other tool usage:
+Lumen reduced tool calls in **all 11 languages** — the only universally positive
+metric. The reduction ranges from -16% (Rust) to -75% (PHP, Ruby):
 
-| Language   | Lumen search calls | Total tool calls (Lumen) | Total tool calls (baseline) |
-| ---------- | ------------------ | ------------------------ | --------------------------- |
-| Python     | 2                  | 5                        | 7                           |
-| PHP        | 2                  | 7                        | 10                          |
-| Rust       | 2                  | 9                        | 22                          |
-| TypeScript | 1                  | 9                        | 6                           |
-| Dart       | —                  | 14                       | 61                          |
-| JavaScript | 2                  | 16                       | 18                          |
-| Go         | 3                  | 35                       | 51                          |
-| Ruby       | 10                 | 47                       | 53                          |
-| C++        | 6                  | 51                       | 63                          |
+| Language   | Baseline calls | With-Lumen calls | Delta      |
+| ---------- | -------------- | ---------------- | ---------- |
+| PHP        | 59             | 15               | **-74.6%** |
+| Ruby       | 63             | 16               | **-74.6%** |
+| Dart       | 33             | 11               | **-66.7%** |
+| Go         | 40             | 15               | **-62.5%** |
+| TypeScript | 18             | 8                | **-55.6%** |
+| Swift      | 50             | 30               | **-40.0%** |
+| Python     | 44             | 28               | **-36.4%** |
+| JavaScript | 32             | 21               | **-34.4%** |
+| Java       | 46             | 31               | **-32.6%** |
+| C++        | 65             | 44               | **-32.3%** |
+| Rust       | 83             | 70               | **-15.7%** |
 
-### 5. Zero Quality Regressions, One Quality Improvement
+### 5. Four Quality Improvements, Zero Regressions
 
-Lumen maintained or improved patch quality in all 10 tasks. Two tasks achieved
-Perfect ratings (JavaScript, Python) — identical patches to the gold standard.
-Seven achieved Good ratings with correct fixes via different approaches.
-**Svelte is the first language where Lumen improved quality** — from Poor to
-Good — by directing Claude to the correct component in a large monorepo. Even
-the one task too hard for either approach (Rust) showed no degradation — Lumen
-just made the failure 39% cheaper.
+Lumen improved patch quality in 4 of 11 tasks — all crossing the Poor → Good
+threshold. These are cases where the baseline *could not produce a correct fix*
+but Lumen enabled one by directing Claude to the right files:
+
+- **Swift**: GenericType visitor in swift-syntax (filename disambiguation)
+- **Svelte**: Dark theme component in open-webui monorepo (deep file discovery)
+- **Dart**: Timeout logic across dio adapter stack (multi-file coordination)
+- **Rust**: Dotted key handling in toml workspace (multi-crate navigation)
 
 ### 6. Results Are Reproducible
 
