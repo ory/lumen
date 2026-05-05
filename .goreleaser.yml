@@ -78,8 +78,3 @@ archives:
 
 checksum:
   name_template: checksums.txt
-
-release:
-  github:
-    owner: ory
-    name: lumen
