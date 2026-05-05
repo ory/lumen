@@ -6,6 +6,60 @@ set -euo pipefail
 # OpenCode, and direct local invocation.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
 
+release_repo_from_remote_url() {
+  local url="$1" repo
+  case "$url" in
+    https://github.com/*/*.git) repo="${url#https://github.com/}"; repo="${repo%.git}" ;;
+    https://github.com/*/*) repo="${url#https://github.com/}" ;;
+    git@github.com:*/*.git) repo="${url#git@github.com:}"; repo="${repo%.git}" ;;
+    git@github.com:*/*) repo="${url#git@github.com:}" ;;
+    ssh://git@github.com/*/*.git) repo="${url#ssh://git@github.com/}"; repo="${repo%.git}" ;;
+    ssh://git@github.com/*/*) repo="${url#ssh://git@github.com/}" ;;
+    *) repo="" ;;
+  esac
+  if valid_release_repo "$repo"; then
+    echo "$repo"
+  else
+    echo ""
+  fi
+}
+
+valid_release_repo() {
+  local repo="$1" owner name
+  case "$repo" in
+    */*/* | /* | */) return 1 ;;
+    */*) ;;
+    *) return 1 ;;
+  esac
+  owner="${repo%%/*}"
+  name="${repo#*/}"
+  [[ "$owner" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] || return 1
+  [[ "$owner" != *--* ]] || return 1
+  [[ "$name" != *.git ]] || return 1
+  [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]]
+}
+
+resolve_release_repo() {
+  if [ -n "${LUMEN_RELEASE_REPO:-}" ]; then
+    if ! valid_release_repo "$LUMEN_RELEASE_REPO"; then
+      echo "Error: LUMEN_RELEASE_REPO must be in owner/repo form" >&2
+      return 1
+    fi
+    echo "$LUMEN_RELEASE_REPO"
+    return
+  fi
+
+  local remote_url repo
+  remote_url="$(git -C "$PLUGIN_ROOT" remote get-url origin 2>/dev/null || true)"
+  repo="$(release_repo_from_remote_url "$remote_url")"
+  if [ -n "$repo" ]; then
+    echo "$repo"
+    return
+  fi
+
+  echo "ory/lumen"
+}
+
 # Platform detection
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -29,7 +83,7 @@ done
 if [ -z "$BINARY" ]; then
   BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
 
-  REPO="ory/lumen"
+  REPO="$(resolve_release_repo)"
 
   # Always use the version pinned in the manifest — keeps plugin and binary in sync
   MANIFEST="${PLUGIN_ROOT}/.release-please-manifest.json"
@@ -80,4 +134,5 @@ if [ -z "$BINARY" ]; then
   echo "Installed lumen to ${BINARY}" >&2
 fi
 
+export LUMEN_PLUGIN_ROOT="${PLUGIN_ROOT}"
 exec "$BINARY" "$@"

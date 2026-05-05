@@ -40,6 +40,7 @@ jobs:
             -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Coveralls
+        if: ${{ github.repository == 'ory/lumen' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == 'ory/lumen') }}
         uses: coverallsapp/github-action@v2
         with:
           file: coverage.out

@@ -12,6 +12,7 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    if: github.repository == 'ory/lumen'
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -29,7 +30,7 @@ jobs:
     container:
       image: oryd/xgoreleaser:1.26.0-2.14.1
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' && github.repository == 'ory/lumen' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,7 +49,7 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' && github.repository == 'ory/lumen' }}
     permissions:
       contents: read
       id-token: write
