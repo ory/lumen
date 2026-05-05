@@ -27,7 +27,7 @@ set "TMP_BINARY=%BINARY%.tmp"
 if not exist "%BINARY%" (
   if defined LUMEN_RELEASE_REPO (
     set "REPO=%LUMEN_RELEASE_REPO%"
-    echo(!REPO!| findstr /r "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-][A-Za-z0-9_.-]*$" >nul 2>&1
+    powershell -NoProfile -Command "if ($env:REPO -match '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-][A-Za-z0-9_.-]*$' -and $env:REPO -notmatch '\.git$') { exit 0 } else { exit 1 }" >nul 2>&1
     if errorlevel 1 (
       echo Error: LUMEN_RELEASE_REPO must be in owner/repo form >&2
       exit /b 1
@@ -64,7 +64,7 @@ if not exist "%BINARY%" (
       if defined CANDIDATE (
         if "!CANDIDATE:~-4!"==".git" set "CANDIDATE=!CANDIDATE:~0,-4!"
         set "CANDIDATE_OK=0"
-        echo(!CANDIDATE!| findstr /r "^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-][A-Za-z0-9_.-]*$" >nul 2>&1
+        powershell -NoProfile -Command "if ($env:CANDIDATE -match '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-][A-Za-z0-9_.-]*$' -and $env:CANDIDATE -notmatch '\.git$') { exit 0 } else { exit 1 }" >nul 2>&1
         if not errorlevel 1 set "CANDIDATE_OK=1"
         if "!CANDIDATE_OK!"=="1" (
           for /f "tokens=1 delims=/" %%o in ("!CANDIDATE!") do set "CANDIDATE_OWNER=%%o"

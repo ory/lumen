@@ -193,6 +193,12 @@ exit /b 0
             -PassMessage 'run.bat stdio derives first-install download repo from git origin'
 
         Invoke-RunBatScenario `
+            -Name 'ssh-origin-remote' `
+            -ExpectedRepo 'def324/lumen' `
+            -OriginUrl 'git@github.com:def324/lumen.git' `
+            -PassMessage 'run.bat stdio derives first-install download repo from SSH origin'
+
+        Invoke-RunBatScenario `
             -Name 'invalid-origin-fallback' `
             -ExpectedRepo 'ory/lumen' `
             -OriginUrl 'https://github.com/def324/lumen/archive/main.tar.gz' `

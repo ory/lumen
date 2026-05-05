@@ -35,6 +35,7 @@ valid_release_repo() {
   name="${repo#*/}"
   [[ "$owner" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] || return 1
   [[ "$owner" != *--* ]] || return 1
+  [[ "$name" != *.git ]] || return 1
   [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]]
 }
 

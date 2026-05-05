@@ -129,6 +129,7 @@ valid_release_repo() {
   name="${repo#*/}"
   [[ "$owner" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]] || return 1
   [[ "$owner" != *--* ]] || return 1
+  [[ "$name" != *.git ]] || return 1
   [[ "$name" =~ ^[A-Za-z0-9_.-]+$ ]]
 }
 
@@ -152,6 +153,8 @@ assert_eq "ignore GitHub origin with invalid repo characters" "" \
   "$(release_repo_from_remote_url "https://github.com/def324/lumen?download=1")"
 assert_eq "reject release repo with no slash" "reject" \
   "$(valid_release_repo "ory" && echo accept || echo reject)"
+assert_eq "reject release repo with .git suffix" "reject" \
+  "$(valid_release_repo "def324/lumen.git" && echo accept || echo reject)"
 assert_eq "ignore GitHub origin with invalid owner underscore" "" \
   "$(release_repo_from_remote_url "https://github.com/def_324/lumen.git")"
 assert_eq "ignore GitHub origin with owner leading hyphen" "" \
