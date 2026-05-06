@@ -138,6 +138,90 @@ jobs:
           echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]' \
             || { echo "ERROR: version output does not match semver pattern"; exit 1; }
 
+      - name: Upload binary for integration job
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-${{ matrix.os }}
+          path: bin/lumen
+          retention-days: 1
+          if-no-files-found: error
+
+  build-windows-cross:
+    # Delegates to `make build` so the cross-compile recipe (MinGW toolchain,
+    # sqlite3 headers, CC overrides) lives in exactly one place: .goreleaser.yml,
+    # invoked through the xgoreleaser docker image already used by every shipped
+    # release. ci.yml does not duplicate that recipe.
+    name: Build windows-amd64 (xgoreleaser)
+    runs-on: ubuntu-latest
+    if: github.actor != 'release-please[bot]'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cross-compile via xgoreleaser
+        run: make build
+
+      - name: Stage windows binary for upload
+        run: |
+          # `make build` outputs to dist/<id>_<goos>_<goarch>/lumen[.exe].
+          # Extract the windows artifact into a stable path for upload.
+          mkdir -p bin
+          find dist -type f -name 'lumen.exe' -exec cp {} bin/lumen.exe \;
+          test -x bin/lumen.exe
+
+      - name: Upload binary for integration job
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-windows-amd64
+          path: bin/lumen.exe
+          retention-days: 1
+          if-no-files-found: error
+
+  integration:
+    name: Integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.actor != 'release-please[bot]'
+    timeout-minutes: 10
+    needs: [build, build-windows-cross]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download lumen binary (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-${{ matrix.os }}
+          path: bin
+
+      - name: Download lumen binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: lumen-windows-amd64
+          path: bin
+
+      - name: Restore execute bit (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x bin/lumen
+
+      - name: Integration tests
+        shell: bash
+        run: |
+          go test -tags=integration -timeout=5m -v ./internal/integration/...
+
   scripts:
     name: Script tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
