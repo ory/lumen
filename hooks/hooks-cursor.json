@@ -3,7 +3,7 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "${CURSOR_PLUGIN_ROOT}/scripts/run.cmd hook session-start lumen --host cursor"
+        "command": "node \"${CURSOR_PLUGIN_ROOT}/launcher.mjs\" hook session-start lumen --host cursor"
       }
     ]
   }

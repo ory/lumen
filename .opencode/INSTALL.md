@@ -6,6 +6,7 @@ server automatically.
 ## Prerequisites
 
 - [OpenCode.ai](https://opencode.ai) installed
+- Node.js 22+ (Active LTS; used by the plugin's launcher — OpenCode itself runs on Bun/Node, so this is normally already present)
 
 ## Installation
 
@@ -18,7 +19,9 @@ Add Lumen to the `plugin` array in your `opencode.json`:
 ```
 
 Restart OpenCode. The plugin registers a local `mcp.lumen` server that runs
-`scripts/run.cmd stdio` on all platforms.
+`node launcher.mjs stdio` on all platforms; the launcher resolves the
+matching native lumen binary per OS/arch and lazily fetches it from GitHub
+Releases on first use (subsequent runs are cache hits).
 
 ## Verify
 

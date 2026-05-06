@@ -164,9 +164,13 @@ jobs:
       - name: Stage windows binary for upload
         run: |
           # `make build` outputs to dist/<id>_<goos>_<goarch>/lumen[.exe].
-          # Extract the windows artifact into a stable path for upload.
+          # Pin to the windows-amd64 build deterministically — if a future
+          # goreleaser config adds another Windows arch, an unfiltered find
+          # would let the last copy win nondeterministically.
           mkdir -p bin
-          find dist -type f -name 'lumen.exe' -exec cp {} bin/lumen.exe \;
+          SRC="$(find dist -type f -path '*windows*amd64*/lumen.exe' | head -n1)"
+          test -n "$SRC" || { echo "windows-amd64 lumen.exe not found in dist/"; exit 1; }
+          cp "$SRC" bin/lumen.exe
           test -x bin/lumen.exe
 
       - name: Upload binary for integration job

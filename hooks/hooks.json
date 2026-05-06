@@ -6,7 +6,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run.cmd\" hook session-start lumen --host claude"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/launcher.mjs\" prefetch"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/launcher.mjs\" hook session-start lumen --host claude"
           }
         ]
       }
@@ -17,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run.cmd\" hook pre-tool-use lumen"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/launcher.mjs\" hook pre-tool-use lumen"
           }
         ]
       }

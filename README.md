@@ -126,7 +126,7 @@ CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 git clone https://github.com/ory/lumen.git "$CODEX_HOME/lumen"
 mkdir -p "$HOME/.agents/skills"
 ln -s "$CODEX_HOME/lumen/skills" "$HOME/.agents/skills/lumen"
-codex mcp add lumen -- "$CODEX_HOME/lumen/scripts/run.sh" stdio
+codex mcp add lumen --startup-timeout-sec 60 -- node "$CODEX_HOME/lumen/launcher.mjs" stdio
 ```
 
 Detailed docs: [.codex/INSTALL.md](.codex/INSTALL.md)

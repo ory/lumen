@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "lumen": {
-      "command": "${CURSOR_PLUGIN_ROOT}/scripts/run.cmd",
+      "command": "node",
       "args": [
+        "${CURSOR_PLUGIN_ROOT}/launcher.mjs",
         "stdio"
       ]
     }
