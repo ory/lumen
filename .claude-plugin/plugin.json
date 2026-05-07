@@ -19,8 +19,9 @@
   ],
   "mcpServers": {
     "lumen": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run.cmd",
+      "command": "node",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
         "stdio"
       ]
     }

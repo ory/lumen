@@ -1,3 +1,4 @@
+#!/bin/sh
 :<<"::CMDLITERAL"
 @echo off
 goto :batch
