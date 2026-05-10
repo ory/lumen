@@ -6,6 +6,36 @@ set -euo pipefail
 # OpenCode, and direct local invocation.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
 
+release_repo_from_remote_url() {
+  local url="$1" repo
+  case "$url" in
+    https://github.com/*/*.git) repo="${url#https://github.com/}"; echo "${repo%.git}" ;;
+    https://github.com/*/*) echo "${url#https://github.com/}" ;;
+    git@github.com:*/*.git) repo="${url#git@github.com:}"; echo "${repo%.git}" ;;
+    git@github.com:*/*) echo "${url#git@github.com:}" ;;
+    ssh://git@github.com/*/*.git) repo="${url#ssh://git@github.com/}"; echo "${repo%.git}" ;;
+    ssh://git@github.com/*/*) echo "${url#ssh://git@github.com/}" ;;
+    *) echo "" ;;
+  esac
+}
+
+resolve_release_repo() {
+  if [ -n "${LUMEN_RELEASE_REPO:-}" ]; then
+    echo "$LUMEN_RELEASE_REPO"
+    return
+  fi
+
+  local remote_url repo
+  remote_url="$(git -C "$PLUGIN_ROOT" remote get-url origin 2>/dev/null || true)"
+  repo="$(release_repo_from_remote_url "$remote_url")"
+  if [ -n "$repo" ]; then
+    echo "$repo"
+    return
+  fi
+
+  echo "ory/lumen"
+}
+
 # Platform detection
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -29,7 +59,7 @@ done
 if [ -z "$BINARY" ]; then
   BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
 
-  REPO="ory/lumen"
+  REPO="$(resolve_release_repo)"
 
   # Always use the version pinned in the manifest — keeps plugin and binary in sync
   MANIFEST="${PLUGIN_ROOT}/.release-please-manifest.json"
