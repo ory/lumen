@@ -21,10 +21,14 @@ esac
 EXT=""
 [ "$OS" = "windows" ] && EXT=".exe"
 
-# Find binary: check bin/ first, then goreleaser dist/ output, then download
+# Find binary: check bin/ first, then goreleaser dist/ output, then download.
+# `make build-local` runs `go build -o bin/lumen .` which, even on Windows,
+# does NOT append .exe when -o is explicit — so we must keep the
+# extensionless dev-build candidate alongside the .exe one.
 BINARY=""
 for candidate in \
   "${PLUGIN_ROOT}/bin/lumen${EXT}" \
+  "${PLUGIN_ROOT}/bin/lumen" \
   "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXT}"; do
   if [ -x "$candidate" ]; then
     BINARY="$candidate"

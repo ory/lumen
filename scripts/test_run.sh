@@ -144,6 +144,30 @@ assert_eq "darwin passthrough → darwin, no ext" \
 
 echo ""
 echo "=== binary candidate priority tests ==="
+# Windows dev-build case: `make build-local` runs `go build -o bin/lumen .`
+# which produces an extensionless `bin/lumen` even on Windows. The launcher
+# must still discover it ahead of falling back to the downloaded artefact.
+# We test the candidate ordering directly (no [ -x ] dependency, since Git
+# Bash refuses to mark extensionless touch-created files as executable —
+# the pre-existing two `[ -x ]`-based tests below fail on Git Bash for that
+# reason, unrelated to this fix).
+expected_candidates() {
+  local os="$1" arch="$2"
+  local ext=""
+  case "$os" in mingw*|msys*|cygwin*) os="windows" ;; esac
+  [ "$os" = "windows" ] && ext=".exe"
+  printf 'bin/lumen%s\nbin/lumen\nbin/lumen-%s-%s%s\n' "$ext" "$os" "$arch" "$ext"
+}
+assert_eq "windows candidates: .exe, extensionless dev, downloaded" \
+  "$(printf 'bin/lumen.exe\nbin/lumen\nbin/lumen-windows-amd64.exe\n')" \
+  "$(expected_candidates windows amd64)"
+assert_eq "mingw normalises, keeps extensionless dev build candidate" \
+  "$(printf 'bin/lumen.exe\nbin/lumen\nbin/lumen-windows-amd64.exe\n')" \
+  "$(expected_candidates mingw64_nt-10.0-26200 amd64)"
+assert_eq "linux candidates: extensionless dev, downloaded" \
+  "$(printf 'bin/lumen\nbin/lumen\nbin/lumen-linux-amd64\n')" \
+  "$(expected_candidates linux amd64)"
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
