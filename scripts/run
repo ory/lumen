@@ -6,19 +6,26 @@ set -euo pipefail
 # OpenCode, and direct local invocation.
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
 
-# Platform detection
+# Platform detection. Normalise MinGW/MSYS/Cygwin (Git Bash on Windows) to
+# `windows` so the launcher resolves the same binary as scripts/run.cmd and
+# the goreleaser asset names on GitHub releases.
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+case "$OS" in
+  mingw*|msys*|cygwin*) OS="windows" ;;
+esac
 ARCH="$(uname -m)"
 case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
   aarch64) ARCH="arm64" ;;
 esac
+EXT=""
+[ "$OS" = "windows" ] && EXT=".exe"
 
 # Find binary: check bin/ first, then goreleaser dist/ output, then download
 BINARY=""
 for candidate in \
-  "${PLUGIN_ROOT}/bin/lumen" \
-  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"; do
+  "${PLUGIN_ROOT}/bin/lumen${EXT}" \
+  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXT}"; do
   if [ -x "$candidate" ]; then
     BINARY="$candidate"
     break
@@ -27,7 +34,7 @@ done
 
 # Download on first run if no binary found
 if [ -z "$BINARY" ]; then
-  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
+  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXT}"
 
   REPO="ory/lumen"
 
@@ -43,7 +50,7 @@ if [ -z "$BINARY" ]; then
     exit 1
   fi
 
-  ASSET="lumen-${VERSION#v}-${OS}-${ARCH}"
+  ASSET="lumen-${VERSION#v}-${OS}-${ARCH}${EXT}"
   URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
   echo "Downloading lumen ${VERSION} for ${OS}/${ARCH}..." >&2
@@ -70,7 +77,7 @@ if [ -z "$BINARY" ]; then
 
     echo "Falling back to ${LATEST_TAG}..." >&2
     VERSION="$LATEST_TAG"
-    ASSET="lumen-${VERSION#v}-${OS}-${ARCH}"
+    ASSET="lumen-${VERSION#v}-${OS}-${ARCH}${EXT}"
     URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
     curl -fL --progress-bar --max-time 300 --retry 3 --retry-delay 2 "$URL" -o "$BINARY"

@@ -59,6 +59,22 @@ normalise_arch() {
   esac
 }
 
+# ---------------------------------------------------------------------------
+# OS normalisation (mirrors run case statement). Maps Git Bash / MSYS2 /
+# Cygwin uname strings to `windows` so the launcher resolves the same
+# binary asset as run.cmd. Emits "<os>:<ext>" so callers can also verify
+# the executable suffix that windows builds require.
+# ---------------------------------------------------------------------------
+normalise_os() {
+  local os="$1"
+  case "$os" in
+    mingw*|msys*|cygwin*) os="windows" ;;
+  esac
+  local ext=""
+  [ "$os" = "windows" ] && ext=".exe"
+  echo "${os}:${ext}"
+}
+
 echo "=== asset name tests ==="
 assert_eq "macOS arm64 asset" \
   "lumen-0.0.1-alpha.4-darwin-arm64" \
@@ -103,6 +119,28 @@ assert_eq "x86_64 → amd64"  "amd64" "$(normalise_arch "x86_64")"
 assert_eq "aarch64 → arm64" "arm64" "$(normalise_arch "aarch64")"
 assert_eq "arm64 passthrough" "arm64" "$(normalise_arch "arm64")"
 assert_eq "amd64 passthrough" "amd64" "$(normalise_arch "amd64")"
+
+echo ""
+echo "=== OS normalisation tests ==="
+# Git Bash / MSYS2 / Cygwin emit uname -s strings that begin with MINGW64_NT,
+# MINGW32_NT, MSYS_NT, or CYGWIN_NT. Before this normalisation the launcher
+# took those strings verbatim and constructed asset URLs like
+# `lumen-X.Y.Z-mingw64_nt-10.0-26200-amd64`, which 404 on GitHub releases
+# and skip the already-installed `bin/lumen-windows-amd64.exe`.
+assert_eq "MinGW64 Git Bash → windows + .exe" \
+  "windows:.exe" "$(normalise_os "mingw64_nt-10.0-26200")"
+assert_eq "MinGW32 Git Bash → windows + .exe" \
+  "windows:.exe" "$(normalise_os "mingw32_nt-10.0")"
+assert_eq "MSYS2 → windows + .exe" \
+  "windows:.exe" "$(normalise_os "msys_nt-10.0-26200")"
+assert_eq "Cygwin → windows + .exe" \
+  "windows:.exe" "$(normalise_os "cygwin_nt-10.0")"
+assert_eq "windows passthrough → windows + .exe" \
+  "windows:.exe" "$(normalise_os "windows")"
+assert_eq "linux passthrough → linux, no ext" \
+  "linux:" "$(normalise_os "linux")"
+assert_eq "darwin passthrough → darwin, no ext" \
+  "darwin:" "$(normalise_os "darwin")"
 
 echo ""
 echo "=== binary candidate priority tests ==="
@@ -168,9 +206,12 @@ echo "=== stdio download-on-first-run integration test ==="
   trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR"' EXIT
 
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$OS" in mingw*|msys*|cygwin*) OS="windows" ;; esac
+  EXT=""
+  [ "$OS" = "windows" ] && EXT=".exe"
   ARCH_RAW="$(uname -m)"
   case "$ARCH_RAW" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; *) ARCH="$ARCH_RAW" ;; esac
-  _EXPECTED_BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}"
+  _EXPECTED_BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}${EXT}"
 
   printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
   mkdir -p "${_TMPROOT}/bin"
@@ -304,13 +345,16 @@ echo "=== stdio first-install MCP handshake test ==="
   trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR" "$_MOCK_BIN_DIR"' EXIT
 
   _OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$_OS" in mingw*|msys*|cygwin*) _OS="windows" ;; esac
+  _EXT=""
+  [ "$_OS" = "windows" ] && _EXT=".exe"
   _ARCH_RAW="$(uname -m)"
   case "$_ARCH_RAW" in
     x86_64)  _ARCH="amd64" ;;
     aarch64) _ARCH="arm64" ;;
     *)       _ARCH="$_ARCH_RAW" ;;
   esac
-  _EXPECTED_BINARY="${_TMPROOT}/bin/lumen-${_OS}-${_ARCH}"
+  _EXPECTED_BINARY="${_TMPROOT}/bin/lumen-${_OS}-${_ARCH}${_EXT}"
 
   _MOCK_BIN="${_MOCK_BIN_DIR}/mock_lumen"
   if ! (cd "${_REPO_ROOT}" && CGO_ENABLED=0 go build -o "${_MOCK_BIN}" ./scripts/testdata/mock_mcp_server) >"${_TMPROOT}/mock_build.log" 2>&1; then
