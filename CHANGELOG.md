@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.40](https://github.com/ory/lumen/compare/v0.0.39...v0.0.40) (2026-05-13)
+
+
+### Features
+
+* **chunker:** add Swift support with tree-sitter parsing ([#142](https://github.com/ory/lumen/issues/142)) ([3f69146](https://github.com/ory/lumen/commit/3f69146d4e8166d479920a6b23eb3b54696db3de))
+
+
+### Bug Fixes
+
+* **index:** refuse $HOME, system roots, and .lumenignore-blanketed dirs ([#160](https://github.com/ory/lumen/issues/160)) ([fc9eea2](https://github.com/ory/lumen/commit/fc9eea2ed6b9986e920f0fe8383c0240495530bf))
+* **scripts:** eliminate stdout pollution in run.cmd polyglot ([#145](https://github.com/ory/lumen/issues/145)) ([2c1f63b](https://github.com/ory/lumen/commit/2c1f63bc3e2ff2244a70b99a9a2c3c3b05bba80e)), closes [#121](https://github.com/ory/lumen/issues/121)
+* **scripts:** split cross-OS launcher into POSIX + Windows files ([#159](https://github.com/ory/lumen/issues/159)) ([0537eae](https://github.com/ory/lumen/commit/0537eae09140f564420db66164400d01b1597969))
+
 ## [0.0.39](https://github.com/ory/lumen/compare/v0.0.38...v0.0.39) (2026-04-26)
 
 
