@@ -493,6 +493,37 @@ func TestSessionStartOutputCursorJSON(t *testing.T) {
 	}
 }
 
+func TestNormalizeHookHostCodexUsesClaudeCompatibleOutput(t *testing.T) {
+	host, err := normalizeHookHost("codex")
+	if err != nil {
+		t.Fatalf("normalizeHookHost: %v", err)
+	}
+
+	directive := sessionStartDirective(host, "lumen")
+	if !strings.Contains(directive, "mcp__lumen__semantic_search") {
+		t.Fatalf("codex directive = %q, want MCP tool reference", directive)
+	}
+
+	data, err := json.Marshal(sessionStartOutput(host, "context"))
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if _, exists := parsed["additional_context"]; exists {
+		t.Fatal("codex output should not use Cursor additional_context payloads")
+	}
+	hso, ok := parsed["hookSpecificOutput"].(map[string]any)
+	if !ok {
+		t.Fatal("codex output should use hookSpecificOutput payloads")
+	}
+	if hso["hookEventName"] != "SessionStart" || hso["additionalContext"] != "context" {
+		t.Fatalf("hookSpecificOutput = %#v, want SessionStart additionalContext", hso)
+	}
+}
+
 // TestSpawnBackgroundIndexer_DoesNotPanic verifies that spawnBackgroundIndexer
 // does not panic or block on a path that contains no indexable files.
 // The spawned process will acquire the lock, find nothing to index, and exit.

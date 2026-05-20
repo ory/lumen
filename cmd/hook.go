@@ -36,6 +36,7 @@ const backgroundIndexStaleness = 5 * time.Minute
 
 const (
 	hookHostClaude = "claude"
+	hookHostCodex  = "codex"
 	hookHostCursor = "cursor"
 )
 
@@ -59,7 +60,7 @@ var hookSessionStartHost string
 
 var hookSessionStartCmd = &cobra.Command{
 	Use:   "session-start [mcp-name]",
-	Short: "Output SessionStart hook JSON for Claude Code or Cursor",
+	Short: "Output SessionStart hook JSON for Claude Code, Codex, or Cursor",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runHookSessionStart,
 }
@@ -195,7 +196,7 @@ func generateSessionContextInternal(cwd string, findDonor func(string, string) s
 
 func normalizeHookHost(host string) (string, error) {
 	switch strings.ToLower(host) {
-	case "", hookHostClaude:
+	case "", hookHostClaude, hookHostCodex:
 		return hookHostClaude, nil
 	case hookHostCursor:
 		return hookHostCursor, nil
