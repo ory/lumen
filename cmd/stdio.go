@@ -537,6 +537,20 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	}
 	out.SeedWarning = seedWarning
 
+	// When the index is being rebuilt by a concurrent indexer, the
+	// StaleWarning text already instructs the caller to skip semantic_search
+	// for the next 10 tool calls. Embedding and searching now would (a) waste
+	// work the caller is told to ignore, and (b) contend with the busy
+	// indexer for the embedding backend — on a single-instance LM Studio,
+	// the query embed can queue behind the indexer's batches indefinitely
+	// and hang the MCP call. Return the warning immediately instead.
+	if out.StaleWarning != "" {
+		text := formatSearchResults(input.Path, out)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: text}},
+		}, nil, nil
+	}
+
 	queryVec, err := ic.embedQuery(ctx, input.Query)
 	if err != nil {
 		return nil, nil, err

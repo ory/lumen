@@ -19,11 +19,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/index"
+	"github.com/ory/lumen/internal/indexlock"
 )
 
 // ---------------------------------------------------------------------------
@@ -322,6 +326,155 @@ done:
 
 	blockEmb.Unblock()
 	ic.Close()
+}
+
+// TestHandleSemanticSearch_StaleWarningShortCircuits is a regression test for
+// the hang observed against /Users/aeneas/workspace/go/cloud: when a background
+// indexer process holds the index flock, `ensureIndexed` correctly sets
+// `out.StaleWarning` and returns immediately, but `handleSemanticSearch` then
+// proceeded to call `embedQuery` against the saturated embedding server. With
+// LM Studio (single-instance) being hammered by the background indexer's
+// 32-chunk batches, the query embed never completes within Claude Code's MCP
+// timeout, and the user sees an infinite hang.
+//
+// The fix is to short-circuit `handleSemanticSearch` when `StaleWarning` is set
+// — the warning text already tells the caller to skip semantic searches for
+// the next 10 tool calls, so embedding+searching is pure waste anyway.
+//
+// This test holds the flock externally, points the cache at an indexer whose
+// embedder blocks forever, and asserts the handler returns quickly with the
+// warning text — and that Embed was never called.
+func TestHandleSemanticSearch_StaleWarningShortCircuits(t *testing.T) {
+	const dims = 4
+
+	// Resolve symlinks up-front: validateSearchInput will EvalSymlinks the
+	// path, and on macOS t.TempDir() returns /var/folders/... which resolves
+	// to /private/var/folders/... — without this, the test's pre-acquired
+	// lock would be on the unresolved path while handleSemanticSearch looks
+	// up the resolved one, hiding the bug behind a different dbPath.
+	rawDir := t.TempDir()
+	projectDir, err := filepath.EvalSymlinks(rawDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestGoFile(t, projectDir, "main.go", `package main
+
+// Demo gives the indexer something to index.
+func Demo() {}
+`)
+
+	// Step 1: pre-create the index with a fast embedder so the DB exists and
+	// has at least one chunk. This isolates the test from the chunking path
+	// and lets the search call against the cache succeed if (incorrectly)
+	// reached.
+	fastEmb := &stubEmbedder{model: "blocking-stub"}
+	dbPath := config.DBPathForProject(projectDir, fastEmb.ModelName())
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Ensure the DB file (and any lock) does not leak across test runs.
+	t.Cleanup(func() {
+		_ = os.RemoveAll(filepath.Dir(dbPath))
+	})
+
+	idx, err := index.NewIndexer(dbPath, fastEmb, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = idx.Close()
+
+	// Step 2: hold the flock from "another process" — flock.New creates a
+	// new file descriptor so the same-process check in indexlock.IsHeld sees
+	// it as foreign (matches the pattern in TestEnsureIndexed_FlockHeldSkipsReindex).
+	lockPath := indexlock.LockPathForDB(dbPath)
+	lk, lockErr := indexlock.TryAcquire(lockPath)
+	if lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	if lk == nil {
+		t.Fatal("expected to acquire indexlock for test setup")
+	}
+	defer lk.Release()
+	if !indexlock.IsHeld(lockPath) {
+		t.Skip("flock TryAcquire+IsHeld is reentrant in the same process on this OS — test cannot simulate background indexer holding lock")
+	}
+
+	// Step 3: re-open the indexer with a blocking embedder. If
+	// handleSemanticSearch wrongly reaches embedQuery, it will block on
+	// Embed() forever.
+	blockEmb := newBlockingStubEmbedder(dims)
+	idx, err = index.NewIndexer(dbPath, blockEmb, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		blockEmb.Unblock()
+		_ = idx.Close()
+	}()
+
+	ic := &indexerCache{
+		cache: map[string]cacheEntry{
+			projectDir: {idx: idx, effectiveRoot: projectDir, model: blockEmb.ModelName()},
+		},
+		embedder:     blockEmb,
+		cfg:          newTestConfigService(t, 512),
+		log:          discardLog,
+		freshnessTTL: 1 * time.Nanosecond, // force the merkle/flock path; do not trust LastIndexedAt
+	}
+
+	// Step 4: call handleSemanticSearch with a deadline that's much shorter
+	// than the embed timeout. Before the fix, this call hangs on blockEmb.Embed
+	// forever; after the fix it returns immediately with the warning.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	done := make(chan struct {
+		result *mcp.CallToolResult
+		err    error
+	}, 1)
+
+	start := time.Now()
+	go func() {
+		req := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{}}
+		result, _, callErr := ic.handleSemanticSearch(ctx, req, SemanticSearchInput{
+			Cwd:   projectDir,
+			Path:  projectDir,
+			Query: "demo",
+			Limit: 3,
+		})
+		done <- struct {
+			result *mcp.CallToolResult
+			err    error
+		}{result, callErr}
+	}()
+
+	select {
+	case out := <-done:
+		elapsed := time.Since(start)
+		if out.err != nil {
+			t.Fatalf("handleSemanticSearch returned error: %v (elapsed %v)", out.err, elapsed)
+		}
+		if elapsed > 1*time.Second {
+			t.Fatalf("handleSemanticSearch took %v — expected sub-second short-circuit when StaleWarning is set", elapsed)
+		}
+		text := mustTextResult(t, out.result)
+		if !strings.Contains(text, "Index is being updated in the background") {
+			t.Fatalf("expected StaleWarning text in result, got:\n%s", text)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("handleSemanticSearch did not return within 3s — bug: embedQuery contends with background indexer even when StaleWarning is set")
+	}
+
+	// The embedder must NEVER have been called: the short-circuit must
+	// happen before embedQuery.
+	select {
+	case <-blockEmb.started:
+		t.Fatal("embedQuery was called even though StaleWarning was set — handleSemanticSearch must short-circuit before embedding")
+	default:
+	}
 }
 
 // writeTestGoFile creates a Go source file in dir for test setup.
