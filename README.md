@@ -275,17 +275,38 @@ for all 10 per-language benchmark deep dives.
 
 ## Configuration
 
-All configuration is via environment variables:
+Lumen supports persistent YAML configuration and environment variable overrides.
+For full details, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
-| Variable                 | Default                  | Description                                                   |
-| ------------------------ | ------------------------ | ------------------------------------------------------------- |
+By default, Lumen reads YAML config from:
+
+- `$XDG_CONFIG_HOME/lumen/config.yaml`, or
+- `~/.config/lumen/config.yaml` when `XDG_CONFIG_HOME` is unset.
+
+A minimal Ollama config looks like this:
+
+```yaml
+servers:
+  - backend: ollama
+    host: http://localhost:11434
+    model: ordis/jina-embeddings-v2-base-code
+```
+
+Environment variables override YAML values and are useful for one-off changes.
+They only affect the first configured server (`servers[0]`).
+
+| Variable                 | Default                  | Description                                                      |
+| ------------------------ | ------------------------ | ---------------------------------------------------------------- |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model; use with `LUMEN_EMBED_DIMS` for unlisted models |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`)                    |
-| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                             |
-| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                                          |
-| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting                         |
-| `LUMEN_EMBED_DIMS`       | —                        | Override embedding dimensions (required for unlisted models)  |
-| `LUMEN_EMBED_CTX`        | `8192` (unlisted models) | Override context window length                                |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`)                       |
+| `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                                |
+| `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                                             |
+| `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting                            |
+| `LUMEN_FRESHNESS_TTL`    | `60s`                    | Freshness cache duration                                         |
+| `LUMEN_REINDEX_TIMEOUT`  | `0s`                     | Config-level reindex timeout                                     |
+| `LUMEN_LOG_LEVEL`        | `info`                   | Logging verbosity                                                |
+| `LUMEN_EMBED_DIMS`       | —                        | Override embedding dimensions (required for unlisted models)     |
+| `LUMEN_EMBED_CTX`        | `8192` (unlisted models) | Override context window length                                   |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
 `nomic-ai/nomic-embed-code-GGUF` (LM Studio)
@@ -303,6 +324,7 @@ Dimensions and context length are configured automatically per model:
 | `nomic-embed-text`                   | Ollama    | 768  | 8192    | Untested                                                              |
 | `qwen3-embedding:0.6b`               | Ollama    | 1024 | 32768   | Untested                                                              |
 | `all-minilm`                         | Ollama    | 384  | 512     | Untested                                                              |
+| `manutic/nomic-embed-code:7b`        | Ollama    | 3584 | 32768   | Untested                                                              |
 
 Switching models creates a separate index automatically. The model name is part
 of the database path hash, so different models never collide.
@@ -312,47 +334,9 @@ of the database path hash, so different models never collide.
 > Studio entry both named `foo`), they share the same index — use distinct
 > model names per backend to avoid collisions.
 
-### Selecting a server per invocation
-
-`lumen index` and `lumen search` accept `--model`/`-m` and `--backend`/`-b`
-to pick from a multi-server `config.yaml`. The selection filters the
-configured servers to those matching both fields; failover still works
-within the filtered subset.
-
-```sh
-# Index with the Ollama server matching this model name.
-lumen index --model ordis/jina-embeddings-v2-base-code .
-
-# Same model name hosted on LM Studio (present in YAML, not in the
-# static registry) — accepted because the name is configured.
-lumen index --model text-embedding-jina-embeddings-v2-base-code .
-
-# Disambiguate when the same model is configured on two backends.
-lumen index --model my-embed --backend lmstudio .
-
-# Pick the first configured Ollama server regardless of model.
-lumen search --backend ollama "…"
-```
-
-If `--model` is not configured in YAML but is a known registry model (and
-`--backend` is unset), Lumen falls back to mutating the default server's
-model — preserving `lumen index --model all-minilm .` for users with no YAML.
-
-### Using a custom or unlisted model
-
-If your model is not in the registry above, set `LUMEN_EMBED_DIMS` to bypass the
-registry check. `LUMEN_EMBED_CTX` is optional and defaults to `8192`.
-
-Both variables can also override values for _known_ models — useful when running
-a model variant with a longer context window or different output dimensions.
-
-```sh
-LUMEN_BACKEND=lmstudio
-LM_STUDIO_HOST=http://localhost:8801
-LUMEN_EMBED_MODEL=mlx-community/Qwen3-Embedding-8B-4bit-DWQ
-LUMEN_EMBED_DIMS=4096
-LUMEN_EMBED_CTX=40960   # optional, defaults to 8192
-```
+See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for multi-server setups,
+LM Studio examples, custom models, validation rules, environment-variable
+precedence, and CLI server selection.
 
 ## Controlling what gets indexed
 
