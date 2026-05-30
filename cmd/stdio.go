@@ -139,6 +139,18 @@ const defaultStaleEmbedTimeout = 3 * time.Second
 
 const backgroundReindexMaxDuration = 10 * time.Minute
 
+// defaultCreateWaitTimeout bounds how long getOrCreate waits for a peer
+// process (the background lumen index spawned at SessionStart) to publish a
+// new index DB it is creating + seeding under the exclusive index lock. The
+// peer publishes the file early (a donor copy or an empty DB) before the slow
+// embedding pass, so this only needs to cover that brief window. On timeout
+// getOrCreate falls back to creating the DB itself.
+const defaultCreateWaitTimeout = 3 * time.Second
+
+// createWaitPollInterval is how often getOrCreate re-checks for the peer's DB
+// file while waiting up to defaultCreateWaitTimeout.
+const createWaitPollInterval = 25 * time.Millisecond
+
 // staleIndexWarning is returned to the caller whenever ensureIndexed cannot
 // produce a fresh index synchronously (background indexer holds the flock,
 // in-process goroutine is already running, or reindex timed out). The text
@@ -199,6 +211,7 @@ type indexerCache struct {
 	reindexTimeout    time.Duration                                                                                                            // override for tests; 0 reads from cfg, then defaultReindexTimeout
 	embedTimeout      time.Duration                                                                                                            // override for tests; 0 means defaultEmbedTimeout
 	staleEmbedTimeout time.Duration                                                                                                            // override for tests; 0 means defaultStaleEmbedTimeout
+	createWaitTimeout time.Duration                                                                                                            // override for tests; 0 means defaultCreateWaitTimeout
 	findDonorFunc     func(string, string) string                                                                                              // nil uses config.FindDonorIndex
 	seedFunc          func(string, string) (bool, error)                                                                                       // nil uses index.SeedFromDonor
 	ensureFreshFunc   func(ctx context.Context, idx *index.Indexer, projectDir string, progress index.ProgressFunc) (bool, index.Stats, error) // nil uses idx.EnsureFresh
@@ -254,6 +267,15 @@ func (ic *indexerCache) getStaleEmbedTimeout() time.Duration {
 		return ic.staleEmbedTimeout
 	}
 	return defaultStaleEmbedTimeout
+}
+
+// getCreateWaitTimeout returns how long getOrCreate waits for a peer process
+// to publish a new index DB before creating it itself.
+func (ic *indexerCache) getCreateWaitTimeout() time.Duration {
+	if ic.createWaitTimeout != 0 {
+		return ic.createWaitTimeout
+	}
+	return defaultCreateWaitTimeout
 }
 
 // logger returns ic.log, falling back to a discarding logger when the field
@@ -494,27 +516,29 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 			"model", modelName,
 			"index_version", config.IndexVersion,
 		)
-		findDonor := ic.findDonorFunc
-		if findDonor == nil {
-			findDonor = config.FindDonorIndex
-		}
-		if donorPath := findDonor(effectiveRoot, modelName); donorPath != "" {
-			ic.logger().Info("seeding index from donor worktree",
-				"effective_root", effectiveRoot,
-				"donor_path", donorPath,
-			)
-			seedFn := ic.seedFunc
-			if seedFn == nil {
-				seedFn = index.SeedFromDonor
+
+		// Serialize creation + seeding with the background indexer
+		// (lumen index, spawned by the SessionStart hook) via the same
+		// exclusive index lock it holds. Without this, both processes can run
+		// SeedFromDonor against the same dbPath concurrently — corrupting the
+		// SQLite file — or one can create an empty DB that makes the other skip
+		// seeding and re-index the worktree from scratch.
+		lockPath := indexlock.LockPathForDB(dbPath)
+		lk, lockErr := indexlock.TryAcquire(lockPath)
+		switch {
+		case lockErr == nil && lk != nil:
+			// We own creation. Re-check under the lock — a peer may have created
+			// the DB between our stat above and acquiring the lock.
+			if _, st := os.Stat(dbPath); os.IsNotExist(st) {
+				seedWarning = ic.seedFromDonor(effectiveRoot, modelName, dbPath)
 			}
-			if _, seedErr := seedFn(donorPath, dbPath); seedErr != nil {
-				ic.logger().Warn("seed from donor worktree failed",
-					"effective_root", effectiveRoot,
-					"donor_path", donorPath,
-					"error", seedErr,
-				)
-				seedWarning = fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
-			}
+			lk.Release()
+		default:
+			// A background indexer holds the lock and is creating + seeding the
+			// DB. Wait briefly for it to publish the file so NewIndexer opens
+			// the seeded copy instead of creating an empty DB that would clobber
+			// the seed.
+			ic.waitForDB(dbPath)
 		}
 	}
 
@@ -549,6 +573,56 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		ic.cacheSet(projectPath, modelName, cacheEntry{idx: idx, effectiveRoot: effectiveRoot, model: modelName, lastCheckedAt: entry.lastCheckedAt})
 	}
 	return idx, effectiveRoot, seedWarning, nil
+}
+
+// seedFromDonor copies a sibling worktree's index into dbPath, reusing the
+// parent's embeddings instead of indexing from scratch. The caller must hold
+// the exclusive index lock for dbPath. Returns a non-empty seedWarning when a
+// donor was found but the copy failed (indexing will proceed from scratch).
+func (ic *indexerCache) seedFromDonor(effectiveRoot, modelName, dbPath string) (seedWarning string) {
+	findDonor := ic.findDonorFunc
+	if findDonor == nil {
+		findDonor = config.FindDonorIndex
+	}
+	donorPath := findDonor(effectiveRoot, modelName)
+	if donorPath == "" {
+		return ""
+	}
+	ic.logger().Info("seeding index from donor worktree",
+		"effective_root", effectiveRoot,
+		"donor_path", donorPath,
+	)
+	seedFn := ic.seedFunc
+	if seedFn == nil {
+		seedFn = index.SeedFromDonor
+	}
+	if _, seedErr := seedFn(donorPath, dbPath); seedErr != nil {
+		ic.logger().Warn("seed from donor worktree failed",
+			"effective_root", effectiveRoot,
+			"donor_path", donorPath,
+			"error", seedErr,
+		)
+		return fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
+	}
+	return ""
+}
+
+// waitForDB polls for dbPath to appear, up to getCreateWaitTimeout. It is used
+// when another process holds the index lock and is creating + seeding the DB:
+// waiting for it to publish the file lets the subsequent NewIndexer open the
+// seeded copy rather than creating an empty DB that clobbers the seed.
+func (ic *indexerCache) waitForDB(dbPath string) {
+	deadline := time.Now().Add(ic.getCreateWaitTimeout())
+	for {
+		if _, err := os.Stat(dbPath); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			ic.logger().Debug("timed out waiting for peer indexer to publish DB", "db_path", dbPath)
+			return
+		}
+		time.Sleep(createWaitPollInterval)
+	}
 }
 
 // handleSemanticSearch is the tool handler for the semantic_search tool.
