@@ -392,8 +392,10 @@ and binary version. Different models or Lumen versions automatically get
 separate indexes. No files are added to your repo, no `.gitignore` modifications
 needed.
 
-You can safely delete the entire `lumen` directory to clear all indexes, or use
-`lumen purge` to do it automatically.
+You can safely delete the entire `lumen` directory to clear all indexes. Or use
+`lumen purge` (current project only), `lumen purge --all` (every index), or
+`lumen purge --missing` (drop indexes whose source folder was deleted; add
+`--dry-run` to preview).
 
 **Git worktrees** are detected automatically. When you create a new worktree
 (`git worktree add` or `claude --worktree`), Lumen finds a sibling worktree's
