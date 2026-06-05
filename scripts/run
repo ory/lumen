@@ -14,11 +14,20 @@ case "$ARCH" in
   aarch64) ARCH="arm64" ;;
 esac
 
+# Normalize Windows-flavored uname. Git Bash/MSYS2/Cygwin report uname -s as
+# mingw*/msys*/cygwin* (and embed the Windows build number), not "windows", and
+# their binaries carry a .exe suffix. Without this the loop below misses the
+# bundled bin/lumen-windows-amd64.exe and falls through to a doomed download.
+EXT=""
+case "$OS" in
+  mingw*|msys*|cygwin*|windows*) OS="windows"; EXT=".exe" ;;
+esac
+
 # Find binary: check bin/ first, then goreleaser dist/ output, then download
 BINARY=""
 for candidate in \
-  "${PLUGIN_ROOT}/bin/lumen" \
-  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"; do
+  "${PLUGIN_ROOT}/bin/lumen${EXT}" \
+  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXT}"; do
   if [ -x "$candidate" ]; then
     BINARY="$candidate"
     break
@@ -27,7 +36,7 @@ done
 
 # Download on first run if no binary found
 if [ -z "$BINARY" ]; then
-  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
+  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXT}"
 
   REPO="ory/lumen"
 

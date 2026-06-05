@@ -72,7 +72,15 @@ jobs:
     if: github.actor != 'release-please[bot]'
     services:
       ollama:
-        image: ollama/ollama:latest
+        # Pin the embedding runtime. The lang E2E suite (TestLang_*) asserts on
+        # committed embedding snapshots (testdata/snapshots/), so all-minilm must
+        # return identical vectors run-to-run. The `:latest` tag drifted from
+        # 0.24.0 to a newer build between 2026-05-20 and 2026-06-04, which shifted
+        # the ranked results and broke every snapshot. 0.24.0 is the last runtime
+        # the snapshots were verified green against (== the multi-arch index
+        # digest that `docker pull` resolves the 0.24.0 tag to:
+        # sha256:a6149234667efc71d37766d61c1a16f24c33e4cd7a0bf4125c44a7e47e2419c4).
+        image: ollama/ollama:0.24.0
         ports:
           - 11434:11434
     steps:
