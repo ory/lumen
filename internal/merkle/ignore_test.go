@@ -147,6 +147,7 @@ func TestIsRootUnindexable(t *testing.T) {
 		}
 		windowsPaths := []string{
 			`C:\`,
+			`D:\`,
 			`C:\Windows`,
 			`C:\Program Files`,
 			`C:\Program Files (x86)`,
@@ -170,6 +171,12 @@ func TestIsRootUnindexable(t *testing.T) {
 			got, reason := IsRootUnindexable(p)
 			if !got {
 				t.Errorf("expected %q to be refused as an index root", p)
+			}
+			if runtime.GOOS == "windows" && filepath.VolumeName(p) != "" && filepath.Clean(p) == filepath.VolumeName(p)+`\` {
+				if reason != "windows drive root" {
+					t.Errorf("reason for %q = %q, want %q", p, reason, "windows drive root")
+				}
+				continue
 			}
 			if reason != "hardcoded system root" {
 				t.Errorf("reason for %q = %q, want %q", p, reason, "hardcoded system root")
@@ -558,8 +565,8 @@ func TestAncestorDirs(t *testing.T) {
 		{"", []string{""}},
 		{".", []string{""}},
 		{"a", []string{"", "a"}},
-		{"a/b", []string{"", "a", "a/b"}},
-		{"a/b/c", []string{"", "a", "a/b", "a/b/c"}},
+		{"a/b", []string{"", "a", filepath.Join("a", "b")}},
+		{"a/b/c", []string{"", "a", filepath.Join("a", "b"), filepath.Join("a", "b", "c")}},
 	}
 
 	for _, tt := range tests {
@@ -632,9 +639,9 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 	// main.go, sub/sub.go, sub/helper.go should be present
 	// app.log (root .gitignore), sub/internal_helper.go (nested .gitignore) excluded
 	expected := map[string]bool{
-		"main.go":       true,
-		"sub/sub.go":    true,
-		"sub/helper.go": true,
+		"main.go":                         true,
+		filepath.Join("sub", "sub.go"):    true,
+		filepath.Join("sub", "helper.go"): true,
 	}
 	if len(tree.Files) != len(expected) {
 		t.Fatalf("expected %d files, got %d: %v", len(expected), len(tree.Files), tree.Files)
@@ -647,7 +654,7 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 	if _, ok := tree.Files["app.log"]; ok {
 		t.Error("expected app.log to be excluded by root .gitignore")
 	}
-	if _, ok := tree.Files["sub/internal_helper.go"]; ok {
+	if _, ok := tree.Files[filepath.Join("sub", "internal_helper.go")]; ok {
 		t.Error("expected sub/internal_helper.go to be excluded by nested .gitignore")
 	}
 }
@@ -662,7 +669,7 @@ func TestIgnoreTree_GlobalGitignore(t *testing.T) {
 
 	// Create git config pointing to it
 	configPath := filepath.Join(globalIgnoreDir, "gitconfig")
-	configContent := fmt.Sprintf("[core]\n\texcludesFile = %s\n", globalIgnorePath)
+	configContent := fmt.Sprintf("[core]\n\texcludesFile = %s\n", filepath.ToSlash(globalIgnorePath))
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -679,4 +686,3 @@ func TestIgnoreTree_GlobalGitignore(t *testing.T) {
 		t.Error("main.go should not be skipped")
 	}
 }
-

@@ -49,7 +49,7 @@ var (
 // is set, it writes got to the golden file instead.
 func assertGolden(t *testing.T, goldenPath, got string) {
 	t.Helper()
-	got = strings.TrimRight(got, "\n")
+	got = strings.TrimRight(got, "\r\n")
 	if *updateGolden {
 		if err := os.WriteFile(goldenPath, []byte(got+"\n"), 0o644); err != nil {
 			t.Fatalf("update golden: %v", err)
@@ -60,7 +60,9 @@ func assertGolden(t *testing.T, goldenPath, got string) {
 	if err != nil {
 		t.Fatalf("read golden file: %v", err)
 	}
-	want := strings.TrimRight(string(golden), "\n")
+	want := strings.TrimRight(string(golden), "\r\n")
+	want = strings.ReplaceAll(want, "\r\n", "\n")
+	got = strings.ReplaceAll(got, "\r\n", "\n")
 	if got != want {
 		t.Fatalf("output does not match golden file %s (run with -update-golden to refresh).\n\nGOT:\n%s\n\nWANT:\n%s", goldenPath, got, want)
 	}
@@ -142,24 +144,36 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 	const model = "test-model"
 
 	t.Run("returns path when no parent exists", func(t *testing.T) {
+		project := filepath.Join(t.TempDir(), "project")
+		pkg := filepath.Join(project, "src", "pkg")
+		if err := os.MkdirAll(pkg, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
 		ic := &indexerCache{
 			cache:    make(map[string]cacheEntry),
 			embedder: &stubEmbedder{model: model},
 		}
-		root := ic.findEffectiveRoot("/project/src/pkg")
-		if root != "/project/src/pkg" {
-			t.Fatalf("expected original path, got %s", root)
+		root := ic.findEffectiveRoot(pkg)
+		if root != pkg {
+			t.Fatalf("expected original path %q, got %q", pkg, root)
 		}
 	})
 
 	t.Run("returns cached parent", func(t *testing.T) {
+		project := filepath.Join(t.TempDir(), "project")
+		pkg := filepath.Join(project, "src", "pkg")
+		if err := os.MkdirAll(pkg, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
 		ic := &indexerCache{
-			cache:    map[string]cacheEntry{"/project": {idx: nil, effectiveRoot: "/project"}},
+			cache:    map[string]cacheEntry{project: {idx: nil, effectiveRoot: project}},
 			embedder: &stubEmbedder{model: model},
 		}
-		root := ic.findEffectiveRoot("/project/src/pkg")
-		if root != "/project" {
-			t.Fatalf("expected /project (cached parent), got %s", root)
+		root := ic.findEffectiveRoot(pkg)
+		if root != project {
+			t.Fatalf("expected cached parent %q, got %q", project, root)
 		}
 	})
 
@@ -167,8 +181,13 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// Create the DB file that would exist for /project with our model.
-		parentDBPath := config.DBPathForProject("/project", model)
+		project := filepath.Join(t.TempDir(), "project")
+		pkg := filepath.Join(project, "src", "pkg")
+		if err := os.MkdirAll(pkg, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		parentDBPath := config.DBPathForProject(project, model)
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -180,9 +199,9 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 			cache:    make(map[string]cacheEntry),
 			embedder: &stubEmbedder{model: model},
 		}
-		root := ic.findEffectiveRoot("/project/src/pkg")
-		if root != "/project" {
-			t.Fatalf("expected /project (db on disk), got %s", root)
+		root := ic.findEffectiveRoot(pkg)
+		if root != project {
+			t.Fatalf("expected parent with db %q, got %q", project, root)
 		}
 	})
 
@@ -190,8 +209,13 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// Simulate a parent index at /project.
-		parentDBPath := config.DBPathForProject("/project", model)
+		project := filepath.Join(t.TempDir(), "project")
+		skippedPath := filepath.Join(project, "testdata", "fixtures", "go")
+		if err := os.MkdirAll(skippedPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		parentDBPath := config.DBPathForProject(project, model)
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -205,9 +229,9 @@ func TestIndexerCache_FindEffectiveRoot(t *testing.T) {
 		}
 		// "testdata" is in merkle.SkipDirs — the parent index would never
 		// contain these files, so findEffectiveRoot must return the path itself.
-		root := ic.findEffectiveRoot("/project/testdata/fixtures/go")
-		if root != "/project/testdata/fixtures/go" {
-			t.Fatalf("expected original path (skip dir in route), got %s", root)
+		root := ic.findEffectiveRoot(skippedPath)
+		if root != skippedPath {
+			t.Fatalf("expected original path through skip dir %q, got %q", skippedPath, root)
 		}
 	})
 }
@@ -509,10 +533,11 @@ func TestIndexerCache_GetOrCreate_WorktreePathIgnoresPreferredRoot(t *testing.T)
 	}
 
 	// cwd=parentRepo is passed as preferredRoot (the outer monorepo).
-	_, effectiveRoot, _, err := ic.getOrCreate(worktreePath, parentRepo)
+	idx, effectiveRoot, _, err := ic.getOrCreate(worktreePath, parentRepo)
 	if err != nil {
 		t.Fatalf("getOrCreate: %v", err)
 	}
+	t.Cleanup(func() { _ = idx.Close() })
 
 	// When path is a git worktree, the effective root must be the worktree
 	// path, not the outer repo. Using the parent causes the entire monorepo to
@@ -587,6 +612,16 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 }
 
 func TestValidateSearchInput_CwdPathInteraction(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "project")
+	src := filepath.Join(root, "src")
+	other := filepath.Join(t.TempDir(), "other")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name     string
 		input    SemanticSearchInput
@@ -595,22 +630,22 @@ func TestValidateSearchInput_CwdPathInteraction(t *testing.T) {
 	}{
 		{
 			name:     "cwd only — path defaults to cwd",
-			input:    SemanticSearchInput{Cwd: "/project", Query: "test"},
-			wantPath: "/project",
+			input:    SemanticSearchInput{Cwd: root, Query: "test"},
+			wantPath: root,
 		},
 		{
 			name:     "path only — works as before",
-			input:    SemanticSearchInput{Path: "/project/src", Query: "test"},
-			wantPath: "/project/src",
+			input:    SemanticSearchInput{Path: src, Query: "test"},
+			wantPath: src,
 		},
 		{
 			name:     "both valid — path under cwd",
-			input:    SemanticSearchInput{Cwd: "/project", Path: "/project/src", Query: "test"},
-			wantPath: "/project/src",
+			input:    SemanticSearchInput{Cwd: root, Path: src, Query: "test"},
+			wantPath: src,
 		},
 		{
 			name:    "both invalid — path outside cwd",
-			input:   SemanticSearchInput{Cwd: "/project", Path: "/other", Query: "test"},
+			input:   SemanticSearchInput{Cwd: root, Path: other, Query: "test"},
 			wantErr: "path must be equal to or under cwd",
 		},
 		{
@@ -1108,6 +1143,7 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getOrCreate: %v", err)
 	}
+	t.Cleanup(func() { _ = idx.Close() })
 
 	dbPath := config.DBPathForProject(effectiveRoot, ic.embedder.ModelName())
 	lockPath := indexlock.LockPathForDB(dbPath)

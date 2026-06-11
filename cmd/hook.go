@@ -26,6 +26,7 @@ import (
 
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/git"
+	"github.com/ory/lumen/internal/merkle"
 	"github.com/ory/lumen/internal/store"
 )
 
@@ -132,18 +133,43 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 	emb := newEmbedder(cfg)
 	modelName := emb.ModelName()
 	dims := cfg.ServerDims(0)
+	allowBackgroundIndex := false
 
 	// Normalize cwd to the git repository root so the DB path matches what
-	// `lumen index` and the MCP handler use. For non-git directories, walk
-	// up to reuse an existing ancestor index.
+	// `lumen index` and the MCP handler use. For non-git directories, reuse an
+	// existing ancestor index, but do not invent a new background crawl at a
+	// plain parent/root just because a host opened a session there.
 	if root, err := git.RepoRoot(cwd); err == nil {
-		cwd = root
-	} else if ancestor := findAncestorIndex(cwd, modelName); ancestor != "" {
-		cwd = ancestor
+		if unindexable, _ := merkle.IsRootUnindexable(root); !unindexable {
+			cwd = root
+			allowBackgroundIndex = true
+		} else if !hasLumenBoundaryFile(cwd) {
+			if ancestor := findAncestorIndex(cwd, modelName); ancestor != "" {
+				cwd = ancestor
+				allowBackgroundIndex = true
+			}
+		}
+	} else if !hasLumenBoundaryFile(cwd) {
+		if ancestor := findAncestorIndex(cwd, modelName); ancestor != "" {
+			cwd = ancestor
+			allowBackgroundIndex = true
+		}
+	} else {
+		allowBackgroundIndex = true
+	}
+	if hasLumenBoundaryFile(cwd) {
+		allowBackgroundIndex = true
+	}
+	if unindexable, reason := merkle.IsRootUnindexable(cwd); unindexable {
+		return directive + " Index root blocked: " + reason + "."
 	}
 
 	dbPath := config.DBPathForProject(cwd, modelName)
 	if _, err := os.Stat(dbPath); err != nil {
+		if !allowBackgroundIndex {
+			return directive + " No index yet — auto-created on first semantic_search call."
+		}
+
 		// No index yet — kick off background pre-warming so the first search
 		// in this session doesn't pay the full seed + embed cost synchronously.
 		bgIndexer(cwd)
@@ -162,10 +188,12 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 	// Spawn background indexer if the index is stale or has never been
 	// successfully completed. This avoids spawning on every session start
 	// when the index was recently updated.
-	if val, metaErr := s.GetMeta("last_indexed_at"); metaErr != nil || val == "" {
-		bgIndexer(cwd)
-	} else if t, parseErr := time.Parse(time.RFC3339, val); parseErr != nil || time.Since(t) > backgroundIndexStaleness {
-		bgIndexer(cwd)
+	if allowBackgroundIndex {
+		if val, metaErr := s.GetMeta("last_indexed_at"); metaErr != nil || val == "" {
+			bgIndexer(cwd)
+		} else if t, parseErr := time.Parse(time.RFC3339, val); parseErr != nil || time.Since(t) > backgroundIndexStaleness {
+			bgIndexer(cwd)
+		}
 	}
 
 	stats, err := s.Stats()

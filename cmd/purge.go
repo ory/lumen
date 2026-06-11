@@ -23,6 +23,7 @@ import (
 
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/git"
+	"github.com/ory/lumen/internal/merkle"
 	"github.com/ory/lumen/internal/store"
 	"github.com/spf13/cobra"
 )
@@ -146,8 +147,10 @@ func purgeOneTarget(stderr io.Writer, indexMap map[string][]string, seen map[str
 	target := abs
 	inGitRepo := false
 	if root, err := git.RepoRoot(abs); err == nil {
-		target = root
-		inGitRepo = true
+		if unindexable, _ := merkle.IsRootUnindexable(root); !unindexable {
+			target = root
+			inGitRepo = true
+		}
 	}
 
 	match := ""

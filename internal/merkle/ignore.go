@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -151,6 +152,8 @@ func (t *IgnoreTree) loadDir(dirRel string) *dirIgnore {
 // shouldSkip implements SkipFunc. It checks the six filtering layers:
 // 1. SkipDirs, 2. SkipFiles, 3. .gitignore, 4. .lumenignore, 5. .gitattributes, 6. extension.
 func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
+	relPath = filepath.Clean(relPath)
+	slashRelPath := filepath.ToSlash(relPath)
 	base := filepath.Base(relPath)
 	if isDir && SkipDirs[base] {
 		return true
@@ -165,7 +168,7 @@ func (t *IgnoreTree) shouldSkip(relPath string, isDir bool) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.globalIgnore != nil && t.globalIgnore.MatchesPath(relPath) {
+	if t.globalIgnore != nil && t.globalIgnore.MatchesPath(slashRelPath) {
 		return true
 	}
 
@@ -202,10 +205,10 @@ func (t *IgnoreTree) checkIgnoreRules(relPath, anc string, isDir bool) bool {
 
 func getPathFromAncestor(relPath, anc string) string {
 	if anc == "" {
-		return relPath
+		return filepath.ToSlash(relPath)
 	}
 	pathFromAnc, _ := filepath.Rel(anc, relPath)
-	return pathFromAnc
+	return filepath.ToSlash(pathFromAnc)
 }
 
 // ancestorDirs returns the directory hierarchy from root ("") to dirRel.
@@ -357,6 +360,9 @@ func IsRootUnindexable(dir string) (bool, string) {
 	// while the cleaned-input check keeps "/etc" itself matching.
 	clean := filepath.Clean(dir)
 	resolved := resolvePath(dir)
+	if runtime.GOOS == "windows" && (isWindowsDriveRoot(clean) || isWindowsDriveRoot(resolved)) {
+		return true, "windows drive root"
+	}
 	if refusedRoots[clean] || refusedRoots[resolved] {
 		return true, "hardcoded system root"
 	}
@@ -383,6 +389,15 @@ func IsRootUnindexable(dir string) (bool, string) {
 		return true, ".lumenignore catch-all pattern"
 	}
 	return false, ""
+}
+
+func isWindowsDriveRoot(path string) bool {
+	volume := filepath.VolumeName(path)
+	if volume == "" {
+		return false
+	}
+	rest := strings.TrimPrefix(path, volume)
+	return rest == `\` || rest == `/` || rest == ""
 }
 
 // MakeSkipWithExtra is like MakeSkip but also skips directories whose relative
