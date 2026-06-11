@@ -217,6 +217,45 @@ func TestIsRootUnindexable(t *testing.T) {
 		}
 	})
 
+	t.Run("agent session stores are refused", func(t *testing.T) {
+		root := t.TempDir()
+		cases := []struct {
+			name string
+			path string
+		}{
+			{name: "claude projects", path: filepath.Join(root, ".claude", "projects")},
+			{name: "codex sessions", path: filepath.Join(root, ".codex", "sessions")},
+			{name: "codex history", path: filepath.Join(root, ".codex", "history")},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if err := os.MkdirAll(tc.path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				got, reason := IsRootUnindexable(tc.path)
+				if !got {
+					t.Fatalf("expected %q to be refused as an agent session store", tc.path)
+				}
+				if reason != "agent session store" {
+					t.Fatalf("reason = %q, want %q", reason, "agent session store")
+				}
+			})
+		}
+	})
+
+	t.Run("agent config directories remain indexable inside projects", func(t *testing.T) {
+		root := t.TempDir()
+		for _, dir := range []string{filepath.Join(root, ".claude"), filepath.Join(root, ".codex")} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if got, reason := IsRootUnindexable(dir); got {
+				t.Fatalf("expected config dir %q to remain indexable, got reason %q", dir, reason)
+			}
+		}
+	})
+
 	t.Run("hardcoded refusal does not falsely flag siblings of home", func(t *testing.T) {
 		// A directory that is NOT in the refusal list and has no .lumenignore
 		// must still be indexable. Use the test's tempdir which is outside any

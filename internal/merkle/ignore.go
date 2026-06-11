@@ -373,6 +373,9 @@ func IsRootUnindexable(dir string) (bool, string) {
 			return true, "user home directory"
 		}
 	}
+	if isAgentSessionStoreRoot(clean) || isAgentSessionStoreRoot(resolved) {
+		return true, "agent session store"
+	}
 
 	gi, err := ignore.CompileIgnoreFile(filepath.Join(dir, ".lumenignore"))
 	if err != nil || gi == nil {
@@ -398,6 +401,23 @@ func isWindowsDriveRoot(path string) bool {
 	}
 	rest := strings.TrimPrefix(path, volume)
 	return rest == `\` || rest == `/` || rest == ""
+}
+
+func isAgentSessionStoreRoot(path string) bool {
+	parts := strings.FieldsFunc(filepath.Clean(path), func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	for i := 0; i+1 < len(parts); i++ {
+		parent := strings.ToLower(parts[i])
+		child := strings.ToLower(parts[i+1])
+		if parent == ".claude" && child == "projects" {
+			return true
+		}
+		if parent == ".codex" && (child == "sessions" || child == "history") {
+			return true
+		}
+	}
+	return false
 }
 
 // MakeSkipWithExtra is like MakeSkip but also skips directories whose relative
