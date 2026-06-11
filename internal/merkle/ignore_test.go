@@ -184,6 +184,25 @@ func TestIsRootUnindexable(t *testing.T) {
 		}
 	})
 
+	t.Run("windows system descendants are refused case-insensitively", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			t.Skip("windows-only path semantics")
+		}
+		for _, p := range []string{
+			`C:\Windows\System32`,
+			`C:\WINDOWS\system32`,
+			`C:\Program Files\Vendor`,
+			`C:\ProgramData\Vendor`,
+		} {
+			got, reason := IsRootUnindexable(p)
+			if !got {
+				t.Fatalf("expected %q to be refused as a protected system subtree", p)
+			}
+			if reason != "hardcoded system root" {
+				t.Fatalf("reason for %q = %q, want %q", p, reason, "hardcoded system root")
+			}
+		}
+	})
 	t.Run("symlink to home is refused", func(t *testing.T) {
 		home, err := os.UserHomeDir()
 		if err != nil {
