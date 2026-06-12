@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ory/lumen/internal/config"
@@ -153,10 +154,8 @@ func purgeOneTarget(stderr io.Writer, indexMap map[string][]string, seen map[str
 		}
 	}
 
-	match := ""
-	if _, ok := indexMap[target]; ok {
-		match = target
-	} else if !inGitRepo {
+	match := lookupProjectIndex(indexMap, target)
+	if match == "" && !inGitRepo {
 		// Non-git fallback: match the deepest stored path that contains the
 		// target. Mirrors `findAncestorIndex` semantics used by index/search.
 		match = longestAncestor(indexMap, target)
@@ -183,18 +182,44 @@ func purgeOneTarget(stderr io.Writer, indexMap map[string][]string, seen map[str
 	return removed, nil
 }
 
+func lookupProjectIndex(indexMap map[string][]string, target string) string {
+	for stored := range indexMap {
+		if sameProjectPath(stored, target) {
+			return stored
+		}
+	}
+	return ""
+}
+
 // longestAncestor returns the longest key in indexMap that is either equal to
 // target or an ancestor directory of target, or "" if no such key exists.
 func longestAncestor(indexMap map[string][]string, target string) string {
 	best := ""
 	for stored := range indexMap {
-		if stored == target || strings.HasPrefix(target, stored+string(filepath.Separator)) {
+		if sameProjectPath(stored, target) || pathIsUnder(target, stored) {
 			if len(stored) > len(best) {
 				best = stored
 			}
 		}
 	}
 	return best
+}
+
+func sameProjectPath(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func pathIsUnder(path, root string) bool {
+	root = strings.TrimRight(root, `\/`)
+	candidate := root + string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		path = strings.ToLower(path)
+		candidate = strings.ToLower(candidate)
+	}
+	return strings.HasPrefix(path, candidate)
 }
 
 func pluralY(n int) string {
