@@ -336,7 +336,8 @@ func (ic *indexerCache) findEffectiveRoot(path string, model ...string) string {
 			}
 		}
 
-		if !pathCrossesSkipDir(candidate, path) {
+		unindexable, _ := merkle.IsRootUnindexable(candidate)
+		if !pathCrossesSkipDir(candidate, path) && !unindexable {
 			if _, ok := ic.cacheGet(candidate, modelName); ok {
 				return candidate
 			}
@@ -360,7 +361,9 @@ func (ic *indexerCache) findEffectiveRoot(path string, model ...string) string {
 	// search path itself instead, so test fixtures and similar directories get
 	// their own scoped index.
 	if gitErr == nil && !pathCrossesSkipDir(gitRoot, path) {
-		return gitRoot
+		if unindexable, _ := merkle.IsRootUnindexable(gitRoot); !unindexable {
+			return gitRoot
+		}
 	}
 	return path
 }
@@ -462,6 +465,10 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		effectiveRoot = filepath.Clean(preferredRoot)
 	} else {
 		effectiveRoot = ic.findEffectiveRoot(projectPath, modelName)
+	}
+
+	if unindexable, reason := merkle.IsRootUnindexable(effectiveRoot); unindexable {
+		return nil, "", "", fmt.Errorf("refusing to index %s: %s", effectiveRoot, reason)
 	}
 
 	// If a parent index is already cached, alias and return.

@@ -83,8 +83,10 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	// For non-git directories, walk up to reuse an existing ancestor index.
 	if root, err := git.RepoRoot(projectPath); err == nil {
 		projectPath = root
-	} else if ancestor := findAncestorIndex(projectPath, modelName); ancestor != "" {
-		projectPath = ancestor
+	} else if !hasLumenBoundaryFile(projectPath) {
+		if ancestor := findAncestorIndex(projectPath, modelName); ancestor != "" {
+			projectPath = ancestor
+		}
 	}
 
 	// Re-check after normalization: git.RepoRoot can resolve upward to an

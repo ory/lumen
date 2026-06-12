@@ -13,12 +13,16 @@ case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
   aarch64) ARCH="arm64" ;;
 esac
+case "$OS" in
+  mingw*|msys*|cygwin*) OS="windows"; EXE=".exe" ;;
+  *) EXE="" ;;
+esac
 
 # Find binary: check bin/ first, then goreleaser dist/ output, then download
 BINARY=""
 for candidate in \
-  "${PLUGIN_ROOT}/bin/lumen" \
-  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"; do
+  "${PLUGIN_ROOT}/bin/lumen${EXE}" \
+  "${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXE}"; do
   if [ -x "$candidate" ]; then
     BINARY="$candidate"
     break
@@ -27,7 +31,7 @@ done
 
 # Download on first run if no binary found
 if [ -z "$BINARY" ]; then
-  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}"
+  BINARY="${PLUGIN_ROOT}/bin/lumen-${OS}-${ARCH}${EXE}"
 
   REPO="ory/lumen"
 
@@ -43,7 +47,7 @@ if [ -z "$BINARY" ]; then
     exit 1
   fi
 
-  ASSET="lumen-${VERSION#v}-${OS}-${ARCH}"
+  ASSET="lumen-${VERSION#v}-${OS}-${ARCH}${EXE}"
   URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
   echo "Downloading lumen ${VERSION} for ${OS}/${ARCH}..." >&2
@@ -70,7 +74,7 @@ if [ -z "$BINARY" ]; then
 
     echo "Falling back to ${LATEST_TAG}..." >&2
     VERSION="$LATEST_TAG"
-    ASSET="lumen-${VERSION#v}-${OS}-${ARCH}"
+    ASSET="lumen-${VERSION#v}-${OS}-${ARCH}${EXE}"
     URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
     curl -fL --progress-bar --max-time 300 --retry 3 --retry-delay 2 "$URL" -o "$BINARY"

@@ -221,32 +221,111 @@ func TestPreToolUseOutputJSON(t *testing.T) {
 	}
 }
 
-func TestGenerateSessionContextInternal_SpawnsWhenNoDB(t *testing.T) {
-	// No DB exists → bgIndexer must be called regardless of donor presence.
+func TestGenerateSessionContextInternal_DoesNotSpawnForPlainRootWhenNoDB(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
-	t.Run("with donor", func(t *testing.T) {
-		var bgCwd string
-		generateSessionContextInternal("/my/worktree",
-			func(_, _ string) string { return "/some/donor.db" },
-			func(cwd string) { bgCwd = cwd },
-		)
-		if bgCwd != "/my/worktree" {
-			t.Fatalf("expected bgIndexer called with /my/worktree, got %q", bgCwd)
-		}
-	})
+	plainDir := filepath.Join(t.TempDir(), "plain-root")
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("without donor", func(t *testing.T) {
-		var bgCwd string
-		generateSessionContextInternal("/my/worktree",
-			func(_, _ string) string { return "" },
-			func(cwd string) { bgCwd = cwd },
-		)
-		if bgCwd != "/my/worktree" {
-			t.Fatalf("expected bgIndexer called even without donor, got %q", bgCwd)
-		}
-	})
+	var bgCwd string
+	result := generateSessionContextInternal(plainDir,
+		func(_, _ string) string { return "/some/donor.db" },
+		func(cwd string) { bgCwd = cwd },
+	)
+	if bgCwd != "" {
+		t.Fatalf("bgIndexer must not be called for a plain fresh root, got %q", bgCwd)
+	}
+	if !strings.Contains(result, "auto-created on first semantic_search call") {
+		t.Fatalf("expected first-search message for plain fresh root, got: %s", result)
+	}
+}
+
+func TestGenerateSessionContextInternal_SpawnsAtBoundaryWhenNoDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	boundaryDir := filepath.Join(t.TempDir(), "bounded-root")
+	if err := os.MkdirAll(boundaryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boundaryDir, ".lumenignore"), []byte("vendor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var bgCwd string
+	result := generateSessionContextInternal(boundaryDir,
+		func(_, _ string) string { return "/some/donor.db" },
+		func(cwd string) { bgCwd = cwd },
+	)
+	if bgCwd != boundaryDir {
+		t.Fatalf("expected bgIndexer called with boundary root %q, got %q", boundaryDir, bgCwd)
+	}
+	if !strings.Contains(result, "indexing in background") {
+		t.Fatalf("expected background message for bounded fresh root, got: %s", result)
+	}
+}
+
+func TestGenerateSessionContextInternal_SpawnsAtGitRootWhenNoDB(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	subDir := filepath.Join(repoDir, "sub", "deep")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repoDir, "init")
+
+	resolvedRepo, err := filepath.EvalSymlinks(repoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedSub := filepath.Join(resolvedRepo, "sub", "deep")
+
+	var bgCwd string
+	result := generateSessionContextInternal(resolvedSub,
+		func(_, _ string) string { return "" },
+		func(cwd string) { bgCwd = cwd },
+	)
+	if bgCwd != resolvedRepo {
+		t.Fatalf("expected bgIndexer called with git root %q, got %q", resolvedRepo, bgCwd)
+	}
+	if !strings.Contains(result, "indexing in background") {
+		t.Fatalf("expected background message for fresh git root, got: %s", result)
+	}
+}
+
+func TestGenerateSessionContextInternal_BlocksUnindexableRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	result := generateSessionContextInternal(home,
+		func(_, _ string) string { return "" },
+		func(_ string) { called = true },
+	)
+	if called {
+		t.Fatal("bgIndexer must not be called for an unindexable root")
+	}
+	if !strings.Contains(result, "Index root blocked: user home directory.") {
+		t.Fatalf("expected blocked-root message, got: %s", result)
+	}
 }
 
 func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
@@ -275,54 +354,78 @@ func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
 	}
 }
 
-func TestGenerateSessionContextInternal_SpawnsWhenStale(t *testing.T) {
+func TestGenerateSessionContextInternal_SpawnsWhenBoundedIndexIsStale(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	boundaryDir := filepath.Join(t.TempDir(), "bounded-root")
+	if err := os.MkdirAll(boundaryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boundaryDir, ".lumenignore"), []byte("vendor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg, err := config.NewConfigService("")
 	if err != nil {
 		t.Fatalf("NewConfigService: %v", err)
 	}
 	emb := newEmbedder(cfg)
-	dbPath := config.DBPathForProject("/myproject", emb.ModelName())
+	dbPath := config.DBPathForProject(boundaryDir, emb.ModelName())
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeHookTestDB(t, dbPath, time.Now().Add(-10*time.Minute))
 
 	called := false
-	generateSessionContextInternal("/myproject",
+	generateSessionContextInternal(boundaryDir,
 		func(_, _ string) string { return "" },
 		func(_ string) { called = true },
 	)
 	if !called {
-		t.Fatal("bgIndexer must be called when index is stale")
+		t.Fatal("bgIndexer must be called when a bounded index is stale")
 	}
 }
 
 func TestGenerateSessionContextInternal_MessageWithDonor(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
-	result := generateSessionContextInternal("/my/worktree",
+	boundaryDir := filepath.Join(t.TempDir(), "bounded-root")
+	if err := os.MkdirAll(boundaryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boundaryDir, ".lumenignore"), []byte("vendor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := generateSessionContextInternal(boundaryDir,
 		func(_, _ string) string { return "/some/donor.db" },
 		func(_ string) {},
 	)
-	if !strings.Contains(result, "background") {
-		t.Errorf("expected 'background' in context when donor found, got: %s", result)
+	if !strings.Contains(result, "Sibling worktree index found") {
+		t.Errorf("expected donor background message, got: %s", result)
 	}
 }
 
 func TestGenerateSessionContextInternal_MessageWithoutDonor(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
-	result := generateSessionContextInternal("/my/worktree",
+	plainDir := filepath.Join(t.TempDir(), "plain-root")
+	if err := os.MkdirAll(plainDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := generateSessionContextInternal(plainDir,
 		func(_, _ string) string { return "" },
 		func(_ string) {},
 	)
-	if !strings.Contains(result, "background") {
-		t.Errorf("expected 'background' in context when no donor, got: %s", result)
+	if !strings.Contains(result, "auto-created on first semantic_search call") {
+		t.Errorf("expected first-search message when no donor, got: %s", result)
 	}
 }
 

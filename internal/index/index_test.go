@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -619,7 +620,6 @@ func TestIndexer_StaleUnsupportedExtensionNotCountedAsRemoved(t *testing.T) {
 	// The test passing without error means the ghost record was not propagated.
 }
 
-
 // TestIndexer_StaleUnsupportedExtensionDeletedFromDB verifies that after a
 // reindex, stale file records with unsupported extensions (e.g. .md from
 // donor seeding) are purged from the DB.
@@ -935,6 +935,9 @@ func Nested() {}
 }
 
 func TestIndexer_SkipsPermissionDeniedFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not reliably deny reads for the current user")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses file permission checks")
 	}

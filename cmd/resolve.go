@@ -21,6 +21,7 @@ import (
 
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/git"
+	"github.com/ory/lumen/internal/merkle"
 )
 
 // resolveIndexRoot determines the index root and search path for a given
@@ -64,9 +65,17 @@ func resolveIndexRoot(pathFlag, cwdFlag, model string) (indexRoot, searchPath st
 	// ancestor index walk.
 	indexRoot = searchPath
 	if root, gitErr := git.RepoRoot(searchPath); gitErr == nil {
-		indexRoot = root
-	} else if ancestor := findAncestorIndex(searchPath, model); ancestor != "" {
-		indexRoot = ancestor
+		if unindexable, _ := merkle.IsRootUnindexable(root); !unindexable {
+			indexRoot = root
+		} else if !hasLumenBoundaryFile(searchPath) {
+			if ancestor := findAncestorIndex(searchPath, model); ancestor != "" {
+				indexRoot = ancestor
+			}
+		}
+	} else if !hasLumenBoundaryFile(searchPath) {
+		if ancestor := findAncestorIndex(searchPath, model); ancestor != "" {
+			indexRoot = ancestor
+		}
 	}
 
 	// When cwd is provided and the search path resolved to itself (no git root,

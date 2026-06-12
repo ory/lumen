@@ -194,6 +194,39 @@ func TestResolveIndexRoot(t *testing.T) {
 			t.Fatalf("expected searchPath=%q, got %q", subDir, searchPath)
 		}
 	})
+
+	t.Run("lumenignore boundary does not adopt ancestor index", func(t *testing.T) {
+		tmp := resolvedTempDir(t)
+		t.Setenv("XDG_DATA_HOME", tmp)
+
+		parentDir := filepath.Join(tmp, "workspace")
+		subDir := filepath.Join(parentDir, "dashboard")
+		if err := os.MkdirAll(subDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(subDir, ".lumenignore"), []byte("vendor/\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		dbPath := config.DBPathForProject(parentDir, model)
+		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dbPath, []byte{}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		indexRoot, searchPath, err := resolveIndexRoot(subDir, "", model)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if indexRoot != subDir {
+			t.Fatalf("expected indexRoot=%q (.lumenignore boundary), got %q", subDir, indexRoot)
+		}
+		if searchPath != subDir {
+			t.Fatalf("expected searchPath=%q, got %q", subDir, searchPath)
+		}
+	})
 }
 
 func runGit(t *testing.T, dir string, args ...string) {

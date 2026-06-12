@@ -147,6 +147,7 @@ func TestIsRootUnindexable(t *testing.T) {
 		}
 		windowsPaths := []string{
 			`C:\`,
+			`D:\`,
 			`C:\Windows`,
 			`C:\Program Files`,
 			`C:\Program Files (x86)`,
@@ -171,12 +172,37 @@ func TestIsRootUnindexable(t *testing.T) {
 			if !got {
 				t.Errorf("expected %q to be refused as an index root", p)
 			}
+			if runtime.GOOS == "windows" && filepath.VolumeName(p) != "" && filepath.Clean(p) == filepath.VolumeName(p)+`\` {
+				if reason != "windows drive root" {
+					t.Errorf("reason for %q = %q, want %q", p, reason, "windows drive root")
+				}
+				continue
+			}
 			if reason != "hardcoded system root" {
 				t.Errorf("reason for %q = %q, want %q", p, reason, "hardcoded system root")
 			}
 		}
 	})
 
+	t.Run("windows system descendants are refused case-insensitively", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			t.Skip("windows-only path semantics")
+		}
+		for _, p := range []string{
+			`C:\Windows\System32`,
+			`C:\WINDOWS\system32`,
+			`C:\Program Files\Vendor`,
+			`C:\ProgramData\Vendor`,
+		} {
+			got, reason := IsRootUnindexable(p)
+			if !got {
+				t.Fatalf("expected %q to be refused as a protected system subtree", p)
+			}
+			if reason != "hardcoded system root" {
+				t.Fatalf("reason for %q = %q, want %q", p, reason, "hardcoded system root")
+			}
+		}
+	})
 	t.Run("symlink to home is refused", func(t *testing.T) {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -207,6 +233,45 @@ func TestIsRootUnindexable(t *testing.T) {
 		}
 		if reason != "user home directory" {
 			t.Errorf("reason = %q, want %q", reason, "user home directory")
+		}
+	})
+
+	t.Run("agent session stores are refused", func(t *testing.T) {
+		root := t.TempDir()
+		cases := []struct {
+			name string
+			path string
+		}{
+			{name: "claude projects", path: filepath.Join(root, ".claude", "projects")},
+			{name: "codex sessions", path: filepath.Join(root, ".codex", "sessions")},
+			{name: "codex history", path: filepath.Join(root, ".codex", "history")},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if err := os.MkdirAll(tc.path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				got, reason := IsRootUnindexable(tc.path)
+				if !got {
+					t.Fatalf("expected %q to be refused as an agent session store", tc.path)
+				}
+				if reason != "agent session store" {
+					t.Fatalf("reason = %q, want %q", reason, "agent session store")
+				}
+			})
+		}
+	})
+
+	t.Run("agent config directories remain indexable inside projects", func(t *testing.T) {
+		root := t.TempDir()
+		for _, dir := range []string{filepath.Join(root, ".claude"), filepath.Join(root, ".codex")} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if got, reason := IsRootUnindexable(dir); got {
+				t.Fatalf("expected config dir %q to remain indexable, got reason %q", dir, reason)
+			}
 		}
 	})
 
@@ -558,8 +623,8 @@ func TestAncestorDirs(t *testing.T) {
 		{"", []string{""}},
 		{".", []string{""}},
 		{"a", []string{"", "a"}},
-		{"a/b", []string{"", "a", "a/b"}},
-		{"a/b/c", []string{"", "a", "a/b", "a/b/c"}},
+		{"a/b", []string{"", "a", filepath.Join("a", "b")}},
+		{"a/b/c", []string{"", "a", filepath.Join("a", "b"), filepath.Join("a", "b", "c")}},
 	}
 
 	for _, tt := range tests {
@@ -632,9 +697,9 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 	// main.go, sub/sub.go, sub/helper.go should be present
 	// app.log (root .gitignore), sub/internal_helper.go (nested .gitignore) excluded
 	expected := map[string]bool{
-		"main.go":       true,
-		"sub/sub.go":    true,
-		"sub/helper.go": true,
+		"main.go":                         true,
+		filepath.Join("sub", "sub.go"):    true,
+		filepath.Join("sub", "helper.go"): true,
 	}
 	if len(tree.Files) != len(expected) {
 		t.Fatalf("expected %d files, got %d: %v", len(expected), len(tree.Files), tree.Files)
@@ -647,7 +712,7 @@ func TestBuildTree_WithNestedGitignore(t *testing.T) {
 	if _, ok := tree.Files["app.log"]; ok {
 		t.Error("expected app.log to be excluded by root .gitignore")
 	}
-	if _, ok := tree.Files["sub/internal_helper.go"]; ok {
+	if _, ok := tree.Files[filepath.Join("sub", "internal_helper.go")]; ok {
 		t.Error("expected sub/internal_helper.go to be excluded by nested .gitignore")
 	}
 }
@@ -662,7 +727,7 @@ func TestIgnoreTree_GlobalGitignore(t *testing.T) {
 
 	// Create git config pointing to it
 	configPath := filepath.Join(globalIgnoreDir, "gitconfig")
-	configContent := fmt.Sprintf("[core]\n\texcludesFile = %s\n", globalIgnorePath)
+	configContent := fmt.Sprintf("[core]\n\texcludesFile = %s\n", filepath.ToSlash(globalIgnorePath))
 	if err := os.WriteFile(configPath, []byte(configContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -679,4 +744,3 @@ func TestIgnoreTree_GlobalGitignore(t *testing.T) {
 		t.Error("main.go should not be skipped")
 	}
 }
-

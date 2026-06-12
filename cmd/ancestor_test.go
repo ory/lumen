@@ -29,7 +29,7 @@ func TestFindAncestorIndex(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		got := findAncestorIndex("/some/deep/nonexistent/path", model)
+		got := findAncestorIndex(filepath.Join(t.TempDir(), "some", "deep", "path"), model)
 		if got != "" {
 			t.Fatalf("expected empty string, got %q", got)
 		}
@@ -39,8 +39,13 @@ func TestFindAncestorIndex(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// Create a fake DB for /project.
-		parentDBPath := config.DBPathForProject("/project", model)
+		project := filepath.Join(t.TempDir(), "project")
+		child := filepath.Join(project, "scripts", "util")
+		if err := os.MkdirAll(child, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		parentDBPath := config.DBPathForProject(project, model)
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -48,9 +53,9 @@ func TestFindAncestorIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got := findAncestorIndex("/project/scripts/util", model)
-		if got != "/project" {
-			t.Fatalf("expected /project, got %q", got)
+		got := findAncestorIndex(child, model)
+		if got != project {
+			t.Fatalf("expected %q, got %q", project, got)
 		}
 	})
 
@@ -58,8 +63,13 @@ func TestFindAncestorIndex(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// Create a fake DB for /project.
-		parentDBPath := config.DBPathForProject("/project", model)
+		project := filepath.Join(t.TempDir(), "project")
+		child := filepath.Join(project, "testdata", "fixtures", "go")
+		if err := os.MkdirAll(child, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		parentDBPath := config.DBPathForProject(project, model)
 		if err := os.MkdirAll(filepath.Dir(parentDBPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -67,9 +77,9 @@ func TestFindAncestorIndex(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// "testdata" is in merkle.SkipDirs — the parent index would never
-		// contain these files, so findAncestorIndex must return "".
-		got := findAncestorIndex("/project/testdata/fixtures/go", model)
+		// "testdata" is in merkle.SkipDirs; the parent index would never contain
+		// these files, so findAncestorIndex must return "".
+		got := findAncestorIndex(child, model)
 		if got != "" {
 			t.Fatalf("expected empty string (skip dir in route), got %q", got)
 		}
@@ -79,8 +89,8 @@ func TestFindAncestorIndex(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// No DBs exist anywhere — should return "" without panic.
-		got := findAncestorIndex("/a/b/c/d/e", model)
+		// No DBs exist anywhere; should return "" without panic.
+		got := findAncestorIndex(filepath.Join(t.TempDir(), "a", "b", "c", "d", "e"), model)
 		if got != "" {
 			t.Fatalf("expected empty string, got %q", got)
 		}
@@ -119,8 +129,14 @@ func TestFindAncestorIndex(t *testing.T) {
 		tmpDir := t.TempDir()
 		t.Setenv("XDG_DATA_HOME", tmpDir)
 
-		// Create fake DBs for both /project and /project/src.
-		for _, dir := range []string{"/project", "/project/src"} {
+		project := filepath.Join(t.TempDir(), "project")
+		src := filepath.Join(project, "src")
+		pkg := filepath.Join(src, "pkg")
+		if err := os.MkdirAll(pkg, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		for _, dir := range []string{project, src} {
 			dbPath := config.DBPathForProject(dir, model)
 			if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 				t.Fatal(err)
@@ -130,10 +146,9 @@ func TestFindAncestorIndex(t *testing.T) {
 			}
 		}
 
-		// Searching from /project/src/pkg should find /project/src (nearest).
-		got := findAncestorIndex("/project/src/pkg", model)
-		if got != "/project/src" {
-			t.Fatalf("expected /project/src (nearest ancestor), got %q", got)
+		got := findAncestorIndex(pkg, model)
+		if got != src {
+			t.Fatalf("expected nearest ancestor %q, got %q", src, got)
 		}
 	})
 }

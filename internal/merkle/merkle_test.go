@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -218,6 +219,9 @@ func TestCollectFilePaths_SkipsLargeFiles(t *testing.T) {
 }
 
 func TestBuildTree_SkipsPermissionDeniedFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not reliably deny reads for the current user")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses file permission checks")
 	}

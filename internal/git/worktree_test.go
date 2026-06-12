@@ -160,6 +160,7 @@ func TestInternalWorktreePaths_NotARepo(t *testing.T) {
 		t.Skip("git not on PATH")
 	}
 	dir := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
 	paths := InternalWorktreePaths(dir)
 	if len(paths) != 0 {
 		t.Errorf("expected nil for non-repo, got %v", paths)
@@ -172,6 +173,9 @@ func TestListWorktrees_NotARepo(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+
 	paths, err := ListWorktrees(dir)
 	if err == nil {
 		t.Fatalf("expected error, got paths: %v", paths)

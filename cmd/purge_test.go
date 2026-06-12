@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -108,6 +109,25 @@ func TestPurge_SinglePath_RemovesOnlyThatProject(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "project A hash dir should be gone")
 	_, err = os.Stat(hashDirB)
 	assert.NoError(t, err, "project B hash dir should be untouched")
+}
+
+func TestPurge_WindowsStoredPathCaseInsensitive(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows path matching is case-insensitive")
+	}
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	storedPath := `C:\WINDOWS\system32`
+	requestPath := `C:\Windows\System32`
+	hashDir := seedIndex(t, storedPath, embedder.DefaultModel)
+
+	_, stderrOut, err := runPurgeCmd(t, []string{requestPath})
+	require.NoError(t, err)
+	assert.Contains(t, stderrOut, "Removed 1 index directory")
+
+	_, err = os.Stat(hashDir)
+	assert.True(t, os.IsNotExist(err), "case-variant Windows path should purge stored index")
 }
 
 func TestPurge_PathInsideGitRepo_ResolvesToGitRoot(t *testing.T) {

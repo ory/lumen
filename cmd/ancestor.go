@@ -49,3 +49,8 @@ func findAncestorIndex(path, model string) string {
 	}
 	return ""
 }
+
+func hasLumenBoundaryFile(path string) bool {
+	info, err := os.Stat(filepath.Join(path, ".lumenignore"))
+	return err == nil && !info.IsDir()
+}
