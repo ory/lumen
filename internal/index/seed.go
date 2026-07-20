@@ -66,6 +66,12 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 		return false, fmt.Errorf("create dst directory: %w", err)
 	}
 
+	in, err := os.Open(donorPath)
+	if err != nil {
+		return false, fmt.Errorf("open donor: %w", err)
+	}
+	defer func() { _ = in.Close() }()
+
 	// Copy to a uniquely-named temp file in the destination directory, then
 	// publish it via a create-if-absent hard link. os.CreateTemp guarantees a
 	// unique name even among concurrent callers in the same process, and os.Link
@@ -78,11 +84,19 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 		return false, fmt.Errorf("create seed temp: %w", err)
 	}
 	tmp := tmpFile.Name()
-	_ = tmpFile.Close()
-	defer func() { _ = os.Remove(tmp) }()
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmp)
+	}()
 
-	if err := copyFile(donorPath, tmp); err != nil {
+	// Write into the open descriptor directly rather than closing and
+	// re-opening by name (avoids a Windows sharing violation), and verify the
+	// Close error before publishing so a short write can't be linked into place.
+	if _, err := io.Copy(tmpFile, in); err != nil {
 		return false, fmt.Errorf("copy donor: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return false, fmt.Errorf("close seed temp: %w", err)
 	}
 
 	if err := os.Link(tmp, dstPath); err != nil {
@@ -94,23 +108,4 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 	}
 
 	return true, nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Close()
 }
