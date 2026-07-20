@@ -251,6 +251,14 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	}
 	defer lock.Release()
 
+	// Reuse a sibling worktree's index for a brand-new database instead of
+	// re-embedding from scratch. Done under the lock just acquired so it is
+	// serialized against any concurrent indexer or MCP-side seed for the same
+	// project. Without this, the SessionStart-spawned `lumen index` always
+	// created an empty DB and rebuilt the whole tree, defeating the donor
+	// seeding that previously only ran in the MCP search handler.
+	seedFromDonorIfNew(dbPath, projectPath, emb.ModelName(), logger)
+
 	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
 	// the deferred lock.Release() runs before exit.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
