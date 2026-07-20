@@ -36,58 +36,78 @@ func withSeedStubs(t *testing.T, find func(string, string) string, seed func(str
 	t.Cleanup(func() { findDonorFn, seedFromDonorFn = origFind, origSeed })
 }
 
-func TestSeedFromDonorIfNew_SkipsWhenDBExists(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "index.db")
-	if err := os.WriteFile(dbPath, []byte("existing"), 0o644); err != nil {
-		t.Fatal(err)
+func TestSeedFromDonorIfNew(t *testing.T) {
+	tests := []struct {
+		name     string
+		setupDB  bool  // pre-create the destination DB
+		donor    string
+		seedErr  error // error returned by the seed stub
+		wantFind bool  // donor discovery should run
+		wantSeed bool  // seed should run
+	}{
+		{
+			name:     "skips when DB already exists",
+			setupDB:  true,
+			donor:    "/donor.db",
+			wantFind: false,
+			wantSeed: false,
+		},
+		{
+			name:     "seeds when DB missing and donor found",
+			donor:    "/donor.db",
+			wantFind: true,
+			wantSeed: true,
+		},
+		{
+			name:     "no seed when no donor found",
+			donor:    "",
+			wantFind: true,
+			wantSeed: false,
+		},
+		{
+			name:     "seed error is swallowed",
+			donor:    "/donor.db",
+			seedErr:  errors.New("copy failed"),
+			wantFind: true,
+			wantSeed: true,
+		},
 	}
 
-	findCalled := false
-	withSeedStubs(t,
-		func(string, string) string { findCalled = true; return "/donor.db" },
-		func(string, string) (bool, error) { t.Fatal("seed must not run when DB exists"); return false, nil },
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "index.db")
+			if tt.setupDB {
+				if err := os.WriteFile(dbPath, []byte("existing"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
-	if findCalled {
-		t.Fatal("donor discovery must not run when the DB already exists")
+			var findCalled, seedCalled bool
+			var gotDonor, gotDst string
+			withSeedStubs(t,
+				func(_, _ string) string {
+					findCalled = true
+					return tt.donor
+				},
+				func(donor, dst string) (bool, error) {
+					seedCalled = true
+					gotDonor, gotDst = donor, dst
+					return tt.seedErr == nil, tt.seedErr
+				},
+			)
+
+			// Best-effort helper: must never panic or propagate an error.
+			seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
+
+			if findCalled != tt.wantFind {
+				t.Errorf("donor discovery called = %v, want %v", findCalled, tt.wantFind)
+			}
+			if seedCalled != tt.wantSeed {
+				t.Errorf("seed called = %v, want %v", seedCalled, tt.wantSeed)
+			}
+			if tt.wantSeed && (gotDonor != tt.donor || gotDst != dbPath) {
+				t.Errorf("seed called with (%q, %q), want (%q, %q)", gotDonor, gotDst, tt.donor, dbPath)
+			}
+		})
 	}
-}
-
-func TestSeedFromDonorIfNew_SeedsWhenMissing(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "index.db") // does not exist
-
-	var gotDonor, gotDst string
-	withSeedStubs(t,
-		func(project, model string) string { return "/donor.db" },
-		func(donor, dst string) (bool, error) { gotDonor, gotDst = donor, dst; return true, nil },
-	)
-
-	seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
-	if gotDonor != "/donor.db" || gotDst != dbPath {
-		t.Fatalf("seed called with (%q, %q), want (%q, %q)", gotDonor, gotDst, "/donor.db", dbPath)
-	}
-}
-
-func TestSeedFromDonorIfNew_NoDonorFound(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "index.db")
-
-	withSeedStubs(t,
-		func(string, string) string { return "" },
-		func(string, string) (bool, error) { t.Fatal("seed must not run without a donor"); return false, nil },
-	)
-
-	seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
-}
-
-func TestSeedFromDonorIfNew_SeedErrorIsSwallowed(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "index.db")
-
-	withSeedStubs(t,
-		func(string, string) string { return "/donor.db" },
-		func(string, string) (bool, error) { return false, errors.New("copy failed") },
-	)
-
-	// Best-effort: a seed failure must not panic or propagate.
-	seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
 }
