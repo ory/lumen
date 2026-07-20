@@ -47,6 +47,18 @@ func FindDonorIndexBase(dataDir, projectPath, model string) string {
 	// Find which worktree contains projectPath and compute the relative suffix.
 	// This handles subdirectory effective roots (e.g., hydra-flake/backoffice)
 	// by searching for the same subdirectory in sibling worktrees.
+	//
+	// Pick the DEEPEST (most specific) containing worktree, not the first match.
+	// `git worktree list` yields the main worktree first, so a first-match scan
+	// selects the main checkout for a worktree nested inside it — e.g. Claude
+	// Code's default repo/.claude/worktrees/<name> layout. That mis-identifies
+	// the current worktree, so relSuffix becomes ".claude/worktrees/<name>", the
+	// donor search then looks for indexes at nonexistent
+	// <sibling>/.claude/worktrees/<name> paths, and the one real donor (the
+	// parent repo's index) is skipped as "self" — leaving every nested worktree
+	// to re-embed from scratch. Every containing worktree is an ancestor of
+	// resolvedProject, so they form a prefix chain and the longest path is
+	// unambiguously the most specific.
 	var myWorktree string
 	for _, wt := range worktrees {
 		resolved := wt
@@ -57,8 +69,9 @@ func FindDonorIndexBase(dataDir, projectPath, model string) string {
 		if err != nil || strings.HasPrefix(rel, "..") {
 			continue
 		}
-		myWorktree = resolved
-		break
+		if len(resolved) > len(myWorktree) {
+			myWorktree = resolved
+		}
 	}
 	if myWorktree == "" {
 		return ""
