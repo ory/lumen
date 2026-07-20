@@ -16,6 +16,7 @@ package index
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +27,14 @@ import (
 
 // SeedFromDonor copies the donor SQLite database to dstPath if dstPath does
 // not already exist. It checkpoints the WAL first to ensure a self-contained
-// copy, then performs an atomic copy (write to temp file + rename).
+// copy, then atomically publishes the copy via a create-if-absent hard link.
+//
+// Seeding is safe to run concurrently from multiple processes (e.g. the
+// SessionStart background indexer and the first MCP search racing to warm the
+// same fresh worktree): the copy goes to a per-process temp file and dstPath is
+// created with os.Link, which fails if it already exists. The loser of the race
+// therefore no-ops instead of renaming its copy over a database the winner has
+// already opened and begun writing to.
 //
 // Returns (true, nil) if seeded successfully, (false, nil) if dstPath already
 // exists, or (false, error) on failure.
@@ -58,16 +66,31 @@ func SeedFromDonor(donorPath, dstPath string) (bool, error) {
 		return false, fmt.Errorf("create dst directory: %w", err)
 	}
 
-	// Atomic copy: write to temp file then rename.
-	tmp := dstPath + ".seed-tmp"
+	// Copy to a uniquely-named temp file in the destination directory, then
+	// publish it via a create-if-absent hard link. os.CreateTemp guarantees a
+	// unique name even among concurrent callers in the same process, and os.Link
+	// fails with os.ErrExist when dstPath already exists. Together these give
+	// safe concurrent seeding: whoever links first wins, the rest no-op, and no
+	// one ever renames a fresh copy over a database another seeder has already
+	// published and opened for writing.
+	tmpFile, err := os.CreateTemp(filepath.Dir(dstPath), filepath.Base(dstPath)+".seed-*")
+	if err != nil {
+		return false, fmt.Errorf("create seed temp: %w", err)
+	}
+	tmp := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmp) }()
+
 	if err := copyFile(donorPath, tmp); err != nil {
-		_ = os.Remove(tmp)
 		return false, fmt.Errorf("copy donor: %w", err)
 	}
 
-	if err := os.Rename(tmp, dstPath); err != nil {
-		_ = os.Remove(tmp)
-		return false, fmt.Errorf("rename seed: %w", err)
+	if err := os.Link(tmp, dstPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			// Another seeder created dstPath first; its copy is authoritative.
+			return false, nil
+		}
+		return false, fmt.Errorf("link seed: %w", err)
 	}
 
 	return true, nil

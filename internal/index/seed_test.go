@@ -18,6 +18,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -91,6 +92,86 @@ func TestSeedFromDonor_DstExists(t *testing.T) {
 	content, _ := os.ReadFile(dstPath)
 	if string(content) != "existing" {
 		t.Fatalf("expected dst unchanged, got %q", content)
+	}
+}
+
+func TestSeedFromDonor_ConcurrentSeedersExactlyOneWins(t *testing.T) {
+	// Build a real, complete donor DB.
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", `package main
+
+func Hello() {}
+`)
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Many goroutines race to seed the same destination.
+	dstPath := filepath.Join(t.TempDir(), "sub", "seeded.db")
+	const n = 8
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		wins     int
+		firstErr error
+	)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			seeded, err := SeedFromDonor(donorPath, dstPath)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			if seeded {
+				wins++
+			}
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		t.Fatalf("concurrent SeedFromDonor returned error: %v", firstErr)
+	}
+	if wins != 1 {
+		t.Fatalf("expected exactly one seeder to win, got %d", wins)
+	}
+
+	// No stray per-process temp files should be left behind.
+	entries, err := os.ReadDir(filepath.Dir(dstPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".db" {
+			t.Fatalf("unexpected leftover file after concurrent seeding: %q", e.Name())
+		}
+	}
+
+	// The published DB must be usable.
+	idx2, err := NewIndexer(dstPath, emb, 0)
+	if err != nil {
+		t.Fatalf("seeded DB is not openable: %v", err)
+	}
+	defer func() { _ = idx2.Close() }()
+	status, err := idx2.Status(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.IndexedFiles == 0 {
+		t.Fatal("expected seeded DB to have indexed files")
 	}
 }
 
