@@ -200,7 +200,7 @@ type indexerCache struct {
 	embedTimeout      time.Duration                                                                                                            // override for tests; 0 means defaultEmbedTimeout
 	staleEmbedTimeout time.Duration                                                                                                            // override for tests; 0 means defaultStaleEmbedTimeout
 	findDonorFunc     func(string, string) string                                                                                              // nil uses config.FindDonorIndex
-	seedFunc          func(string, string) (bool, error)                                                                                       // nil uses index.SeedFromDonor
+	seedFunc          func(context.Context, string, string, string) (bool, error)                                                              // nil uses index.SeedFromDonorContext
 	ensureFreshFunc   func(ctx context.Context, idx *index.Indexer, projectDir string, progress index.ProgressFunc) (bool, index.Stats, error) // nil uses idx.EnsureFresh
 	log               *slog.Logger
 	wg                sync.WaitGroup     // tracks background reindex goroutines
@@ -484,7 +484,6 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 	}
 
 	// Seed from sibling worktree if this is a new index.
-	var seedWarning string
 	isNewDB := false
 	if _, statErr := os.Stat(dbPath); os.IsNotExist(statErr) {
 		isNewDB = true
@@ -494,29 +493,11 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 			"model", modelName,
 			"index_version", config.IndexVersion,
 		)
-		findDonor := ic.findDonorFunc
-		if findDonor == nil {
-			findDonor = config.FindDonorIndex
-		}
-		if donorPath := findDonor(effectiveRoot, modelName); donorPath != "" {
-			ic.logger().Info("seeding index from donor worktree",
-				"effective_root", effectiveRoot,
-				"donor_path", donorPath,
-			)
-			seedFn := ic.seedFunc
-			if seedFn == nil {
-				seedFn = index.SeedFromDonor
-			}
-			if _, seedErr := seedFn(donorPath, dbPath); seedErr != nil {
-				ic.logger().Warn("seed from donor worktree failed",
-					"effective_root", effectiveRoot,
-					"donor_path", donorPath,
-					"error", seedErr,
-				)
-				seedWarning = fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", seedErr)
-			}
-		}
 	}
+	seedWarning := seedFromDonorIfNew(context.Background(), dbPath, effectiveRoot, modelName, ic.logger(), seedOptions{
+		findDonor: ic.findDonorFunc,
+		seed:      ic.seedFunc,
+	})
 
 	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens())
 	if err != nil {

@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -23,23 +24,14 @@ import (
 	"testing"
 )
 
-func discardLogger() *slog.Logger {
+func seedTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
-// withSeedStubs swaps the donor-discovery and seed indirections for the
-// duration of a test and restores them afterward.
-func withSeedStubs(t *testing.T, find func(string, string) string, seed func(string, string) (bool, error)) {
-	t.Helper()
-	origFind, origSeed := findDonorFn, seedFromDonorFn
-	findDonorFn, seedFromDonorFn = find, seed
-	t.Cleanup(func() { findDonorFn, seedFromDonorFn = origFind, origSeed })
 }
 
 func TestSeedFromDonorIfNew(t *testing.T) {
 	tests := []struct {
 		name     string
-		setupDB  bool  // pre-create the destination DB
+		setupDB  bool // pre-create the destination DB
 		donor    string
 		seedErr  error // error returned by the seed stub
 		wantFind bool  // donor discovery should run
@@ -84,20 +76,31 @@ func TestSeedFromDonorIfNew(t *testing.T) {
 
 			var findCalled, seedCalled bool
 			var gotDonor, gotDst string
-			withSeedStubs(t,
-				func(_, _ string) string {
-					findCalled = true
-					return tt.donor
-				},
-				func(donor, dst string) (bool, error) {
-					seedCalled = true
-					gotDonor, gotDst = donor, dst
-					return tt.seedErr == nil, tt.seedErr
+			var statuses []string
+			warning := seedFromDonorIfNew(
+				context.Background(),
+				dbPath,
+				"/project",
+				"model",
+				seedTestLogger(),
+				seedOptions{
+					findDonor: func(_, _ string) string {
+						findCalled = true
+						return tt.donor
+					},
+					seed: func(_ context.Context, donor, dst, projectPath string) (bool, error) {
+						seedCalled = true
+						gotDonor, gotDst = donor, dst
+						if projectPath != "/project" {
+							t.Errorf("seed project path = %q, want /project", projectPath)
+						}
+						return tt.seedErr == nil, tt.seedErr
+					},
+					status: func(message string) {
+						statuses = append(statuses, message)
+					},
 				},
 			)
-
-			// Best-effort helper: must never panic or propagate an error.
-			seedFromDonorIfNew(dbPath, "/project", "model", discardLogger())
 
 			if findCalled != tt.wantFind {
 				t.Errorf("donor discovery called = %v, want %v", findCalled, tt.wantFind)
@@ -107,6 +110,16 @@ func TestSeedFromDonorIfNew(t *testing.T) {
 			}
 			if tt.wantSeed && (gotDonor != tt.donor || gotDst != dbPath) {
 				t.Errorf("seed called with (%q, %q), want (%q, %q)", gotDonor, gotDst, tt.donor, dbPath)
+			}
+			if tt.seedErr != nil {
+				if warning == "" {
+					t.Error("expected warning when seed fails")
+				}
+				if len(statuses) != 2 {
+					t.Fatalf("expected start and failure status, got %v", statuses)
+				}
+			} else if warning != "" {
+				t.Errorf("unexpected warning: %q", warning)
 			}
 		})
 	}

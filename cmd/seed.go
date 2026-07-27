@@ -15,6 +15,8 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -22,42 +24,69 @@ import (
 	"github.com/ory/lumen/internal/index"
 )
 
-// findDonorFn and seedFromDonorFn are indirections so tests can exercise
-// seedFromDonorIfNew without real git worktrees or a real donor database.
-var (
-	findDonorFn     = config.FindDonorIndex
-	seedFromDonorFn = index.SeedFromDonor
-)
+type seedOptions struct {
+	findDonor func(string, string) string
+	seed      func(context.Context, string, string, string) (bool, error)
+	status    func(string)
+}
 
 // seedFromDonorIfNew seeds dbPath from a sibling worktree's index when dbPath
 // does not yet exist, so a fresh git worktree reuses an already-indexed
 // worktree's embeddings instead of re-embedding every file from scratch.
 //
-// The caller must hold the index lock for dbPath: this serializes seeding
-// against other indexers for the same project. Seeding is best-effort — any
-// failure is logged and indexing continues with a from-scratch build — so this
-// never returns an error. When dbPath already exists it is a single stat on the
-// hot path and returns immediately.
-func seedFromDonorIfNew(dbPath, projectPath, model string, logger *slog.Logger) {
+// Callers may additionally hold the index lock for dbPath, but SeedFromDonor
+// has its own advisory lock so CLI and MCP callers cannot duplicate the copy.
+// Seeding is best-effort — any failure is logged and indexing continues with a
+// from-scratch build. The returned warning is suitable for surfacing to MCP
+// clients. When dbPath already exists it is a single stat on the hot path.
+func seedFromDonorIfNew(ctx context.Context, dbPath, projectPath, model string, logger *slog.Logger, opts seedOptions) string {
 	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
 		// Exists already, or stat failed for some other reason — nothing to do.
-		return
+		return ""
 	}
 
-	donorPath := findDonorFn(projectPath, model)
+	findDonor := opts.findDonor
+	if findDonor == nil {
+		findDonor = config.FindDonorIndex
+	}
+	donorPath := findDonor(projectPath, model)
 	if donorPath == "" {
-		return
+		return ""
 	}
 
 	logger.Info("seeding index from donor worktree",
-		"project", projectPath,
+		"project_path", projectPath,
 		"donor_path", donorPath,
 	)
-	if _, err := seedFromDonorFn(donorPath, dbPath); err != nil {
-		logger.Warn("seed from donor worktree failed",
-			"project", projectPath,
-			"donor_path", donorPath,
-			"err", err,
-		)
+	if opts.status != nil {
+		opts.status("Seeding index from sibling worktree...")
 	}
+
+	seed := opts.seed
+	if seed == nil {
+		seed = index.SeedFromDonorContext
+	}
+	seeded, err := seed(ctx, donorPath, dbPath, projectPath)
+	if err != nil {
+		logger.Warn("seed from donor worktree failed",
+			"project_path", projectPath,
+			"donor_path", donorPath,
+			"error", err,
+		)
+		warning := fmt.Sprintf("index seeded from scratch (sibling copy failed: %v)", err)
+		if opts.status != nil {
+			opts.status(fmt.Sprintf("Sibling index copy failed: %v; indexing from scratch.", err))
+		}
+		return warning
+	}
+	if seeded && opts.status != nil {
+		opts.status("Seeded index from sibling worktree.")
+	} else if opts.status != nil {
+		if _, statErr := os.Stat(dbPath); statErr == nil {
+			opts.status("Index was seeded by another process.")
+		} else {
+			opts.status("Sibling index could not be reused; indexing from scratch.")
+		}
+	}
+	return ""
 }

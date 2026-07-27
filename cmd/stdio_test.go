@@ -1304,7 +1304,7 @@ func TestGetOrCreate_ReturnsSeedWarningWhenSeedFails(t *testing.T) {
 		embedder:      &stubEmbedder{},
 		cfg:           newTestConfigService(t, 512),
 		findDonorFunc: func(_, _ string) string { return "/fake/donor.db" },
-		seedFunc: func(_, _ string) (bool, error) {
+		seedFunc: func(_ context.Context, _, _, _ string) (bool, error) {
 			return false, fmt.Errorf("permission denied")
 		},
 	}
