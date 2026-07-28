@@ -48,6 +48,8 @@ func init() {
 	hookCmd.AddCommand(hookPreToolUseCmd)
 
 	hookSessionStartCmd.Flags().StringVar(&hookSessionStartHost, "host", hookHostClaude, "Hook host output format")
+	hookSessionStartCmd.Flags().StringVar(&hookSessionStartPluginName, "plugin-name", "", "Claude Code plugin name")
+	hookPreToolUseCmd.Flags().StringVar(&hookPreToolUsePluginName, "plugin-name", "", "Claude Code plugin name")
 }
 
 var hookCmd = &cobra.Command{
@@ -55,7 +57,11 @@ var hookCmd = &cobra.Command{
 	Short: "Hook handlers for AI coding agent integration",
 }
 
-var hookSessionStartHost string
+var (
+	hookSessionStartHost       string
+	hookSessionStartPluginName string
+	hookPreToolUsePluginName   string
+)
 
 var hookSessionStartCmd = &cobra.Command{
 	Use:   "session-start [mcp-name]",
@@ -104,7 +110,7 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 		cwd, _ = os.Getwd()
 	}
 
-	content := generateSessionContextForHost(host, mcpName, cwd)
+	content := generateSessionContextForHost(host, mcpName, hookSessionStartPluginName, cwd)
 	out := sessionStartOutput(host, content)
 
 	enc := json.NewEncoder(os.Stdout)
@@ -112,16 +118,23 @@ func runHookSessionStart(_ *cobra.Command, args []string) error {
 	return enc.Encode(out)
 }
 
-func generateSessionContextForHost(host, mcpName, cwd string) string {
-	return generateSessionContextInternalWithDirective(sessionStartDirective(host, mcpName), cwd, config.FindDonorIndex, spawnBackgroundIndexer)
+func generateSessionContextForHost(host, mcpName, pluginName, cwd string) string {
+	return generateSessionContextInternalWithDirective(sessionStartDirective(host, mcpName, pluginName), cwd, config.FindDonorIndex, spawnBackgroundIndexer)
 }
 
-func sessionStartDirective(host, mcpName string) string {
+func sessionStartDirective(host, mcpName, pluginName string) string {
 	if host == hookHostCursor {
 		return "Use the Lumen semantic_search tool first for any code discovery task — before Grep, Bash, or Read."
 	}
-	toolRef := "mcp__" + mcpName + "__semantic_search"
-	return "Call " + toolRef + " first for any code discovery task — before Grep, Bash, or Read."
+	toolRef := mcpToolReference(pluginName, mcpName, "semantic_search")
+	return "Load and call " + toolRef + " first for any code discovery task — before Grep, Bash, or Read."
+}
+
+func mcpToolReference(pluginName, mcpName, toolName string) string {
+	if pluginName != "" {
+		mcpName = "plugin_" + pluginName + "_" + mcpName
+	}
+	return "mcp__" + mcpName + "__" + toolName
 }
 
 func generateSessionContextInternalWithDirective(directive, cwd string, findDonor func(string, string) string, bgIndexer func(string)) string {
@@ -190,7 +203,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 // findDonor and bgIndexer are injected so tests can verify behaviour without
 // spawning real processes or requiring a live git repository.
 func generateSessionContextInternal(cwd string, findDonor func(string, string) string, bgIndexer func(string)) string {
-	return generateSessionContextInternalWithDirective(sessionStartDirective(hookHostClaude, "lumen"), cwd, findDonor, bgIndexer)
+	return generateSessionContextInternalWithDirective(sessionStartDirective(hookHostClaude, "lumen", ""), cwd, findDonor, bgIndexer)
 }
 
 func normalizeHookHost(host string) (string, error) {
@@ -243,7 +256,7 @@ func runHookPreToolUse(_ *cobra.Command, args []string) error {
 		return nil
 	}
 
-	result := evaluateToolCall(input, mcpName)
+	result := evaluateToolCall(input, mcpName, hookPreToolUsePluginName)
 	if result == nil {
 		// Silent allow — exit 0 with no stdout.
 		return nil
@@ -257,7 +270,7 @@ func runHookPreToolUse(_ *cobra.Command, args []string) error {
 // evaluateToolCall determines whether a tool call should be intercepted
 // with a suggestion to use semantic search instead.
 // Returns nil for silent allow (no output), or a hookOutput with a suggestion.
-func evaluateToolCall(input preToolUseInput, mcpName string) *hookOutput {
+func evaluateToolCall(input preToolUseInput, mcpName, pluginName string) *hookOutput {
 	switch input.ToolName {
 	case "Grep", "Glob":
 		// Always suggest semantic search for any file/code search.
@@ -270,12 +283,12 @@ func evaluateToolCall(input preToolUseInput, mcpName string) *hookOutput {
 		return nil
 	}
 
-	toolRef := "mcp__" + mcpName + "__semantic_search"
+	toolRef := mcpToolReference(pluginName, mcpName, "semantic_search")
 	return &hookOutput{
 		HookSpecificOutput: hookSpecificOutput{
 			HookEventName: "PreToolUse",
 			AdditionalContext: fmt.Sprintf(
-				"Use %s instead of Grep/Glob/find/rg for significantly faster and better search results to reduce context window use and give better quality results.",
+				"Load and call %s instead of Grep/Glob/find/rg for significantly faster and better search results to reduce context window use and give better quality results.",
 				toolRef,
 			),
 		},
