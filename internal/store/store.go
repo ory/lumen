@@ -21,12 +21,22 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 
 	"github.com/ory/lumen/internal/chunker"
 )
+
+// MetaLastAccessedAt is the project_meta key holding the RFC3339 UTC timestamp
+// of the last time this index was opened. `lumen clean` reads it to decide
+// whether an index is still in use.
+const MetaLastAccessedAt = "last_accessed_at"
+
+// accessStampBusyTimeoutMS bounds how long opening a store waits for the write
+// lock to record its access time before giving up on the stamp.
+const accessStampBusyTimeoutMS = 250
 
 func init() {
 	sqlite_vec.Auto()
@@ -90,7 +100,47 @@ func New(dsn string, dimensions int) (*Store, error) {
 		deleteDBFiles(dsn)
 		s, err = openStore(dsn, dimensions)
 	}
-	return s, err
+	if err != nil {
+		return s, err
+	}
+	s.stampAccess(dsn)
+	return s, nil
+}
+
+// stampAccess records the current time as this index's last access so
+// `lumen clean` can tell indexes that are still in use apart from abandoned
+// ones.
+//
+// The write runs on a throwaway connection with a short busy timeout instead of
+// the store's own connection: a concurrently running indexer holds the SQLite
+// write lock for the duration of every insert batch, and the sqlite3 driver does
+// not honour context cancellation while waiting out busy_timeout — so reusing
+// the store's 120s timeout would stall opening (and therefore search) for
+// minutes. Failing to stamp is harmless: the indexer stamps its own open, and
+// `clean` falls back to last_indexed_at.
+func (s *Store) stampAccess(dsn string) {
+	value := time.Now().UTC().Format(time.RFC3339)
+	if dsn == ":memory:" {
+		// Nothing else can hold the lock on a private in-memory database, and a
+		// second connection would open a different one.
+		_ = s.SetMeta(MetaLastAccessedAt, value)
+		return
+	}
+
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return
+	}
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout=%d", accessStampBusyTimeoutMS)); err != nil {
+		return
+	}
+	_, _ = db.Exec(
+		`INSERT INTO project_meta (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		MetaLastAccessedAt, value,
+	)
 }
 
 func openStore(dsn string, dimensions int) (*Store, error) {
@@ -296,34 +346,28 @@ func resetAndRecreateVecTable(db *sql.DB, dimensions int) error {
 }
 
 // ReadMetaAt opens the SQLite database at dbPath read-only and returns the
-// project_meta value for key, or "" if the key is missing. It is safe to call
-// on databases created by older binaries with a different schema version; the
-// function performs no migrations and holds no write lock. Returns an error
-// only when the file cannot be opened (missing file, permission denied) or
-// when the project_meta table is missing (the file is not a lumen index).
-func ReadMetaAt(dbPath, key string) (string, error) {
+// project_meta values for keys in a single open. Missing keys are absent from
+// the returned map. It is safe to call on databases created by older binaries
+// with a different schema version; the function performs no migrations, holds
+// no write lock, and — unlike New — does not count as an index access, so
+// scanning metadata never keeps an abandoned index alive. Returns an error only
+// when the file cannot be opened (missing file, permission denied) or when the
+// project_meta table is missing (the file is not a lumen index).
+func ReadMetaAt(dbPath string, keys ...string) (map[string]string, error) {
 	if _, err := os.Stat(dbPath); err != nil {
-		return "", fmt.Errorf("stat %s: %w", dbPath, err)
+		return nil, fmt.Errorf("stat %s: %w", dbPath, err)
 	}
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return "", fmt.Errorf("open %s: %w", dbPath, err)
+		return nil, fmt.Errorf("open %s: %w", dbPath, err)
 	}
 	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec("PRAGMA query_only=ON"); err != nil {
-		return "", fmt.Errorf("set query_only: %w", err)
+		return nil, fmt.Errorf("set query_only: %w", err)
 	}
 
-	var val string
-	err = db.QueryRow("SELECT value FROM project_meta WHERE key = ?", key).Scan(&val)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("query project_meta: %w", err)
-	}
-	return val, nil
+	return queryMeta(db, keys)
 }
 
 // SetMeta upserts a key-value pair in the project_meta table.
@@ -351,9 +395,17 @@ func (s *Store) GetMeta(key string) (string, error) {
 // Missing keys are absent from the returned map. Uses the read-only connection
 // when available for concurrency with writes.
 func (s *Store) GetMetaBatch(keys []string) (map[string]string, error) {
+	return queryMeta(s.reader(), keys)
+}
+
+// queryMeta fetches keys from project_meta in a single query. Missing keys are
+// absent from the returned map.
+func queryMeta(db *sql.DB, keys []string) (map[string]string, error) {
+	result := make(map[string]string, len(keys))
 	if len(keys) == 0 {
-		return map[string]string{}, nil
+		return result, nil
 	}
+
 	placeholders := make([]string, len(keys))
 	args := make([]any, len(keys))
 	for i, k := range keys {
@@ -364,21 +416,23 @@ func (s *Store) GetMetaBatch(keys []string) (map[string]string, error) {
 		"SELECT key, value FROM project_meta WHERE key IN (%s)",
 		strings.Join(placeholders, ","),
 	)
-	rows, err := s.reader().Query(query, args...)
+	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query meta batch: %w", err)
+		return nil, fmt.Errorf("query project_meta: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	result := make(map[string]string, len(keys))
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
-			return nil, fmt.Errorf("scan meta: %w", err)
+			return nil, fmt.Errorf("scan project_meta: %w", err)
 		}
 		result[k] = v
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query project_meta: %w", err)
+	}
+	return result, nil
 }
 
 // UpsertFile inserts or updates a file path and its content hash.
