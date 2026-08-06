@@ -24,12 +24,18 @@ import (
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/store"
+	"github.com/ory/lumen/internal/tui"
 	"github.com/spf13/cobra"
 )
 
 // defaultCleanDays is how long an index may go unused before `lumen clean`
 // removes it.
-const defaultCleanDays = 30
+const (
+	defaultCleanDays = 30
+	maxCleanDays     = 106751
+)
+
+var removeIndexDir = os.RemoveAll
 
 func init() {
 	addCleanFlags(cleanCmd)
@@ -40,7 +46,7 @@ func init() {
 // definition never drifts from what runClean reads.
 func addCleanFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("days", defaultCleanDays,
-		"remove indexes not used in the last N days (0 removes every index that is not currently being written)")
+		"remove indexes not used in the last N days (0 removes every eligible index except those protected by active locks)")
 }
 
 var cleanCmd = &cobra.Command{
@@ -56,7 +62,8 @@ checkouts, and abandoned models leave behind data that is never read again.
 Indexes written by older binaries that never recorded an access time fall back
 to their last indexing time; those without any usable timestamp are removed.
 
-Use "lumen clean --days 0" to drop every cached index on this host, and
+Use "lumen clean --days 0" to drop every eligible cached index except those
+protected by active locks, and
 "lumen index --force <project-path>" to rebuild a single project from scratch.
 
 Indexes with an indexer currently running are always kept.`, defaultCleanDays),
@@ -72,6 +79,9 @@ func runClean(cmd *cobra.Command, _ []string) error {
 	if days < 0 {
 		return fmt.Errorf("--days must not be negative, got %d", days)
 	}
+	if days > maxCleanDays {
+		return fmt.Errorf("--days must not exceed %d, got %d", maxCleanDays, days)
+	}
 	dataDir := filepath.Join(config.XDGDataDir(), "lumen")
 	return cleanIndexes(cmd.ErrOrStderr(), cmd.OutOrStdout(), dataDir, days, time.Now())
 }
@@ -82,10 +92,11 @@ func runClean(cmd *cobra.Command, _ []string) error {
 // reported and the sweep continues; the first such failure is returned once
 // every directory has been considered.
 func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.Time) error {
+	progress := tui.NewProgress(stderr)
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			_, _ = fmt.Fprintln(stderr, "No index data found — nothing to clean.")
+			progress.Info("No index data found — nothing to clean.")
 			return nil
 		}
 		return fmt.Errorf("read data dir: %w", err)
@@ -102,34 +113,44 @@ func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.T
 			continue
 		}
 		hashDir := filepath.Join(dataDir, entry.Name())
-		dbPath := filepath.Join(hashDir, "index.db")
-
-		if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
-			_, _ = fmt.Fprintf(stderr, "Keeping %s: an indexer is currently running.\n", entry.Name())
+		wasRemoved, err := cleanIndex(progress, entry.Name(), hashDir, days, cutoff)
+		if wasRemoved {
+			removed++
+		} else {
 			skipped++
-			continue
 		}
-
-		stale, reason := isIndexStale(dbPath, days, cutoff)
-		if !stale {
-			skipped++
-			continue
-		}
-		if err := os.RemoveAll(hashDir); err != nil {
-			_, _ = fmt.Fprintf(stderr, "Failed to remove %s: %v\n", hashDir, err)
+		if err != nil {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("remove %s: %w", hashDir, err)
+				firstErr = err
 			}
-			skipped++
-			continue
 		}
-		_, _ = fmt.Fprintf(stderr, "Removed %s (%s).\n", entry.Name(), reason)
-		removed++
 	}
 
 	_, _ = fmt.Fprintf(stdout, "Removed %d index director%s, skipped %d.\n",
 		removed, pluralY(removed), skipped)
 	return firstErr
+}
+
+// cleanIndex evaluates and removes one index while holding its writer lock.
+func cleanIndex(progress *tui.Progress, name, hashDir string, days int, cutoff time.Time) (bool, error) {
+	dbPath := filepath.Join(hashDir, "index.db")
+	lock, err := indexlock.TryAcquire(indexlock.LockPathForDB(dbPath))
+	if err != nil || lock == nil {
+		progress.Info(fmt.Sprintf("Keeping %s: an indexer is currently running.", name))
+		return false, nil
+	}
+	defer lock.Release()
+
+	stale, reason := isIndexStale(dbPath, days, cutoff)
+	if !stale {
+		return false, nil
+	}
+	if err := removeIndexDir(hashDir); err != nil {
+		progress.Info(fmt.Sprintf("Failed to remove %s: %v", hashDir, err))
+		return false, fmt.Errorf("remove %s: %w", hashDir, err)
+	}
+	progress.Info(fmt.Sprintf("Removed %s (%s).", name, reason))
+	return true, nil
 }
 
 // isIndexStale reports whether the index at dbPath is no longer worth keeping,

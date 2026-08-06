@@ -398,7 +398,7 @@ Lumen reclaim the space for you:
 ```bash
 lumen clean            # remove indexes unused for 30 days or whose project is gone
 lumen clean --days 7   # tighten the cutoff to a week
-lumen clean --days 0   # remove every cached index on this host
+lumen clean --days 0   # remove every eligible index except actively locked indexes
 ```
 
 An index counts as used every time Lumen opens it (search, indexing, status, or
