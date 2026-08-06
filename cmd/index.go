@@ -251,6 +251,11 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	}
 	defer lock.Release()
 
+	// Seed before opening the DB, under the index lock acquired above so only
+	// one indexer seeds. Doing it here (not just in the MCP getOrCreate path)
+	// covers the background indexer that lumen index runs at SessionStart.
+	seedFromDonorIfNew(dbPath, projectPath, emb.ModelName(), logger)
+
 	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
 	// the deferred lock.Release() runs before exit.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
