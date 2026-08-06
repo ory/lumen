@@ -2,13 +2,12 @@ module github.com/ory/lumen
 
 go 1.25
 
-require (
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
-	github.com/mattn/go-sqlite3 v1.14.34
-)
+require github.com/mattn/go-sqlite3 v1.14.34
 
 require (
 	github.com/alexaandru/go-sitter-forest/dart v1.9.4
+	github.com/alexaandru/go-sitter-forest/svelte v1.9.2
+	github.com/alexaandru/go-sitter-forest/swift v1.9.5
 	github.com/bradleyjkemp/cupaloy/v2 v2.8.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gofrs/flock v0.13.0
@@ -30,8 +29,6 @@ require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
 	atomicgo.dev/schedule v0.1.0 // indirect
-	github.com/alexaandru/go-sitter-forest/svelte v1.9.2 // indirect
-	github.com/alexaandru/go-sitter-forest/swift v1.9.5 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

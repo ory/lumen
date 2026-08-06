@@ -1,6 +1,10 @@
 bench-results linguist-generated
 docs/plans linguist-generated
 
+# Keep the vendored sqlite-vec release source byte-for-byte identical to
+# upstream, including its existing whitespace.
+internal/sqlitevec/sqlite-vec.c -whitespace linguist-vendored
+
 # Windows batch files require CRLF line endings — the cmd.exe parser
 # has 512-byte boundary bugs with bare-LF files (GOTO/CALL label
 # parsing). Pin .bat/.cmd to CRLF regardless of the user's

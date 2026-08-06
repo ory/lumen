@@ -20,6 +20,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+
+	"github.com/ory/lumen/internal/git"
+	"github.com/ory/lumen/internal/models"
 )
 
 const (
@@ -29,11 +33,8 @@ const (
 	BackendLMStudio = "lmstudio"
 )
 
-// DBPathForProject returns the SQLite database path for a given project,
-// derived from a SHA-256 hash of the project path, embedding model name, and
-// IndexVersion. Including the model ensures that switching models creates a
-// fresh index automatically. Including IndexVersion ensures that incompatible
-// chunker/index format changes never share an index with older data.
+// DBPathForProject returns the default int8/512-token collection path. New
+// runtime code with non-default settings should use DBPathForProjectProfile.
 func DBPathForProject(projectPath, model string) string {
 	return DBPathForProjectBase(XDGDataDir(), projectPath, model)
 }
@@ -42,7 +43,60 @@ func DBPathForProject(projectPath, model string) string {
 // using an explicit data directory instead of reading XDG_DATA_HOME from the
 // environment. Safe to call from parallel goroutines.
 func DBPathForProjectBase(dataDir, projectPath, model string) string {
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+IndexVersion)))
+	dimensions, _ := ModelDimensions(model)
+	return DBPathForProjectProfileBase(dataDir, projectPath, model, dimensions, "int8", 512)
+}
+
+// ModelDimensions resolves dimensions for a model in the built-in registry.
+func ModelDimensions(model string) (int, bool) {
+	canonical := model
+	if resolved, ok := models.ModelAliases[model]; ok {
+		canonical = resolved
+	}
+	spec, ok := models.KnownModels[canonical]
+	return spec.Dims, ok
+}
+
+// DBPathForProjectProfile returns the repository-scoped collection path for an
+// exact embedding and chunking profile. Git worktrees sharing a common Git
+// directory resolve to the same collection; non-Git projects remain private.
+func DBPathForProjectProfile(projectPath, model string, dimensions int, vectorStorage string, maxChunkTokens int) string {
+	return DBPathForProjectProfileBase(XDGDataDir(), projectPath, model, dimensions, vectorStorage, maxChunkTokens)
+}
+
+// DBPathForProjectProfileBase is DBPathForProjectProfile with an explicit data
+// directory, primarily for tests and callers that must not read process-wide
+// environment state.
+func DBPathForProjectProfileBase(dataDir, projectPath, model string, dimensions int, vectorStorage string, maxChunkTokens int) string {
+	identity := projectPath
+	scope := "."
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		identity = filepath.Clean(abs)
+	}
+	if commonDir, err := git.CommonDir(projectPath); err == nil {
+		identity = commonDir
+		// Indexing currently normalizes Git projects to the worktree root. Keep
+		// scope explicit in the key so subdirectory collections can be added
+		// without another on-disk format change.
+		scope = "."
+	}
+	profile := identity + "\x00" + scope + "\x00" + model + "\x00" +
+		strconv.Itoa(dimensions) + "\x00" + vectorStorage + "\x00" +
+		strconv.Itoa(maxChunkTokens) + "\x00" + IndexVersion
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(profile)))
+	return filepath.Join(dataDir, "lumen", hash[:16], "index.db")
+}
+
+// LegacyDBPathForProject returns the final one-database-per-worktree path used
+// before shared collections. It exists solely for lazy migration.
+func LegacyDBPathForProject(projectPath, model string) string {
+	return LegacyDBPathForProjectBase(XDGDataDir(), projectPath, model)
+}
+
+// LegacyDBPathForProjectBase is LegacyDBPathForProject with an explicit data
+// directory.
+func LegacyDBPathForProjectBase(dataDir, projectPath, model string) string {
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath+"\x00"+model+"\x00"+"3")))
 	return filepath.Join(dataDir, "lumen", hash[:16], "index.db")
 }
 

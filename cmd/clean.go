@@ -24,7 +24,6 @@ import (
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/store"
-	"github.com/ory/lumen/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +34,12 @@ const (
 	maxCleanDays     = 106751
 )
 
-var removeIndexDir = os.RemoveAll
+const dailyCleanupInterval = 24 * time.Hour
+
+var (
+	removeIndexDir      = os.RemoveAll
+	cleanupCollectionAt = store.CleanupCollectionAt
+)
 
 func init() {
 	addCleanFlags(cleanCmd)
@@ -46,24 +50,23 @@ func init() {
 // definition never drifts from what runClean reads.
 func addCleanFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("days", defaultCleanDays,
-		"remove indexes not used in the last N days (0 removes every eligible index except those protected by active locks)")
+		"remove indexes not used in the last N days (0 removes every index that is not currently being written)")
 }
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Remove unused or orphaned lumen indexes",
-	Long: fmt.Sprintf(`Deletes unused lumen index databases under ~/.local/share/lumen/.
+	Long: fmt.Sprintf(`Garbage-collects lumen indexes under ~/.local/share/lumen/.
 
-An index is removed when it has not been opened for --days days (default %d),
-or when the project it was built for no longer exists — indexes are keyed by
-project path, embedding model, and index version, so renamed projects, deleted
-checkouts, and abandoned models leave behind data that is never read again.
+Shared collections lose project memberships that have not been opened for
+--days days (default %d), or whose worktree no longer exists. Unreferenced file
+revisions, chunks, and vectors are then deleted and free pages are reclaimed.
+Legacy per-project index directories are removed using the same age policy.
 
 Indexes written by older binaries that never recorded an access time fall back
 to their last indexing time; those without any usable timestamp are removed.
 
-Use "lumen clean --days 0" to drop every eligible cached index except those
-protected by active locks, and
+Use "lumen clean --days 0" to drop every cached index on this host, and
 "lumen index --force <project-path>" to rebuild a single project from scratch.
 
 Indexes with an indexer currently running are always kept.`, defaultCleanDays),
@@ -92,11 +95,10 @@ func runClean(cmd *cobra.Command, _ []string) error {
 // reported and the sweep continues; the first such failure is returned once
 // every directory has been considered.
 func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.Time) error {
-	progress := tui.NewProgress(stderr)
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			progress.Info("No index data found — nothing to clean.")
+			_, _ = fmt.Fprintln(stderr, "No index data found — nothing to clean.")
 			return nil
 		}
 		return fmt.Errorf("read data dir: %w", err)
@@ -104,6 +106,8 @@ func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.T
 
 	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
 	removed, skipped := 0, 0
+	projectsRemoved, vectorsRemoved := 0, 0
+	var bytesReclaimed int64
 	var firstErr error
 
 	for _, entry := range entries {
@@ -113,44 +117,68 @@ func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.T
 			continue
 		}
 		hashDir := filepath.Join(dataDir, entry.Name())
-		wasRemoved, err := cleanIndex(progress, entry.Name(), hashDir, days, cutoff)
+		wasRemoved, sharedStats, cleanErr := cleanIndex(stderr, entry.Name(), hashDir, days, cutoff)
+		projectsRemoved += sharedStats.ProjectsRemoved
+		vectorsRemoved += sharedStats.VectorsRemoved
+		bytesReclaimed += sharedStats.BytesReclaimed
 		if wasRemoved {
 			removed++
 		} else {
 			skipped++
 		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+		if cleanErr != nil && firstErr == nil {
+			firstErr = cleanErr
 		}
 	}
 
 	_, _ = fmt.Fprintf(stdout, "Removed %d index director%s, skipped %d.\n",
 		removed, pluralY(removed), skipped)
+	if projectsRemoved > 0 || vectorsRemoved > 0 || bytesReclaimed > 0 {
+		_, _ = fmt.Fprintf(stdout, "Shared cleanup: %d projects, %d vectors, %d bytes reclaimed.\n",
+			projectsRemoved, vectorsRemoved, bytesReclaimed)
+	}
 	return firstErr
 }
 
-// cleanIndex evaluates and removes one index while holding its writer lock.
-func cleanIndex(progress *tui.Progress, name, hashDir string, days int, cutoff time.Time) (bool, error) {
+// cleanIndex cleans one legacy index or shared collection while retaining the
+// exclusive collection lock for the entire database cleanup and removal.
+func cleanIndex(stderr io.Writer, name, hashDir string, days int, cutoff time.Time) (bool, store.CleanupStats, error) {
 	dbPath := filepath.Join(hashDir, "index.db")
-	lock, err := indexlock.TryAcquire(indexlock.LockPathForDB(dbPath))
-	if err != nil || lock == nil {
-		progress.Info(fmt.Sprintf("Keeping %s: an indexer is currently running.", name))
-		return false, nil
+	lock, lockErr := indexlock.TryAcquire(indexlock.LockPathForDB(dbPath))
+	if lockErr != nil || lock == nil {
+		_, _ = fmt.Fprintf(stderr, "Keeping %s: an indexer is currently running.\n", name)
+		return false, store.CleanupStats{}, nil
 	}
 	defer lock.Release()
 
+	sharedStats, shared, sharedErr := cleanupCollectionAt(dbPath, cutoff)
+	if shared {
+		if sharedErr != nil {
+			_, _ = fmt.Fprintf(stderr, "Failed to clean shared collection %s: %v\n", name, sharedErr)
+			return false, store.CleanupStats{}, fmt.Errorf("clean shared collection %s: %w", name, sharedErr)
+		}
+		if sharedStats.ProjectsLeft > 0 {
+			_, _ = fmt.Fprintf(stderr, "Cleaned %s: removed %d projects and %d vectors.\n", name, sharedStats.ProjectsRemoved, sharedStats.VectorsRemoved)
+			return false, sharedStats, nil
+		}
+		// Empty collections have no future owner and can be removed as a
+		// directory, reclaiming sidecars and metadata in one operation.
+		if err := removeIndexDir(hashDir); err != nil {
+			return false, sharedStats, fmt.Errorf("remove empty collection %s: %w", hashDir, err)
+		}
+		return true, sharedStats, nil
+	}
+
 	stale, reason := isIndexStale(dbPath, days, cutoff)
 	if !stale {
-		return false, nil
+		return false, store.CleanupStats{}, nil
 	}
 	if err := removeIndexDir(hashDir); err != nil {
-		progress.Info(fmt.Sprintf("Failed to remove %s: %v", hashDir, err))
-		return false, fmt.Errorf("remove %s: %w", hashDir, err)
+		_, _ = fmt.Fprintf(stderr, "Failed to remove %s: %v\n", hashDir, err)
+		return false, store.CleanupStats{}, fmt.Errorf("remove %s: %w", hashDir, err)
 	}
-	progress.Info(fmt.Sprintf("Removed %s (%s).", name, reason))
-	return true, nil
+	_, _ = fmt.Fprintf(stderr, "Removed %s (%s).\n", name, reason)
+	return true, store.CleanupStats{}, nil
 }
 
 // isIndexStale reports whether the index at dbPath is no longer worth keeping,
@@ -216,4 +244,21 @@ func pluralY(n int) string {
 		return "y"
 	}
 	return "ies"
+}
+
+// runDailyCleanup performs the MCP-startup maintenance sweep at most once per
+// day. The stamp is deliberately outside collection directories so it is not
+// mistaken for an index by cleanIndexes.
+func runDailyCleanup(dataDir string, now time.Time) {
+	stampPath := filepath.Join(dataDir, ".last-cleanup")
+	if info, err := os.Stat(stampPath); err == nil && now.Sub(info.ModTime()) < dailyCleanupInterval {
+		return
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return
+	}
+	if err := cleanIndexes(io.Discard, io.Discard, dataDir, defaultCleanDays, now); err != nil {
+		return
+	}
+	_ = os.WriteFile(stampPath, []byte(now.UTC().Format(time.RFC3339)), 0o600)
 }

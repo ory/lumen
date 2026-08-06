@@ -72,12 +72,18 @@ type Stats struct {
 
 // StatusInfo holds information about the current index state for a project.
 type StatusInfo struct {
-	ProjectPath    string
-	TotalFiles     int
-	IndexedFiles   int
-	TotalChunks    int
-	LastIndexedAt  string
-	EmbeddingModel string
+	ProjectPath       string
+	TotalFiles        int
+	IndexedFiles      int
+	TotalChunks       int
+	UniqueVectors     int
+	SharedReferences  int
+	DeduplicationRate float64
+	VectorStorage     string
+	DatabaseBytes     int64
+	ReclaimableBytes  int64
+	LastIndexedAt     string
+	EmbeddingModel    string
 }
 
 // Indexer orchestrates chunking, embedding, and storage for a code index.
@@ -89,6 +95,10 @@ type Indexer struct {
 	maxChunkTokens int
 	logger         *slog.Logger
 	dsn            string // path to the SQLite database file; used for corruption recovery
+	vectorStorage  string
+	projectPath    string
+	legacyVectors  map[[32]byte][]float32
+	legacySource   string
 }
 
 // SetLogger attaches a logger to the indexer for structured diagnostic output.
@@ -100,7 +110,19 @@ func (idx *Indexer) SetLogger(l *slog.Logger) {
 // using the given embedder for vector generation. maxChunkTokens controls
 // the maximum estimated token count per chunk before splitting; 0 disables splitting.
 func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer, error) {
-	s, err := store.New(dsn, emb.Dimensions())
+	return NewIndexerWithStorage(dsn, emb, maxChunkTokens, "int8")
+}
+
+// NewIndexerWithStorage creates a shared-collection indexer with the selected
+// sqlite-vec element type.
+func NewIndexerWithStorage(dsn string, emb embedder.Embedder, maxChunkTokens int, vectorStorage string) (*Indexer, error) {
+	return NewIndexerForProject(dsn, emb, maxChunkTokens, vectorStorage, "")
+}
+
+// NewIndexerForProject opens a shared collection with projectPath selected up
+// front, allowing metadata such as last_indexed_at to be read before indexing.
+func NewIndexerForProject(dsn string, emb embedder.Embedder, maxChunkTokens int, vectorStorage, projectPath string) (*Indexer, error) {
+	s, err := store.NewCollection(dsn, emb.Dimensions(), vectorStorage, projectPath)
 	if err != nil {
 		return nil, fmt.Errorf("create store: %w", err)
 	}
@@ -110,6 +132,8 @@ func NewIndexer(dsn string, emb embedder.Embedder, maxChunkTokens int) (*Indexer
 		chunker:        chunker.NewMultiChunker(chunker.DefaultLanguages(maxChunkTokens)),
 		maxChunkTokens: maxChunkTokens,
 		dsn:            dsn,
+		vectorStorage:  vectorStorage,
+		projectPath:    projectPath,
 	}, nil
 }
 
@@ -123,7 +147,7 @@ func (idx *Indexer) rebuildStore() error {
 			_ = os.Remove(idx.dsn + suffix)
 		}
 	}
-	s, err := store.New(idx.dsn, idx.emb.Dimensions())
+	s, err := store.NewCollection(idx.dsn, idx.emb.Dimensions(), idx.vectorStorage, idx.projectPath)
 	if err != nil {
 		return fmt.Errorf("open fresh store: %w", err)
 	}
@@ -161,6 +185,9 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	if err := idx.selectProject(projectDir); err != nil {
+		return Stats{}, err
+	}
 
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
@@ -226,6 +253,9 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	if err := idx.selectProject(projectDir); err != nil {
+		return false, Stats{}, err
+	}
 
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
@@ -277,6 +307,9 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 // merkle tree, so callers that already have one (e.g. EnsureFresh) do not need
 // to build it again.
 func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
+	if idx.store.IsShared() {
+		return idx.indexSharedWithTree(ctx, projectDir, oldRootHash, force, curTree, progress)
+	}
 	var stats Stats
 
 	stats.TotalFiles = len(curTree.Files)
@@ -537,6 +570,9 @@ func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
 // IsFresh does not acquire the indexer mutex; it reads through the store's
 // read-only connection (SQLite WAL isolation).
 func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
+	if err := idx.selectProject(projectDir); err != nil {
+		return false, err
+	}
 	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
 		return false, fmt.Errorf("build merkle tree: %w", err)
@@ -559,7 +595,11 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 // Search uses a dedicated read-only database connection so it can execute
 // concurrently with write operations (e.g. during indexing). It does not
 // acquire the indexer mutex, relying on SQLite WAL mode for isolation.
-func (idx *Indexer) Search(ctx context.Context, _ string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+
+func (idx *Indexer) Search(ctx context.Context, projectDir string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
+	if err := idx.selectProject(projectDir); err != nil {
+		return nil, err
+	}
 	return idx.store.Search(ctx, queryVec, limit, maxDistance, pathPrefix)
 }
 
@@ -571,6 +611,9 @@ func (idx *Indexer) Search(ctx context.Context, _ string, queryVec []float32, li
 func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	var info StatusInfo
 	info.ProjectPath = projectDir
+	if err := idx.selectProject(projectDir); err != nil {
+		return info, err
+	}
 
 	storeStats, err := idx.store.Stats()
 	if err != nil {
@@ -578,6 +621,14 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	}
 	info.IndexedFiles = storeStats.TotalFiles
 	info.TotalChunks = storeStats.TotalChunks
+	info.UniqueVectors = storeStats.UniqueVectors
+	info.SharedReferences = storeStats.SharedReferences
+	if references := info.UniqueVectors + info.SharedReferences; references > 0 {
+		info.DeduplicationRate = float64(info.SharedReferences) / float64(references)
+	}
+	info.VectorStorage = storeStats.VectorStorage
+	info.DatabaseBytes = storeStats.DatabaseBytes
+	info.ReclaimableBytes = storeStats.ReclaimableBytes
 
 	meta, err := idx.store.GetMetaBatch([]string{"embedding_model", "last_indexed_at", "total_files"})
 	if err != nil {
@@ -590,6 +641,17 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	}
 
 	return info, nil
+}
+
+func (idx *Indexer) selectProject(projectDir string) error {
+	if projectDir == "" {
+		projectDir = idx.projectPath
+	}
+	if err := idx.store.UseProject(projectDir); err != nil {
+		return fmt.Errorf("select project: %w", err)
+	}
+	idx.projectPath = projectDir
+	return nil
 }
 
 // isBinaryContent reports whether data appears to be binary by checking

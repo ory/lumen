@@ -92,13 +92,19 @@ type IndexStatusInput struct {
 
 // IndexStatusOutput is the structured output of the index_status tool.
 type IndexStatusOutput struct {
-	ProjectPath    string `json:"project_path"`
-	TotalFiles     int    `json:"total_files"`
-	IndexedFiles   int    `json:"indexed_files"`
-	TotalChunks    int    `json:"total_chunks"`
-	LastIndexedAt  string `json:"last_indexed_at"`
-	EmbeddingModel string `json:"embedding_model"`
-	Stale          bool   `json:"stale"`
+	ProjectPath       string  `json:"project_path"`
+	TotalFiles        int     `json:"total_files"`
+	IndexedFiles      int     `json:"indexed_files"`
+	TotalChunks       int     `json:"total_chunks"`
+	UniqueVectors     int     `json:"unique_vectors"`
+	SharedReferences  int     `json:"shared_references"`
+	DeduplicationRate float64 `json:"deduplication_ratio"`
+	VectorStorage     string  `json:"vector_storage"`
+	DatabaseBytes     int64   `json:"database_bytes"`
+	ReclaimableBytes  int64   `json:"reclaimable_bytes"`
+	LastIndexedAt     string  `json:"last_indexed_at"`
+	EmbeddingModel    string  `json:"embedding_model"`
+	Stale             bool    `json:"stale"`
 }
 
 // HealthCheckInput defines the parameters for the health_check tool.
@@ -162,6 +168,13 @@ func (ic *indexerCache) currentModel() string {
 		return ""
 	}
 	return ic.embedder.ModelName()
+}
+
+func (ic *indexerCache) dbPath(projectPath, model string) string {
+	if ic.cfg == nil {
+		return config.DBPathForProject(projectPath, model)
+	}
+	return configuredDBPath(ic.cfg, projectPath, model)
 }
 
 func (ic *indexerCache) cacheGet(projectPath, model string) (cacheEntry, bool) {
@@ -340,7 +353,7 @@ func (ic *indexerCache) findEffectiveRoot(path string, model ...string) string {
 			if _, ok := ic.cacheGet(candidate, modelName); ok {
 				return candidate
 			}
-			if _, err := os.Stat(config.DBPathForProject(candidate, modelName)); err == nil {
+			if _, err := os.Stat(ic.dbPath(candidate, modelName)); err == nil {
 				return candidate
 			}
 		}
@@ -390,7 +403,7 @@ func (ic *indexerCache) hasIndex(projectPath string, model ...string) bool {
 	if _, ok := ic.cacheGet(projectPath, modelName); ok {
 		return true
 	}
-	_, err := os.Stat(config.DBPathForProject(projectPath, modelName))
+	_, err := os.Stat(ic.dbPath(projectPath, modelName))
 	return err == nil
 }
 
@@ -449,7 +462,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		// making every first search prohibitively slow. Once an index exists at
 		// the preferred root, subsequent searches reuse it and benefit from the
 		// shared project-wide index.
-		if _, err := os.Stat(config.DBPathForProject(clean, modelName)); err == nil {
+		if _, err := os.Stat(ic.dbPath(clean, modelName)); err == nil {
 			effectiveRoot = clean
 		} else {
 			effectiveRoot = ic.findEffectiveRoot(projectPath, modelName)
@@ -478,7 +491,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		}
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, modelName)
+	dbPath := ic.dbPath(effectiveRoot, modelName)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, "", "", fmt.Errorf("create db directory: %w", err)
 	}
@@ -503,11 +516,15 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		seed:      ic.seedFunc,
 	})
 
-	idx, err := index.NewIndexer(dbPath, ic.embedder, ic.cfg.MaxChunkTokens())
+	idx, err := index.NewIndexerForProject(dbPath, ic.embedder, ic.cfg.MaxChunkTokens(), ic.cfg.VectorStorage(), effectiveRoot)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
 	idx.SetLogger(ic.logger())
+	legacyPath := config.LegacyDBPathForProject(effectiveRoot, modelName)
+	if err := idx.PrepareLegacyMigration(effectiveRoot, legacyPath); err != nil {
+		ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+	}
 
 	// Pre-populate the freshness TTL if the index was recently stamped by
 	// background pre-warming (SessionStart hook). This avoids a redundant
@@ -558,7 +575,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 
 	progress := buildProgressFunc(ctx, req)
 
-	dbPath := config.DBPathForProject(effectiveRoot, modelName)
+	dbPath := ic.dbPath(effectiveRoot, modelName)
 	out, err := ic.ensureIndexed(idx, input, effectiveRoot, dbPath, progress)
 	if err != nil {
 		return nil, nil, err
@@ -763,7 +780,7 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 	// If a background indexer holds the exclusive flock, skip EnsureFresh to
 	// avoid duplicating the in-progress Merkle walk. The TOCTOU race is benign:
 	// worst case is redundant work, not corruption (SQLite WAL mode).
-	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) {
+	if indexlock.IsHeld(indexlock.LockPathForDB(dbPath)) || indexlock.IsHeld(indexlock.LockPathForProject(dbPath, projectDir)) {
 		ic.logger().Info("skipping reindex: background indexer is running", "project", projectDir)
 		out.StaleWarning = staleIndexWarning
 		return out, nil
@@ -807,7 +824,8 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 	}
 	bgCtx, bgCancel := context.WithTimeout(bgParent, backgroundReindexMaxDuration)
 
-	lockPath := indexlock.LockPathForDB(dbPath)
+	collectionLockPath := indexlock.LockPathForDB(dbPath)
+	projectLockPath := indexlock.LockPathForProject(dbPath, projectDir)
 	ic.wg.Go(func() {
 		defer bgCancel()
 		defer func() {
@@ -816,19 +834,25 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 			ic.mu.Unlock()
 		}()
 
-		lk, lockErr := indexlock.TryAcquire(lockPath)
+		collectionLock, lockErr := indexlock.TryAcquireShared(collectionLockPath)
 		if lockErr != nil {
 			ic.logger().Warn("background reindex: failed to acquire lock", "project", projectDir, "err", lockErr)
 			done <- freshResult{skipped: true}
 			return
 		}
-		if lk == nil {
+		if collectionLock == nil {
 			// Another process grabbed the lock between our IsHeld check and now.
 			ic.logger().Debug("background reindex: lock held by another process, skipping", "project", projectDir)
 			done <- freshResult{skipped: true}
 			return
 		}
-		defer lk.Release()
+		defer collectionLock.Release()
+		projectLock, lockErr := indexlock.TryAcquire(projectLockPath)
+		if lockErr != nil || projectLock == nil {
+			done <- freshResult{skipped: true}
+			return
+		}
+		defer projectLock.Release()
 
 		// If a recent external process (e.g. lumen index from SessionStart)
 		// already updated the index within freshnessTTL, trust the DB timestamp
@@ -1012,12 +1036,18 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 	}
 
 	out := IndexStatusOutput{
-		ProjectPath:    info.ProjectPath,
-		TotalFiles:     info.TotalFiles,
-		IndexedFiles:   info.IndexedFiles,
-		TotalChunks:    info.TotalChunks,
-		LastIndexedAt:  info.LastIndexedAt,
-		EmbeddingModel: info.EmbeddingModel,
+		ProjectPath:       info.ProjectPath,
+		TotalFiles:        info.TotalFiles,
+		IndexedFiles:      info.IndexedFiles,
+		TotalChunks:       info.TotalChunks,
+		UniqueVectors:     info.UniqueVectors,
+		SharedReferences:  info.SharedReferences,
+		DeduplicationRate: info.DeduplicationRate,
+		VectorStorage:     info.VectorStorage,
+		DatabaseBytes:     info.DatabaseBytes,
+		ReclaimableBytes:  info.ReclaimableBytes,
+		LastIndexedAt:     info.LastIndexedAt,
+		EmbeddingModel:    info.EmbeddingModel,
 	}
 
 	fresh, err := idx.IsFresh(effectiveRoot)
@@ -1377,6 +1407,10 @@ func formatIndexStatus(out IndexStatusOutput) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Index: %s\n", out.ProjectPath)
 	fmt.Fprintf(&b, "Files: %d | Indexed: %d | Chunks: %d | Model: %s\n", out.TotalFiles, out.IndexedFiles, out.TotalChunks, out.EmbeddingModel)
+	if out.VectorStorage != "" {
+		fmt.Fprintf(&b, "Vectors: %d unique | Shared refs: %d | Dedup: %.1f%% | Storage: %s | DB: %d bytes | Reclaimable: %d bytes\n",
+			out.UniqueVectors, out.SharedReferences, out.DeduplicationRate*100, out.VectorStorage, out.DatabaseBytes, out.ReclaimableBytes)
+	}
 	stale := "no"
 	if out.Stale {
 		stale = "yes"
@@ -1412,6 +1446,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		"backend", cfg.Servers()[0].Backend,
 		"freshness_ttl", cfg.FreshnessTTL().String(),
 	)
+	runDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now())
 
 	closeCtx, closeFn := context.WithCancel(context.Background())
 	indexers := &indexerCache{

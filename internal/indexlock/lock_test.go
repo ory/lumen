@@ -19,6 +19,34 @@ func TestLockPathForDB(t *testing.T) {
 	}
 }
 
+func TestLockPathForProject(t *testing.T) {
+	a := indexlock.LockPathForProject("/data/index.db", "/repo/a")
+	b := indexlock.LockPathForProject("/data/index.db", "/repo/b")
+	if a == b {
+		t.Fatal("different projects must have different lock paths")
+	}
+	if a != indexlock.LockPathForProject("/data/index.db", "/repo/a") {
+		t.Fatal("project lock path must be deterministic")
+	}
+}
+
+func TestSharedCollectionGuardsCanCoexist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "collection.lock")
+	first, err := indexlock.TryAcquireShared(path)
+	if err != nil || first == nil {
+		t.Fatalf("first shared lock: lock=%v err=%v", first, err)
+	}
+	defer first.Release()
+	second, err := indexlock.TryAcquireShared(path)
+	if err != nil || second == nil {
+		t.Fatalf("second shared lock: lock=%v err=%v", second, err)
+	}
+	defer second.Release()
+	if !indexlock.IsAnyHeld(path) {
+		t.Fatal("exclusive maintenance probe should see shared holders")
+	}
+}
+
 // TestTryAcquire_Free verifies acquiring a lock on a fresh path succeeds.
 func TestTryAcquire_Free(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "index.db.lock")

@@ -16,6 +16,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,6 +69,44 @@ func TestDBPathForProject(t *testing.T) {
 	})
 }
 
+func TestDBPathForProjectProfileSharesGitWorktrees(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is unavailable")
+	}
+	root := filepath.Join(t.TempDir(), "repo")
+	worktree := filepath.Join(t.TempDir(), "worktree")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Lumen", "GIT_AUTHOR_EMAIL=lumen@example.test", "GIT_COMMITTER_NAME=Lumen", "GIT_COMMITTER_EMAIL=lumen@example.test")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	run(root, "init")
+	if err := os.WriteFile(filepath.Join(root, "README"), []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(root, "add", "README")
+	run(root, "commit", "-m", "initial")
+	run(root, "worktree", "add", worktree, "-b", "worktree-test")
+
+	dataDir := t.TempDir()
+	mainPath := DBPathForProjectProfileBase(dataDir, root, "model", 768, "int8", 512)
+	worktreePath := DBPathForProjectProfileBase(dataDir, worktree, "model", 768, "int8", 512)
+	if mainPath != worktreePath {
+		t.Fatalf("worktrees should share a collection: %q != %q", mainPath, worktreePath)
+	}
+	floatPath := DBPathForProjectProfileBase(dataDir, root, "model", 768, "float32", 512)
+	if floatPath == mainPath {
+		t.Fatal("vector storage must be part of the collection profile")
+	}
+}
+
 func TestXDGConfigDir(t *testing.T) {
 	t.Run("uses XDG_CONFIG_HOME when set", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "/custom/config")
@@ -81,6 +120,35 @@ func TestXDGConfigDir(t *testing.T) {
 		want := filepath.Join(home, ".config")
 		if got := XDGConfigDir(); got != want {
 			t.Errorf("XDGConfigDir() = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestVectorStorageConfiguration(t *testing.T) {
+	t.Run("defaults to int8", func(t *testing.T) {
+		t.Setenv("LUMEN_VECTOR_STORAGE", "")
+		cfg, err := NewConfigService("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.VectorStorage(); got != "int8" {
+			t.Fatalf("VectorStorage() = %q, want int8", got)
+		}
+	})
+	t.Run("accepts float32 override", func(t *testing.T) {
+		t.Setenv("LUMEN_VECTOR_STORAGE", "FLOAT32")
+		cfg, err := NewConfigService("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.VectorStorage(); got != "float32" {
+			t.Fatalf("VectorStorage() = %q, want float32", got)
+		}
+	})
+	t.Run("rejects unknown storage", func(t *testing.T) {
+		t.Setenv("LUMEN_VECTOR_STORAGE", "float16")
+		if _, err := NewConfigService(""); err == nil {
+			t.Fatal("expected invalid vector storage to fail validation")
 		}
 	})
 }

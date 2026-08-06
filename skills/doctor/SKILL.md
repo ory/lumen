@@ -17,8 +17,13 @@ project.
 3. Report a concise summary:
    - Embedding service status, backend, host, and model
    - Index totals: files, chunks, last indexed time, stale or fresh
+   - Storage totals: unique vectors, shared references, deduplication ratio,
+     vector precision, database bytes, and reclaimable bytes
    - Any MCP or plugin setup issue that blocks the tools
 4. If no index exists yet, explain that the Lumen `semantic_search` tool seeds
    the index on first use.
 5. If the user wants eager indexing instead of waiting for the next search,
    suggest running `lumen index .` in the repository root.
+6. Interpret storage totals as collection-wide values shared by compatible Git
+   worktrees; file, chunk, freshness, and indexing values are project-local.
+   A high deduplication ratio is expected and is not an index-health problem.

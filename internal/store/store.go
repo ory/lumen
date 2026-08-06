@@ -23,10 +23,10 @@ import (
 	"strings"
 	"time"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 
 	"github.com/ory/lumen/internal/chunker"
+	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
 
 // MetaLastAccessedAt is the project_meta key holding the RFC3339 UTC timestamp
@@ -74,16 +74,26 @@ type SearchResult struct {
 
 // StoreStats holds aggregate statistics about the store contents.
 type StoreStats struct { //nolint:revive // StoreStats is intentionally named to avoid ambiguity at call sites
-	TotalFiles  int
-	TotalChunks int
+	TotalFiles       int
+	TotalChunks      int
+	UniqueVectors    int
+	SharedReferences int
+	DatabaseBytes    int64
+	ReclaimableBytes int64
+	VectorStorage    string
 }
 
 // Store manages SQLite + sqlite-vec storage for code chunks and their
 // embedding vectors.
 type Store struct {
-	db         *sql.DB
-	readDB     *sql.DB // separate read-only connection; nil for :memory: databases
-	dimensions int
+	db            *sql.DB
+	readDB        *sql.DB // separate read-only connection; nil for :memory: databases
+	dimensions    int
+	shared        bool
+	vectorStorage string
+	projectPath   string
+	projectID     int64
+	dsn           string
 }
 
 // New opens (or creates) a SQLite database at dsn, enables WAL mode and
@@ -103,7 +113,40 @@ func New(dsn string, dimensions int) (*Store, error) {
 	if err != nil {
 		return s, err
 	}
-	s.stampAccess(dsn)
+	if s.shared && s.projectID == 0 {
+		if err := s.UseProject(""); err != nil {
+			_ = s.Close()
+			return nil, err
+		}
+	}
+	if s.shared {
+		s.stampSharedAccess()
+	} else {
+		s.stampAccess(dsn)
+	}
+	return s, nil
+}
+
+// NewCollection opens a repository-scoped shared collection and selects the
+// project membership identified by projectPath. vectorStorage must be int8 or
+// float32. Multiple Store instances may safely select different worktrees in
+// the same database.
+func NewCollection(dsn string, dimensions int, vectorStorage, projectPath string) (*Store, error) {
+	if vectorStorage != "int8" && vectorStorage != "float32" {
+		return nil, fmt.Errorf("unsupported vector storage %q", vectorStorage)
+	}
+	s, err := openCollection(dsn, dimensions, vectorStorage)
+	if err != nil && IsCorruptionErr(err) && dsn != ":memory:" {
+		deleteDBFiles(dsn)
+		s, err = openCollection(dsn, dimensions, vectorStorage)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.UseProject(projectPath); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -164,6 +207,18 @@ func openStore(dsn string, dimensions int) (*Store, error) {
 			_ = db.Close()
 			return nil, fmt.Errorf("exec %q: %w", p, err)
 		}
+	}
+	// A low-level caller may open a database already upgraded to the shared
+	// schema (for example metadata tooling during a rolling upgrade). Return a
+	// shared view instead of attempting to overlay the legacy tables.
+	if shared, _ := checkTableExists(db, "collection_meta"); shared {
+		var storage string
+		if err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = 'vector_storage'`).Scan(&storage); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		_ = db.Close()
+		return openCollection(dsn, dimensions, storage)
 	}
 
 	if err := createSchema(db, dimensions); err != nil {
@@ -372,6 +427,9 @@ func ReadMetaAt(dbPath string, keys ...string) (map[string]string, error) {
 
 // SetMeta upserts a key-value pair in the project_meta table.
 func (s *Store) SetMeta(key, value string) error {
+	if s.shared {
+		return s.setProjectMeta(key, value)
+	}
 	_, err := s.db.Exec(
 		`INSERT INTO project_meta (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -383,6 +441,9 @@ func (s *Store) SetMeta(key, value string) error {
 // GetMeta retrieves a value from the project_meta table by key.
 // It uses the read-only connection when available for concurrency with writes.
 func (s *Store) GetMeta(key string) (string, error) {
+	if s.shared {
+		return s.getProjectMeta(key)
+	}
 	var val string
 	err := s.reader().QueryRow("SELECT value FROM project_meta WHERE key = ?", key).Scan(&val)
 	if err != nil {
@@ -395,6 +456,9 @@ func (s *Store) GetMeta(key string) (string, error) {
 // Missing keys are absent from the returned map. Uses the read-only connection
 // when available for concurrency with writes.
 func (s *Store) GetMetaBatch(keys []string) (map[string]string, error) {
+	if s.shared {
+		return s.getProjectMetaBatch(keys)
+	}
 	return queryMeta(s.reader(), keys)
 }
 
@@ -437,6 +501,9 @@ func queryMeta(db *sql.DB, keys []string) (map[string]string, error) {
 
 // UpsertFile inserts or updates a file path and its content hash.
 func (s *Store) UpsertFile(path, hash string) error {
+	if s.shared {
+		return s.upsertSharedFile(path, hash)
+	}
 	_, err := s.db.Exec(
 		`INSERT INTO files (path, hash) VALUES (?, ?)
 		 ON CONFLICT(path) DO UPDATE SET hash = excluded.hash`,
@@ -453,6 +520,9 @@ func (s *Store) UpsertFile(path, hash string) error {
 // would cause an error. The deduplication loop below handles within-batch
 // duplicates only.
 func (s *Store) InsertChunks(chunks []chunker.Chunk, vectors [][]float32) error {
+	if s.shared {
+		return s.insertSharedChunks(chunks, vectors)
+	}
 	if len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
@@ -527,6 +597,9 @@ func insertChunkAndVector(chunkStmt, vecStmt interface {
 // DeleteFileChunks removes all chunks (and their vectors) associated with the
 // given file path, then removes the file record itself.
 func (s *Store) DeleteFileChunks(filePath string) error {
+	if s.shared {
+		return s.removeProjectFile(filePath)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -568,6 +641,9 @@ func (s *Store) DeleteFileChunks(filePath string) error {
 // connection (e.g. during indexing). The provided context is used for
 // query cancellation.
 func (s *Store) Search(ctx context.Context, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]SearchResult, error) {
+	if s.shared {
+		return s.searchShared(ctx, queryVec, limit, maxDistance, pathPrefix)
+	}
 	blob, err := sqlite_vec.SerializeFloat32(queryVec)
 	if err != nil {
 		return nil, fmt.Errorf("serialize query: %w", err)
@@ -626,6 +702,9 @@ func (s *Store) Search(ctx context.Context, queryVec []float32, limit int, maxDi
 
 // GetFileHashes returns a map of file path to content hash for all tracked files.
 func (s *Store) GetFileHashes() (map[string]string, error) {
+	if s.shared {
+		return s.projectFileHashes()
+	}
 	rows, err := s.db.Query("SELECT path, hash FROM files")
 	if err != nil {
 		return nil, fmt.Errorf("query files: %w", err)
@@ -646,6 +725,9 @@ func (s *Store) GetFileHashes() (map[string]string, error) {
 // Stats returns aggregate statistics about the store contents in one query.
 // Uses the read-only connection when available for concurrency with writes.
 func (s *Store) Stats() (StoreStats, error) {
+	if s.shared {
+		return s.sharedStats()
+	}
 	var stats StoreStats
 	err := s.reader().QueryRow(
 		`SELECT (SELECT count(*) FROM files), (SELECT count(*) FROM chunks)`,
@@ -658,6 +740,9 @@ func (s *Store) Stats() (StoreStats, error) {
 
 // TopSymbols returns the n most frequently occurring symbol names in the store.
 func (s *Store) TopSymbols(n int) ([]string, error) {
+	if s.shared {
+		return s.sharedTopSymbols(n)
+	}
 	rows, err := s.reader().Query(
 		"SELECT symbol FROM chunks GROUP BY symbol ORDER BY count(*) DESC LIMIT ?", n,
 	)
@@ -682,6 +767,9 @@ func (s *Store) TopSymbols(n int) ([]string, error) {
 // Uses the read-only connection when available for consistency with other
 // read methods (GetMeta, Stats, Search).
 func (s *Store) HasSentinelFiles() (bool, error) {
+	if s.shared {
+		return s.sharedHasSentinelFiles()
+	}
 	var exists bool
 	err := s.reader().QueryRow("SELECT EXISTS(SELECT 1 FROM files WHERE hash = '')").Scan(&exists)
 	return exists, err

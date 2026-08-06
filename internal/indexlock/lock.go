@@ -7,7 +7,9 @@ package indexlock
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -18,6 +20,13 @@ import (
 // The lock file lives alongside the DB in the same directory.
 func LockPathForDB(dbPath string) string {
 	return dbPath + ".lock"
+}
+
+// LockPathForProject returns a stable per-project lock alongside a shared
+// collection. Different worktrees therefore do not serialize one another.
+func LockPathForProject(dbPath, projectPath string) string {
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectPath)))
+	return dbPath + ".project-" + hash[:16] + ".lock"
 }
 
 // Lock is an exclusive advisory lock held on an index lock file.
@@ -64,6 +73,21 @@ func Acquire(ctx context.Context, lockPath string) (*Lock, error) {
 	return &Lock{fl: fl}, nil
 }
 
+// TryAcquireShared takes a shared lock. Indexers hold this on the collection
+// guard while taking an exclusive per-project lock; cleanup takes an exclusive
+// probe and therefore never runs during active indexing.
+func TryAcquireShared(lockPath string) (*Lock, error) {
+	fl := flock.New(lockPath)
+	locked, err := fl.TryRLock()
+	if err != nil {
+		return nil, err
+	}
+	if !locked {
+		return nil, nil
+	}
+	return &Lock{fl: fl}, nil
+}
+
 // IsHeld reports whether another process currently holds an exclusive lock on
 // lockPath. Returns true on any error (fail-closed: callers skip work rather
 // than risk concurrent writes). Does NOT create the lock file — if it doesn't
@@ -83,6 +107,21 @@ func IsHeld(lockPath string) bool {
 		return true
 	}
 	// Shared lock succeeded → no exclusive lock held. Release immediately.
+	_ = fl.Unlock()
+	return false
+}
+
+// IsAnyHeld reports whether lockPath has either shared or exclusive holders.
+// It is used by destructive collection maintenance.
+func IsAnyHeld(lockPath string) bool {
+	if _, err := os.Stat(lockPath); err != nil {
+		return false
+	}
+	fl := flock.New(lockPath)
+	locked, err := fl.TryLock()
+	if err != nil || !locked {
+		return true
+	}
 	_ = fl.Unlock()
 	return false
 }

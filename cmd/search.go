@@ -24,7 +24,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
 	"github.com/spf13/cobra"
@@ -135,11 +134,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	tr.record("path resolution", indexRoot)
 
 	// Span 2: indexer setup
-	dbPath := config.DBPathForProject(indexRoot, modelName)
+	dbPath := configuredDBPath(cfg, indexRoot, modelName)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create db directory: %w", err)
 	}
-	idx, err := setupIndexer(cfg, emb, dbPath, nil)
+	idx, err := setupIndexerForProject(cfg, emb, dbPath, indexRoot, nil)
 	if err != nil {
 		return fmt.Errorf("setup indexer: %w", err)
 	}

@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/ory/lumen/internal/config"
+	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
 
 // gitSampleProject copies testdata/sample-project into a temp directory and
