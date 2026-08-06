@@ -17,6 +17,7 @@ package cmd
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -387,6 +388,61 @@ func TestClean_NegativeDaysFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "--days")
 	assert.DirExists(t, hashDir, "a rejected invocation must not delete anything")
+}
+
+func TestClean_MaxDaysAccepted(t *testing.T) {
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	project := projectDir(t, "max-days")
+	hashDir := seedIndex(t, project, embedder.DefaultModel, nil)
+
+	_, _, err := runCleanCmd(t, "--days", "106751")
+	require.NoError(t, err)
+	assert.DirExists(t, hashDir, "the largest safe whole-day duration must be accepted")
+}
+
+func TestClean_TooManyDaysFailsWithoutDeleting(t *testing.T) {
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	project := projectDir(t, "overflow-days")
+	hashDir := seedIndex(t, project, embedder.DefaultModel, nil)
+
+	_, _, err := runCleanCmd(t, "--days", "106752")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "106751")
+	assert.DirExists(t, hashDir, "an overflowing duration must be rejected before cleanup")
+}
+
+func TestClean_HoldsLockDuringRemovalAndReleasesItAfterFailure(t *testing.T) {
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	project := projectDir(t, "remove-failure")
+	hashDir := seedIndex(t, project, embedder.DefaultModel, map[string]string{
+		"last_accessed_at": daysAgo(45),
+	})
+	lockPath := indexlock.LockPathForDB(filepath.Join(hashDir, "index.db"))
+	removeErr := errors.New("injected removal failure")
+	lockHeldDuringRemoval := false
+	originalRemoveIndexDir := removeIndexDir
+	removeIndexDir = func(path string) error {
+		assert.Equal(t, hashDir, path)
+		lockHeldDuringRemoval = indexlock.IsHeld(lockPath)
+		return removeErr
+	}
+	t.Cleanup(func() { removeIndexDir = originalRemoveIndexDir })
+
+	_, _, err := runCleanIndexes(t, tmp, 30)
+	require.ErrorIs(t, err, removeErr)
+	assert.True(t, lockHeldDuringRemoval, "cleanup must hold the index lock while removing the directory")
+	assert.DirExists(t, hashDir, "a failed removal must leave the index directory in place")
+
+	lock, lockErr := indexlock.TryAcquire(lockPath)
+	require.NoError(t, lockErr)
+	require.NotNil(t, lock, "cleanup must release the index lock after a removal failure")
+	lock.Release()
 }
 
 func TestClean_RejectsPositionalArgs(t *testing.T) {
