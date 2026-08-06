@@ -152,7 +152,7 @@ Codex, Cursor, and OpenCode reuse the same repo-root `skills/`, `hooks/`, and
 │   ├── root.go         # Cobra root command
 │   ├── stdio.go        # MCP server
 │   ├── hook.go         # Hook handlers
-│   ├── purge.go        # Index data cleanup
+│   ├── clean.go        # Age-based index data cleanup
 │   └── index.go        # CLI indexing
 ├── internal/
 │   ├── config/         # Config loading & paths
@@ -168,7 +168,7 @@ Codex, Cursor, and OpenCode reuse the same repo-root `skills/`, `hooks/`, and
 
 Lumen has two execution contexts with distinct output strategies:
 
-**Interactive** (`lumen index`, `lumen purge`, `lumen search`):
+**Interactive** (`lumen index`, `lumen clean`, `lumen search`):
 - Progress and status → `tui.Progress` (pterm) on **stderr**
 - Completion summaries → `fmt.Printf` on **stdout**
 - Errors → `fmt.Fprintf(os.Stderr, ...)`
