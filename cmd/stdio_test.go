@@ -399,10 +399,10 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 		t.Fatalf("expected same effective root, got %q vs %q", rootA, rootB)
 	}
 
-	if _, err := os.Stat(config.DBPathForProject(rootA, "model-a")); err != nil {
+	if _, err := os.Stat(ic.dbPath(rootA, "model-a")); err != nil {
 		t.Fatalf("expected model-a DB to exist: %v", err)
 	}
-	if _, err := os.Stat(config.DBPathForProject(rootB, "model-b")); err != nil {
+	if _, err := os.Stat(ic.dbPath(rootB, "model-b")); err != nil {
 		t.Fatalf("expected model-b DB to exist: %v", err)
 	}
 
@@ -556,7 +556,7 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 			cfg:      newTestConfigService(t, 512),
 		}
 		// Pre-create the DB file at parentDir so the preferred root is adopted.
-		dbPath := config.DBPathForProject(parentDir, "stub")
+		dbPath := ic.dbPath(parentDir, "stub")
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1110,7 +1110,7 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 		t.Fatalf("getOrCreate: %v", err)
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, ic.embedder.ModelName())
+	dbPath := ic.dbPath(effectiveRoot, ic.embedder.ModelName())
 	lockPath := indexlock.LockPathForDB(dbPath)
 
 	// Ensure the lock file's parent directory exists (getOrCreate creates the DB
@@ -1223,8 +1223,10 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
+	cfg := newTestConfigService(t, 512)
 	// Build a real DB at the expected path and stamp it with a recent timestamp.
-	dbPath := config.DBPathForProject(projectDir, "stub")
+	dbPath := configuredDBPath(cfg, projectDir, "stub")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1232,10 +1234,9 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
-		cfg:      newTestConfigService(t, 512),
+		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")
 	if err != nil {
@@ -1256,7 +1257,9 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dbPath := config.DBPathForProject(projectDir, "stub")
+	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
+	cfg := newTestConfigService(t, 512)
+	dbPath := configuredDBPath(cfg, projectDir, "stub")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1265,10 +1268,9 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
-		cfg:      newTestConfigService(t, 512),
+		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")
 	if err != nil {
@@ -1443,7 +1445,7 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		Limit: 8,
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, ic.embedder.ModelName())
+	dbPath := ic.dbPath(effectiveRoot, ic.embedder.ModelName())
 
 	// First call: no TTL entry yet — runs EnsureFresh and records lastCheckedAt.
 	_, err = ic.ensureIndexed(idx, input, effectiveRoot, dbPath, nil)

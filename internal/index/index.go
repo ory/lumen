@@ -89,6 +89,7 @@ type StatusInfo struct {
 // Indexer orchestrates chunking, embedding, and storage for a code index.
 type Indexer struct {
 	mu             sync.Mutex
+	projectMu      sync.RWMutex
 	store          *store.Store
 	emb            embedder.Embedder
 	chunker        chunker.Chunker
@@ -138,25 +139,34 @@ func NewIndexerForProject(dsn string, emb embedder.Embedder, maxChunkTokens int,
 }
 
 // rebuildStore closes the current store, deletes the database files, and
-// opens a fresh store. Must be called while holding idx.mu.Lock() or before
-// the Indexer is shared with other goroutines.
-func (idx *Indexer) rebuildStore() error {
+// opens a fresh store. Callers must hold idx.mu but must not hold a project
+// lease: the exclusive project lock drains concurrent readers before the
+// underlying connections are replaced.
+func (idx *Indexer) rebuildStore(projectPath string) error {
+	idx.projectMu.Lock()
+	defer idx.projectMu.Unlock()
+
 	_ = idx.store.Close()
 	if idx.dsn != "" && idx.dsn != ":memory:" {
 		for _, suffix := range []string{"", "-wal", "-shm"} {
 			_ = os.Remove(idx.dsn + suffix)
 		}
 	}
-	s, err := store.NewCollection(idx.dsn, idx.emb.Dimensions(), idx.vectorStorage, idx.projectPath)
+	s, err := store.NewCollection(idx.dsn, idx.emb.Dimensions(), idx.vectorStorage, projectPath)
 	if err != nil {
 		return fmt.Errorf("open fresh store: %w", err)
 	}
 	idx.store = s
+	idx.projectPath = projectPath
 	return nil
 }
 
 // Close closes the underlying store.
 func (idx *Indexer) Close() error {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	idx.projectMu.Lock()
+	defer idx.projectMu.Unlock()
 	return idx.store.Close()
 }
 
@@ -185,9 +195,11 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if err := idx.selectProject(projectDir); err != nil {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
 		return Stats{}, err
 	}
+	defer func() { releaseProject() }()
 
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
@@ -216,8 +228,14 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 			idx.logger.Error("corrupted database detected during index, rebuilding",
 				"project", projectDir, "err", indexErr)
 		}
-		if rebuildErr := idx.rebuildStore(); rebuildErr != nil {
+		releaseProject()
+		releaseProject = func() {}
+		if rebuildErr := idx.rebuildStore(projectDir); rebuildErr != nil {
 			return Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
+		}
+		releaseProject, err = idx.lockProject(projectDir)
+		if err != nil {
+			return Stats{}, err
 		}
 		// Retry with force=true so the fresh DB gets a full index pass.
 		stats, indexErr = idx.indexWithTree(ctx, projectDir, "", true, curTree, progress)
@@ -253,9 +271,11 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if err := idx.selectProject(projectDir); err != nil {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
 		return false, Stats{}, err
 	}
+	defer func() { releaseProject() }()
 
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
@@ -286,8 +306,14 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 			idx.logger.Error("corrupted database detected during reindex, rebuilding",
 				"project", projectDir, "err", err)
 		}
-		if rebuildErr := idx.rebuildStore(); rebuildErr != nil {
+		releaseProject()
+		releaseProject = func() {}
+		if rebuildErr := idx.rebuildStore(projectDir); rebuildErr != nil {
 			return false, Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
+		}
+		releaseProject, err = idx.lockProject(projectDir)
+		if err != nil {
+			return false, Stats{}, err
 		}
 		// Retry with empty storedHash so the fresh DB gets a full index pass.
 		stats, err = idx.indexWithTree(ctx, projectDir, "", false, curTree, progress)
@@ -552,6 +578,8 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 // stored in the last_indexed_at metadata field. Returns (zero, false) if the
 // field is absent or unparseable (e.g. the index has never been run).
 func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
+	idx.projectMu.RLock()
+	defer idx.projectMu.RUnlock()
 	val, err := idx.store.GetMeta("last_indexed_at")
 	if err != nil || val == "" {
 		return time.Time{}, false
@@ -570,9 +598,11 @@ func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
 // IsFresh does not acquire the indexer mutex; it reads through the store's
 // read-only connection (SQLite WAL isolation).
 func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
-	if err := idx.selectProject(projectDir); err != nil {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
 		return false, err
 	}
+	defer releaseProject()
 	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
 	if err != nil {
 		return false, fmt.Errorf("build merkle tree: %w", err)
@@ -597,9 +627,11 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 // acquire the indexer mutex, relying on SQLite WAL mode for isolation.
 
 func (idx *Indexer) Search(ctx context.Context, projectDir string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
-	if err := idx.selectProject(projectDir); err != nil {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
 		return nil, err
 	}
+	defer releaseProject()
 	return idx.store.Search(ctx, queryVec, limit, maxDistance, pathPrefix)
 }
 
@@ -611,9 +643,11 @@ func (idx *Indexer) Search(ctx context.Context, projectDir string, queryVec []fl
 func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	var info StatusInfo
 	info.ProjectPath = projectDir
-	if err := idx.selectProject(projectDir); err != nil {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
 		return info, err
 	}
+	defer releaseProject()
 
 	storeStats, err := idx.store.Stats()
 	if err != nil {
@@ -643,15 +677,37 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 	return info, nil
 }
 
-func (idx *Indexer) selectProject(projectDir string) error {
-	if projectDir == "" {
-		projectDir = idx.projectPath
+// lockProject returns with a shared project lease held for the requested
+// membership. Same-project operations can therefore run concurrently, while a
+// membership switch waits for all operations using the previous project to
+// finish. The loop closes the gap between switching and reacquiring the shared
+// lease if another waiter changes the membership first.
+func (idx *Indexer) lockProject(projectDir string) (func(), error) {
+	for {
+		idx.projectMu.RLock()
+		selectedPath := projectDir
+		if selectedPath == "" {
+			selectedPath = idx.projectPath
+		}
+		if idx.projectPath == selectedPath {
+			return idx.projectMu.RUnlock, nil
+		}
+		idx.projectMu.RUnlock()
+
+		idx.projectMu.Lock()
+		selectedPath = projectDir
+		if selectedPath == "" {
+			selectedPath = idx.projectPath
+		}
+		if idx.projectPath != selectedPath {
+			if err := idx.store.UseProject(selectedPath); err != nil {
+				idx.projectMu.Unlock()
+				return nil, fmt.Errorf("select project: %w", err)
+			}
+			idx.projectPath = selectedPath
+		}
+		idx.projectMu.Unlock()
 	}
-	if err := idx.store.UseProject(projectDir); err != nil {
-		return fmt.Errorf("select project: %w", err)
-	}
-	idx.projectPath = projectDir
-	return nil
 }
 
 // isBinaryContent reports whether data appears to be binary by checking

@@ -225,13 +225,7 @@ func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbP
 }
 
 func configuredDBPath(cfg *config.ConfigService, projectPath, model string) string {
-	dimensions, known := config.ModelDimensions(model)
-	if !known {
-		servers := cfg.Servers()
-		if len(servers) > 0 && servers[0].Model == model {
-			dimensions = cfg.ServerDims(0)
-		}
-	}
+	dimensions := cfg.ServerDims(0)
 	return config.DBPathForProjectProfile(projectPath, model, dimensions, cfg.VectorStorage(), cfg.MaxChunkTokens())
 }
 

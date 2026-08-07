@@ -445,6 +445,56 @@ func TestClean_HoldsLockDuringRemovalAndReleasesItAfterFailure(t *testing.T) {
 	lock.Release()
 }
 
+func TestClean_HoldsCollectionLockThroughSharedCleanupAndRemoval(t *testing.T) {
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	project := projectDir(t, "stale-shared")
+	dbPath := config.DBPathForProjectProfile(project, embedder.DefaultModel, 4, "int8", 512)
+	require.NoError(t, os.MkdirAll(filepath.Dir(dbPath), 0o755))
+	s, err := store.NewCollection(dbPath, 4, "int8", project)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	db, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE projects SET last_accessed_at = ? WHERE path = ?`, daysAgo(45), project)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	hashDir := filepath.Dir(dbPath)
+	lockPath := indexlock.LockPathForDB(dbPath)
+	removeErr := errors.New("injected removal failure")
+	cleanupLockHeld := false
+	removeLockHeld := false
+	originalCleanup := cleanupCollectionAt
+	originalRemove := removeIndexDir
+	cleanupCollectionAt = func(path string, cutoff time.Time) (store.CleanupStats, bool, error) {
+		assert.Equal(t, dbPath, path)
+		cleanupLockHeld = indexlock.IsAnyHeld(lockPath)
+		return originalCleanup(path, cutoff)
+	}
+	removeIndexDir = func(path string) error {
+		assert.Equal(t, hashDir, path)
+		removeLockHeld = indexlock.IsAnyHeld(lockPath)
+		return removeErr
+	}
+	t.Cleanup(func() {
+		cleanupCollectionAt = originalCleanup
+		removeIndexDir = originalRemove
+	})
+
+	_, _, err = runCleanIndexes(t, tmp, 30)
+	require.ErrorIs(t, err, removeErr)
+	assert.True(t, cleanupLockHeld, "cleanup must hold the collection lock while mutating the database")
+	assert.True(t, removeLockHeld, "cleanup must retain the collection lock while removing the directory")
+	assert.DirExists(t, hashDir, "the injected removal failure must leave the collection directory")
+
+	lock, lockErr := indexlock.TryAcquire(lockPath)
+	require.NoError(t, lockErr)
+	require.NotNil(t, lock, "cleanup must release the collection lock after a failure")
+	lock.Release()
+}
+
 func TestClean_RejectsPositionalArgs(t *testing.T) {
 	require.Error(t, cleanCmd.Args(cleanCmd, []string{"/some/project"}),
 		"clean takes no positional arguments")
