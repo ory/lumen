@@ -16,6 +16,7 @@ dist/
 .worktrees/
 
 lumen
+# The generic binary pattern above would otherwise hide the native package.
 !plugins/
 !plugins/lumen/
 !plugins/lumen/**

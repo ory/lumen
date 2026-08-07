@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lumen": {
+      "type": "stdio",
+      "command": "./scripts/run",
+      "args": ["stdio"]
+    }
+  }
+}

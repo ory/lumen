@@ -177,6 +177,42 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Codex native plugin install smoke test
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          LUMEN_CODEX_HOME="$(mktemp -d)"
+          LUMEN_CODEX_BIN_DIR="$(mktemp -d)"
+          trap 'rm -rf "$LUMEN_CODEX_HOME" "$LUMEN_CODEX_BIN_DIR"' EXIT
+
+          curl -fL --retry 3 \
+            https://github.com/openai/codex/releases/download/rust-v0.147.0/codex-x86_64-unknown-linux-musl.tar.gz \
+            -o "$LUMEN_CODEX_BIN_DIR/codex-x86_64-unknown-linux-musl.tar.gz"
+          tar -xzf "$LUMEN_CODEX_BIN_DIR/codex-x86_64-unknown-linux-musl.tar.gz" \
+            -C "$LUMEN_CODEX_BIN_DIR"
+          LUMEN_CODEX_BIN="$LUMEN_CODEX_BIN_DIR/codex-x86_64-unknown-linux-musl"
+
+          CODEX_HOME="$LUMEN_CODEX_HOME" \
+            "$LUMEN_CODEX_BIN" plugin marketplace add "$PWD"
+          CODEX_HOME="$LUMEN_CODEX_HOME" \
+            "$LUMEN_CODEX_BIN" plugin add lumen@lumen-local
+          CODEX_HOME="$LUMEN_CODEX_HOME" \
+            "$LUMEN_CODEX_BIN" mcp get lumen --json \
+            > "$LUMEN_CODEX_HOME/lumen-mcp.json"
+
+          node - "$LUMEN_CODEX_HOME/lumen-mcp.json" <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const { command, env } = config.transport;
+          if (!path.isAbsolute(command)) throw new Error(`command is not absolute: ${command}`);
+          if (!command.endsWith(path.join('scripts', 'run'))) throw new Error(`unexpected command: ${command}`);
+          if (command.includes('${')) throw new Error(`command contains a variable: ${command}`);
+          for (const name of ['PLUGIN_ROOT', 'PLUGIN_DATA']) {
+            if (!env || !path.isAbsolute(env[name])) throw new Error(`${name} was not injected`);
+          }
+          NODE
+
       - name: Install cross-spawn for parallel transport test
         working-directory: scripts
         run: npm install --no-audit --no-fund

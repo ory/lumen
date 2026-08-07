@@ -148,6 +148,12 @@ resolved_version_from_manifest() {
   echo "$ver"
 }
 
+resolved_version_from_plugin_manifest() {
+  local manifest="$1"
+  local ver="v$(grep '"version"' "$manifest" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  echo "$ver"
+}
+
 assert_eq "manifest version resolution" \
   "v1.2.3" \
   "$(resolved_version_from_manifest "$MANIFEST")"
@@ -156,6 +162,12 @@ assert_eq "pre-release version preserved" \
   "v0.0.1-alpha.4" \
   "$(printf '{\n  ".": "0.0.1-alpha.4"\n}\n' | grep '"[.]"' | sed 's/.*"[^"]*"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/v\1/')"
 
+PLUGIN_MANIFEST="${TMP_MANIFEST_DIR}/plugin.json"
+printf '{\n  "name": "lumen",\n  "version": "4.5.6"\n}\n' > "$PLUGIN_MANIFEST"
+assert_eq "native plugin manifest version resolution" \
+  "v4.5.6" \
+  "$(resolved_version_from_plugin_manifest "$PLUGIN_MANIFEST")"
+
 echo ""
 echo "=== stdio download-on-first-run integration test ==="
 
@@ -163,17 +175,18 @@ echo "=== stdio download-on-first-run integration test ==="
 # is present (first install). curl is stubbed in PATH — no real network calls.
 (
   _SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  _TMPROOT="$(mktemp -d)"
+  _PLUGIN_ROOT="$(mktemp -d)"
+  _PLUGIN_DATA="$(mktemp -d)"
   _FAKE_CURL_DIR="$(mktemp -d)"
-  trap 'rm -rf "$_TMPROOT" "$_FAKE_CURL_DIR"' EXIT
+  trap 'rm -rf "$_PLUGIN_ROOT" "$_PLUGIN_DATA" "$_FAKE_CURL_DIR"' EXIT
 
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
   ARCH_RAW="$(uname -m)"
   case "$ARCH_RAW" in x86_64) ARCH="amd64" ;; aarch64) ARCH="arm64" ;; *) ARCH="$ARCH_RAW" ;; esac
-  _EXPECTED_BINARY="${_TMPROOT}/bin/lumen-${OS}-${ARCH}"
+  _EXPECTED_BINARY="${_PLUGIN_DATA}/bin/lumen-${OS}-${ARCH}"
 
-  printf '{\n  ".": "0.0.1"\n}\n' > "${_TMPROOT}/.release-please-manifest.json"
-  mkdir -p "${_TMPROOT}/bin"
+  mkdir -p "${_PLUGIN_ROOT}/.codex-plugin"
+  printf '{\n  "name": "lumen",\n  "version": "0.0.1"\n}\n' > "${_PLUGIN_ROOT}/.codex-plugin/plugin.json"
 
   # Stub curl: write a minimal executable to the -o destination and succeed
   cat > "${_FAKE_CURL_DIR}/curl" <<'FAKECURL'
@@ -189,7 +202,8 @@ FAKECURL
   chmod +x "${_FAKE_CURL_DIR}/curl"
 
   EXIT_CODE=0
-  CLAUDE_PLUGIN_ROOT="${_TMPROOT}" PATH="${_FAKE_CURL_DIR}:${PATH}" \
+  PLUGIN_ROOT="${_PLUGIN_ROOT}" PLUGIN_DATA="${_PLUGIN_DATA}" \
+    PATH="${_FAKE_CURL_DIR}:${PATH}" \
     bash "${_SCRIPT_DIR}/run" stdio >/dev/null 2>&1 || EXIT_CODE=$?
 
   if [ "$EXIT_CODE" -ne 0 ]; then
@@ -200,7 +214,7 @@ FAKECURL
     echo "  FAIL: run stdio should have downloaded binary to ${_EXPECTED_BINARY}"
     exit 1
   fi
-  echo "  PASS: run stdio downloads binary and execs it on first install"
+  echo "  PASS: Codex plugin manifest resolves and download uses PLUGIN_DATA"
 ) && PASS=$((PASS + 1)) || FAIL=$((FAIL + 1))
 
 echo ""

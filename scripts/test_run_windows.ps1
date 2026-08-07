@@ -19,6 +19,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = (Resolve-Path (Join-Path $ScriptDir '..')).Path
 
 $TmpRoot     = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lumen-stdio-$([guid]::NewGuid().ToString('N'))")).FullName
+$PluginData  = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "lumen-data-$([guid]::NewGuid().ToString('N'))")).FullName
 $FakeCurlDir = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "fakecurl-$([guid]::NewGuid().ToString('N'))")).FullName
 $MockBinDir  = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP "mockbin-$([guid]::NewGuid().ToString('N'))")).FullName
 
@@ -28,7 +29,7 @@ $proc     = $null
 
 try {
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
-    $expectedBinary = Join-Path $TmpRoot "bin\lumen-windows-$arch.exe"
+    $expectedBinary = Join-Path $PluginData "bin\lumen-windows-$arch.exe"
 
     # Build the mock MCP server — pure Go, no CGO.
     $mockBin = Join-Path $MockBinDir 'mock_lumen.exe'
@@ -47,10 +48,11 @@ try {
     }
 
     if ($buildOK) {
-        # Minimal plugin root: manifest only.
-        $manifest = '{' + "`n" + '  ".": "0.0.1"' + "`n" + '}' + "`n"
-        [IO.File]::WriteAllText((Join-Path $TmpRoot '.release-please-manifest.json'), $manifest, [Text.Encoding]::ASCII)
-        New-Item -ItemType Directory -Path (Join-Path $TmpRoot 'bin') | Out-Null
+        # Minimal native Codex plugin root: plugin manifest only. The binary
+        # must be downloaded into the separately writable PLUGIN_DATA path.
+        $manifestDir = New-Item -ItemType Directory -Path (Join-Path $TmpRoot '.codex-plugin')
+        $manifest = '{' + "`n" + '  "name": "lumen",' + "`n" + '  "version": "0.0.1"' + "`n" + '}' + "`n"
+        [IO.File]::WriteAllText((Join-Path $manifestDir.FullName 'plugin.json'), $manifest, [Text.Encoding]::ASCII)
 
         # Stub curl: curl.bat parses -o <target> and copies the prebuilt mock in.
         # cmd.exe's PATHEXT search is per-directory: our fake dir is prepended
@@ -89,7 +91,8 @@ exit /b 0
         $psi.RedirectStandardError  = $true
         $psi.CreateNoWindow = $true
         $psi.WorkingDirectory = $RepoRoot
-        $psi.Environment['CLAUDE_PLUGIN_ROOT'] = $TmpRoot
+        $psi.Environment['PLUGIN_ROOT'] = $TmpRoot
+        $psi.Environment['PLUGIN_DATA'] = $PluginData
         $psi.Environment['LUMEN_MOCK_BINARY']  = $mockBin
         $psi.Environment['PATH'] = "$FakeCurlDir;$origPath"
 
@@ -136,7 +139,7 @@ exit /b 0
 } finally {
     $env:PATH = $origPath
     if ($proc -and -not $proc.HasExited) { try { $proc.Kill() } catch {} }
-    Remove-Item -Recurse -Force $TmpRoot, $FakeCurlDir, $MockBinDir -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $TmpRoot, $PluginData, $FakeCurlDir, $MockBinDir -ErrorAction SilentlyContinue
 }
 
 Write-Host ''
