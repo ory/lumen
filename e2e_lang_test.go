@@ -35,6 +35,8 @@ var snapshotter = cupaloy.New(
 	cupaloy.SnapshotSubdirectory("testdata/snapshots"),
 )
 
+const langSnapshotDirectory = "testdata/snapshots"
+
 func fixturesPath(lang string) string {
 	p, _ := filepath.Abs(filepath.Join("testdata", "fixtures", lang))
 	return p
@@ -83,13 +85,13 @@ func startLangServer(t *testing.T) *mcp.ClientSession {
 	return session
 }
 
-func langSearch(t *testing.T, session *mcp.ClientSession, lang, query string) string {
+func langSearch(t *testing.T, session *mcp.ClientSession, lang, query string) []searchResultItem {
 	t.Helper()
 	dir := fixturesPath(lang)
 	out := callSearch(t, session, map[string]any{
 		"query":     query,
 		"path":      dir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1.0,
 	})
 	// Sort by (filePath, startLine) for deterministic snapshots across environments.
@@ -103,12 +105,42 @@ func langSearch(t *testing.T, session *mcp.ClientSession, lang, query string) st
 		return a.StartLine - b.StartLine
 	})
 
+	return out.Results
+}
+
+func formatLangSearchResults(results []searchResultItem) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "results: %d\n", len(out.Results))
-	for _, r := range out.Results {
-		fmt.Fprintf(&b, "%s:%d-%d  %s (%s)\n", r.FilePath, r.StartLine, r.EndLine, r.Symbol, r.Kind)
+	fmt.Fprintf(&b, "results: %d\n", len(results))
+	for _, result := range results {
+		fmt.Fprintf(&b, "%s:%d-%d  %s (%s)\n", result.FilePath, result.StartLine, result.EndLine, result.Symbol, result.Kind)
 	}
 	return b.String()
+}
+
+func compareLangSnapshotT(t *testing.T, results []searchResultItem) {
+	t.Helper()
+	formatted := formatLangSearchResults(results)
+
+	if _, updating := os.LookupEnv("UPDATE_SNAPSHOTS"); updating {
+		snapshotter.SnapshotT(t, formatted)
+		return
+	}
+
+	snapshotName := strings.ReplaceAll(t.Name(), "/", "-")
+	snapshotPath := filepath.Join(langSnapshotDirectory, snapshotName)
+	expected, err := os.ReadFile(snapshotPath)
+	if os.IsNotExist(err) {
+		// Cupaloy owns snapshot creation as well as its intentional test failure.
+		snapshotter.SnapshotT(t, formatted)
+		return
+	}
+	if err != nil {
+		t.Fatalf("failed to read language snapshot %s: %v", snapshotPath, err)
+	}
+
+	if err := compareLangSnapshot(string(expected), results); err != nil {
+		t.Error(err)
+	}
 }
 
 func runLangTest(t *testing.T, lang string, queries []string) {
@@ -117,8 +149,8 @@ func runLangTest(t *testing.T, lang string, queries []string) {
 	for _, q := range queries {
 		q := q
 		t.Run(strings.ReplaceAll(q, " ", "_"), func(t *testing.T) {
-			result := langSearch(t, session, lang, q)
-			snapshotter.SnapshotT(t, result)
+			results := langSearch(t, session, lang, q)
+			compareLangSnapshotT(t, results)
 		})
 	}
 }
