@@ -32,10 +32,8 @@ import (
 
 var snapshotter = cupaloy.New(
 	cupaloy.EnvVariableName("UPDATE_SNAPSHOTS"),
-	cupaloy.SnapshotSubdirectory("testdata/snapshots"),
+	cupaloy.SnapshotSubdirectory(langSnapshotDirectory),
 )
-
-const langSnapshotDirectory = "testdata/snapshots"
 
 func fixturesPath(lang string) string {
 	p, _ := filepath.Abs(filepath.Join("testdata", "fixtures", lang))
@@ -55,15 +53,15 @@ func startLangServer(t *testing.T) *mcp.ClientSession {
 	cmd := exec.Command(serverBinary, "stdio")
 	cmd.Env = []string{
 		"OLLAMA_HOST=" + ollamaHost,
+		"LUMEN_BACKEND=ollama",
 		"LUMEN_EMBED_MODEL=all-minilm",
 		// all-minilm uses BERT WordPiece tokenisation which is ~4x denser than
 		// our 4-chars-per-token estimate, so cap chunks at 100 "tokens" (400
 		// chars) to stay within the model's 512-token context window.
 		"LUMEN_MAX_CHUNK_TOKENS=100",
 		// Lang tests need indexing to complete before the first search returns.
-		// On CI, 12 parallel test suites share a single Ollama instance, so
-		// embedding can take well over the default 15s timeout. Allow up to 10m
-		// to avoid returning incomplete results from a partially-built index.
+		// CPU embedding can still exceed the default 15s timeout on slower CI
+		// runners, so allow up to 10m to avoid partially-built index results.
 		"LUMEN_REINDEX_TIMEOUT=10m",
 		"XDG_DATA_HOME=" + dataHome,
 		"HOME=" + os.Getenv("HOME"),
@@ -156,7 +154,6 @@ func runLangTest(t *testing.T, lang string, queries []string) {
 }
 
 func TestLang_Go(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "go", []string{
 		"HTTP request handler",
 		"authentication token validation",
@@ -168,7 +165,6 @@ func TestLang_Go(t *testing.T) {
 }
 
 func TestLang_Java(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "java", []string{
 		"pet owner repository database",
 		"REST controller request mapping",
@@ -179,7 +175,6 @@ func TestLang_Java(t *testing.T) {
 }
 
 func TestLang_Dart(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "dart", []string{
 		"HTTP request handler middleware",
 		"server pipeline shelf handler",
@@ -190,7 +185,6 @@ func TestLang_Dart(t *testing.T) {
 }
 
 func TestLang_PHP(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "php", []string{
 		"HTTP request handling middleware",
 		"database query builder",
@@ -201,7 +195,6 @@ func TestLang_PHP(t *testing.T) {
 }
 
 func TestLang_JavaScript(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "js", []string{
 		"HTTP router middleware",
 		"request response object",
@@ -212,7 +205,6 @@ func TestLang_JavaScript(t *testing.T) {
 }
 
 func TestLang_TypeScript(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "ts", []string{
 		"event listener registration",
 		"async operation with cancellation",
@@ -223,7 +215,6 @@ func TestLang_TypeScript(t *testing.T) {
 }
 
 func TestLang_Ruby(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "ruby", []string{
 		"route matching URL",
 		"controller action rendering",
@@ -234,7 +225,6 @@ func TestLang_Ruby(t *testing.T) {
 }
 
 func TestLang_Python(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "python", []string{
 		"HTTP route handler decorator",
 		"database model query filter",
@@ -245,7 +235,6 @@ func TestLang_Python(t *testing.T) {
 }
 
 func TestLang_Rust(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "rust", []string{
 		"async runtime executor spawn",
 		"file search pattern match",
@@ -256,7 +245,6 @@ func TestLang_Rust(t *testing.T) {
 }
 
 func TestLang_YAML(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "yaml", []string{
 		"Kubernetes deployment replicas",
 		"CI pipeline build steps",
@@ -266,7 +254,6 @@ func TestLang_YAML(t *testing.T) {
 }
 
 func TestLang_Markdown(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "md", []string{
 		"installation setup guide",
 		"ownership borrowing memory",
@@ -276,7 +263,6 @@ func TestLang_Markdown(t *testing.T) {
 }
 
 func TestLang_JSON(t *testing.T) {
-	t.Parallel()
 	runLangTest(t, "json", []string{
 		"build scripts commands",
 		"TypeScript compiler options",

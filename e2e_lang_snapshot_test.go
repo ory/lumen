@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file intentionally has no e2e build tag so the snapshot matcher is
+// unit-tested without requiring Ollama.
+
 package main
 
 import (
@@ -19,13 +22,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-var langSnapshotLocationPattern = regexp.MustCompile(`^(.+):(\d+)-(\d+)$`)
+var langSnapshotResultPattern = regexp.MustCompile(`^(.+):(\d+)-(\d+)  (.+)$`)
 
 type langResultIdentity struct {
 	filePath string
@@ -33,13 +35,19 @@ type langResultIdentity struct {
 	kind     string
 }
 
-func (i langResultIdentity) String() string {
-	return fmt.Sprintf("%s  %s (%s)", i.filePath, i.symbol, i.kind)
+type langSnapshotResult struct {
+	identity  langResultIdentity
+	startLine int
+	endLine   int
+}
+
+func (r langSnapshotResult) String() string {
+	return fmt.Sprintf("%s:%d-%d  %s (%s)", r.identity.filePath, r.startLine, r.endLine, r.identity.symbol, r.identity.kind)
 }
 
 type parsedLangSnapshot struct {
 	declaredCount int
-	identities    map[langResultIdentity]struct{}
+	results       []langSnapshotResult
 }
 
 func parseLangSnapshot(snapshot string) (parsedLangSnapshot, error) {
@@ -63,50 +71,46 @@ func parseLangSnapshot(snapshot string) (parsedLangSnapshot, error) {
 		return parsedLangSnapshot{}, fmt.Errorf("snapshot declares %d results but contains %d result lines", declaredCount, got)
 	}
 
-	identities := make(map[langResultIdentity]struct{}, declaredCount)
+	results := make([]langSnapshotResult, 0, declaredCount)
 	for i, rawLine := range lines[1:] {
-		identity, err := parseLangSnapshotResult(strings.TrimSuffix(rawLine, "\r"))
+		result, err := parseLangSnapshotResult(strings.TrimSuffix(rawLine, "\r"))
 		if err != nil {
 			return parsedLangSnapshot{}, fmt.Errorf("malformed snapshot result line %d: %w", i+2, err)
 		}
-		identities[identity] = struct{}{}
+		results = append(results, result)
 	}
 
-	return parsedLangSnapshot{declaredCount: declaredCount, identities: identities}, nil
+	return parsedLangSnapshot{declaredCount: declaredCount, results: results}, nil
 }
 
-func parseLangSnapshotResult(line string) (langResultIdentity, error) {
-	parts := strings.SplitN(line, "  ", 2)
-	if len(parts) != 2 {
-		return langResultIdentity{}, fmt.Errorf("expected location and identity separated by two spaces: %q", line)
+func parseLangSnapshotResult(line string) (langSnapshotResult, error) {
+	parts := langSnapshotResultPattern.FindStringSubmatch(line)
+	if parts == nil {
+		return langSnapshotResult{}, fmt.Errorf("expected location and identity separated by two spaces: %q", line)
 	}
 
-	location := langSnapshotLocationPattern.FindStringSubmatch(parts[0])
-	if location == nil {
-		return langResultIdentity{}, fmt.Errorf("invalid location %q", parts[0])
-	}
-	startLine, _ := strconv.Atoi(location[2])
-	endLine, _ := strconv.Atoi(location[3])
+	startLine, _ := strconv.Atoi(parts[2])
+	endLine, _ := strconv.Atoi(parts[3])
 	if startLine <= 0 || endLine < startLine {
-		return langResultIdentity{}, fmt.Errorf("invalid line range %d-%d", startLine, endLine)
+		return langSnapshotResult{}, fmt.Errorf("invalid line range %d-%d", startLine, endLine)
 	}
 
-	description := parts[1]
+	description := parts[4]
 	kindStart := strings.LastIndex(description, " (")
 	if kindStart < 1 || !strings.HasSuffix(description, ")") {
-		return langResultIdentity{}, fmt.Errorf("invalid symbol and kind %q", description)
+		return langSnapshotResult{}, fmt.Errorf("invalid symbol and kind %q", description)
 	}
 
 	identity := langResultIdentity{
-		filePath: location[1],
+		filePath: parts[1],
 		symbol:   description[:kindStart],
 		kind:     description[kindStart+2 : len(description)-1],
 	}
 	if strings.TrimSpace(identity.filePath) == "" || strings.TrimSpace(identity.symbol) == "" || strings.TrimSpace(identity.kind) == "" {
-		return langResultIdentity{}, fmt.Errorf("file, symbol, and kind must be non-empty: %q", line)
+		return langSnapshotResult{}, fmt.Errorf("file, symbol, and kind must be non-empty: %q", line)
 	}
 
-	return identity, nil
+	return langSnapshotResult{identity: identity, startLine: startLine, endLine: endLine}, nil
 }
 
 func compareLangSnapshot(snapshot string, actual []searchResultItem) error {
@@ -115,42 +119,88 @@ func compareLangSnapshot(snapshot string, actual []searchResultItem) error {
 		return err
 	}
 
-	actualIdentities := make(map[langResultIdentity]struct{}, len(actual))
+	actualResults := make([]langSnapshotResult, 0, len(actual))
 	for i, result := range actual {
 		if err := validateLangResult(result); err != nil {
 			return fmt.Errorf("invalid actual result %d: %w", i+1, err)
 		}
-		actualIdentities[langResultIdentity{
-			filePath: result.FilePath,
-			symbol:   result.Symbol,
-			kind:     result.Kind,
-		}] = struct{}{}
+		actualResults = append(actualResults, langSnapshotResult{
+			identity: langResultIdentity{
+				filePath: result.FilePath,
+				symbol:   result.Symbol,
+				kind:     result.Kind,
+			},
+			startLine: result.StartLine,
+			endLine:   result.EndLine,
+		})
 	}
 
-	overlap := 0
-	for identity := range expected.identities {
-		if _, ok := actualIdentities[identity]; ok {
-			overlap++
+	expectedMatches, actualMatches := matchLangSnapshotResults(expected.results, actualResults)
+	matchedCount := 0
+	for _, matched := range expectedMatches {
+		if matched {
+			matchedCount++
 		}
 	}
-	requiredOverlap := (len(expected.identities) + 1) / 2
-	countMatches := len(actual) == expected.declaredCount
-	if countMatches && overlap >= requiredOverlap {
+	requiredMatches := (len(expected.results) + 1) / 2
+	if matchedCount >= requiredMatches {
 		return nil
 	}
 
-	missing := identityDifference(expected.identities, actualIdentities)
-	unexpected := identityDifference(actualIdentities, expected.identities)
+	unmatchedExpected := unmatchedLangResults(expected.results, expectedMatches)
+	unmatchedActual := unmatchedLangResults(actualResults, actualMatches)
 
 	var message strings.Builder
 	message.WriteString("language snapshot comparison failed:\n")
-	if !countMatches {
-		fmt.Fprintf(&message, "actual result count: got %d, want %d\n", len(actual), expected.declaredCount)
-	}
-	fmt.Fprintf(&message, "identity overlap: %d/%d (required at least %d)\n", overlap, len(expected.identities), requiredOverlap)
-	writeIdentityList(&message, "missing identities", missing)
-	writeIdentityList(&message, "unexpected identities", unexpected)
+	fmt.Fprintf(&message, "expected result count: %d\n", expected.declaredCount)
+	fmt.Fprintf(&message, "actual result count: %d\n", len(actual))
+	fmt.Fprintf(&message, "matched rows: %d/%d (required at least %d)\n", matchedCount, len(expected.results), requiredMatches)
+	writeResultList(&message, "unmatched expected rows", unmatchedExpected)
+	writeResultList(&message, "unmatched actual rows", unmatchedActual)
 	return fmt.Errorf("%s", strings.TrimSuffix(message.String(), "\n"))
+}
+
+func matchLangSnapshotResults(expected, actual []langSnapshotResult) ([]bool, []bool) {
+	// Use augmenting paths to find a maximum one-to-one matching. A greedy
+	// matcher can undercount when one broad range overlaps several narrower ones.
+	actualToExpected := make([]int, len(actual))
+	for i := range actualToExpected {
+		actualToExpected[i] = -1
+	}
+
+	var augment func(int, []bool) bool
+	augment = func(expectedIndex int, seenActual []bool) bool {
+		for actualIndex := range actual {
+			if seenActual[actualIndex] || !langSnapshotResultsMatch(expected[expectedIndex], actual[actualIndex]) {
+				continue
+			}
+			seenActual[actualIndex] = true
+			if actualToExpected[actualIndex] == -1 || augment(actualToExpected[actualIndex], seenActual) {
+				actualToExpected[actualIndex] = expectedIndex
+				return true
+			}
+		}
+		return false
+	}
+
+	for expectedIndex := range expected {
+		augment(expectedIndex, make([]bool, len(actual)))
+	}
+
+	expectedMatches := make([]bool, len(expected))
+	actualMatches := make([]bool, len(actual))
+	for actualIndex, expectedIndex := range actualToExpected {
+		if expectedIndex >= 0 {
+			expectedMatches[expectedIndex] = true
+			actualMatches[actualIndex] = true
+		}
+	}
+	return expectedMatches, actualMatches
+}
+
+func langSnapshotResultsMatch(expected, actual langSnapshotResult) bool {
+	return expected.identity == actual.identity &&
+		expected.startLine <= actual.endLine && actual.startLine <= expected.endLine
 }
 
 func validateLangResult(result searchResultItem) error {
@@ -170,21 +220,20 @@ func validateLangResult(result searchResultItem) error {
 	}
 }
 
-func identityDifference(left, right map[langResultIdentity]struct{}) []string {
-	difference := make([]string, 0)
-	for identity := range left {
-		if _, ok := right[identity]; !ok {
-			difference = append(difference, identity.String())
+func unmatchedLangResults(results []langSnapshotResult, matches []bool) []string {
+	unmatched := make([]string, 0)
+	for i, result := range results {
+		if !matches[i] {
+			unmatched = append(unmatched, result.String())
 		}
 	}
-	slices.Sort(difference)
-	return difference
+	return unmatched
 }
 
-func writeIdentityList(message *strings.Builder, label string, identities []string) {
-	fmt.Fprintf(message, "%s (%d):\n", label, len(identities))
-	for _, identity := range identities {
-		fmt.Fprintf(message, "  - %s\n", identity)
+func writeResultList(message *strings.Builder, label string, results []string) {
+	fmt.Fprintf(message, "%s (%d):\n", label, len(results))
+	for _, result := range results {
+		fmt.Fprintf(message, "  - %s\n", result)
 	}
 }
 
@@ -211,13 +260,23 @@ func TestCompareLangSnapshot(t *testing.T) {
 	}{
 		{name: "exact match", actual: baseline},
 		{
-			name: "line range drift",
+			name: "overlapping line range drift",
 			actual: []searchResultItem{
-				{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 2},
-				{FilePath: "beta.go", Symbol: "Beta", Kind: "type", StartLine: 3, EndLine: 4},
-				{FilePath: "gamma.go", Symbol: "Gamma", Kind: "method", StartLine: 5, EndLine: 6},
-				{FilePath: "delta.go", Symbol: "Delta", Kind: "variable", StartLine: 7, EndLine: 8},
+				{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 12},
+				{FilePath: "beta.go", Symbol: "Beta", Kind: "type", StartLine: 35, EndLine: 45},
+				{FilePath: "gamma.go", Symbol: "Gamma", Kind: "method", StartLine: 45, EndLine: 55},
+				{FilePath: "delta.go", Symbol: "Delta", Kind: "variable", StartLine: 75, EndLine: 100},
 			},
+		},
+		{
+			name: "disjoint ranges with matching identities",
+			actual: []searchResultItem{
+				{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 9},
+				{FilePath: "beta.go", Symbol: "Beta", Kind: "type", StartLine: 41, EndLine: 49},
+				{FilePath: "gamma.go", Symbol: "Gamma", Kind: "method", StartLine: 61, EndLine: 69},
+				{FilePath: "delta.go", Symbol: "Delta", Kind: "variable", StartLine: 81, EndLine: 90},
+			},
+			wantErr: "matched rows: 0/4 (required at least 2)",
 		},
 		{
 			name: "fifty percent boundary",
@@ -228,19 +287,13 @@ func TestCompareLangSnapshot(t *testing.T) {
 			},
 		},
 		{
-			name: "below threshold",
-			actual: []searchResultItem{
-				baseline[0],
-				{FilePath: "new-one.go", Symbol: "NewOne", Kind: "function", StartLine: 1, EndLine: 1},
-				{FilePath: "new-two.go", Symbol: "NewTwo", Kind: "type", StartLine: 2, EndLine: 2},
-				{FilePath: "new-three.go", Symbol: "NewThree", Kind: "method", StartLine: 3, EndLine: 3},
-			},
-			wantErr: "identity overlap: 1/4 (required at least 2)",
+			name:   "fewer results at threshold",
+			actual: baseline[:2],
 		},
 		{
-			name:    "count mismatch",
-			actual:  baseline[:3],
-			wantErr: "actual result count: got 3, want 4",
+			name:    "fewer results below threshold",
+			actual:  baseline[:1],
+			wantErr: "matched rows: 1/4 (required at least 2)",
 		},
 	}
 
@@ -256,27 +309,96 @@ func TestCompareLangSnapshot(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("compareLangSnapshot() error = %v, want error containing %q", err, tt.wantErr)
 			}
-			if !strings.Contains(err.Error(), "missing identities") || !strings.Contains(err.Error(), "unexpected identities") {
-				t.Fatalf("compareLangSnapshot() error does not report identity differences: %v", err)
+			if !strings.Contains(err.Error(), "expected result count: 4") || !strings.Contains(err.Error(), "actual result count:") {
+				t.Fatalf("compareLangSnapshot() error does not report result counts: %v", err)
+			}
+			if !strings.Contains(err.Error(), "unmatched expected rows") || !strings.Contains(err.Error(), "unmatched actual rows") {
+				t.Fatalf("compareLangSnapshot() error does not report unmatched rows: %v", err)
 			}
 		})
 	}
 }
 
-func TestCompareLangSnapshotNormalizesDuplicateIdentities(t *testing.T) {
+func TestCompareLangSnapshotPreservesDuplicateRows(t *testing.T) {
 	t.Parallel()
 
 	const expected = "" +
 		"results: 4\n" +
 		"alpha.go:10-20  Alpha (function)\n" +
-		"alpha.go:15-25  Alpha (function)\n" +
+		"alpha.go:30-40  Alpha (function)\n" +
+		"alpha.go:50-60  Alpha (function)\n" +
+		"alpha.go:70-80  Alpha (function)\n\n"
+
+	t.Run("one actual row matches at most one expected row", func(t *testing.T) {
+		actual := []searchResultItem{
+			{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 100},
+		}
+		err := compareLangSnapshot(expected, actual)
+		if err == nil || !strings.Contains(err.Error(), "matched rows: 1/4 (required at least 2)") {
+			t.Fatalf("compareLangSnapshot() error = %v, want one matched row", err)
+		}
+	})
+
+	t.Run("separate actual rows satisfy the threshold", func(t *testing.T) {
+		actual := []searchResultItem{
+			{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 15, EndLine: 35},
+			{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 55, EndLine: 75},
+		}
+		if err := compareLangSnapshot(expected, actual); err != nil {
+			t.Fatalf("compareLangSnapshot() error = %v", err)
+		}
+	})
+}
+
+func TestCompareLangSnapshotRoundsRequiredRowsUp(t *testing.T) {
+	t.Parallel()
+
+	const expected = "" +
+		"results: 3\n" +
+		"alpha.go:10-20  Alpha (function)\n" +
 		"beta.go:30-40  Beta (type)\n" +
 		"gamma.go:50-60  Gamma (method)\n\n"
+
+	err := compareLangSnapshot(expected, []searchResultItem{
+		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 10, EndLine: 20},
+	})
+	if err == nil || !strings.Contains(err.Error(), "matched rows: 1/3 (required at least 2)") {
+		t.Fatalf("compareLangSnapshot() error = %v, want ceiling threshold of two rows", err)
+	}
+
+	if err := compareLangSnapshot(expected, []searchResultItem{
+		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 10, EndLine: 20},
+		{FilePath: "beta.go", Symbol: "Beta", Kind: "type", StartLine: 30, EndLine: 40},
+	}); err != nil {
+		t.Fatalf("compareLangSnapshot() error at ceiling threshold = %v", err)
+	}
+}
+
+func TestCompareLangSnapshotUsesMaximumRangeMatching(t *testing.T) {
+	t.Parallel()
+
+	const expected = "" +
+		"results: 4\n" +
+		"alpha.go:10-20  Alpha (function)\n" +
+		"alpha.go:20-30  Alpha (function)\n" +
+		"beta.go:40-50  Beta (type)\n" +
+		"gamma.go:60-70  Gamma (method)\n\n"
 	actual := []searchResultItem{
-		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 1, EndLine: 2},
-		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 3, EndLine: 4},
-		{FilePath: "beta.go", Symbol: "Beta", Kind: "type", StartLine: 5, EndLine: 6},
-		{FilePath: "new.go", Symbol: "New", Kind: "variable", StartLine: 7, EndLine: 8},
+		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 10, EndLine: 30},
+		{FilePath: "alpha.go", Symbol: "Alpha", Kind: "function", StartLine: 10, EndLine: 19},
+	}
+
+	if err := compareLangSnapshot(expected, actual); err != nil {
+		t.Fatalf("compareLangSnapshot() error = %v", err)
+	}
+}
+
+func TestCompareLangSnapshotParsesPathsWithConsecutiveSpaces(t *testing.T) {
+	t.Parallel()
+
+	const expected = "results: 1\ndir/two  spaces.go:10-20  Alpha (function)\n"
+	actual := []searchResultItem{
+		{FilePath: "dir/two  spaces.go", Symbol: "Alpha", Kind: "function", StartLine: 12, EndLine: 18},
 	}
 
 	if err := compareLangSnapshot(expected, actual); err != nil {
@@ -287,8 +409,7 @@ func TestCompareLangSnapshotNormalizesDuplicateIdentities(t *testing.T) {
 func TestParseCommittedLangSnapshots(t *testing.T) {
 	t.Parallel()
 
-	snapshotDirectory := filepath.Join("testdata", "snapshots")
-	entries, err := os.ReadDir(snapshotDirectory)
+	entries, err := os.ReadDir(langSnapshotDirectory)
 	if err != nil {
 		t.Fatalf("failed to read snapshot directory: %v", err)
 	}
@@ -298,7 +419,7 @@ func TestParseCommittedLangSnapshots(t *testing.T) {
 			continue
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
-			snapshot, err := os.ReadFile(filepath.Join(snapshotDirectory, entry.Name()))
+			snapshot, err := os.ReadFile(filepath.Join(langSnapshotDirectory, entry.Name()))
 			if err != nil {
 				t.Fatalf("failed to read snapshot: %v", err)
 			}

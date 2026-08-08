@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file intentionally has no e2e build tag because the snapshot matcher
+// unit tests share the black-box search result type without requiring Ollama.
+
 package main
+
+const langSnapshotDirectory = "testdata/snapshots"
 
 // searchResultItem is shared by the black-box E2E tests and the snapshot
 // matcher unit tests. It mirrors the semantic search tool's result shape while
