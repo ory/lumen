@@ -47,6 +47,27 @@ func TestNewStore_CreatesSchema(t *testing.T) {
 	}
 }
 
+func TestOpenStoreReportsMissingSharedVectorStorage(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE collection_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO collection_meta(key, value) VALUES ('vec_dimensions', '4')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = New(dbPath, 4)
+	if err == nil || !strings.Contains(err.Error(), "read vector_storage") {
+		t.Fatalf("error = %v, want read vector_storage context", err)
+	}
+}
+
 func TestStore_SetGetMeta(t *testing.T) {
 	s, err := New(":memory:", 4)
 	if err != nil {

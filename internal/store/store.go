@@ -39,7 +39,9 @@ const MetaLastAccessedAt = "last_accessed_at"
 const accessStampBusyTimeoutMS = 250
 
 func init() {
-	sqlite_vec.Auto()
+	if err := sqlite_vec.Auto(); err != nil {
+		panic(err)
+	}
 }
 
 // IsCorruptionErr reports whether err indicates SQLite database corruption.
@@ -84,7 +86,8 @@ type StoreStats struct { //nolint:revive // StoreStats is intentionally named to
 }
 
 // Store manages SQLite + sqlite-vec storage for code chunks and their
-// embedding vectors.
+// embedding vectors. A shared Store's selected project is mutable; callers
+// must serialize UseProject with all operations that depend on that selection.
 type Store struct {
 	db            *sql.DB
 	readDB        *sql.DB // separate read-only connection; nil for :memory: databases
@@ -130,7 +133,8 @@ func New(dsn string, dimensions int) (*Store, error) {
 // NewCollection opens a repository-scoped shared collection and selects the
 // project membership identified by projectPath. vectorStorage must be int8 or
 // float32. Multiple Store instances may safely select different worktrees in
-// the same database.
+// the same database. If schema setup detects corruption, on-disk database and
+// sidecar files are removed and creation is retried once.
 func NewCollection(dsn string, dimensions int, vectorStorage, projectPath string) (*Store, error) {
 	if vectorStorage != "int8" && vectorStorage != "float32" {
 		return nil, fmt.Errorf("unsupported vector storage %q", vectorStorage)
@@ -211,11 +215,16 @@ func openStore(dsn string, dimensions int) (*Store, error) {
 	// A low-level caller may open a database already upgraded to the shared
 	// schema (for example metadata tooling during a rolling upgrade). Return a
 	// shared view instead of attempting to overlay the legacy tables.
-	if shared, _ := checkTableExists(db, "collection_meta"); shared {
+	shared, err := checkTableExists(db, "collection_meta")
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("check collection_meta table: %w", err)
+	}
+	if shared {
 		var storage string
 		if err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = 'vector_storage'`).Scan(&storage); err != nil {
 			_ = db.Close()
-			return nil, err
+			return nil, fmt.Errorf("read vector_storage: %w", err)
 		}
 		_ = db.Close()
 		return openCollection(dsn, dimensions, storage)

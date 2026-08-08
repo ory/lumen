@@ -11,12 +11,80 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ory/lumen/internal/chunker"
 )
+
+func TestSharedReplacementGarbageCollectsDisplacedRevision(t *testing.T) {
+	s, err := NewCollection(":memory:", 4, "int8", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	oldChunk := chunker.Chunk{ID: "old", FilePath: "main.go", Symbol: "Old", Kind: "function", StartLine: 1, EndLine: 1, Content: "func Old() {}"}
+	newChunk := chunker.Chunk{ID: "new", FilePath: "main.go", Symbol: "New", Kind: "function", StartLine: 1, EndLine: 1, Content: "func New() {}"}
+	if _, err := s.StoreFileRevision("main.go", "old", []chunker.Chunk{oldChunk}, map[int][]float32{0: {1, 0, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StoreFileRevision("main.go", "new", []chunker.Chunk{newChunk}, map[int][]float32{0: {0, 1, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := s.CollectionStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.UniqueVectors != 1 || stats.ChunkReferences != 1 {
+		t.Fatalf("displaced revision was not collected: %+v", stats)
+	}
+}
+
+func TestMissingChunkInputsBatchesLargeQueries(t *testing.T) {
+	s, err := NewCollection(":memory:", 4, "int8", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	chunks := make([]chunker.Chunk, 300)
+	vectors := make(map[int][]float32, len(chunks))
+	for i := range chunks {
+		chunks[i] = chunker.Chunk{ID: strconv.Itoa(i), FilePath: "large.go", Content: "input " + strconv.Itoa(i)}
+		vectors[i] = []float32{1, 0, 0, 0}
+	}
+	if _, err := s.StoreFileRevision("large.go", "large", chunks, vectors); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := s.MissingChunkInputs(chunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("missing = %v, want none", missing)
+	}
+	chunks[299].Content = "changed"
+	missing, err = s.MissingChunkInputs(chunks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missing) != 1 || missing[0] != 299 {
+		t.Fatalf("missing = %v, want [299]", missing)
+	}
+}
+
+func TestInsertSharedChunksRequiresRegisteredRevision(t *testing.T) {
+	s, err := NewCollection(":memory:", 4, "int8", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	err = s.InsertChunks([]chunker.Chunk{{ID: "x", FilePath: "missing.go", Content: "x"}}, [][]float32{{1, 0, 0, 0}})
+	if err == nil || !strings.Contains(err.Error(), `no file revision registered for "missing.go"; call UpsertFile first`) {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestSharedCollectionReusesRevisionsAndVectors(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "index.db")
@@ -115,6 +183,35 @@ func TestSharedCollectionFloat32Override(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Symbol != "X" {
 		t.Fatalf("unexpected float32 results: %+v", results)
+	}
+}
+
+func TestSharedCollectionValidatesStorageProfile(t *testing.T) {
+	if _, err := NewCollection(":memory:", 4, "float16", t.TempDir()); err == nil {
+		t.Fatal("expected unsupported vector storage to fail")
+	}
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := NewCollection(dbPath, 4, "int8", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name       string
+		dimensions int
+		storage    string
+	}{
+		{"dimensions", 5, "int8"},
+		{"storage", 4, "float32"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewCollection(dbPath, tc.dimensions, tc.storage, t.TempDir())
+			if err == nil || !strings.Contains(err.Error(), "collection profile mismatch") {
+				t.Fatalf("error = %v, want profile mismatch", err)
+			}
+		})
 	}
 }
 

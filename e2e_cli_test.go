@@ -139,7 +139,9 @@ func TestE2E_CLI_IndexForceReindex(t *testing.T) {
 // openIndexDB opens the SQLite index database for a given project path and dataHome.
 func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
 	t.Helper()
-	sqlite_vec.Auto()
+	if err := sqlite_vec.Auto(); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := config.DBPathForProjectBase(dataHome, projectPath, "all-minilm")
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {

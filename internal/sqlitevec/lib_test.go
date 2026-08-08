@@ -13,7 +13,9 @@ import (
 )
 
 func TestBundledVersion(t *testing.T) {
-	Auto()
+	if err := Auto(); err != nil {
+		t.Fatal(err)
+	}
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)

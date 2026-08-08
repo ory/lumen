@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -25,6 +26,11 @@ import (
 )
 
 const sharedSchemaVersion = "1"
+
+// ErrVectorVanished marks a cross-process race where a vector observed during
+// MissingChunkInputs was garbage-collected before StoreFileRevision began its
+// write transaction. Callers can re-embed the complete file and retry once.
+var ErrVectorVanished = errors.New("shared vector vanished")
 
 // CollectionStats describes both project-local references and collection-wide
 // physical storage. Chunk references may exceed UniqueVectors because vectors
@@ -71,8 +77,18 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 	// Legacy per-worktree databases remain readable during the lazy migration
 	// window. New profile paths always create the shared schema; an existing
 	// legacy path is upgraded by normal indexing without making it unreadable.
-	if legacy, _ := checkTableExists(db, "files"); legacy {
-		if shared, _ := checkTableExists(db, "collection_meta"); !shared {
+	legacy, err := checkTableExists(db, "files")
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("check files table: %w", err)
+	}
+	if legacy {
+		shared, err := checkTableExists(db, "collection_meta")
+		if err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("check collection_meta table: %w", err)
+		}
+		if !shared {
 			_ = db.Close()
 			return openStore(dsn, dimensions)
 		}
@@ -216,7 +232,9 @@ func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) er
 func (s *Store) IsShared() bool { return s.shared }
 
 // UseProject selects (and, if necessary, creates) a project membership in the
-// shared collection. Calling it repeatedly for the same path is cheap.
+// shared collection. Calling it repeatedly for the same path is cheap. Callers
+// must serialize membership switches against Store operations; Indexer does so
+// through its project lease.
 func (s *Store) UseProject(projectPath string) error {
 	if !s.shared {
 		return nil
@@ -347,10 +365,11 @@ func (s *Store) AttachExistingFileRevision(relativePath, contentHash string) (bo
 	if err != nil {
 		return false, err
 	}
-	if err := replaceProjectFileTx(tx, s.projectID, relativePath, revisionID); err != nil {
+	displaced, err := replaceProjectFileTx(tx, s.projectID, relativePath, revisionID)
+	if err != nil {
 		return false, err
 	}
-	if err := gcUnreferencedTx(tx); err != nil {
+	if err := gcRevisionsTx(tx, displaced); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
@@ -359,14 +378,43 @@ func (s *Store) AttachExistingFileRevision(relativePath, contentHash string) (bo
 // MissingChunkInputs returns the chunk positions whose exact embedding inputs
 // are absent from the collection. Callers only need to embed these positions.
 func (s *Store) MissingChunkInputs(chunks []chunker.Chunk) ([]int, error) {
-	missing := make([]int, 0, len(chunks))
+	const queryBatchSize = 256
+	hashes := make([][sha256.Size]byte, len(chunks))
+	present := make(map[[sha256.Size]byte]struct{}, len(chunks))
 	for i, c := range chunks {
-		h := embeddingInputHash(c)
-		var exists bool
-		if err := s.reader().QueryRow(`SELECT EXISTS(SELECT 1 FROM vector_keys WHERE input_hash = ?)`, h[:]).Scan(&exists); err != nil {
-			return nil, err
+		hashes[i] = embeddingInputHash(c)
+	}
+	for start := 0; start < len(hashes); start += queryBatchSize {
+		end := min(start+queryBatchSize, len(hashes))
+		marks := make([]string, end-start)
+		args := make([]any, end-start)
+		for i := start; i < end; i++ {
+			marks[i-start] = "?"
+			args[i-start] = hashes[i][:]
 		}
-		if !exists {
+		rows, err := s.reader().Query(`SELECT input_hash FROM vector_keys WHERE input_hash IN (`+strings.Join(marks, ",")+`)`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query shared vector inputs: %w", err)
+		}
+		for rows.Next() {
+			var blob []byte
+			if err := rows.Scan(&blob); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("scan shared vector input: %w", err)
+			}
+			if len(blob) == sha256.Size {
+				var hash [sha256.Size]byte
+				copy(hash[:], blob)
+				present[hash] = struct{}{}
+			}
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return nil, fmt.Errorf("read shared vector inputs: %w", err)
+		}
+	}
+	missing := make([]int, 0, len(chunks))
+	for i, hash := range hashes {
+		if _, ok := present[hash]; !ok {
 			missing = append(missing, i)
 		}
 	}
@@ -401,7 +449,7 @@ func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chu
 			if err == sql.ErrNoRows {
 				vec, ok := vectors[i]
 				if !ok {
-					return false, fmt.Errorf("missing embedding for chunk %d (%s)", i, c.ID)
+					return false, fmt.Errorf("%w: missing embedding for chunk %d (%s)", ErrVectorVanished, i, c.ID)
 				}
 				result, err := tx.Exec(`INSERT INTO vector_keys(input_hash) VALUES (?)`, h[:])
 				if err != nil {
@@ -470,19 +518,31 @@ func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chu
 		}
 	}
 
-	if err := replaceProjectFileTx(tx, s.projectID, relativePath, revisionID); err != nil {
+	displaced, err := replaceProjectFileTx(tx, s.projectID, relativePath, revisionID)
+	if err != nil {
 		return false, err
 	}
-	if err := gcUnreferencedTx(tx); err != nil {
+	if err := gcRevisionsTx(tx, displaced); err != nil {
 		return false, err
 	}
 	return inserted > 0, tx.Commit()
 }
 
-func replaceProjectFileTx(tx *sql.Tx, projectID int64, path string, revisionID int64) error {
-	_, err := tx.Exec(`INSERT INTO project_files(project_id, relative_path, file_revision_id) VALUES (?, ?, ?)
+func replaceProjectFileTx(tx *sql.Tx, projectID int64, path string, revisionID int64) (int64, error) {
+	var displaced int64
+	err := tx.QueryRow(`SELECT file_revision_id FROM project_files WHERE project_id = ? AND relative_path = ?`, projectID, path).Scan(&displaced)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	_, err = tx.Exec(`INSERT INTO project_files(project_id, relative_path, file_revision_id) VALUES (?, ?, ?)
 		ON CONFLICT(project_id, relative_path) DO UPDATE SET file_revision_id = excluded.file_revision_id`, projectID, path, revisionID)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	if displaced == revisionID {
+		return 0, nil
+	}
+	return displaced, nil
 }
 
 func (s *Store) serializeVector(vector []float32) ([]byte, error) {
@@ -521,21 +581,27 @@ func (s *Store) upsertSharedFile(path, hash string) error {
 			return err
 		}
 	}
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO file_revisions(relative_path, content_hash, complete) VALUES (?, ?, 0)`, path, hashBlob(hash))
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.Exec(`INSERT OR IGNORE INTO file_revisions(relative_path, content_hash, complete) VALUES (?, ?, 0)`, path, hashBlob(hash))
 	if err != nil {
 		return err
 	}
 	var revisionID int64
-	if err := s.db.QueryRow(`SELECT id FROM file_revisions WHERE relative_path = ? AND content_hash = ?`, path, hashBlob(hash)).Scan(&revisionID); err != nil {
+	if err := tx.QueryRow(`SELECT id FROM file_revisions WHERE relative_path = ? AND content_hash = ?`, path, hashBlob(hash)).Scan(&revisionID); err != nil {
 		return err
 	}
-	return replaceProjectFileDB(s.db, s.projectID, path, revisionID)
-}
-
-func replaceProjectFileDB(db *sql.DB, projectID int64, path string, revisionID int64) error {
-	_, err := db.Exec(`INSERT INTO project_files(project_id, relative_path, file_revision_id) VALUES (?, ?, ?)
-		ON CONFLICT(project_id, relative_path) DO UPDATE SET file_revision_id = excluded.file_revision_id`, projectID, path, revisionID)
-	return err
+	displaced, err := replaceProjectFileTx(tx, s.projectID, path, revisionID)
+	if err != nil {
+		return err
+	}
+	if err := gcRevisionsTx(tx, displaced); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) insertSharedChunks(chunks []chunker.Chunk, vectors [][]float32) error {
@@ -550,7 +616,10 @@ func (s *Store) insertSharedChunks(chunks []chunker.Chunk, vectors [][]float32) 
 		var hash []byte
 		if err := s.db.QueryRow(`SELECT fr.content_hash FROM project_files pf JOIN file_revisions fr ON fr.id = pf.file_revision_id
 			WHERE pf.project_id = ? AND pf.relative_path = ?`, s.projectID, path).Scan(&hash); err != nil {
-			return err
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("no file revision registered for %q; call UpsertFile first: %w", path, err)
+			}
+			return fmt.Errorf("read file revision for %q: %w", path, err)
 		}
 		fileChunks := make([]chunker.Chunk, len(positions))
 		fileVectors := make(map[int][]float32, len(positions))
@@ -571,16 +640,76 @@ func (s *Store) removeProjectFile(path string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var displaced int64
+	err = tx.QueryRow(`SELECT file_revision_id FROM project_files WHERE project_id = ? AND relative_path = ?`, s.projectID, path).Scan(&displaced)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM project_files WHERE project_id = ? AND relative_path = ?`, s.projectID, path); err != nil {
 		return err
 	}
-	if err := gcUnreferencedTx(tx); err != nil {
+	if err := gcRevisionsTx(tx, displaced); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func gcUnreferencedTx(tx *sql.Tx) error {
+func gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
+	seen := make(map[int64]struct{}, len(revisionIDs))
+	for _, revisionID := range revisionIDs {
+		if revisionID == 0 {
+			continue
+		}
+		if _, ok := seen[revisionID]; ok {
+			continue
+		}
+		seen[revisionID] = struct{}{}
+		var referenced bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM project_files WHERE file_revision_id = ?)`, revisionID).Scan(&referenced); err != nil {
+			return err
+		}
+		if referenced {
+			continue
+		}
+		rows, err := tx.Query(`SELECT DISTINCT vector_id FROM chunk_defs WHERE file_revision_id = ?`, revisionID)
+		if err != nil {
+			return err
+		}
+		var vectorIDs []int64
+		for rows.Next() {
+			var vectorID int64
+			if err := rows.Scan(&vectorID); err != nil {
+				_ = rows.Close()
+				return err
+			}
+			vectorIDs = append(vectorIDs, vectorID)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM file_revisions WHERE id = ?`, revisionID); err != nil {
+			return err
+		}
+		for _, vectorID := range vectorIDs {
+			var used bool
+			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM chunk_defs WHERE vector_id = ?)`, vectorID).Scan(&used); err != nil {
+				return err
+			}
+			if used {
+				continue
+			}
+			if _, err := tx.Exec(`DELETE FROM vec_vectors WHERE vector_id = ?`, vectorID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(`DELETE FROM vector_keys WHERE id = ?`, vectorID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func gcAllUnreferencedTx(tx *sql.Tx) error {
 	if _, err := tx.Exec(`DELETE FROM file_revisions WHERE NOT EXISTS (
 		SELECT 1 FROM project_files WHERE file_revision_id = file_revisions.id)`); err != nil {
 		return err
@@ -599,7 +728,7 @@ func gcUnreferencedTx(tx *sql.Tx) error {
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return err
 	}
 	for _, id := range ids {
@@ -819,7 +948,7 @@ func (s *Store) CleanupStaleProjects(cutoff time.Time) (CleanupStats, error) {
 			stale = append(stale, p)
 		}
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return CleanupStats{}, err
 	}
 	tx, err := s.db.Begin()
@@ -832,7 +961,7 @@ func (s *Store) CleanupStaleProjects(cutoff time.Time) (CleanupStats, error) {
 			return CleanupStats{}, err
 		}
 	}
-	if err := gcUnreferencedTx(tx); err != nil {
+	if err := gcAllUnreferencedTx(tx); err != nil {
 		return CleanupStats{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -864,26 +993,28 @@ func CleanupCollectionAt(dbPath string, cutoff time.Time) (CleanupStats, bool, e
 	if err != nil {
 		return CleanupStats{}, false, err
 	}
+	defer func() {
+		if db != nil {
+			_ = db.Close()
+		}
+	}()
 	var shared bool
 	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collection_meta')`).Scan(&shared); err != nil {
-		_ = db.Close()
 		return CleanupStats{}, false, err
 	}
 	if !shared {
-		_ = db.Close()
 		return CleanupStats{}, false, nil
 	}
 	var dimensions int
 	var storage string
 	if err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = 'vec_dimensions'`).Scan(&dimensions); err != nil {
-		_ = db.Close()
 		return CleanupStats{}, true, err
 	}
 	if err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = 'vector_storage'`).Scan(&storage); err != nil {
-		_ = db.Close()
 		return CleanupStats{}, true, err
 	}
 	_ = db.Close()
+	db = nil
 	s, err := openCollection(dbPath, dimensions, storage)
 	if err != nil {
 		return CleanupStats{}, true, err
