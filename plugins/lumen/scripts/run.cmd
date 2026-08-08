@@ -73,7 +73,7 @@ if not defined BINARY (
   echo Downloading lumen !VERSION! for windows/!ARCH!... >&2
   if not exist "%BINARY_ROOT%\bin" mkdir "%BINARY_ROOT%\bin"
 
-  call curl -sfL --max-time 300 --retry 3 --retry-delay 2 "!URL!" -o "%BINARY%"
+  call curl -sfL --max-time 300 --retry 3 --retry-delay 2 "!URL!" -o "!BINARY!"
   if errorlevel 1 (
     :: Fallback: manifest version not released yet — resolve latest from GitHub API
     echo Version !VERSION! not found, resolving latest release... >&2
@@ -109,14 +109,14 @@ if not defined BINARY (
     set "ASSET=lumen-!VERSION:~1!-windows-!ARCH!.exe"
     set "URL=https://github.com/!REPO!/releases/download/!VERSION!/!ASSET!"
 
-    call curl -sfL --max-time 300 --retry 3 --retry-delay 2 "!URL!" -o "%BINARY%"
+    call curl -sfL --max-time 300 --retry 3 --retry-delay 2 "!URL!" -o "!BINARY!"
     if errorlevel 1 (
       echo Error: fallback download also failed >&2
       exit /b 1
     )
   )
 
-  echo Installed lumen to %BINARY% >&2
+  echo Installed lumen to !BINARY! >&2
 )
 
 "%BINARY%" %*
