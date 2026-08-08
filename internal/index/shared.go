@@ -11,6 +11,7 @@ package index
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ory/lumen/internal/chunker"
 	"github.com/ory/lumen/internal/merkle"
 	"github.com/ory/lumen/internal/store"
 )
@@ -75,6 +77,108 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 		progress(0, len(filesToIndex), fmt.Sprintf("Found %d files to index", len(filesToIndex)))
 	}
 
+	type pendingSharedFile struct {
+		relativePath string
+		contentHash  string
+		chunks       []chunker.Chunk
+		vectors      map[int][]float32
+		remaining    int
+		fileIndex    int
+		skipped      bool
+	}
+	type chunkRef struct {
+		file     *pendingSharedFile
+		position int
+	}
+
+	embedBatchSize := idx.embedBatchSize
+	if embedBatchSize <= 0 {
+		embedBatchSize = 256
+	}
+	var pending []*pendingSharedFile
+	var batchTexts []string
+	var batchRefs []chunkRef
+
+	embedAllFileChunks := func(file *pendingSharedFile) (map[int][]float32, error) {
+		vectors := make(map[int][]float32, len(file.chunks))
+		for start := 0; start < len(file.chunks); start += embedBatchSize {
+			end := min(start+embedBatchSize, len(file.chunks))
+			texts := make([]string, end-start)
+			for i := start; i < end; i++ {
+				texts[i-start] = store.EmbeddingInput(file.chunks[i])
+			}
+			embedded, err := idx.emb.Embed(ctx, texts)
+			if err != nil {
+				return nil, fmt.Errorf("re-embed %s: %w", file.relativePath, err)
+			}
+			if len(embedded) != len(texts) {
+				return nil, fmt.Errorf("re-embed %s returned %d vectors for %d inputs", file.relativePath, len(embedded), len(texts))
+			}
+			for i, vector := range embedded {
+				vectors[start+i] = vector
+			}
+		}
+		return vectors, nil
+	}
+
+	storeFile := func(file *pendingSharedFile) (bool, error) {
+		created, err := idx.store.StoreFileRevision(file.relativePath, file.contentHash, file.chunks, file.vectors)
+		if !errors.Is(err, store.ErrVectorVanished) {
+			return created, err
+		}
+		// A concurrent cleanup can remove a vector after MissingChunkInputs
+		// observes it. Re-embedding every position makes the retry independent
+		// of all shared vector rows and closes that TOCTOU window.
+		vectors, embedErr := embedAllFileChunks(file)
+		if embedErr != nil {
+			return false, embedErr
+		}
+		created, err = idx.store.StoreFileRevision(file.relativePath, file.contentHash, file.chunks, vectors)
+		return created, err
+	}
+
+	drainReady := func() error {
+		for len(pending) > 0 && pending[0].remaining == 0 {
+			file := pending[0]
+			created, err := storeFile(file)
+			if err != nil {
+				return fmt.Errorf("store file revision %s: %w", file.relativePath, err)
+			}
+			if created || force {
+				stats.ChunksCreated += len(file.chunks)
+			}
+			if !file.skipped {
+				stats.IndexedFiles++
+			}
+			pending = pending[1:]
+		}
+		return nil
+	}
+
+	flushBatch := func() error {
+		if len(batchTexts) == 0 {
+			return drainReady()
+		}
+		embedded, err := idx.emb.Embed(ctx, batchTexts)
+		if err != nil {
+			return fmt.Errorf("embed shared batch: %w", err)
+		}
+		if len(embedded) != len(batchRefs) {
+			return fmt.Errorf("embed shared batch returned %d vectors for %d inputs", len(embedded), len(batchRefs))
+		}
+		for i, ref := range batchRefs {
+			ref.file.vectors[ref.position] = embedded[i]
+			ref.file.remaining--
+		}
+		if progress != nil {
+			last := batchRefs[len(batchRefs)-1].file
+			progress(last.fileIndex+1, len(filesToIndex), fmt.Sprintf("Embedded %d shared chunks", len(batchRefs)))
+		}
+		batchTexts = batchTexts[:0]
+		batchRefs = batchRefs[:0]
+		return drainReady()
+	}
+
 	for fileIndex, relativePath := range filesToIndex {
 		if err := ctx.Err(); err != nil {
 			return stats, err
@@ -115,8 +219,15 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 				idx.logger.Warn("skipping unchunkable file", "path", relativePath, "error", err)
 			}
 			stats.FilesSkipped++
-			if _, err := idx.store.StoreFileRevision(relativePath, contentHash, nil, nil); err != nil {
-				return stats, fmt.Errorf("record skipped file %s: %w", relativePath, err)
+			pending = append(pending, &pendingSharedFile{
+				relativePath: relativePath,
+				contentHash:  contentHash,
+				vectors:      map[int][]float32{},
+				fileIndex:    fileIndex,
+				skipped:      true,
+			})
+			if err := drainReady(); err != nil {
+				return stats, err
 			}
 			continue
 		}
@@ -136,64 +247,63 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 				return stats, fmt.Errorf("check shared vectors for %s: %w", relativePath, err)
 			}
 		}
-		vectors := make(map[int][]float32, len(missing))
-		const embedBatchSize = 256
+		file := &pendingSharedFile{
+			relativePath: relativePath,
+			contentHash:  contentHash,
+			chunks:       chunks,
+			vectors:      make(map[int][]float32, len(missing)),
+			fileIndex:    fileIndex,
+		}
+		pending = append(pending, file)
 		var needsEmbedding []int
 		for _, position := range missing {
 			h := sha256.Sum256([]byte(store.EmbeddingInput(chunks[position])))
 			if vector, ok := idx.legacyVectors[h]; ok {
-				vectors[position] = vector
+				file.vectors[position] = vector
 			} else {
 				needsEmbedding = append(needsEmbedding, position)
 			}
 		}
-		for start := 0; start < len(needsEmbedding); start += embedBatchSize {
-			end := min(start+embedBatchSize, len(needsEmbedding))
-			positions := needsEmbedding[start:end]
-			texts := make([]string, len(positions))
-			for i, position := range positions {
-				texts[i] = store.EmbeddingInput(chunks[position])
-			}
-			embedded, err := idx.emb.Embed(ctx, texts)
-			if err != nil {
-				return stats, fmt.Errorf("embed %s: %w", relativePath, err)
-			}
-			if len(embedded) != len(positions) {
-				return stats, fmt.Errorf("embed %s returned %d vectors for %d inputs", relativePath, len(embedded), len(positions))
-			}
-			for i, position := range positions {
-				vectors[position] = embedded[i]
-			}
-			if progress != nil {
-				progress(fileIndex+1, len(filesToIndex), fmt.Sprintf("Embedded %d chunks for %s", len(positions), relativePath))
+		file.remaining = len(needsEmbedding)
+		for _, position := range needsEmbedding {
+			batchTexts = append(batchTexts, store.EmbeddingInput(chunks[position]))
+			batchRefs = append(batchRefs, chunkRef{file: file, position: position})
+			if len(batchTexts) == embedBatchSize {
+				if err := flushBatch(); err != nil {
+					return stats, err
+				}
 			}
 		}
-		created, err := idx.store.StoreFileRevision(relativePath, contentHash, chunks, vectors)
-		if err != nil {
-			return stats, fmt.Errorf("store file revision %s: %w", relativePath, err)
+		if err := drainReady(); err != nil {
+			return stats, err
 		}
-		if created || force {
-			stats.ChunksCreated += len(chunks)
-		}
-		stats.IndexedFiles++
+	}
+	if err := flushBatch(); err != nil {
+		return stats, err
+	}
+	if len(pending) != 0 {
+		return stats, fmt.Errorf("shared embedding queue left %d files pending", len(pending))
 	}
 
 	if len(filesToIndex) > 0 {
 		idx.store.Analyze()
 	}
-	if err := idx.store.SetMeta("root_hash", curTree.RootHash); err != nil {
-		return stats, err
+	metadata := []struct{ key, value string }{
+		{"embedding_model", idx.emb.ModelName()},
+		{"project_path", projectDir},
+		{"last_indexed_at", time.Now().UTC().Format(time.RFC3339)},
+		{"total_files", strconv.Itoa(stats.TotalFiles)},
+		{"vector_storage", idx.vectorStorage},
 	}
-	for key, value := range map[string]string{
-		"embedding_model": idx.emb.ModelName(),
-		"project_path":    projectDir,
-		"last_indexed_at": time.Now().UTC().Format(time.RFC3339),
-		"total_files":     strconv.Itoa(stats.TotalFiles),
-		"vector_storage":  idx.vectorStorage,
-	} {
-		if err := idx.store.SetMeta(key, value); err != nil {
-			return stats, fmt.Errorf("store %s metadata: %w", key, err)
+	for _, item := range metadata {
+		if err := idx.store.SetMeta(item.key, item.value); err != nil {
+			return stats, fmt.Errorf("store %s metadata: %w", item.key, err)
 		}
+	}
+	// root_hash is the commit marker and must be written after every other
+	// durable file, vector, and metadata update.
+	if err := idx.store.SetMeta("root_hash", curTree.RootHash); err != nil {
+		return stats, fmt.Errorf("store root_hash metadata: %w", err)
 	}
 	if progress != nil && len(filesToIndex) > 0 {
 		progress(len(filesToIndex), len(filesToIndex), fmt.Sprintf("Indexing complete: %d files, %d new chunks", len(filesToIndex), stats.ChunksCreated))

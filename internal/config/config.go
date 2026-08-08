@@ -79,6 +79,8 @@ func DBPathForProjectProfileBase(dataDir, projectPath, model string, dimensions 
 		// scope explicit in the key so subdirectory collections can be added
 		// without another on-disk format change.
 		scope = "."
+	} else if resolved, resolveErr := filepath.EvalSymlinks(identity); resolveErr == nil {
+		identity = filepath.Clean(resolved)
 	}
 	profile := identity + "\x00" + scope + "\x00" + model + "\x00" +
 		strconv.Itoa(dimensions) + "\x00" + vectorStorage + "\x00" +

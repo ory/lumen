@@ -312,7 +312,7 @@ func (s *ConfigService) MaxChunkTokens() int {
 func (s *ConfigService) VectorStorage() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.k.String("vector_storage")
+	return strings.ToLower(strings.TrimSpace(s.k.String("vector_storage")))
 }
 
 func (s *ConfigService) FreshnessTTL() time.Duration {

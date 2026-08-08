@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -31,15 +32,11 @@ func (idx *Indexer) PrepareLegacyMigration(projectDir, legacyPath string) error 
 		}
 		return err
 	}
-	db, err := sql.Open("sqlite3", legacyPath)
+	db, err := sql.Open("sqlite3", "file:"+legacyPath+"?mode=ro&_query_only=1")
 	if err != nil {
 		return err
 	}
 	defer func() { _ = db.Close() }()
-	if _, err := db.Exec(`PRAGMA query_only=ON`); err != nil {
-		return err
-	}
-
 	legacyByChunk := make(map[string][]float32)
 	rows, err := db.Query(`SELECT c.id, v.embedding FROM chunks c JOIN vec_chunks v ON v.id = c.id`)
 	if err != nil {
@@ -57,7 +54,7 @@ func (idx *Indexer) PrepareLegacyMigration(projectDir, legacyPath string) error 
 			legacyByChunk[id] = vector
 		}
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return err
 	}
 
@@ -94,7 +91,7 @@ func (idx *Indexer) PrepareLegacyMigration(projectDir, legacyPath string) error 
 			}
 		}
 	}
-	if err := fileRows.Close(); err != nil {
+	if err := errors.Join(fileRows.Err(), fileRows.Close()); err != nil {
 		return err
 	}
 	idx.legacyVectors = recovered

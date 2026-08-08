@@ -395,8 +395,16 @@ func Beta() {}
 	}
 	cases := []projectCase{{path: projectA, file: "alpha.go"}, {path: projectB, file: "beta.go"}}
 	start := make(chan struct{})
-	errs := make(chan error, 40)
+	errs := make(chan error, 41)
 	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		if _, indexErr := idx.Index(context.Background(), projectA, false, nil); indexErr != nil {
+			errs <- fmt.Errorf("concurrent index project A: %w", indexErr)
+		}
+	}()
 	for i := range 40 {
 		tc := cases[i%len(cases)]
 		wg.Add(1)

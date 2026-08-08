@@ -100,6 +100,7 @@ type Indexer struct {
 	projectPath    string
 	legacyVectors  map[[32]byte][]float32
 	legacySource   string
+	embedBatchSize int
 }
 
 // SetLogger attaches a logger to the indexer for structured diagnostic output.
@@ -135,6 +136,7 @@ func NewIndexerForProject(dsn string, emb embedder.Embedder, maxChunkTokens int,
 		dsn:            dsn,
 		vectorStorage:  vectorStorage,
 		projectPath:    projectPath,
+		embedBatchSize: 256,
 	}, nil
 }
 
@@ -574,12 +576,15 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	return stats, nil
 }
 
-// LastIndexedAt returns the time the index was last successfully updated, as
-// stored in the last_indexed_at metadata field. Returns (zero, false) if the
-// field is absent or unparseable (e.g. the index has never been run).
-func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
-	idx.projectMu.RLock()
-	defer idx.projectMu.RUnlock()
+// LastIndexedAt returns the time projectDir was last successfully updated, as
+// stored in its last_indexed_at metadata field. Returns (zero, false) if the
+// field is absent or unparseable (e.g. the project has never been indexed).
+func (idx *Indexer) LastIndexedAt(projectDir string) (time.Time, bool) {
+	releaseProject, err := idx.lockProject(projectDir)
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer releaseProject()
 	val, err := idx.store.GetMeta("last_indexed_at")
 	if err != nil || val == "" {
 		return time.Time{}, false
@@ -598,16 +603,15 @@ func (idx *Indexer) LastIndexedAt() (time.Time, bool) {
 // IsFresh does not acquire the indexer mutex; it reads through the store's
 // read-only connection (SQLite WAL isolation).
 func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
+	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
+	if err != nil {
+		return false, fmt.Errorf("build merkle tree: %w", err)
+	}
 	releaseProject, err := idx.lockProject(projectDir)
 	if err != nil {
 		return false, err
 	}
 	defer releaseProject()
-	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
-	if err != nil {
-		return false, fmt.Errorf("build merkle tree: %w", err)
-	}
-
 	storedHash, err := idx.store.GetMeta("root_hash")
 	if err != nil && err != sql.ErrNoRows {
 		return false, fmt.Errorf("get root_hash: %w", err)

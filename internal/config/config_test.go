@@ -107,6 +107,23 @@ func TestDBPathForProjectProfileSharesGitWorktrees(t *testing.T) {
 	}
 }
 
+func TestDBPathForProjectProfileResolvesNonGitSymlinks(t *testing.T) {
+	realProject := filepath.Join(t.TempDir(), "project")
+	if err := os.MkdirAll(realProject, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "project-link")
+	if err := os.Symlink(realProject, link); err != nil {
+		t.Fatal(err)
+	}
+	dataDir := t.TempDir()
+	realPath := DBPathForProjectProfileBase(dataDir, realProject, "model", 768, "int8", 512)
+	linkPath := DBPathForProjectProfileBase(dataDir, link, "model", 768, "int8", 512)
+	if realPath != linkPath {
+		t.Fatalf("symlinked non-Git project should share identity: %q != %q", realPath, linkPath)
+	}
+}
+
 func TestXDGConfigDir(t *testing.T) {
 	t.Run("uses XDG_CONFIG_HOME when set", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "/custom/config")
@@ -135,8 +152,8 @@ func TestVectorStorageConfiguration(t *testing.T) {
 			t.Fatalf("VectorStorage() = %q, want int8", got)
 		}
 	})
-	t.Run("accepts float32 override", func(t *testing.T) {
-		t.Setenv("LUMEN_VECTOR_STORAGE", "FLOAT32")
+	t.Run("normalizes float32 override", func(t *testing.T) {
+		t.Setenv("LUMEN_VECTOR_STORAGE", "  FLOAT32  ")
 		cfg, err := NewConfigService("")
 		if err != nil {
 			t.Fatal(err)
