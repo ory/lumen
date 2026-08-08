@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run\" hook session-start lumen --host claude"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run\" hook session-start lumen --host claude --plugin-name lumen"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run\" hook pre-tool-use lumen"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run\" hook pre-tool-use lumen --plugin-name lumen"
           }
         ]
       }

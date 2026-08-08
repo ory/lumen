@@ -392,8 +392,18 @@ and binary version. Different models or Lumen versions automatically get
 separate indexes. No files are added to your repo, no `.gitignore` modifications
 needed.
 
-You can safely delete the entire `lumen` directory to clear all indexes, or use
-`lumen purge` to do it automatically.
+You can safely delete the entire `lumen` directory to clear all indexes, or let
+Lumen reclaim the space for you:
+
+```bash
+lumen clean            # remove indexes unused for 30 days or whose project is gone
+lumen clean --days 7   # tighten the cutoff to a week
+lumen clean --days 0   # remove every eligible index except actively locked indexes
+```
+
+An index counts as used every time Lumen opens it (search, indexing, status, or
+session start), so indexes for projects you still work on are never removed.
+Indexes with an indexer currently running are always kept.
 
 **Git worktrees** are detected automatically. When you create a new worktree
 (`git worktree add` or `claude --worktree`), Lumen finds a sibling worktree's
@@ -432,7 +442,7 @@ In Cursor, Codex, or OpenCode, use the shared `doctor` skill or call
 Run `/lumen:reindex` inside Claude Code to force a full re-index, or:
 
 ```bash
-lumen purge && lumen index .
+lumen index --force .
 ```
 
 In Codex, use the bundled `reindex` skill to refresh the index through the MCP

@@ -44,16 +44,6 @@ type semanticSearchOutput struct {
 	IndexedFiles int                `json:"indexed_files,omitempty"`
 }
 
-type searchResultItem struct {
-	FilePath  string  `json:"file_path"`
-	Symbol    string  `json:"symbol"`
-	Kind      string  `json:"kind"`
-	StartLine int     `json:"start_line"`
-	EndLine   int     `json:"end_line"`
-	Score     float32 `json:"score"`
-	Content   string  `json:"content,omitempty"`
-}
-
 type indexStatusOutput struct {
 	ProjectPath    string `json:"project_path"`
 	TotalFiles     int    `json:"total_files"`

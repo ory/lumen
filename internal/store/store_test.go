@@ -16,8 +16,11 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ory/lumen/internal/chunker"
 )
@@ -540,8 +543,41 @@ func TestReadMetaAt_ReturnsStoredValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMetaAt: %v", err)
 	}
-	if got != "/some/project" {
-		t.Fatalf("ReadMetaAt(project_path) = %q, want %q", got, "/some/project")
+	if got["project_path"] != "/some/project" {
+		t.Fatalf("ReadMetaAt(project_path) = %q, want %q", got["project_path"], "/some/project")
+	}
+}
+
+// TestReadMetaAt_MultipleKeys verifies a single read-only open can fetch every
+// key `lumen clean` needs to classify an index.
+func TestReadMetaAt_MultipleKeys(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMeta("project_path", "/some/project"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMeta("last_indexed_at", "2026-01-02T03:04:05Z"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ReadMetaAt(dbPath, "project_path", "last_accessed_at", "last_indexed_at")
+	if err != nil {
+		t.Fatalf("ReadMetaAt: %v", err)
+	}
+	if got["project_path"] != "/some/project" {
+		t.Errorf("project_path = %q, want %q", got["project_path"], "/some/project")
+	}
+	if got["last_indexed_at"] != "2026-01-02T03:04:05Z" {
+		t.Errorf("last_indexed_at = %q, want %q", got["last_indexed_at"], "2026-01-02T03:04:05Z")
+	}
+	if got["last_accessed_at"] == "" {
+		t.Error("last_accessed_at should be stamped by New")
 	}
 }
 
@@ -559,8 +595,8 @@ func TestReadMetaAt_MissingKeyReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadMetaAt on empty meta: %v", err)
 	}
-	if got != "" {
-		t.Fatalf("ReadMetaAt missing key = %q, want empty", got)
+	if _, ok := got["project_path"]; ok {
+		t.Fatalf("ReadMetaAt missing key = %q, want absent", got["project_path"])
 	}
 }
 
@@ -568,5 +604,146 @@ func TestReadMetaAt_MissingFileReturnsError(t *testing.T) {
 	_, err := ReadMetaAt(filepath.Join(t.TempDir(), "does-not-exist.db"), "project_path")
 	if err == nil {
 		t.Fatal("expected error for missing DB file")
+	}
+}
+
+// TestNew_StampsLastAccessedAt verifies that opening a store records an
+// RFC3339 UTC access timestamp, which `lumen clean` uses to decide whether an
+// index is still in use.
+func TestNew_StampsLastAccessedAt(t *testing.T) {
+	before := time.Now().UTC().Truncate(time.Second)
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+
+	got, err := s.GetMeta("last_accessed_at")
+	if err != nil {
+		t.Fatalf("GetMeta(last_accessed_at): %v", err)
+	}
+	if !strings.HasSuffix(got, "Z") {
+		t.Errorf("last_accessed_at = %q, want a UTC (Z-suffixed) timestamp", got)
+	}
+	ts, err := time.Parse(time.RFC3339, got)
+	if err != nil {
+		t.Fatalf("parse last_accessed_at %q: %v", got, err)
+	}
+	if ts.Before(before) {
+		t.Errorf("last_accessed_at = %v, want at or after %v", ts, before)
+	}
+}
+
+// TestNew_RefreshesLastAccessedAt verifies that reopening an existing index
+// bumps the recorded access time rather than leaving a stale value behind.
+func TestNew_RefreshesLastAccessedAt(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := "2020-01-01T00:00:00Z"
+	if err := s.SetMeta("last_accessed_at", stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+
+	got, err := reopened.GetMeta("last_accessed_at")
+	if err != nil {
+		t.Fatalf("GetMeta(last_accessed_at): %v", err)
+	}
+	if got == stale {
+		t.Error("reopening the store should refresh last_accessed_at")
+	}
+}
+
+// TestNew_AccessStampDoesNotBlockOnBusyDatabase verifies that opening an index
+// while another writer holds the SQLite write lock — the normal state during a
+// background reindex — still returns promptly. The access stamp is bookkeeping;
+// blocking on it for the 120s busy_timeout would stall search.
+func TestNew_AccessStampDoesNotBlockOnBusyDatabase(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Hold the write lock from an independent connection, as a concurrently
+	// running indexer process would.
+	blocker, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Close() }()
+	tx, err := blocker.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO project_meta (key, value) VALUES ('blocker', '1')"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		reopened, err := New(dbPath, 4)
+		if reopened != nil {
+			_ = reopened.Close()
+		}
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("New on a busy database: %v", err)
+		}
+		if elapsed := time.Since(start); elapsed > 30*time.Second {
+			t.Errorf("New took %v on a busy database, want a bounded wait", elapsed)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("New blocked on a busy database; the access stamp must not wait for the write lock")
+	}
+}
+
+// TestReadMetaAt_DoesNotRefreshLastAccessedAt guards the invariant that the
+// read-only metadata scan used by `lumen clean` never counts as an access.
+func TestReadMetaAt_DoesNotRefreshLastAccessedAt(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	s, err := New(dbPath, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := "2020-01-01T00:00:00Z"
+	if err := s.SetMeta("last_accessed_at", stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadMetaAt(dbPath, "last_accessed_at"); err != nil {
+		t.Fatalf("ReadMetaAt: %v", err)
+	}
+
+	got, err := ReadMetaAt(dbPath, "last_accessed_at")
+	if err != nil {
+		t.Fatalf("ReadMetaAt: %v", err)
+	}
+	if got["last_accessed_at"] != stale {
+		t.Errorf("last_accessed_at = %q, want unchanged %q", got["last_accessed_at"], stale)
 	}
 }

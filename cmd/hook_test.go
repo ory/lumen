@@ -62,7 +62,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestGenerateSessionContext_NoIndex(t *testing.T) {
+func TestGenerateSessionContext_NoIndexLegacyToolName(t *testing.T) {
 	// Use the internal version with a no-op bgIndexer to avoid spawning the
 	// test binary as a background process (which would trigger a fork bomb:
 	// the spawned binary runs all tests, which spawn more binaries, etc.)
@@ -71,16 +71,50 @@ func TestGenerateSessionContext_NoIndex(t *testing.T) {
 		func(_ string) {},
 	)
 	if !strings.Contains(content, "mcp__lumen__semantic_search") {
-		t.Error("content should reference the semantic_search tool")
+		t.Error("legacy content should reference the standalone semantic_search tool")
 	}
 	if strings.Contains(content, "EXTREMELY_IMPORTANT") {
 		t.Error("content should not contain EXTREMELY_IMPORTANT directives")
 	}
 }
 
+func TestMCPToolReference(t *testing.T) {
+	tests := []struct {
+		name       string
+		pluginName string
+		want       string
+	}{
+		{
+			name:       "plugin qualified",
+			pluginName: "lumen",
+			want:       "mcp__plugin_lumen_lumen__semantic_search",
+		},
+		{
+			name: "standalone",
+			want: "mcp__lumen__semantic_search",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mcpToolReference(tt.pluginName, "lumen", "semantic_search")
+			if got != tt.want {
+				t.Fatalf("mcpToolReference() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSessionStartDirectiveClaudePlugin(t *testing.T) {
+	const want = "Load and call mcp__plugin_lumen_lumen__semantic_search first for any code discovery task — before Grep, Bash, or Read."
+	if got := sessionStartDirective(hookHostClaude, "lumen", "lumen"); got != want {
+		t.Fatalf("sessionStartDirective() = %q, want %q", got, want)
+	}
+}
+
 func TestGenerateSessionContextForCursor_NoIndex(t *testing.T) {
 	content := generateSessionContextInternalWithDirective(
-		sessionStartDirective(hookHostCursor, "lumen"),
+		sessionStartDirective(hookHostCursor, "lumen", "lumen"),
 		"/nonexistent/path",
 		func(_, _ string) string { return "" },
 		func(_ string) {},
@@ -107,7 +141,7 @@ func TestEvaluateToolCall_GrepAlwaysSuggests(t *testing.T) {
 				ToolName: "Grep",
 				Input:    map[string]any{"pattern": pattern},
 			}
-			result := evaluateToolCall(input, "lumen")
+			result := evaluateToolCall(input, "lumen", "lumen")
 			if result == nil {
 				t.Fatal("expected suggestion for Grep, got nil")
 				return
@@ -115,8 +149,8 @@ func TestEvaluateToolCall_GrepAlwaysSuggests(t *testing.T) {
 			if result.HookSpecificOutput.PermissionDecision != "" {
 				t.Errorf("expected no permissionDecision, got %q", result.HookSpecificOutput.PermissionDecision)
 			}
-			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__lumen__semantic_search") {
-				t.Error("additionalContext should reference semantic_search tool")
+			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__plugin_lumen_lumen__semantic_search") {
+				t.Error("additionalContext should reference the plugin-qualified semantic_search tool")
 			}
 		})
 	}
@@ -127,13 +161,16 @@ func TestEvaluateToolCall_GlobAlwaysSuggests(t *testing.T) {
 		ToolName: "Glob",
 		Input:    map[string]any{"pattern": "**/*.go"},
 	}
-	result := evaluateToolCall(input, "lumen")
+	result := evaluateToolCall(input, "lumen", "lumen")
 	if result == nil {
 		t.Fatal("expected suggestion for Glob, got nil")
 		return
 	}
 	if result.HookSpecificOutput.PermissionDecision != "" {
 		t.Errorf("expected no permissionDecision, got %q", result.HookSpecificOutput.PermissionDecision)
+	}
+	if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__plugin_lumen_lumen__semantic_search") {
+		t.Error("additionalContext should reference the plugin-qualified semantic_search tool")
 	}
 }
 
@@ -142,7 +179,7 @@ func TestEvaluateToolCall_OtherToolSilentAllow(t *testing.T) {
 		ToolName: "Read",
 		Input:    map[string]any{"path": "/some/file.go"},
 	}
-	result := evaluateToolCall(input, "lumen")
+	result := evaluateToolCall(input, "lumen", "lumen")
 	if result != nil {
 		t.Errorf("expected nil (silent allow) for Read, got suggestion")
 	}
@@ -160,13 +197,13 @@ func TestEvaluateToolCall_BashGrepSuggests(t *testing.T) {
 				ToolName: "Bash",
 				Input:    map[string]any{"command": cmd},
 			}
-			result := evaluateToolCall(input, "lumen")
+			result := evaluateToolCall(input, "lumen", "lumen")
 			if result == nil {
 				t.Fatal("expected suggestion for bash grep, got nil")
 				return
 			}
-			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__lumen__semantic_search") {
-				t.Error("additionalContext should reference semantic_search tool")
+			if !strings.Contains(result.HookSpecificOutput.AdditionalContext, "mcp__plugin_lumen_lumen__semantic_search") {
+				t.Error("additionalContext should reference the plugin-qualified semantic_search tool")
 			}
 		})
 	}
@@ -184,7 +221,7 @@ func TestEvaluateToolCall_BashNonSearchSilentAllow(t *testing.T) {
 				ToolName: "Bash",
 				Input:    map[string]any{"command": cmd},
 			}
-			result := evaluateToolCall(input, "lumen")
+			result := evaluateToolCall(input, "lumen", "lumen")
 			if result != nil {
 				t.Errorf("expected nil for non-search bash command %q, got suggestion", cmd)
 			}
@@ -196,7 +233,7 @@ func TestPreToolUseOutputJSON(t *testing.T) {
 	result := evaluateToolCall(preToolUseInput{
 		ToolName: "Grep",
 		Input:    map[string]any{"pattern": "error handling middleware"},
-	}, "lumen")
+	}, "lumen", "lumen")
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -432,7 +469,9 @@ func TestGenerateSessionContextInternal_NonGitUsesParentIndex(t *testing.T) {
 func TestHookOutputJSON(t *testing.T) {
 	// Use the internal version with a no-op bgIndexer — same fork-bomb reason
 	// as in TestGenerateSessionContext_NoIndex.
-	content := generateSessionContextInternal("/nonexistent/path",
+	content := generateSessionContextInternalWithDirective(
+		sessionStartDirective(hookHostClaude, "lumen", "lumen"),
+		"/nonexistent/path",
 		func(_, _ string) string { return "" },
 		func(_ string) {},
 	)
@@ -461,14 +500,14 @@ func TestHookOutputJSON(t *testing.T) {
 		t.Errorf("hookEventName = %v, want SessionStart", hso["hookEventName"])
 	}
 	ctx, ok := hso["additionalContext"].(string)
-	if !ok || !strings.Contains(ctx, "mcp__lumen__semantic_search") {
-		t.Error("additionalContext should contain tool reference")
+	if !ok || !strings.Contains(ctx, "mcp__plugin_lumen_lumen__semantic_search") {
+		t.Error("additionalContext should contain the plugin-qualified tool reference")
 	}
 }
 
 func TestSessionStartOutputCursorJSON(t *testing.T) {
 	content := generateSessionContextInternalWithDirective(
-		sessionStartDirective(hookHostCursor, "lumen"),
+		sessionStartDirective(hookHostCursor, "lumen", "lumen"),
 		"/nonexistent/path",
 		func(_, _ string) string { return "" },
 		func(_ string) {},

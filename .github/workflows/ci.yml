@@ -72,9 +72,13 @@ jobs:
     if: github.actor != 'release-please[bot]'
     services:
       ollama:
-        image: ollama/ollama:latest
+        # Keep semantic-search snapshots reproducible. New Ollama runtimes can
+        # change embedding execution even when the all-minilm model is unchanged.
+        image: ollama/ollama@sha256:a6149234667efc71d37766d61c1a16f24c33e4cd7a0bf4125c44a7e47e2419c4
         ports:
           - 11434:11434
+        env:
+          OLLAMA_NUM_PARALLEL: '1'
     steps:
       - uses: actions/checkout@v4
 
