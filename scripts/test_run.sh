@@ -150,7 +150,8 @@ resolved_version_from_manifest() {
 
 resolved_version_from_plugin_manifest() {
   local manifest="$1"
-  local ver="v$(grep '"version"' "$manifest" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  local ver
+  ver="v$(grep '"version"' "$manifest" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
   echo "$ver"
 }
 
