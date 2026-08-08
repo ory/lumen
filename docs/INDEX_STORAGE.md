@@ -162,13 +162,14 @@ Use the narrowest operation that matches the problem:
 lumen index .           # refresh changed files
 lumen index --force .   # reprocess every file in the current project
 lumen clean             # reclaim stale memberships and unreferenced data
-lumen clean --days 0    # wipe every cached index on the host
+lumen clean --days 0    # wipe every cached index not held by an active indexer
 ```
 
 `--force` does not wipe other worktrees from a shared collection. It rebuilds
 the current project's memberships and chunk definitions while the collection
 continues to deduplicate physical vectors. Use the full wipe only when you
-intend to rebuild all Lumen indexes on the machine.
+intend to rebuild all Lumen indexes on the machine. Collections held by an
+active indexer lock are kept and counted as skipped.
 
 To delete indexes manually, stop active Lumen indexers and remove the Lumen data
 directory. No source-tree files are stored there, and no files are added to the

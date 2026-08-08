@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,16 @@ var (
 	updateGolden = flag.Bool("update-golden", false, "update golden test files")
 	discardLog   = slog.New(slog.NewTextHandler(io.Discard, nil))
 )
+
+func TestIndexStatusOutputDeduplicationRateJSONTag(t *testing.T) {
+	data, err := json.Marshal(IndexStatusOutput{DeduplicationRate: 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"deduplication_rate":0.5`) || strings.Contains(string(data), "deduplication_ratio") {
+		t.Fatalf("unexpected JSON: %s", data)
+	}
+}
 
 // assertGolden compares got against the golden file at path. If -update-golden
 // is set, it writes got to the golden file instead.
@@ -1382,6 +1393,64 @@ func TestGetOrCreate_SeedCancelledByClose(t *testing.T) {
 	}
 }
 
+func TestGetOrCreateSupportsNilConfig(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	projectDir := t.TempDir()
+	ic := &indexerCache{embedder: &stubEmbedder{}, log: discardLog}
+	idx, _, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ic.maxChunkTokens() != 0 || ic.vectorStorage() != "int8" {
+		t.Fatalf("nil-config defaults = %d, %q", ic.maxChunkTokens(), ic.vectorStorage())
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyMigrationPreparationRunsInBackgroundIndexing(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	projectDir := t.TempDir()
+	cfg := newTestConfigService(t, 512)
+	original := prepareMigrationFunc
+	t.Cleanup(func() { prepareMigrationFunc = original })
+	prepareCalls := 0
+	prepareMigrationFunc = func(_ *index.Indexer, gotProject, _ string) error {
+		prepareCalls++
+		if gotProject != projectDir {
+			t.Fatalf("project = %q, want %q", gotProject, projectDir)
+		}
+		return nil
+	}
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		cfg:      cfg,
+		log:      discardLog,
+		ensureFreshFunc: func(_ context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
+			if prepareCalls != 1 {
+				t.Fatalf("PrepareLegacyMigration calls before EnsureFresh = %d, want 1", prepareCalls)
+			}
+			return false, index.Stats{}, nil
+		},
+	}
+	idx, effectiveRoot, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+	if prepareCalls != 0 {
+		t.Fatalf("PrepareLegacyMigration ran during getOrCreate: %d calls", prepareCalls)
+	}
+	input := SemanticSearchInput{Cwd: projectDir, Path: projectDir, Query: "test"}
+	if _, err := ic.ensureIndexed(idx, input, effectiveRoot, ic.dbPath(effectiveRoot, "stub"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if prepareCalls != 1 {
+		t.Fatalf("PrepareLegacyMigration calls = %d, want 1", prepareCalls)
+	}
+}
+
 func TestFormatSearchResults_IncludesSeedWarning(t *testing.T) {
 	out := SemanticSearchOutput{
 		Results:     nil,
@@ -1627,7 +1696,7 @@ func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	idx, err := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	idx, err := index.NewIndexerForProject(dbPath, &stubEmbedder{}, 512, "int8", tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1635,7 +1704,14 @@ func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T
 
 	// Simulate an external process (e.g. lumen index from SessionStart) having
 	// recently written last_indexed_at to the DB.
-	if err := writeDBWithLastIndexedAt(t, dbPath, time.Now().Add(-5*time.Second)); err != nil {
+	external, err := store.NewCollection(dbPath, 4, "int8", tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := external.SetMeta("last_indexed_at", time.Now().Add(-5*time.Second).UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if err := external.Close(); err != nil {
 		t.Fatal(err)
 	}
 

@@ -98,7 +98,7 @@ type IndexStatusOutput struct {
 	TotalChunks       int     `json:"total_chunks"`
 	UniqueVectors     int     `json:"unique_vectors"`
 	SharedReferences  int     `json:"shared_references"`
-	DeduplicationRate float64 `json:"deduplication_ratio"`
+	DeduplicationRate float64 `json:"deduplication_rate"`
 	VectorStorage     string  `json:"vector_storage"`
 	DatabaseBytes     int64   `json:"database_bytes"`
 	ReclaimableBytes  int64   `json:"reclaimable_bytes"`
@@ -150,6 +150,14 @@ const backgroundReindexMaxDuration = 10 * time.Minute
 // in-process goroutine is already running, or reindex timed out). The text
 // is identical across all four code paths.
 const staleIndexWarning = "Index is being updated in the background. Results may be incomplete or outdated. Use grep/glob/find for code search until indexing finishes (usually a few minutes; longer for large repositories)."
+
+var (
+	tryAcquire           = indexlock.TryAcquire
+	tryAcquireShared     = indexlock.TryAcquireShared
+	prepareMigrationFunc = func(idx *index.Indexer, projectDir, legacyPath string) error {
+		return idx.PrepareLegacyMigration(projectDir, legacyPath)
+	}
+)
 
 type cacheEntry struct {
 	idx           *index.Indexer
@@ -233,6 +241,20 @@ func (ic *indexerCache) getFreshnessTTL() time.Duration {
 		}
 	}
 	return defaultFreshnessTTL
+}
+
+func (ic *indexerCache) maxChunkTokens() int {
+	if ic.cfg == nil {
+		return 0
+	}
+	return ic.cfg.MaxChunkTokens()
+}
+
+func (ic *indexerCache) vectorStorage() string {
+	if ic.cfg == nil {
+		return "int8"
+	}
+	return ic.cfg.VectorStorage()
 }
 
 // getReindexTimeout returns the effective reindex timeout, checking the override
@@ -516,21 +538,16 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		seed:      ic.seedFunc,
 	})
 
-	idx, err := index.NewIndexerForProject(dbPath, ic.embedder, ic.cfg.MaxChunkTokens(), ic.cfg.VectorStorage(), effectiveRoot)
+	idx, err := index.NewIndexerForProject(dbPath, ic.embedder, ic.maxChunkTokens(), ic.vectorStorage(), effectiveRoot)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
 	idx.SetLogger(ic.logger())
-	legacyPath := config.LegacyDBPathForProject(effectiveRoot, modelName)
-	if err := idx.PrepareLegacyMigration(effectiveRoot, legacyPath); err != nil {
-		ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
-	}
-
 	// Pre-populate the freshness TTL if the index was recently stamped by
 	// background pre-warming (SessionStart hook). This avoids a redundant
 	// merkle walk on the very first search in a new session.
 	entry := cacheEntry{idx: idx, effectiveRoot: effectiveRoot, model: modelName}
-	if lastAt, ok := idx.LastIndexedAt(); ok {
+	if lastAt, ok := idx.LastIndexedAt(effectiveRoot); ok {
 		ttl := ic.getFreshnessTTL()
 		if time.Since(lastAt) < ttl {
 			entry.lastCheckedAt = lastAt
@@ -834,7 +851,7 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 			ic.mu.Unlock()
 		}()
 
-		collectionLock, lockErr := indexlock.TryAcquireShared(collectionLockPath)
+		collectionLock, lockErr := tryAcquireShared(collectionLockPath)
 		if lockErr != nil {
 			ic.logger().Warn("background reindex: failed to acquire lock", "project", projectDir, "err", lockErr)
 			done <- freshResult{skipped: true}
@@ -847,8 +864,14 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 			return
 		}
 		defer collectionLock.Release()
-		projectLock, lockErr := indexlock.TryAcquire(projectLockPath)
-		if lockErr != nil || projectLock == nil {
+		projectLock, lockErr := tryAcquire(projectLockPath)
+		if lockErr != nil {
+			ic.logger().Warn("background reindex: failed to acquire project lock", "project", projectDir, "err", lockErr)
+			done <- freshResult{skipped: true}
+			return
+		}
+		if projectLock == nil {
+			ic.logger().Debug("background reindex: project lock held by another process, skipping", "project", projectDir)
 			done <- freshResult{skipped: true}
 			return
 		}
@@ -857,7 +880,7 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 		// If a recent external process (e.g. lumen index from SessionStart)
 		// already updated the index within freshnessTTL, trust the DB timestamp
 		// and skip the expensive merkle tree walk.
-		if lastAt, ok := idx.LastIndexedAt(); ok {
+		if lastAt, ok := idx.LastIndexedAt(projectDir); ok {
 			ttl := ic.getFreshnessTTL()
 			if ttl == 0 {
 				ttl = defaultFreshnessTTL
@@ -871,6 +894,11 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 				done <- freshResult{}
 				return
 			}
+		}
+
+		legacyPath := config.LegacyDBPathForProject(projectDir, modelName)
+		if err := prepareMigrationFunc(idx, projectDir, legacyPath); err != nil {
+			ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
 		}
 
 		ensureFresh := ic.ensureFreshFunc
@@ -1446,7 +1474,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		"backend", cfg.Servers()[0].Backend,
 		"freshness_ttl", cfg.FreshnessTTL().String(),
 	)
-	runDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now())
+	runDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now(), logger)
 
 	closeCtx, closeFn := context.WithCancel(context.Background())
 	indexers := &indexerCache{

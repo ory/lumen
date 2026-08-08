@@ -18,8 +18,10 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -305,6 +307,40 @@ func TestClean_LeavesNonIndexFilesAlone(t *testing.T) {
 	_, _, err := runCleanIndexes(t, tmp, 0)
 	require.NoError(t, err)
 	assert.FileExists(t, logPath, "debug.log must not be removed")
+}
+
+func TestCleanIndexReportsLockAcquisitionErrors(t *testing.T) {
+	original := tryAcquireExclusive
+	t.Cleanup(func() { tryAcquireExclusive = original })
+	tryAcquireExclusive = func(string) (*indexlock.Lock, error) {
+		return nil, errors.New("permission denied")
+	}
+	var stderr bytes.Buffer
+	removed, _, err := cleanIndex(&stderr, "abc", t.TempDir(), 30, time.Now())
+	if err == nil || removed {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+	if !strings.Contains(stderr.String(), "Failed to acquire index lock") || strings.Contains(stderr.String(), "currently running") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestRunDailyCleanupUsesProvidedLoggerAndStampsSuccess(t *testing.T) {
+	dataDir := t.TempDir()
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	runDailyCleanup(dataDir, now, logger)
+	stamp, err := os.ReadFile(filepath.Join(dataDir, ".last-cleanup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(stamp) != now.Format(time.RFC3339) {
+		t.Fatalf("stamp = %q, want %q", stamp, now.Format(time.RFC3339))
+	}
+	if !strings.Contains(logs.String(), "daily cleanup complete") {
+		t.Fatalf("provided logger did not receive cleanup summary: %s", logs.String())
+	}
 }
 
 // TestClean_HandlesMultipleModelsPerProject verifies each model's index is aged

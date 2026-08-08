@@ -15,10 +15,13 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ory/lumen/internal/config"
@@ -39,6 +42,7 @@ const dailyCleanupInterval = 24 * time.Hour
 var (
 	removeIndexDir      = os.RemoveAll
 	cleanupCollectionAt = store.CleanupCollectionAt
+	tryAcquireExclusive = indexlock.TryAcquire
 )
 
 func init() {
@@ -90,8 +94,11 @@ func runClean(cmd *cobra.Command, _ []string) error {
 }
 
 // cleanIndexes removes every stale index directory directly under dataDir,
-// reporting each decision on stderr and a summary on stdout. now is injected so
-// the age cutoff is testable. Failures to remove a single directory are
+// reporting each decision on the injected stderr and a summary on the injected
+// stdout. The injected writers deliberately keep this reusable by both the
+// interactive CLI and the MCP background cleanup without mutating pterm's
+// process-global state. now is injected so the age cutoff is testable. Failures
+// to remove a single directory are
 // reported and the sweep continues; the first such failure is returned once
 // every directory has been considered.
 func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.Time) error {
@@ -144,8 +151,12 @@ func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.T
 // exclusive collection lock for the entire database cleanup and removal.
 func cleanIndex(stderr io.Writer, name, hashDir string, days int, cutoff time.Time) (bool, store.CleanupStats, error) {
 	dbPath := filepath.Join(hashDir, "index.db")
-	lock, lockErr := indexlock.TryAcquire(indexlock.LockPathForDB(dbPath))
-	if lockErr != nil || lock == nil {
+	lock, lockErr := tryAcquireExclusive(indexlock.LockPathForDB(dbPath))
+	if lockErr != nil {
+		_, _ = fmt.Fprintf(stderr, "Failed to acquire index lock for %s: %v\n", name, lockErr)
+		return false, store.CleanupStats{}, fmt.Errorf("acquire index lock for %s: %w", name, lockErr)
+	}
+	if lock == nil {
 		_, _ = fmt.Fprintf(stderr, "Keeping %s: an indexer is currently running.\n", name)
 		return false, store.CleanupStats{}, nil
 	}
@@ -249,16 +260,26 @@ func pluralY(n int) string {
 // runDailyCleanup performs the MCP-startup maintenance sweep at most once per
 // day. The stamp is deliberately outside collection directories so it is not
 // mistaken for an index by cleanIndexes.
-func runDailyCleanup(dataDir string, now time.Time) {
+func runDailyCleanup(dataDir string, now time.Time, logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	stampPath := filepath.Join(dataDir, ".last-cleanup")
 	if info, err := os.Stat(stampPath); err == nil && now.Sub(info.ModTime()) < dailyCleanupInterval {
+		logger.Debug("daily cleanup skipped: stamp is fresh", "stamp_path", stampPath)
 		return
 	}
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		logger.Warn("daily cleanup: create data directory", "path", dataDir, "error", err)
 		return
 	}
-	if err := cleanIndexes(io.Discard, io.Discard, dataDir, defaultCleanDays, now); err != nil {
+	var stderr, stdout bytes.Buffer
+	if err := cleanIndexes(&stderr, &stdout, dataDir, defaultCleanDays, now); err != nil {
+		logger.Warn("daily cleanup failed", "error", err, "details", strings.TrimSpace(stderr.String()))
 		return
 	}
-	_ = os.WriteFile(stampPath, []byte(now.UTC().Format(time.RFC3339)), 0o600)
+	logger.Info("daily cleanup complete", "summary", strings.TrimSpace(stdout.String()), "details", strings.TrimSpace(stderr.String()))
+	if err := os.WriteFile(stampPath, []byte(now.UTC().Format(time.RFC3339)), 0o600); err != nil {
+		logger.Warn("daily cleanup: write stamp", "path", stampPath, "error", err)
+	}
 }

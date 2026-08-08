@@ -237,8 +237,10 @@ func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmb
 	idx.SetLogger(logger)
 	if projectPath != "" {
 		legacyPath := config.LegacyDBPathForProject(projectPath, emb.ModelName())
-		if err := idx.PrepareLegacyMigration(projectPath, legacyPath); err != nil && logger != nil {
-			logger.Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+		if err := idx.PrepareLegacyMigration(projectPath, legacyPath); err != nil {
+			if logger != nil {
+				logger.Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+			}
 		}
 	}
 	return idx, nil
