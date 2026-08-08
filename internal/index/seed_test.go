@@ -73,12 +73,12 @@ func Hello() {}
 	if status.IndexedFiles == 0 {
 		t.Fatal("expected seeded DB to have indexed files")
 	}
-	storedProjectPath, err := store.ReadMetaAt(dstPath, "project_path")
+	seedMeta, err := store.ReadMetaAt(dstPath, "project_path")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if storedProjectPath != seedProjectDir {
-		t.Fatalf("seeded project_path = %q, want %q", storedProjectPath, seedProjectDir)
+	if seedMeta["project_path"] != seedProjectDir {
+		t.Fatalf("seeded project_path = %q, want %q", seedMeta["project_path"], seedProjectDir)
 	}
 }
 
