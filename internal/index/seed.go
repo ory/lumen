@@ -19,20 +19,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 
 	"github.com/ory/lumen/internal/indexlock"
 
-	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver for WAL checkpoint
+	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 )
 
-// SeedFromDonor copies the donor SQLite database to dstPath if dstPath does
-// not already exist. It checkpoints the WAL first to ensure a self-contained
-// copy, stamps projectPath as the new database owner, then atomically publishes
-// the copy.
+// SeedFromDonor snapshots the donor SQLite database to dstPath if dstPath does
+// not already exist. It stamps projectPath as the new database owner, then
+// atomically publishes the snapshot.
 func SeedFromDonor(donorPath, dstPath, projectPath string) (bool, error) {
 	return SeedFromDonorContext(context.Background(), donorPath, dstPath, projectPath)
 }
@@ -73,65 +71,50 @@ func SeedFromDonorContext(ctx context.Context, donorPath, dstPath, projectPath s
 	// A missing or empty root_hash means the donor is still being built
 	// (or was interrupted), so its data is incomplete and potentially
 	// inconsistent — skip seeding to avoid inheriting corrupt state.
-	// mode=rw prevents sqlite from creating an empty donor if it disappears
-	// after discovery. A writable handle is intentional: wal_checkpoint must
-	// be able to flush committed WAL pages into the main database before copy.
-	db, err := sql.Open("sqlite3", sqliteFileDSN(donorPath, "rw"))
+	// mode=ro prevents sqlite from creating an empty donor if it disappears
+	// after discovery. VACUUM INTO reads a transactionally consistent snapshot,
+	// including committed WAL content, without modifying the live donor.
+	db, err := sql.Open("sqlite3", sqliteFileDSN(donorPath, "ro"))
 	if err != nil {
 		return false, fmt.Errorf("open donor: %w", err)
 	}
 	var rootHash sql.NullString
-	if err := db.QueryRow("SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&rootHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err := db.QueryRowContext(ctx, "SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&rootHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		_ = db.Close()
 		return false, fmt.Errorf("read donor metadata: %w", err)
 	}
 
-	// Checkpoint the WAL so the main DB file is self-contained.
-	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+	if !rootHash.Valid || rootHash.String == "" {
+		if err := db.Close(); err != nil {
+			return false, fmt.Errorf("close donor: %w", err)
+		}
+		return false, nil
+	}
+
+	// The seed lock makes a fixed temp name safe. A crash can leave at most this
+	// one file behind, and the next attempt removes and replaces it instead of
+	// accumulating full-size index.db.seed-* orphans.
+	tmp := dstPath + ".seed-tmp"
+	removeSQLiteFiles(tmp)
+	defer func() {
+		removeSQLiteFiles(tmp)
+	}()
+
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", tmp); err != nil {
 		_ = db.Close()
-		return false, fmt.Errorf("checkpoint donor WAL: %w", err)
+		return false, fmt.Errorf("snapshot donor: %w", err)
 	}
 	if err := db.Close(); err != nil {
 		return false, fmt.Errorf("close donor: %w", err)
 	}
-
-	if !rootHash.Valid || rootHash.String == "" {
-		return false, nil
-	}
-
-	in, err := os.Open(donorPath)
-	if err != nil {
-		return false, fmt.Errorf("open donor: %w", err)
-	}
-	defer func() { _ = in.Close() }()
-
-	// The seed lock makes a fixed temp name safe. A crash can leave at most this
-	// one file behind, and the next attempt truncates and reuses it instead of
-	// accumulating full-size index.db.seed-* orphans.
-	tmp := dstPath + ".seed-tmp"
-	tmpFile, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return false, fmt.Errorf("create seed temp: %w", err)
-	}
-	defer func() {
-		_ = tmpFile.Close()
-		removeSQLiteFiles(tmp)
-	}()
-
-	// Write into the open descriptor directly rather than closing and
-	// re-opening by name (avoids a Windows sharing violation), and verify the
-	// Close error before publishing so a short write can't be linked into place.
-	if _, err := io.Copy(tmpFile, &contextReader{ctx: ctx, r: in}); err != nil {
-		return false, fmt.Errorf("copy donor: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return false, fmt.Errorf("close seed temp: %w", err)
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		return false, fmt.Errorf("set seed temp permissions: %w", err)
 	}
 
 	// Root hashes use relative paths, so an unchanged sibling worktree can
 	// return early from EnsureFresh without rewriting metadata. Stamp the new
 	// owner before publication so project-scoped purge targets the right index.
-	if err := setSeedProjectPath(tmp, projectPath); err != nil {
+	if err := setSeedProjectPath(ctx, tmp, projectPath); err != nil {
 		return false, fmt.Errorf("set seed project path: %w", err)
 	}
 
@@ -150,12 +133,12 @@ func sqliteFileDSN(path, mode string) string {
 	}).String()
 }
 
-func setSeedProjectPath(dbPath, projectPath string) error {
+func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) error {
 	db, err := sql.Open("sqlite3", sqliteFileDSN(dbPath, "rw"))
 	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(
+	if _, err := db.ExecContext(ctx,
 		`INSERT INTO project_meta (key, value) VALUES ('project_path', ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		projectPath,
@@ -163,7 +146,7 @@ func setSeedProjectPath(dbPath, projectPath string) error {
 		_ = db.Close()
 		return err
 	}
-	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+	if _, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		_ = db.Close()
 		return err
 	}
@@ -174,18 +157,6 @@ func removeSQLiteFiles(path string) {
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		_ = os.Remove(path + suffix)
 	}
-}
-
-type contextReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (r *contextReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.r.Read(p)
 }
 
 // publishSeed prefers create-if-absent hard-link publication. Filesystems that

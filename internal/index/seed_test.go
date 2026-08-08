@@ -16,6 +16,7 @@ package index
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -79,6 +80,85 @@ func Hello() {}
 	}
 	if seedMeta["project_path"] != seedProjectDir {
 		t.Fatalf("seeded project_path = %q, want %q", seedMeta["project_path"], seedProjectDir)
+	}
+}
+
+func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\n\nfunc Hello() {}\n")
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	writer, err := sql.Open("sqlite3", sqliteFileDSN(donorPath, "rw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = writer.Close() })
+	if _, err := writer.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('snapshot_marker', 'committed')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Keep a second write uncommitted while seeding. The snapshot must include
+	// the committed WAL record without observing this in-flight transaction.
+	tx, err := writer.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	if _, err := tx.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('snapshot_uncommitted', 'hidden')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+	seeded, err := SeedFromDonor(donorPath, dstPath, projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected seeded=true")
+	}
+
+	meta, err := store.ReadMetaAt(dstPath, "snapshot_marker", "snapshot_uncommitted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta["snapshot_marker"] != "committed" {
+		t.Fatalf("snapshot marker = %q, want committed", meta["snapshot_marker"])
+	}
+	if _, ok := meta["snapshot_uncommitted"]; ok {
+		t.Fatal("snapshot included an uncommitted donor write")
+	}
+
+	seedDB, err := sql.Open("sqlite3", sqliteFileDSN(dstPath, "ro"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = seedDB.Close() }()
+	var integrity string
+	if err := seedDB.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil {
+		t.Fatal(err)
+	}
+	if integrity != "ok" {
+		t.Fatalf("seed integrity_check = %q, want ok", integrity)
 	}
 }
 

@@ -494,7 +494,11 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 			"index_version", config.IndexVersion,
 		)
 	}
-	seedWarning := seedFromDonorIfNew(context.Background(), dbPath, effectiveRoot, modelName, ic.logger(), seedOptions{
+	seedCtx := ic.closeCtx
+	if seedCtx == nil {
+		seedCtx = context.Background()
+	}
+	seedWarning := seedFromDonorIfNew(seedCtx, dbPath, effectiveRoot, modelName, ic.logger(), seedOptions{
 		findDonor: ic.findDonorFunc,
 		seed:      ic.seedFunc,
 	})
