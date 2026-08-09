@@ -35,9 +35,14 @@ func newTestOllamaServer(t *testing.T, healthy bool, embedStatus int) *httptest.
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/":
+		case r.Method == "GET" && r.URL.Path == "/api/tags":
 			if healthy {
-				_, _ = fmt.Fprint(w, "Ollama is running")
+				_, _ = fmt.Fprint(w, `{"models":[
+					{"name":"test"},{"name":"a"},{"name":"b"},
+					{"name":"test-a"},{"name":"test-b"},{"name":"test-ollama"},
+					{"name":"alive"},{"name":"dead"},
+					{"name":"big-model"},{"name":"small-model"}
+				]}`)
 			} else {
 				w.WriteHeader(503)
 			}
@@ -277,7 +282,7 @@ func newTestLMStudioServer(t *testing.T, healthy bool, embedStatus int) *httptes
 		case r.Method == "GET" && r.URL.Path == "/v1/models":
 			if healthy {
 				w.WriteHeader(200)
-				_, _ = fmt.Fprint(w, `{"data":[]}`)
+				_, _ = fmt.Fprint(w, `{"data":[{"id":"test-lm"}]}`)
 			} else {
 				w.WriteHeader(503)
 			}
@@ -324,7 +329,7 @@ func TestFailover_PrimaryDown_FallsBackWithLogging(t *testing.T) {
 	}
 
 	logs := buf.String()
-	if !strings.Contains(logs, "health probe non-200") {
+	if !strings.Contains(logs, "health probe failed") {
 		t.Error("expected log entry for failed health probe on server 0")
 	}
 	if !strings.Contains(logs, "selected embedding server") {
@@ -368,7 +373,7 @@ func TestFailover_PrimaryUp_SelectsPrimary(t *testing.T) {
 	if !strings.Contains(logs, "test-lm") {
 		t.Error("expected selected server log to mention the lmstudio model name")
 	}
-	if strings.Contains(logs, "health probe failed") || strings.Contains(logs, "health probe non-200") {
+	if strings.Contains(logs, "health probe failed") {
 		t.Error("no health probe warnings expected when primary is up")
 	}
 }
@@ -400,8 +405,33 @@ func TestFailover_AllDown_LogsWarning(t *testing.T) {
 		t.Error("expected 'no healthy embedding server found' warning")
 	}
 	// Should have two health probe warnings (one per server)
-	if count := strings.Count(logs, "health probe non-200"); count != 2 {
+	if count := strings.Count(logs, "health probe failed"); count != 2 {
 		t.Errorf("expected 2 health probe warnings, got %d", count)
+	}
+}
+
+func TestFailover_LMStudioWithoutConfiguredModelFallsBack(t *testing.T) {
+	lmEmpty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+			_, _ = fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
+		t.Fatalf("LM Studio embedding endpoint must not be called when no model is loaded: %s %s", r.Method, r.URL.Path)
+	}))
+	defer lmEmpty.Close()
+	ollamaUp := newTestOllamaServer(t, true, http.StatusOK)
+	defer ollamaUp.Close()
+
+	cfg := testConfigService(t,
+		config.ServerConfig{Backend: "lmstudio", Host: lmEmpty.URL, Model: "test-lm", Dims: 3},
+		config.ServerConfig{Backend: "ollama", Host: ollamaUp.URL, Model: "test-ollama", Dims: 3},
+	)
+	fe := NewFailoverEmbedder(cfg)
+	if _, err := fe.Embed(context.Background(), []string{"hello"}); err != nil {
+		t.Fatalf("Embed should succeed through Ollama fallback: %v", err)
+	}
+	if got := fe.ActiveServerIndex(); got != 1 {
+		t.Fatalf("ActiveServerIndex = %d, want 1", got)
 	}
 }
 
@@ -481,9 +511,9 @@ func newTogglableOllamaServer(t *testing.T, healthy *atomic.Bool, embedOK *atomi
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == "GET" && r.URL.Path == "/":
+		case r.Method == "GET" && r.URL.Path == "/api/tags":
 			if healthy.Load() {
-				_, _ = fmt.Fprint(w, "Ollama is running")
+				_, _ = fmt.Fprint(w, `{"models":[{"name":"test-a"},{"name":"test-b"}]}`)
 			} else {
 				w.WriteHeader(503)
 			}

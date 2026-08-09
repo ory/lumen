@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 	"time"
 
@@ -232,32 +231,19 @@ func (f *FailoverEmbedder) findNextHealthy(after int) int {
 	return -1
 }
 
-// probeHealth checks if server i is healthy by sending a GET request.
-// For Ollama: GET / (returns "Ollama is running").
-// For LM Studio: GET /v1/models.
-// Returns true only if StatusCode == 200.
+// probeHealth checks that server i is reachable and has its configured model
+// loaded. A service with no usable embedding model is not healthy.
 func (f *FailoverEmbedder) probeHealth(i int) bool {
 	servers := f.cfg.Servers()
 	if i >= len(servers) {
 		return false
 	}
 	srv := servers[i]
-	endpoint := srv.Host + "/"
-	if srv.Backend == "lmstudio" {
-		endpoint = srv.Host + "/v1/models"
-	}
-	client := &http.Client{Timeout: healthCheckTimeout}
-	resp, err := client.Get(endpoint)
-	if err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+	defer cancel()
+	if err := ProbeServer(ctx, srv); err != nil {
 		if f.logger != nil {
 			f.logger.Warn("health probe failed", "server", i, "backend", srv.Backend, "host", srv.Host, "error", err)
-		}
-		return false
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		if f.logger != nil {
-			f.logger.Warn("health probe non-200", "server", i, "backend", srv.Backend, "host", srv.Host, "status", resp.StatusCode)
 		}
 		return false
 	}

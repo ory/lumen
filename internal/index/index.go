@@ -334,11 +334,17 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 // indexWithTree is the internal implementation of Index that accepts a pre-built
 // merkle tree, so callers that already have one (e.g. EnsureFresh) do not need
 // to build it again.
-func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
+func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash string, force bool, curTree *merkle.Tree, progress ProgressFunc) (stats Stats, retErr error) {
+	defer func() {
+		if retErr != nil {
+			_ = idx.store.SetMeta(store.MetaLastIndexError, retErr.Error())
+			return
+		}
+		_ = idx.store.SetMeta(store.MetaLastIndexError, "")
+	}()
 	if idx.store.IsShared() {
 		return idx.indexSharedWithTree(ctx, projectDir, oldRootHash, force, curTree, progress)
 	}
-	var stats Stats
 
 	stats.TotalFiles = len(curTree.Files)
 
@@ -418,12 +424,11 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	}
 
 	// saveMeta persists the root hash and other metadata so that subsequent
-	// runs can skip the expensive merkle walk when the tree hasn't changed.
-	// It is called on both success and partial-failure paths: if at least one
-	// batch was flushed we record progress so the next session doesn't redo
-	// everything from scratch.
+	// runs can resume from sentinel files instead of redoing completed batches.
+	// last_indexed_at is only stamped on full success; partial progress must not
+	// masquerade as a successfully completed index.
 	metaSaved := false
-	saveMeta := func() {
+	saveMeta := func(success bool) {
 		if metaSaved {
 			return
 		}
@@ -431,8 +436,10 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 		_ = idx.store.SetMeta("root_hash", curTree.RootHash)
 		_ = idx.store.SetMeta("embedding_model", idx.emb.ModelName())
 		_ = idx.store.SetMeta("project_path", projectDir)
-		_ = idx.store.SetMeta("last_indexed_at", time.Now().UTC().Format(time.RFC3339))
 		_ = idx.store.SetMeta("total_files", strconv.Itoa(stats.TotalFiles))
+		if success {
+			_ = idx.store.SetMeta("last_indexed_at", time.Now().UTC().Format(time.RFC3339))
+		}
 	}
 
 	const chunkBatchSize = 256
@@ -532,7 +539,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 				// At least some batches may have succeeded earlier;
 				// persist metadata so the next run can match root_hash.
 				if totalChunks > 0 {
-					saveMeta()
+					saveMeta(false)
 				}
 				return stats, err
 			}
@@ -549,7 +556,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	// Final flush + upsert.
 	if err := flushBatch(len(filesToIndex)); err != nil {
 		if totalChunks > 0 {
-			saveMeta()
+			saveMeta(false)
 		}
 		return stats, err
 	}
@@ -571,7 +578,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	stats.IndexedFiles = len(filesToIndex) - stats.FilesSkipped
 	stats.ChunksCreated = totalChunks
 
-	saveMeta()
+	saveMeta(true)
 
 	return stats, nil
 }

@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ory/lumen/internal/chunker"
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/store"
 )
@@ -42,6 +43,33 @@ func writeHookTestDB(t *testing.T, dbPath string, lastIndexedAt time.Time) {
 		t.Fatalf("store.New: %v", err)
 	}
 	defer func() { _ = s.Close() }()
+	if err := s.UpsertFile("main.go", "test-hash"); err != nil {
+		t.Fatalf("UpsertFile: %v", err)
+	}
+	if err := s.InsertChunks([]chunker.Chunk{{
+		ID: "test-chunk", FilePath: "main.go", Symbol: "Ready", Kind: "function", StartLine: 1, EndLine: 1,
+	}}, [][]float32{make([]float32, dims)}); err != nil {
+		t.Fatalf("InsertChunks: %v", err)
+	}
+	if err := s.SetMeta("last_indexed_at", lastIndexedAt.UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+}
+
+func writeEmptyHookTestDB(t *testing.T, dbPath string, lastIndexedAt time.Time) {
+	t.Helper()
+	cfg, err := config.NewConfigService("")
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	s, err := store.New(dbPath, cfg.ServerDims(0))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	if err := s.UpsertFile("main.go", "test-hash"); err != nil {
+		t.Fatalf("UpsertFile: %v", err)
+	}
 	if err := s.SetMeta("last_indexed_at", lastIndexedAt.UTC().Format(time.RFC3339)); err != nil {
 		t.Fatalf("SetMeta: %v", err)
 	}
@@ -309,6 +337,72 @@ func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
 	)
 	if called {
 		t.Fatal("bgIndexer must not be called when index was recently updated")
+	}
+}
+
+func TestGenerateSessionContextInternal_ZeroChunksIsNotReady(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfg, err := config.NewConfigService("")
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	emb := newEmbedder(cfg)
+	dbPath := config.DBPathForProject("/myproject", emb.ModelName())
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeEmptyHookTestDB(t, dbPath, time.Now().Add(-30*time.Second))
+
+	called := false
+	result := generateSessionContextInternal("/myproject",
+		func(_, _ string) string { return "" },
+		func(_ string) { called = true },
+	)
+	if !called {
+		t.Fatal("bgIndexer must be called when the index contains zero chunks")
+	}
+	if !strings.Contains(result, "index not ready") || strings.Contains(result, "index ready") {
+		t.Fatalf("zero-chunk index must not be announced as ready: %s", result)
+	}
+}
+
+func TestGenerateSessionContextInternal_LastIndexFailureIsUnhealthy(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfg, err := config.NewConfigService("")
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	emb := newEmbedder(cfg)
+	dbPath := config.DBPathForProject("/myproject", emb.ModelName())
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeHookTestDB(t, dbPath, time.Now().Add(-30*time.Second))
+	s, err := store.New(dbPath, cfg.ServerDims(0))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	if err := s.SetMeta(store.MetaLastIndexError, "embed batch: no models loaded"); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+	_ = s.Close()
+
+	called := false
+	result := generateSessionContextInternal("/myproject",
+		func(_, _ string) string { return "" },
+		func(_ string) { called = true },
+	)
+	if !called {
+		t.Fatal("bgIndexer must retry after a failed indexing attempt")
+	}
+	if !strings.Contains(result, "index unhealthy") || strings.Contains(result, "index ready") {
+		t.Fatalf("failed index must not be announced as ready: %s", result)
 	}
 }
 

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ory/lumen/internal/merkle"
+	"github.com/ory/lumen/internal/store"
 )
 
 // progressCall represents a progress function call for testing.
@@ -806,6 +807,16 @@ func Hello() {}
 	_, indexErr := idx.Index(context.Background(), projectDir, false, nil)
 	if indexErr == nil {
 		t.Fatal("expected Index to return an error when embedder fails")
+	}
+	lastIndexError, err := idx.store.GetMeta(store.MetaLastIndexError)
+	if err != nil {
+		t.Fatalf("GetMeta(%s): %v", store.MetaLastIndexError, err)
+	}
+	if !strings.Contains(lastIndexError, "embedding API unavailable") {
+		t.Fatalf("last index error = %q, want embedding failure", lastIndexError)
+	}
+	if lastIndexedAt, _ := idx.store.GetMeta("last_indexed_at"); lastIndexedAt != "" {
+		t.Fatalf("failed indexing attempt stamped last_indexed_at = %q", lastIndexedAt)
 	}
 
 	// After the failed index run the real content hash must NOT have been

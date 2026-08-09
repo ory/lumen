@@ -29,10 +29,16 @@ import (
 	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
 
-// MetaLastAccessedAt is the project_meta key holding the RFC3339 UTC timestamp
-// of the last time this index was opened. `lumen clean` reads it to decide
-// whether an index is still in use.
-const MetaLastAccessedAt = "last_accessed_at"
+const (
+	// MetaLastAccessedAt is the project_meta key holding the RFC3339 UTC timestamp
+	// of the last time this index was opened. `lumen clean` reads it to decide
+	// whether an index is still in use.
+	MetaLastAccessedAt = "last_accessed_at"
+
+	// MetaLastIndexError records the most recent failed indexing attempt. It is
+	// cleared only after indexWithTree completes successfully.
+	MetaLastIndexError = "last_index_error"
+)
 
 // accessStampBusyTimeoutMS bounds how long opening a store waits for the write
 // lock to record its access time before giving up on the stamp.
