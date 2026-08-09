@@ -251,10 +251,27 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	}
 	defer lock.Release()
 
-	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
-	// the deferred lock.Release() runs before exit.
+	// Install signal handling before donor seeding: copying a large sibling
+	// index can take seconds, and cancellation must be able to close/remove the
+	// seed temp file before the process exits.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	// Reuse a sibling worktree's index for a brand-new database instead of
+	// re-embedding from scratch. The index lock serializes CLI indexers, while
+	// SeedFromDonor's seed lock also serializes this copy with MCP callers.
+	// A forced rebuild cannot reuse the copied embeddings, so skip the donor
+	// copy in that mode.
+	force, _ := cmd.Flags().GetBool("force")
+	if !force {
+		seedFromDonorIfNew(ctx, dbPath, projectPath, emb.ModelName(), logger, seedOptions{
+			status: p.Info,
+		})
+	}
+	if ctx.Err() != nil {
+		logger.Info("indexing cancelled by signal", "project", projectPath)
+		return
+	}
 
 	idx, setupErr := setupIndexer(cfg, emb, dbPath, logger)
 	if setupErr != nil {
@@ -264,7 +281,7 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	defer func() { _ = idx.Close() }()
 
 	start := time.Now()
-	stats, err = performIndexing(ctx, cmd, idx, projectPath, p)
+	stats, err = performIndexing(ctx, force, idx, projectPath, p)
 	elapsed = time.Since(start).Round(time.Millisecond)
 	if err != nil && ctx.Err() != nil {
 		// A signal arrived; treat as clean exit.
@@ -274,9 +291,7 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	return
 }
 
-func performIndexing(ctx context.Context, cmd *cobra.Command, idx *index.Indexer, projectPath string, p *tui.Progress) (index.Stats, error) {
-	force, _ := cmd.Flags().GetBool("force")
-
+func performIndexing(ctx context.Context, force bool, idx *index.Indexer, projectPath string, p *tui.Progress) (index.Stats, error) {
 	progress := p.AsProgressFunc()
 
 	if force {

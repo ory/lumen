@@ -6,7 +6,10 @@
 package indexlock
 
 import (
+	"context"
+	"errors"
 	"os"
+	"time"
 
 	"github.com/gofrs/flock"
 )
@@ -37,6 +40,26 @@ func TryAcquire(lockPath string) (*Lock, error) {
 	}
 	if !locked {
 		return nil, nil // another process holds the lock
+	}
+	return &Lock{fl: fl}, nil
+}
+
+// Acquire waits for an exclusive lock on lockPath or for ctx to be cancelled.
+// The OS releases the lock if the process exits, so a crashed holder cannot
+// leave a stale logical lock behind.
+func Acquire(ctx context.Context, lockPath string) (*Lock, error) {
+	fl := flock.New(lockPath)
+	locked, err := fl.TryLockContext(ctx, 25*time.Millisecond)
+	if err != nil {
+		_ = fl.Close()
+		return nil, err
+	}
+	if !locked {
+		_ = fl.Close()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("lock not acquired")
 	}
 	return &Lock{fl: fl}, nil
 }

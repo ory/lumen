@@ -65,6 +65,44 @@ func TestFindDonorIndex_WithSibling(t *testing.T) {
 	}
 }
 
+func TestFindDonorIndex_NestedWorktree(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+
+	// Reproduce Claude Code's layout: a worktree nested INSIDE the main repo at
+	// <main>/.claude/worktrees/<name>. `git worktree list` reports the main
+	// checkout first, so donor discovery must not mistake the main checkout for
+	// the current (nested) worktree.
+	main := t.TempDir()
+	gitRun(t, main, "git", "init")
+	gitRun(t, main, "git", "commit", "--allow-empty", "-m", "init")
+
+	nested := filepath.Join(main, ".claude", "worktrees", "feature")
+	gitRun(t, main, "git", "worktree", "add", nested)
+
+	mainResolved, err := filepath.EvalSymlinks(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The parent repo's index is the only real donor.
+	dataDir := t.TempDir()
+	donorDB := DBPathForProjectBase(dataDir, mainResolved, "test-model")
+	if err := os.MkdirAll(filepath.Dir(donorDB), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(donorDB, []byte("fake-db"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// From the nested worktree we must find the parent repo's index, not "".
+	result := FindDonorIndexBase(dataDir, nested, "test-model")
+	if result != donorDB {
+		t.Fatalf("expected nested worktree to seed from parent index %q, got %q", donorDB, result)
+	}
+}
+
 func TestFindDonorIndex_WrongModel(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")

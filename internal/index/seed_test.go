@@ -16,9 +16,16 @@ package index
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/ory/lumen/internal/indexlock"
+	"github.com/ory/lumen/internal/store"
 )
 
 func TestSeedFromDonor_CopiesDB(t *testing.T) {
@@ -44,7 +51,8 @@ func Hello() {}
 
 	// Seed to a new path.
 	dstPath := filepath.Join(t.TempDir(), "sub", "seeded.db")
-	seeded, err := SeedFromDonor(donorPath, dstPath)
+	seedProjectDir := t.TempDir()
+	seeded, err := SeedFromDonor(donorPath, dstPath, seedProjectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +74,92 @@ func Hello() {}
 	if status.IndexedFiles == 0 {
 		t.Fatal("expected seeded DB to have indexed files")
 	}
+	seedMeta, err := store.ReadMetaAt(dstPath, "project_path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seedMeta["project_path"] != seedProjectDir {
+		t.Fatalf("seeded project_path = %q, want %q", seedMeta["project_path"], seedProjectDir)
+	}
+}
+
+func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\n\nfunc Hello() {}\n")
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	writer, err := sql.Open("sqlite3", sqliteFileDSN(donorPath, "rw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = writer.Close() })
+	if _, err := writer.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('snapshot_marker', 'committed')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	// Keep a second write uncommitted while seeding. The snapshot must include
+	// the committed WAL record without observing this in-flight transaction.
+	tx, err := writer.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	if _, err := tx.Exec(
+		`INSERT INTO project_meta (key, value) VALUES ('snapshot_uncommitted', 'hidden')`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+	seeded, err := SeedFromDonor(donorPath, dstPath, projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected seeded=true")
+	}
+
+	meta, err := store.ReadMetaAt(dstPath, "snapshot_marker", "snapshot_uncommitted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta["snapshot_marker"] != "committed" {
+		t.Fatalf("snapshot marker = %q, want committed", meta["snapshot_marker"])
+	}
+	if _, ok := meta["snapshot_uncommitted"]; ok {
+		t.Fatal("snapshot included an uncommitted donor write")
+	}
+
+	seedDB, err := sql.Open("sqlite3", sqliteFileDSN(dstPath, "ro"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = seedDB.Close() }()
+	var integrity string
+	if err := seedDB.QueryRow("PRAGMA integrity_check").Scan(&integrity); err != nil {
+		t.Fatal(err)
+	}
+	if integrity != "ok" {
+		t.Fatalf("seed integrity_check = %q, want ok", integrity)
+	}
 }
 
 func TestSeedFromDonor_DstExists(t *testing.T) {
@@ -79,7 +173,7 @@ func TestSeedFromDonor_DstExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	seeded, err := SeedFromDonor(donorPath, dstPath)
+	seeded, err := SeedFromDonor(donorPath, dstPath, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +185,184 @@ func TestSeedFromDonor_DstExists(t *testing.T) {
 	content, _ := os.ReadFile(dstPath)
 	if string(content) != "existing" {
 		t.Fatalf("expected dst unchanged, got %q", content)
+	}
+}
+
+func TestSeedFromDonor_MissingDonorIsNotCreated(t *testing.T) {
+	donorPath := filepath.Join(t.TempDir(), "missing.db")
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+
+	seeded, err := SeedFromDonor(donorPath, dstPath, t.TempDir())
+	if err == nil {
+		t.Fatal("expected missing donor to return an error")
+	}
+	if seeded {
+		t.Fatal("expected seeded=false for missing donor")
+	}
+	if _, statErr := os.Stat(donorPath); !os.IsNotExist(statErr) {
+		t.Fatalf("missing donor was created: stat error = %v", statErr)
+	}
+	if _, statErr := os.Stat(dstPath); !os.IsNotExist(statErr) {
+		t.Fatalf("destination was created: stat error = %v", statErr)
+	}
+}
+
+func TestSeedFromDonor_ConcurrentSeedersExactlyOneWins(t *testing.T) {
+	// Build a real, complete donor DB.
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", `package main
+
+func Hello() {}
+`)
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Many goroutines race to seed the same destination.
+	dstPath := filepath.Join(t.TempDir(), "sub", "seeded.db")
+	const n = 8
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		wins     int
+		firstErr error
+	)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			seeded, err := SeedFromDonor(donorPath, dstPath, projectDir)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			if seeded {
+				wins++
+			}
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		t.Fatalf("concurrent SeedFromDonor returned error: %v", firstErr)
+	}
+	if wins != 1 {
+		t.Fatalf("expected exactly one seeder to win, got %d", wins)
+	}
+
+	// No seed temp files should be left behind. The advisory lock file itself
+	// may remain on disk, just like the regular index lock file.
+	entries, err := os.ReadDir(filepath.Dir(dstPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() == filepath.Base(dstPath)+".seed-tmp" {
+			t.Fatalf("unexpected leftover file after concurrent seeding: %q", e.Name())
+		}
+	}
+
+	// The published DB must be usable.
+	idx2, err := NewIndexer(dstPath, emb, 0)
+	if err != nil {
+		t.Fatalf("seeded DB is not openable: %v", err)
+	}
+	defer func() { _ = idx2.Close() }()
+	status, err := idx2.Status(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.IndexedFiles == 0 {
+		t.Fatal("expected seeded DB to have indexed files")
+	}
+}
+
+func TestSeedFromDonor_WaitsBeforeCopying(t *testing.T) {
+	projectDir := t.TempDir()
+	writeGoFile(t, projectDir, "main.go", "package main\n\nfunc Hello() {}\n")
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(donorPath, emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), projectDir, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+	held, err := indexlock.Acquire(context.Background(), dstPath+".seed.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := SeedFromDonor(donorPath, dstPath, projectDir)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("seeder returned before lock was released: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if _, err := os.Stat(dstPath + ".seed-tmp"); !os.IsNotExist(err) {
+		t.Fatalf("seeder copied before acquiring the seed lock: stat error = %v", err)
+	}
+
+	held.Release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("seeder did not finish after lock release")
+	}
+}
+
+func TestPublishSeed_FallsBackToRename(t *testing.T) {
+	dir := t.TempDir()
+	tmp := filepath.Join(dir, "index.db.seed-tmp")
+	dst := filepath.Join(dir, "index.db")
+	if err := os.WriteFile(tmp, []byte("seed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	seeded, err := publishSeed(
+		tmp,
+		dst,
+		func(_, _ string) error { return errors.New("hard links unsupported") },
+		os.Rename,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected rename fallback to publish the seed")
+	}
+	content, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "seed" {
+		t.Fatalf("published content = %q, want seed", content)
 	}
 }
 
@@ -109,7 +381,7 @@ func TestSeedFromDonor_IncompleteDonor(t *testing.T) {
 	}
 
 	dstPath := filepath.Join(t.TempDir(), "seeded.db")
-	seeded, err := SeedFromDonor(donorPath, dstPath)
+	seeded, err := SeedFromDonor(donorPath, dstPath, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +419,7 @@ func Hello() {}
 
 	// Seed to new path.
 	dstPath := filepath.Join(t.TempDir(), "seeded.db")
-	if _, err := SeedFromDonor(donorPath, dstPath); err != nil {
+	if _, err := SeedFromDonor(donorPath, dstPath, projectDir); err != nil {
 		t.Fatal(err)
 	}
 

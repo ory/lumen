@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -1304,7 +1305,7 @@ func TestGetOrCreate_ReturnsSeedWarningWhenSeedFails(t *testing.T) {
 		embedder:      &stubEmbedder{},
 		cfg:           newTestConfigService(t, 512),
 		findDonorFunc: func(_, _ string) string { return "/fake/donor.db" },
-		seedFunc: func(_, _ string) (bool, error) {
+		seedFunc: func(_ context.Context, _, _, _ string) (bool, error) {
 			return false, fmt.Errorf("permission denied")
 		},
 	}
@@ -1319,6 +1320,63 @@ func TestGetOrCreate_ReturnsSeedWarningWhenSeedFails(t *testing.T) {
 	}
 	if !strings.Contains(seedWarning, "permission denied") {
 		t.Fatalf("expected seedWarning to mention 'permission denied', got: %q", seedWarning)
+	}
+}
+
+func TestGetOrCreate_SeedCancelledByClose(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	projectDir := filepath.Join(tmpDir, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	closeCtx, closeFn := context.WithCancel(context.Background())
+	seedStarted := make(chan struct{})
+	seedResult := make(chan error, 1)
+	ic := &indexerCache{
+		embedder:      &stubEmbedder{},
+		cfg:           newTestConfigService(t, 512),
+		closeCtx:      closeCtx,
+		closeFn:       closeFn,
+		findDonorFunc: func(_, _ string) string { return "/fake/donor.db" },
+		seedFunc: func(ctx context.Context, _, _, _ string) (bool, error) {
+			close(seedStarted)
+			<-ctx.Done()
+			seedResult <- ctx.Err()
+			return false, ctx.Err()
+		},
+	}
+
+	getDone := make(chan error, 1)
+	go func() {
+		_, _, _, err := ic.getOrCreate(projectDir, "")
+		getDone <- err
+	}()
+
+	select {
+	case <-seedStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("seed did not start")
+	}
+
+	closeDone := make(chan struct{})
+	go func() {
+		ic.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close blocked while getOrCreate waited for the seed lock")
+	}
+	if err := <-seedResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("seed context error = %v, want context.Canceled", err)
+	}
+	if err := <-getDone; err != nil {
+		t.Fatalf("getOrCreate: %v", err)
 	}
 }
 
