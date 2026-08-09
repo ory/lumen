@@ -61,25 +61,30 @@ func Hello() {}
 	}
 
 	// Verify the seeded DB works.
-	idx2, err := NewIndexer(dstPath, emb, 0)
+	idx2, err := NewIndexerForProject(dstPath, emb, 0, "int8", seedProjectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = idx2.Close() }()
 
-	status, err := idx2.Status(projectDir)
+	status, err := idx2.Status(seedProjectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.IndexedFiles == 0 {
 		t.Fatal("expected seeded DB to have indexed files")
 	}
-	seedMeta, err := store.ReadMetaAt(dstPath, "project_path")
+	seedDB, err := sql.Open("sqlite3", sqliteFileDSN(dstPath, "ro"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seedMeta["project_path"] != seedProjectDir {
-		t.Fatalf("seeded project_path = %q, want %q", seedMeta["project_path"], seedProjectDir)
+	defer func() { _ = seedDB.Close() }()
+	var seededProjectPath string
+	if err := seedDB.QueryRow(`SELECT path FROM projects WHERE path = ?`, seedProjectDir).Scan(&seededProjectPath); err != nil {
+		t.Fatal(err)
+	}
+	if seededProjectPath != seedProjectDir {
+		t.Fatalf("seeded project path = %q, want %q", seededProjectPath, seedProjectDir)
 	}
 }
 
@@ -109,8 +114,13 @@ func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
 	if _, err := writer.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		t.Fatal(err)
 	}
+	var projectID int64
+	if err := writer.QueryRow(`SELECT id FROM projects WHERE path = ?`, projectDir).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := writer.Exec(
-		`INSERT INTO project_meta (key, value) VALUES ('snapshot_marker', 'committed')`,
+		`INSERT INTO project_meta (project_id, key, value) VALUES (?, 'snapshot_marker', 'committed')`,
+		projectID,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +133,8 @@ func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tx.Rollback() })
 	if _, err := tx.Exec(
-		`INSERT INTO project_meta (key, value) VALUES ('snapshot_uncommitted', 'hidden')`,
+		`INSERT INTO project_meta (project_id, key, value) VALUES (?, 'snapshot_uncommitted', 'hidden')`,
+		projectID,
 	); err != nil {
 		t.Fatal(err)
 	}

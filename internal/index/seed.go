@@ -138,7 +138,20 @@ func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx,
+
+	var shared bool
+	if err := db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collection_meta')`,
+	).Scan(&shared); err != nil {
+		_ = db.Close()
+		return err
+	}
+	if shared {
+		if err := setSharedSeedProjectPath(ctx, db, projectPath); err != nil {
+			_ = db.Close()
+			return err
+		}
+	} else if _, err := db.ExecContext(ctx,
 		`INSERT INTO project_meta (key, value) VALUES ('project_path', ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		projectPath,
@@ -151,6 +164,42 @@ func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) error {
 		return err
 	}
 	return db.Close()
+}
+
+// setSharedSeedProjectPath translates the legacy single-owner metadata update
+// to the repository-scoped schema. The completed donor project retains all of
+// its project_meta and project_files rows; only its canonical path changes.
+func setSharedSeedProjectPath(ctx context.Context, db *sql.DB, projectPath string) error {
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = filepath.Clean(abs)
+	}
+
+	var donorID int64
+	err := db.QueryRowContext(ctx, `
+		SELECT pm.project_id
+		FROM project_meta pm
+		JOIN projects p ON p.id = pm.project_id
+		WHERE pm.key = 'root_hash' AND pm.value <> ''
+		ORDER BY p.last_accessed_at DESC, p.id DESC
+		LIMIT 1`,
+	).Scan(&donorID)
+	if err != nil {
+		return err
+	}
+
+	var existingID int64
+	err = db.QueryRowContext(ctx, `SELECT id FROM projects WHERE path = ?`, projectPath).Scan(&existingID)
+	switch {
+	case err == nil && existingID == donorID:
+		return nil
+	case err == nil:
+		return fmt.Errorf("seed project path %q already belongs to project %d", projectPath, existingID)
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+
+	_, err = db.ExecContext(ctx, `UPDATE projects SET path = ? WHERE id = ?`, projectPath, donorID)
+	return err
 }
 
 func removeSQLiteFiles(path string) {
