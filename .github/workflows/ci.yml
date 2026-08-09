@@ -159,6 +159,9 @@ jobs:
         uses: egor-tensin/setup-mingw@v2
         with:
           platform: x64
+          # The static workaround removes libpthread.dll.a, which is absent on
+          # the current windows-latest image and makes setup fail before build.
+          static: 0
 
       - name: Build
         shell: bash
