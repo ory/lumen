@@ -1,7 +1,7 @@
-results: 5
+results: 6
 AuthManager.php:9-23  AuthManager (type)
-AuthManager.php:47-69  __construct+AuthManager+guard (type)
-AuthManager.php:116-166  AuthManager+createSessionDriver+createTokenDriver (type)
+AuthManager.php:60-69  AuthManager+guard (type)
+AuthManager.php:116-139  AuthManager+createSessionDriver (type)
+AuthManager.php:148-166  createSessionDriver+AuthManager+createTokenDriver (method)
 AuthManager.php:180-190  AuthManager+getConfig (type)
-AuthManager.php:296-316  AuthManager+hasResolvedGuards+forgetGuards (method)
-
+AuthManager.php:296-316  hasResolvedGuards+AuthManager+forgetGuards (method)
