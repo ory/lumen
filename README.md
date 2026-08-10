@@ -81,9 +81,10 @@ _Claude Code asking about the
    [OpenCode](https://opencode.ai/)
 
 **Note:** Installation differs by platform. Claude Code is installed from a
-plugin marketplace. Codex uses a local MCP server plus native skill discovery.
-OpenCode installs from npm. Cursor packaging is shipped in this repository and
-is ready for Cursor's plugin distribution workflow.
+plugin marketplace. Codex uses an installer that configures MCP, shared skills,
+and a user-level startup hook. OpenCode installs from npm. Cursor packaging is
+shipped in this repository and is ready for Cursor's plugin distribution
+workflow.
 
 **Install:**
 
@@ -113,29 +114,20 @@ skill or the Lumen `semantic_search` tool.
 
 **Codex**
 
-Quick install:
+Follow the Codex install guide:
 
-```text
-Fetch and follow instructions from https://raw.githubusercontent.com/ory/lumen/refs/heads/main/.codex/INSTALL.md
-```
+[.codex/INSTALL.md](.codex/INSTALL.md)
 
-Manual install:
-
-```bash
-CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-git clone https://github.com/ory/lumen.git "$CODEX_HOME/lumen"
-mkdir -p "$HOME/.agents/skills"
-ln -s "$CODEX_HOME/lumen/skills" "$HOME/.agents/skills/lumen"
-codex mcp add lumen -- "$CODEX_HOME/lumen/scripts/run" stdio
-```
-
-Detailed docs: [.codex/INSTALL.md](.codex/INSTALL.md)
+The installer enables Codex hooks, registers the Lumen MCP server, links or
+copies the shared Lumen skills, and installs a user-level Codex `SessionStart`
+hook. The hook runs on startup, resume, and clear events and reuses Lumen's
+background indexer for proactive project index warmup.
 
 Verify with:
 
 ```bash
+"${CODEX_HOME:-$HOME/.codex}/lumen/scripts/run" codex doctor
 codex mcp get lumen
-ls -la "$HOME/.agents/skills/lumen"
 ```
 
 **OpenCode**
@@ -161,7 +153,8 @@ opencode mcp list
 - **Claude Code** - update through Claude's plugin marketplace
 - **Cursor** - refresh or reinstall the bundled plugin through Cursor after
   updating this repository or the published package
-- **Codex** - `cd "${CODEX_HOME:-$HOME/.codex}/lumen" && git pull`
+- **Codex** - `cd "${CODEX_HOME:-$HOME/.codex}/lumen" && git pull`, then
+  rerun `./scripts/run codex install`
 - **OpenCode** - update the version pin in `opencode.json` (e.g.
   `@ory/lumen-opencode@0.0.29`) and restart OpenCode
 
@@ -172,8 +165,9 @@ On first Claude Code or Cursor session start, Lumen:
 2. Indexes your project in the background using Merkle tree change detection
 3. Registers a `semantic_search` MCP tool that the host can use automatically
 
-In Codex and OpenCode, the same binary download and index seeding happen on the
-first `semantic_search` call.
+In Codex, the installed `SessionStart` hook warms the index on startup, resume,
+and clear events. In OpenCode, index seeding happens on the first
+`semantic_search` call.
 
 Two shared skills are also available: `doctor` (health check) and `reindex`
 (forced re-indexing). Claude exposes them as `/lumen:doctor` and
