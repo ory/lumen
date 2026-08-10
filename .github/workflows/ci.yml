@@ -163,6 +163,22 @@ jobs:
           # the current windows-latest image and makes setup fail before build.
           static: 0
 
+      - name: Provide SQLite headers for sqlite-vec CGO
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go mod download github.com/mattn/go-sqlite3
+          $sqliteModule = go list -m -f '{{.Dir}}' github.com/mattn/go-sqlite3
+          $includeDir = Join-Path $env:RUNNER_TEMP 'lumen-sqlite-include'
+          New-Item -ItemType Directory -Path $includeDir -Force | Out-Null
+          Copy-Item (Join-Path $sqliteModule 'sqlite3-binding.h') (Join-Path $includeDir 'sqlite3.h')
+
+          # sqlite-vec includes sqlite3.h, while go-sqlite3 vendors the same
+          # amalgamation header as sqlite3-binding.h. Unix runners find a
+          # system header; clean Windows runners need this explicit include.
+          $compilerIncludeDir = $includeDir.Replace('\', '/')
+          "CGO_CFLAGS=-I$compilerIncludeDir" >> $env:GITHUB_ENV
+
       - name: Build
         shell: bash
         run: |
