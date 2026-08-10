@@ -384,14 +384,17 @@ func TestGenerateSessionContextInternal_LastIndexFailureIsUnhealthy(t *testing.T
 		t.Fatal(err)
 	}
 	writeHookTestDB(t, dbPath, time.Now().Add(-30*time.Second))
-	s, err := store.New(dbPath, cfg.ServerDims(0))
-	if err != nil {
-		t.Fatalf("store.New: %v", err)
-	}
-	if err := s.SetMeta(store.MetaLastIndexError, "embed batch: no models loaded"); err != nil {
-		t.Fatalf("SetMeta: %v", err)
-	}
-	_ = s.Close()
+	func() {
+		s, err := store.New(dbPath, cfg.ServerDims(0))
+		if err != nil {
+			t.Fatalf("store.New: %v", err)
+		}
+		defer func() { _ = s.Close() }()
+
+		if err := s.SetMeta(store.MetaLastIndexError, "embed batch: no models loaded"); err != nil {
+			t.Fatalf("SetMeta: %v", err)
+		}
+	}()
 
 	called := false
 	result := generateSessionContextInternal("/myproject",

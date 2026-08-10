@@ -70,6 +70,8 @@ jobs:
     name: Semantic E2E
     runs-on: ubuntu-latest
     if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
     services:
       ollama:
         # Keep semantic-search snapshots reproducible. New Ollama runtimes can
@@ -142,6 +144,8 @@ jobs:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
     timeout-minutes: 30
     strategy:
       matrix:

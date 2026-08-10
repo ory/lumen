@@ -129,6 +129,60 @@ func TestFailover_OnEmbedError(t *testing.T) {
 	}
 }
 
+func TestFailover_CancellationStopsFallbackHealthProbe(t *testing.T) {
+	primary := newTestOllamaServer(t, true, http.StatusInternalServerError)
+	defer primary.Close()
+
+	probeStarted := make(chan struct{})
+	probeCanceled := make(chan struct{})
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/tags" {
+			t.Errorf("unexpected fallback request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		close(probeStarted)
+		<-r.Context().Done()
+		close(probeCanceled)
+	}))
+	defer fallback.Close()
+
+	cfg := testConfigService(t,
+		config.ServerConfig{Backend: "ollama", Host: primary.URL, Model: "test-a", Dims: 3},
+		config.ServerConfig{Backend: "ollama", Host: fallback.URL, Model: "test-b", Dims: 3},
+	)
+	fe := NewFailoverEmbedder(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := fe.Embed(ctx, []string{"hello"})
+		result <- err
+	}()
+
+	select {
+	case <-probeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("fallback health probe did not start")
+	}
+	cancel()
+
+	select {
+	case <-probeCanceled:
+	case <-time.After(time.Second):
+		t.Fatal("fallback health probe did not observe caller cancellation")
+	}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("expected Embed to fail after cancellation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Embed did not return after caller cancellation")
+	}
+}
+
 func TestFailover_4xxNoFailover(t *testing.T) {
 	srv1 := newTestOllamaServer(t, true, 400)
 	defer srv1.Close()
