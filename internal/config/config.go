@@ -47,13 +47,16 @@ func DBPathForProjectBase(dataDir, projectPath, model string) string {
 	return DBPathForProjectProfileBase(dataDir, projectPath, model, dimensions, "int8", 512)
 }
 
+func canonicalModel(model string) string {
+	if resolved, ok := models.ModelAliases[model]; ok {
+		return resolved
+	}
+	return model
+}
+
 // ModelDimensions resolves dimensions for a model in the built-in registry.
 func ModelDimensions(model string) (int, bool) {
-	canonical := model
-	if resolved, ok := models.ModelAliases[model]; ok {
-		canonical = resolved
-	}
-	spec, ok := models.KnownModels[canonical]
+	spec, ok := models.KnownModels[canonicalModel(model)]
 	return spec.Dims, ok
 }
 
@@ -82,7 +85,7 @@ func DBPathForProjectProfileBase(dataDir, projectPath, model string, dimensions 
 	} else if resolved, resolveErr := filepath.EvalSymlinks(identity); resolveErr == nil {
 		identity = filepath.Clean(resolved)
 	}
-	profile := identity + "\x00" + scope + "\x00" + model + "\x00" +
+	profile := identity + "\x00" + scope + "\x00" + canonicalModel(model) + "\x00" +
 		strconv.Itoa(dimensions) + "\x00" + vectorStorage + "\x00" +
 		strconv.Itoa(maxChunkTokens) + "\x00" + IndexVersion
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(profile)))

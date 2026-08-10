@@ -154,6 +154,7 @@ const staleIndexWarning = "Index is being updated in the background. Results may
 var (
 	tryAcquire           = indexlock.TryAcquire
 	tryAcquireShared     = indexlock.TryAcquireShared
+	runDailyCleanupFunc  = runDailyCleanup
 	prepareMigrationFunc = func(idx *index.Indexer, projectDir, legacyPath string) error {
 		return idx.PrepareLegacyMigration(projectDir, legacyPath)
 	}
@@ -214,6 +215,7 @@ type indexerCache struct {
 	mu                sync.RWMutex
 	cache             map[string]cacheEntry
 	reindexing        map[string]bool // projects with an active background reindex goroutine
+	migrationPrepared map[string]bool // project/model keys already scanned for legacy vectors
 	embedder          embedder.Embedder
 	cfg               *config.ConfigService
 	freshnessTTL      time.Duration                                                                                                            // override for tests; 0 reads from cfg, then defaultFreshnessTTL
@@ -300,6 +302,29 @@ func (ic *indexerCache) logger() *slog.Logger {
 	return ic.log
 }
 
+// markMigrationPrepared reports whether this is the first legacy-migration
+// preparation attempt for key. Failed attempts are intentionally remembered:
+// a later background refresh should rebuild missing vectors instead of
+// repeatedly scanning the same legacy database.
+func (ic *indexerCache) markMigrationPrepared(key string) bool {
+	ic.mu.Lock()
+	defer ic.mu.Unlock()
+	if ic.migrationPrepared == nil {
+		ic.migrationPrepared = make(map[string]bool)
+	}
+	if ic.migrationPrepared[key] {
+		return false
+	}
+	ic.migrationPrepared[key] = true
+	return true
+}
+
+func (ic *indexerCache) startDailyCleanup(dataDir string, now time.Time, logger *slog.Logger) {
+	ic.wg.Go(func() {
+		runDailyCleanupFunc(dataDir, now, logger)
+	})
+}
+
 // Close cancels all background reindex goroutines, waits for them to drain
 // (up to 30 seconds), then closes all cached indexers. Call on MCP server
 // shutdown.
@@ -332,6 +357,7 @@ func (ic *indexerCache) Close() {
 		}
 	}
 	ic.cache = nil
+	ic.migrationPrepared = nil
 }
 
 // findEffectiveRoot walks up the directory tree from path's parent to find an
@@ -896,9 +922,11 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 			}
 		}
 
-		legacyPath := config.LegacyDBPathForProject(projectDir, modelName)
-		if err := prepareMigrationFunc(idx, projectDir, legacyPath); err != nil {
-			ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+		if ic.markMigrationPrepared(reindexKey) {
+			legacyPath := config.LegacyDBPathForProject(projectDir, modelName)
+			if err := prepareMigrationFunc(idx, projectDir, legacyPath); err != nil {
+				ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+			}
 		}
 
 		ensureFresh := ic.ensureFreshFunc
@@ -1474,8 +1502,6 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		"backend", cfg.Servers()[0].Backend,
 		"freshness_ttl", cfg.FreshnessTTL().String(),
 	)
-	runDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now(), logger)
-
 	closeCtx, closeFn := context.WithCancel(context.Background())
 	indexers := &indexerCache{
 		embedder: emb,
@@ -1485,6 +1511,7 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		closeFn:  closeFn,
 	}
 	defer indexers.Close()
+	indexers.startDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now(), logger)
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",

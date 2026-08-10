@@ -1419,7 +1419,8 @@ func TestLegacyMigrationPreparationRunsInBackgroundIndexing(t *testing.T) {
 	prepareMigrationFunc = func(_ *index.Indexer, gotProject, _ string) error {
 		prepareCalls++
 		if gotProject != projectDir {
-			t.Fatalf("project = %q, want %q", gotProject, projectDir)
+			t.Errorf("project = %q, want %q", gotProject, projectDir)
+			return nil
 		}
 		return nil
 	}
@@ -1429,7 +1430,8 @@ func TestLegacyMigrationPreparationRunsInBackgroundIndexing(t *testing.T) {
 		log:      discardLog,
 		ensureFreshFunc: func(_ context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
 			if prepareCalls != 1 {
-				t.Fatalf("PrepareLegacyMigration calls before EnsureFresh = %d, want 1", prepareCalls)
+				t.Errorf("PrepareLegacyMigration calls before EnsureFresh = %d, want 1", prepareCalls)
+				return false, index.Stats{}, nil
 			}
 			return false, index.Stats{}, nil
 		},
@@ -1448,6 +1450,68 @@ func TestLegacyMigrationPreparationRunsInBackgroundIndexing(t *testing.T) {
 	}
 	if prepareCalls != 1 {
 		t.Fatalf("PrepareLegacyMigration calls = %d, want 1", prepareCalls)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		ic.mu.RLock()
+		active := ic.reindexing[cacheKey(effectiveRoot, "stub")]
+		ic.mu.RUnlock()
+		if !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background reindex state was not cleared")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	ic.mu.Lock()
+	for key, entry := range ic.cache {
+		entry.lastCheckedAt = time.Time{}
+		ic.cache[key] = entry
+	}
+	ic.mu.Unlock()
+	if _, err := ic.ensureIndexed(idx, input, effectiveRoot, ic.dbPath(effectiveRoot, "stub"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if prepareCalls != 1 {
+		t.Fatalf("PrepareLegacyMigration calls after second refresh = %d, want 1", prepareCalls)
+	}
+}
+
+func TestStartDailyCleanupIsAsyncAndTracked(t *testing.T) {
+	original := runDailyCleanupFunc
+	started := make(chan struct{})
+	release := make(chan struct{})
+	runDailyCleanupFunc = func(string, time.Time, *slog.Logger) {
+		close(started)
+		<-release
+	}
+	t.Cleanup(func() { runDailyCleanupFunc = original })
+
+	ic := &indexerCache{}
+	ic.startDailyCleanup(t.TempDir(), time.Now(), discardLog)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("daily cleanup did not start")
+	}
+
+	closeDone := make(chan struct{})
+	go func() {
+		ic.Close()
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned before tracked daily cleanup completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after daily cleanup completed")
 	}
 }
 

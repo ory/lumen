@@ -134,7 +134,9 @@ func New(dsn string, dimensions int) (*Store, error) {
 // project membership identified by projectPath. vectorStorage must be int8 or
 // float32. Multiple Store instances may safely select different worktrees in
 // the same database. If schema setup detects corruption, on-disk database and
-// sidecar files are removed and creation is retried once.
+// sidecar files are removed and creation is retried once. During lazy
+// migration, opening a legacy per-worktree database returns a non-shared Store;
+// callers that depend on project membership must check IsShared.
 func NewCollection(dsn string, dimensions int, vectorStorage, projectPath string) (*Store, error) {
 	if vectorStorage != "int8" && vectorStorage != "float32" {
 		return nil, fmt.Errorf("unsupported vector storage %q", vectorStorage)

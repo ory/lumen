@@ -154,7 +154,7 @@ func openIndexDB(t *testing.T, dataHome, projectPath string) *projectIndexDB {
 	if err != nil {
 		t.Fatalf("open index db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	absoluteProjectPath, err := filepath.Abs(projectPath)
 	if err != nil {
 		t.Fatalf("resolve project path: %v", err)

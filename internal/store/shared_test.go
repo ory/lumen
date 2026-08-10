@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -299,6 +300,66 @@ func TestSharedCollectionConcurrentRevisionInsertionIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestSharedCollectionConcurrentFirstOpenIsIdempotent(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "index.db")
+	const openers = 8
+	start := make(chan struct{})
+	stores := make(chan *Store, openers)
+	errs := make(chan error, openers)
+	var wg sync.WaitGroup
+	for range openers {
+		project := t.TempDir()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			s, err := NewCollection(dbPath, 4, "int8", project)
+			if err != nil {
+				errs <- err
+				return
+			}
+			stores <- s
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(stores)
+	close(errs)
+	for s := range stores {
+		if !s.IsShared() {
+			t.Error("concurrent open returned a legacy store")
+		}
+		if err := s.Close(); err != nil {
+			t.Errorf("close concurrent store: %v", err)
+		}
+	}
+	for err := range errs {
+		t.Errorf("concurrent first open: %v", err)
+	}
+}
+
+func TestSharedRefreshMapsMissingVectorKeyToSentinel(t *testing.T) {
+	s, err := NewCollection(":memory:", 4, "int8", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	chunk := chunker.Chunk{ID: "gone", FilePath: "gone.go", Symbol: "Gone", Kind: "function", StartLine: 1, EndLine: 1, Content: "func Gone() {}"}
+	if _, err := s.StoreFileRevision("gone.go", "aa", []chunker.Chunk{chunk}, map[int][]float32{0: {1, 0, 0, 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec("DELETE FROM vector_keys"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.StoreFileRevision("gone.go", "aa", []chunker.Chunk{chunk}, map[int][]float32{0: {1, 0, 0, 0}})
+	if !errors.Is(err, ErrVectorVanished) {
+		t.Fatalf("refresh error = %v, want ErrVectorVanished", err)
+	}
+}
+
 func TestSharedCleanupRemovesOnlyStaleMemberships(t *testing.T) {
 	projectA, projectB := t.TempDir(), t.TempDir()
 	s, err := NewCollection(":memory:", 4, "int8", projectA)
@@ -404,6 +465,9 @@ func TestInt8RecallAt8AgainstFloat32(t *testing.T) {
 }
 
 func TestSharedInt8StorageAtMostTwentyPercentOfSeparateFloat32(t *testing.T) {
+	if testing.Short() {
+		t.Skip("storage size fixture writes three multi-megabyte databases")
+	}
 	const (
 		dimensions = 768
 		chunkCount = 1000

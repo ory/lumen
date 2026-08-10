@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -86,10 +87,25 @@ func projectDir(t *testing.T, name string) string {
 // runCleanIndexes invokes the cleanup sweep against the data dir under tmp.
 func runCleanIndexes(t *testing.T, tmp string, days int) (stdout, stderr string, err error) {
 	t.Helper()
-	outBuf := new(bytes.Buffer)
-	errBuf := new(bytes.Buffer)
-	err = cleanIndexes(errBuf, outBuf, filepath.Join(tmp, "lumen"), days, cleanNow)
-	return outBuf.String(), errBuf.String(), err
+	reporter := newBufferCleanReporter()
+	summary, err := cleanIndexes(reporter, filepath.Join(tmp, "lumen"), days, cleanNow)
+	return formatCleanSummary(summary), reporter.output.String(), err
+}
+
+type bufferCleanReporter struct {
+	output bytes.Buffer
+}
+
+func newBufferCleanReporter() *bufferCleanReporter {
+	return &bufferCleanReporter{}
+}
+
+func (r *bufferCleanReporter) Info(message string) {
+	_, _ = fmt.Fprintln(&r.output, message)
+}
+
+func (r *bufferCleanReporter) Error(message string) {
+	_, _ = fmt.Fprintln(&r.output, message)
 }
 
 // runCleanCmd invokes runClean through a command carrying the real clean flags.
@@ -315,13 +331,13 @@ func TestCleanIndexReportsLockAcquisitionErrors(t *testing.T) {
 	tryAcquireExclusive = func(string) (*indexlock.Lock, error) {
 		return nil, errors.New("permission denied")
 	}
-	var stderr bytes.Buffer
-	removed, _, err := cleanIndex(&stderr, "abc", t.TempDir(), 30, time.Now())
+	reporter := newBufferCleanReporter()
+	removed, _, err := cleanIndex(reporter, "abc", t.TempDir(), 30, time.Now())
 	if err == nil || removed {
 		t.Fatalf("removed=%v err=%v", removed, err)
 	}
-	if !strings.Contains(stderr.String(), "Failed to acquire index lock") || strings.Contains(stderr.String(), "currently running") {
-		t.Fatalf("unexpected stderr: %s", stderr.String())
+	if !strings.Contains(reporter.output.String(), "Failed to acquire index lock") || strings.Contains(reporter.output.String(), "currently running") {
+		t.Fatalf("unexpected stderr: %s", reporter.output.String())
 	}
 }
 

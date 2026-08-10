@@ -124,6 +124,16 @@ func TestDBPathForProjectProfileResolvesNonGitSymlinks(t *testing.T) {
 	}
 }
 
+func TestDBPathForProjectProfileCanonicalizesModelAliases(t *testing.T) {
+	dataDir := t.TempDir()
+	project := t.TempDir()
+	aliasPath := DBPathForProjectProfileBase(dataDir, project, "text-embedding-nomic-embed-code", 3584, "int8", 512)
+	canonicalPath := DBPathForProjectProfileBase(dataDir, project, "nomic-ai/nomic-embed-code-GGUF", 3584, "int8", 512)
+	if aliasPath != canonicalPath {
+		t.Fatalf("alias and canonical model should share a collection: %q != %q", aliasPath, canonicalPath)
+	}
+}
+
 func TestXDGConfigDir(t *testing.T) {
 	t.Run("uses XDG_CONFIG_HOME when set", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "/custom/config")

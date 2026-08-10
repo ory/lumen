@@ -61,13 +61,13 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 	}
 	db.SetMaxOpenConns(1)
 	for _, pragma := range []string{
+		"PRAGMA busy_timeout=120000",
 		"PRAGMA auto_vacuum=INCREMENTAL",
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA cache_size=-64000",
 		"PRAGMA temp_store=MEMORY",
-		"PRAGMA busy_timeout=120000",
 	} {
 		if _, err := db.Exec(pragma); err != nil {
 			_ = db.Close()
@@ -194,36 +194,28 @@ func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) er
 		"vector_storage": vectorStorage,
 	}
 	for key, value := range want {
+		if _, err := db.Exec(`INSERT OR IGNORE INTO collection_meta(key, value) VALUES (?, ?)`, key, value); err != nil {
+			return fmt.Errorf("initialize collection profile %s: %w", key, err)
+		}
 		var existing string
-		err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = ?`, key).Scan(&existing)
-		switch {
-		case err == sql.ErrNoRows:
-			if _, err := db.Exec(`INSERT INTO collection_meta(key, value) VALUES (?, ?)`, key, value); err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		case existing != value:
+		if err := db.QueryRow(`SELECT value FROM collection_meta WHERE key = ?`, key).Scan(&existing); err != nil {
+			return fmt.Errorf("read collection profile %s: %w", key, err)
+		}
+		if existing != value {
 			return fmt.Errorf("collection profile mismatch for %s: stored %q, requested %q", key, existing, value)
 		}
 	}
 
-	exists, err := checkTableExists(db, "vec_vectors")
-	if err != nil {
-		return err
+	elementType := "int8"
+	if vectorStorage == "float32" {
+		elementType = "float"
 	}
-	if !exists {
-		elementType := "int8"
-		if vectorStorage == "float32" {
-			elementType = "float"
-		}
-		stmt := fmt.Sprintf(`CREATE VIRTUAL TABLE vec_vectors USING vec0(
-			vector_id INTEGER PRIMARY KEY,
-			embedding %s[%d] distance_metric=cosine
-		)`, elementType, dimensions)
-		if _, err := db.Exec(stmt); err != nil {
-			return fmt.Errorf("create vec_vectors: %w", err)
-		}
+	stmt := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_vectors USING vec0(
+		vector_id INTEGER PRIMARY KEY,
+		embedding %s[%d] distance_metric=cosine
+	)`, elementType, dimensions)
+	if _, err := db.Exec(stmt); err != nil {
+		return fmt.Errorf("create vec_vectors: %w", err)
 	}
 	return nil
 }
@@ -498,7 +490,9 @@ func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chu
 			}
 			h := embeddingInputHash(chunks[position])
 			var vectorID int64
-			if err := tx.QueryRow(`SELECT id FROM vector_keys WHERE input_hash = ?`, h[:]).Scan(&vectorID); err != nil {
+			if err := tx.QueryRow(`SELECT id FROM vector_keys WHERE input_hash = ?`, h[:]).Scan(&vectorID); errors.Is(err, sql.ErrNoRows) {
+				return false, fmt.Errorf("%w: missing vector key for chunk %d (%s)", ErrVectorVanished, position, chunks[position].ID)
+			} else if err != nil {
 				return false, err
 			}
 			blob, err := s.serializeVector(vec)

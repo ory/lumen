@@ -69,35 +69,6 @@ func Hello(name string) {
 	fmt.Println("hello", name)
 }
 
-func TestIndexerLastIndexedAtIsProjectScoped(t *testing.T) {
-	projectA, projectB := t.TempDir(), t.TempDir()
-	idx, err := NewIndexerForProject(":memory:", &mockEmbedder{dims: 4, model: "test-model"}, 512, "int8", projectA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = idx.Close() }()
-	timeA := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
-	timeB := time.Now().UTC().Truncate(time.Second)
-	if err := idx.store.SetMeta("last_indexed_at", timeA.Format(time.RFC3339)); err != nil {
-		t.Fatal(err)
-	}
-	release, err := idx.lockProject(projectB)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := idx.store.SetMeta("last_indexed_at", timeB.Format(time.RFC3339)); err != nil {
-		release()
-		t.Fatal(err)
-	}
-	release()
-	if got, ok := idx.LastIndexedAt(projectA); !ok || !got.Equal(timeA) {
-		t.Fatalf("project A LastIndexedAt = %v, %v; want %v, true", got, ok, timeA)
-	}
-	if got, ok := idx.LastIndexedAt(projectB); !ok || !got.Equal(timeB) {
-		t.Fatalf("project B LastIndexedAt = %v, %v; want %v, true", got, ok, timeB)
-	}
-}
-
 // Goodbye prints a farewell.
 func Goodbye(name string) {
 	fmt.Println("bye", name)
@@ -128,6 +99,35 @@ func Goodbye(name string) {
 	}
 	if len(results) == 0 {
 		t.Fatal("expected search results")
+	}
+}
+
+func TestIndexerLastIndexedAtIsProjectScoped(t *testing.T) {
+	projectA, projectB := t.TempDir(), t.TempDir()
+	idx, err := NewIndexerForProject(":memory:", &mockEmbedder{dims: 4, model: "test-model"}, 512, "int8", projectA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+	timeA := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	timeB := time.Now().UTC().Truncate(time.Second)
+	if err := idx.store.SetMeta("last_indexed_at", timeA.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	release, err := idx.lockProject(projectB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.store.SetMeta("last_indexed_at", timeB.Format(time.RFC3339)); err != nil {
+		release()
+		t.Fatal(err)
+	}
+	release()
+	if got, ok := idx.LastIndexedAt(projectA); !ok || !got.Equal(timeA) {
+		t.Fatalf("project A LastIndexedAt = %v, %v; want %v, true", got, ok, timeA)
+	}
+	if got, ok := idx.LastIndexedAt(projectB); !ok || !got.Equal(timeB) {
+		t.Fatalf("project B LastIndexedAt = %v, %v; want %v, true", got, ok, timeB)
 	}
 }
 
