@@ -436,10 +436,8 @@ func TestHandleHealthCheck_UsesActiveFailoverServer(t *testing.T) {
 
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/":
-			_, _ = w.Write([]byte("ok"))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/tags":
-			_, _ = w.Write([]byte(`{"models":[]}`))
+			_, _ = w.Write([]byte(`{"models":[{"name":"all-minilm"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/embed":
 			_, _ = w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
 		default:
@@ -483,6 +481,51 @@ servers:
 	text := mustTextResult(t, result)
 	if !strings.Contains(text, "Host: "+up.URL) {
 		t.Fatalf("expected health check to report active host %q, got: %s", up.URL, text)
+	}
+	if !strings.Contains(text, "Status: OK") {
+		t.Fatalf("expected health check to report ready model, got: %s", text)
+	}
+}
+
+func TestHandleHealthCheck_ModelMissingIsError(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
+		t.Setenv(k, "")
+	}
+
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+			_, _ = w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer empty.Close()
+
+	cfgFile := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfgFile, []byte(fmt.Sprintf(`
+servers:
+  - backend: lmstudio
+    host: %s
+    model: missing-model
+    dims: 384
+`, empty.URL)), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	svc, err := config.NewConfigService(cfgFile)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	ic := &indexerCache{embedder: embedder.NewFailoverEmbedder(svc), cfg: svc}
+	result, _, err := ic.handleHealthCheck(context.Background(), &mcp.CallToolRequest{}, HealthCheckInput{})
+	if err != nil {
+		t.Fatalf("handleHealthCheck: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("health_check must fail when the configured model is not loaded")
+	}
+	text := mustTextResult(t, result)
+	if !strings.Contains(text, "Status: ERROR") || !strings.Contains(text, "not loaded") {
+		t.Fatalf("unexpected health result: %s", text)
 	}
 }
 

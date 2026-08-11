@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "lumen",
+  "version": "0.0.41",
+  "description": "Precise local semantic code search for coding agents, powered by local embedding models.",
+  "author": {
+    "name": "Ory Corp",
+    "url": "https://github.com/ory"
+  },
+  "homepage": "https://github.com/ory/lumen",
+  "repository": "https://github.com/ory/lumen",
+  "license": "Apache-2.0",
+  "keywords": [
+    "semantic-search",
+    "code-index",
+    "mcp",
+    "embeddings",
+    "ollama",
+    "rag"
+  ]
+}

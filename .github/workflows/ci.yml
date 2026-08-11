@@ -35,7 +35,7 @@ jobs:
           # runner during the silent CGO (sqlite3) compilation phase.
           (while true; do echo "[ci] tests still running…"; sleep 60; done) &
           HEARTBEAT=$!
-          trap "kill $HEARTBEAT 2>/dev/null || true" EXIT
+          trap 'kill "$HEARTBEAT" 2>/dev/null || true' EXIT
           CGO_ENABLED=1 go test -p 1 -tags=fts5 -timeout=30m \
             -coverprofile=coverage.out -covermode=atomic ./...
 
@@ -66,10 +66,12 @@ jobs:
           version: latest
           args: --build-tags=fts5
 
-  e2e:
-    name: E2E
+  semantic_e2e:
+    name: Semantic E2E
     runs-on: ubuntu-latest
     if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
     services:
       ollama:
         # Keep semantic-search snapshots reproducible. New Ollama runtimes can
@@ -87,9 +89,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Wait for Ollama
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             curl -sf http://localhost:11434/ && break
             sleep 1
           done
@@ -112,14 +118,38 @@ jobs:
           LUMEN_EMBED_MODEL: all-minilm
           LUMEN_EMBED_DIMS: '384'
 
+      - name: Install pinned agent CLIs
+        run: npm install --global @anthropic-ai/claude-code@2.1.226 opencode-ai@1.18.15
+
+      - name: Install pinned Codex CLI
+        run: |
+          curl -fL --retry 3 \
+            https://github.com/openai/codex/releases/download/rust-v0.147.0/codex-x86_64-unknown-linux-musl.tar.gz \
+            -o "$RUNNER_TEMP/codex.tar.gz"
+          tar -xzf "$RUNNER_TEMP/codex.tar.gz" -C "$RUNNER_TEMP"
+          mkdir -p "$RUNNER_TEMP/lumen-agent-bin"
+          mv "$RUNNER_TEMP/codex-x86_64-unknown-linux-musl" "$RUNNER_TEMP/lumen-agent-bin/codex"
+          echo "$RUNNER_TEMP/lumen-agent-bin" >> "$GITHUB_PATH"
+
+      # E2E is a required check. Keeping installation canaries in this job
+      # makes a broken agent distribution merge-blocking instead of advisory.
+      - name: Fresh-install Claude, Codex, and OpenCode canaries
+        run: bash scripts/test_agent_installations.sh
+        env:
+          OLLAMA_HOST: http://localhost:11434
+          LUMEN_EMBED_MODEL: all-minilm
+          LUMEN_EMBED_DIMS: '384'
+
   build:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -128,19 +158,56 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Set up MinGW for native CGO
+        if: runner.os == 'Windows'
+        uses: egor-tensin/setup-mingw@v2
+        with:
+          platform: x64
+          # The static workaround removes libpthread.dll.a, which is absent on
+          # the current windows-latest image and makes setup fail before build.
+          static: 0
+
+      - name: Provide SQLite headers for sqlite-vec CGO
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go mod download github.com/mattn/go-sqlite3
+          $sqliteModule = go list -m -f '{{.Dir}}' github.com/mattn/go-sqlite3
+          $includeDir = Join-Path $env:RUNNER_TEMP 'lumen-sqlite-include'
+          New-Item -ItemType Directory -Path $includeDir -Force | Out-Null
+          Copy-Item (Join-Path $sqliteModule 'sqlite3-binding.h') (Join-Path $includeDir 'sqlite3.h')
+
+          # sqlite-vec includes sqlite3.h, while go-sqlite3 vendors the same
+          # amalgamation header as sqlite3-binding.h. Unix runners find a
+          # system header; clean Windows runners need this explicit include.
+          $compilerIncludeDir = $includeDir.Replace('\', '/')
+          "CGO_CFLAGS=-I$compilerIncludeDir" >> $env:GITHUB_ENV
+
       - name: Build
+        shell: bash
         run: |
           VERSION=$(grep -o '"[0-9][^"]*"' .release-please-manifest.json | tr -d '"' | head -1)
           CGO_ENABLED=1 go build -tags=fts5 \
-            -ldflags="-X github.com/ory/lumen/cmd.buildVersion=$VERSION" \
-            -o bin/lumen .
+            -ldflags="-s -w -X github.com/ory/lumen/cmd.buildVersion=$VERSION" \
+            -o "bin/lumen${LUMEN_EXE}" .
+        env:
+          LUMEN_EXE: ${{ runner.os == 'Windows' && '.exe' || '' }}
 
       - name: Assert semver version output
+        shell: bash
         run: |
-          VER=$(bin/lumen version)
+          VER=$("bin/lumen${LUMEN_EXE}" version)
           echo "Binary reported version: $VER"
           echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]' \
             || { echo "ERROR: version output does not match semver pattern"; exit 1; }
+        env:
+          LUMEN_EXE: ${{ runner.os == 'Windows' && '.exe' || '' }}
+
+      - name: Execute artifact indexing and search smoke
+        shell: bash
+        run: go test -tags=fts5 ./internal/release -run TestBuiltArtifactIndexesChunks -count=1 -v
+        env:
+          LUMEN_ARTIFACT: ${{ github.workspace }}/bin/lumen${{ runner.os == 'Windows' && '.exe' || '' }}
 
   scripts:
     name: Script tests (${{ matrix.os }})
@@ -183,3 +250,22 @@ jobs:
 
       - name: Spawn-semantics regression guard
         run: node scripts/test_run_spawn.js
+
+  # The repository ruleset requires the "E2E" check. This aggregator keeps
+  # that stable context while making semantic tests, fresh host installs,
+  # native artifacts, and every launcher platform transitively merge-gating.
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.actor != 'release-please[bot]' }}
+    needs: [semantic_e2e, build, scripts]
+    steps:
+      - name: Require every distribution and runtime check
+        env:
+          SEMANTIC_E2E_RESULT: ${{ needs.semantic_e2e.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          SCRIPTS_RESULT: ${{ needs.scripts.result }}
+        run: |
+          test "$SEMANTIC_E2E_RESULT" = success
+          test "$BUILD_RESULT" = success
+          test "$SCRIPTS_RESULT" = success

@@ -80,10 +80,9 @@ _Claude Code asking about the
    [Codex](https://developers.openai.com/codex/cli), or
    [OpenCode](https://opencode.ai/)
 
-**Note:** Installation differs by platform. Claude Code is installed from a
-plugin marketplace. Codex uses a local MCP server plus native skill discovery.
-OpenCode installs from npm. Cursor packaging is shipped in this repository and
-is ready for Cursor's plugin distribution workflow.
+**Note:** Installation differs by platform. Claude Code and Codex install from
+plugin marketplaces. OpenCode installs from npm. Cursor packaging is shipped
+in this repository and is ready for Cursor's plugin distribution workflow.
 
 **Install:**
 
@@ -113,29 +112,21 @@ skill or the Lumen `semantic_search` tool.
 
 **Codex**
 
-Quick install:
-
-```text
-Fetch and follow instructions from https://raw.githubusercontent.com/ory/lumen/refs/heads/main/.codex/INSTALL.md
-```
-
-Manual install:
+Codex CLI 0.147.0 or newer installs Lumen as a native plugin:
 
 ```bash
-CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-git clone https://github.com/ory/lumen.git "$CODEX_HOME/lumen"
-mkdir -p "$HOME/.agents/skills"
-ln -s "$CODEX_HOME/lumen/skills" "$HOME/.agents/skills/lumen"
-codex mcp add lumen -- "$CODEX_HOME/lumen/scripts/run" stdio
+codex plugin marketplace add ory/claude-plugins
+codex plugin add lumen@ory
 ```
 
-Detailed docs: [.codex/INSTALL.md](.codex/INSTALL.md)
+If the marketplace already exists, run `codex plugin marketplace upgrade ory`
+before installing. Legacy manual-clone and broken-plugin repair instructions:
+[.codex/INSTALL.md](.codex/INSTALL.md).
 
 Verify with:
 
 ```bash
-codex mcp get lumen
-ls -la "$HOME/.agents/skills/lumen"
+codex mcp get lumen --json
 ```
 
 **OpenCode**
@@ -161,7 +152,7 @@ opencode mcp list
 - **Claude Code** - update through Claude's plugin marketplace
 - **Cursor** - refresh or reinstall the bundled plugin through Cursor after
   updating this repository or the published package
-- **Codex** - `cd "${CODEX_HOME:-$HOME/.codex}/lumen" && git pull`
+- **Codex** - upgrade the `ory` marketplace, reinstall `lumen@ory`, and restart
 - **OpenCode** - update the version pin in `opencode.json` (e.g.
   `@ory/lumen-opencode@0.0.29`) and restart OpenCode
 
@@ -173,7 +164,8 @@ On first Claude Code or Cursor session start, Lumen:
 3. Registers a `semantic_search` MCP tool that the host can use automatically
 
 In Codex and OpenCode, the same binary download and index seeding happen on the
-first `semantic_search` call.
+first `semantic_search` call. Codex stores the downloaded binary in the
+plugin's writable data directory rather than the read-only package cache.
 
 Two shared skills are also available: `doctor` (health check) and `reindex`
 (forced re-indexing). Claude exposes them as `/lumen:doctor` and

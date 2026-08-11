@@ -1,71 +1,95 @@
 # Installing Lumen for Codex
 
-Enable Lumen in Codex with native skill discovery plus a registered MCP
-server.
+Install Lumen as a native Codex plugin from Ory's marketplace. This bundles
+the MCP server configuration and the `doctor` and `reindex` skills in one
+package.
 
 ## Prerequisites
 
-- [Codex CLI](https://developers.openai.com/codex/cli)
+- Codex CLI 0.147.0 or newer
 - Git
+- [Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)
 
-## Installation
+## Fresh installation
 
-1. Clone the repository:
-   ```bash
-   CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-   git clone https://github.com/ory/lumen.git "$CODEX_HOME/lumen"
-   ```
-
-2. Create the skills symlink:
-   ```bash
-   mkdir -p "$HOME/.agents/skills"
-   ln -s "$CODEX_HOME/lumen/skills" "$HOME/.agents/skills/lumen"
-   ```
-
-3. Register the MCP server:
-   ```bash
-   codex mcp add lumen -- "$CODEX_HOME/lumen/scripts/run" stdio
-   ```
-
-4. Restart Codex.
-
-## Windows (PowerShell)
-
-```powershell
-$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
-git clone https://github.com/ory/lumen.git "$codexHome\lumen"
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.agents\skills" | Out-Null
-cmd /c mklink /J "$env:USERPROFILE\.agents\skills\lumen" "$codexHome\lumen\skills"
-codex mcp add lumen -- "$codexHome\lumen\scripts\run.cmd" stdio
-```
-
-## Migrating from the old repo-local plugin
-
-If you previously used the repo-local Codex marketplace package:
-
-1. Remove the old plugin from Codex's plugin UI.
-2. Register the MCP server with `codex mcp add` as above.
-3. Create the `~/.agents/skills/lumen` symlink.
-4. Restart Codex.
-
-## Verify
+Add the Ory marketplace the first time you use it:
 
 ```bash
-codex mcp get lumen
-ls -la "$HOME/.agents/skills/lumen"
+codex plugin marketplace add ory/claude-plugins
+codex plugin add lumen@ory
 ```
 
-## Updating
+If the `ory` marketplace is already configured, refresh it before installing:
 
 ```bash
-cd "${CODEX_HOME:-$HOME/.codex}/lumen" && git pull
+codex plugin marketplace upgrade ory
+codex plugin add lumen@ory
 ```
 
-## Uninstalling
+Restart Codex after installation so the new skills and MCP tools are loaded.
+
+## Repairing a legacy or broken installation
+
+Older marketplace snapshots could install Lumen's Claude manifest, leaving an
+unexpanded `${CLAUDE_PLUGIN_ROOT}` in the effective MCP command. Refresh the
+marketplace and reinstall the plugin from scratch:
+
+```bash
+codex plugin marketplace upgrade ory
+codex plugin remove lumen@ory
+codex plugin add lumen@ory
+```
+
+Then restart Codex.
+
+## Migrating from the manual clone installation
+
+If you previously cloned Lumen and registered it directly, remove both the
+standalone MCP registration and skill link before installing the native plugin.
+This prevents duplicate `lumen` MCP servers or skill names.
 
 ```bash
 codex mcp remove lumen
 rm "$HOME/.agents/skills/lumen"
+codex plugin marketplace add ory/claude-plugins
+codex plugin add lumen@ory
 ```
 
-Optionally delete the clone: `rm -rf "${CODEX_HOME:-$HOME/.codex}/lumen"`.
+If `ory` is already configured, use `codex plugin marketplace upgrade ory`
+instead of adding it again. The old clone can be deleted separately after you
+confirm the plugin works.
+
+On Windows, remove the old junction and MCP registration before installing:
+
+```powershell
+codex mcp remove lumen
+Remove-Item "$env:USERPROFILE\.agents\skills\lumen"
+codex plugin marketplace add ory/claude-plugins
+codex plugin add lumen@ory
+```
+
+## Verify
+
+```bash
+codex mcp get lumen --json
+```
+
+The reported `command` must be an absolute cached path ending in `scripts/run`
+(or the Windows-resolved launcher) and must not contain
+`${CLAUDE_PLUGIN_ROOT}`. The plugin downloads its platform binary into Codex's
+writable plugin data directory on first use.
+
+## Updating
+
+```bash
+codex plugin marketplace upgrade ory
+codex plugin add lumen@ory
+```
+
+Restart Codex to pick up updated skills and MCP configuration.
+
+## Uninstalling
+
+```bash
+codex plugin remove lumen@ory
+```

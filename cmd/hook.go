@@ -172,18 +172,31 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 	}
 	defer func() { _ = s.Close() }()
 
-	// Spawn background indexer if the index is stale or has never been
-	// successfully completed. This avoids spawning on every session start
-	// when the index was recently updated.
-	if val, metaErr := s.GetMeta("last_indexed_at"); metaErr != nil || val == "" {
-		bgIndexer(cwd)
-	} else if t, parseErr := time.Parse(time.RFC3339, val); parseErr != nil || time.Since(t) > backgroundIndexStaleness {
-		bgIndexer(cwd)
-	}
-
 	stats, err := s.Stats()
 	if err != nil {
 		return directive
+	}
+
+	// An index is only ready after a successful indexing pass produced chunks.
+	// A database can exist (and even contain file rows) after embedding failed;
+	// announcing that state as ready hides broken model/backend installations.
+	lastIndexedAt, metaErr := s.GetMeta("last_indexed_at")
+	lastIndexError, _ := s.GetMeta(store.MetaLastIndexError)
+	completed := metaErr == nil && lastIndexedAt != ""
+	stale := true
+	if completed {
+		if t, parseErr := time.Parse(time.RFC3339, lastIndexedAt); parseErr == nil {
+			stale = time.Since(t) > backgroundIndexStaleness
+		}
+	}
+	if !completed || stale || stats.TotalChunks == 0 || lastIndexError != "" {
+		bgIndexer(cwd)
+	}
+	if lastIndexError != "" {
+		return fmt.Sprintf("Lumen index unhealthy: last indexing attempt failed (%d files, %d chunks available) — retrying in background. %s", stats.TotalFiles, stats.TotalChunks, directive)
+	}
+	if !completed || stats.TotalChunks == 0 {
+		return fmt.Sprintf("Lumen index not ready: %d files, %d chunks indexed — indexing in background. %s", stats.TotalFiles, stats.TotalChunks, directive)
 	}
 
 	symbols, _ := s.TopSymbols(10)

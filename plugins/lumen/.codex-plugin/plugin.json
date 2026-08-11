@@ -1,0 +1,35 @@
+{
+  "name": "lumen",
+  "version": "0.0.41",
+  "description": "Precise local semantic code search for Codex, powered by local embedding models.",
+  "author": {
+    "name": "Ory Corp",
+    "url": "https://github.com/ory"
+  },
+  "homepage": "https://github.com/ory/lumen",
+  "repository": "https://github.com/ory/lumen",
+  "license": "Apache-2.0",
+  "keywords": [
+    "semantic-search",
+    "code-index",
+    "mcp",
+    "embeddings",
+    "ollama",
+    "rag"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Lumen",
+    "shortDescription": "Local semantic code search for Codex.",
+    "longDescription": "Index and search a codebase semantically with local embedding models and no cloud service.",
+    "developerName": "Ory Corp",
+    "category": "Developer Tools",
+    "capabilities": ["Read"],
+    "websiteURL": "https://github.com/ory/lumen",
+    "defaultPrompt": [
+      "Find the code relevant to this task with Lumen.",
+      "Check the health and freshness of the Lumen index."
+    ]
+  }
+}

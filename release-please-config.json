@@ -19,6 +19,16 @@
         },
         {
           "type": "json",
+          "path": "plugins/lumen/.codex-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/lumen/plugin.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "package.json",
           "jsonpath": "$.version"
         }

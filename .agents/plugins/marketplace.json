@@ -1,0 +1,21 @@
+{
+  "name": "lumen-local",
+  "interface": {
+    "displayName": "Lumen Local"
+  },
+  "plugins": [
+    {
+      "name": "lumen",
+      "source": {
+        "source": "local",
+        "path": "./plugins/lumen"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": ["CODEX"]
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

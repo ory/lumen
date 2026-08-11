@@ -22,7 +22,8 @@
   "files": [
     ".opencode/plugins/",
     ".release-please-manifest.json",
-    "scripts/",
+    "scripts/run",
+    "scripts/run.cmd",
     "skills/"
   ]
 }
