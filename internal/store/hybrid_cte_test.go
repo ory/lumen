@@ -20,7 +20,7 @@ import (
 	"database/sql"
 	"testing"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
 
 // TestHybridCTE_VecAndFTS5InCTE verifies that vec0 and FTS5 MATCH clauses

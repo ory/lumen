@@ -216,8 +216,9 @@ Files → semantic chunks → vector embeddings → SQLite/sqlite-vec → KNN se
 
 When Claude needs to understand code, it calls `semantic_search` instead of
 reading entire files. The index is stored outside your repo
-(`~/.local/share/lumen/<hash>/index.db`), keyed by project path and model name —
-different models never share an index.
+(`~/.local/share/lumen/<hash>/index.db`). Git worktrees from the same repository
+use one collection for a compatible model, vector-storage, and chunking profile;
+non-Git projects use private collections. Different profiles never collide.
 
 ## Benchmarks
 
@@ -284,6 +285,7 @@ All configuration is via environment variables:
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                             |
 | `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                                          |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting                         |
+| `LUMEN_VECTOR_STORAGE`   | `int8`                   | Vector precision (`int8` or `float32`)                         |
 | `LUMEN_EMBED_DIMS`       | —                        | Override embedding dimensions (required for unlisted models)  |
 | `LUMEN_EMBED_CTX`        | `8192` (unlisted models) | Override context window length                                |
 
@@ -387,10 +389,12 @@ Index databases are stored outside your project:
 ~/.local/share/lumen/<hash>/index.db
 ```
 
-Where `<hash>` is derived from the absolute project path, embedding model name,
-and binary version. Different models or Lumen versions automatically get
-separate indexes. No files are added to your repo, no `.gitignore` modifications
-needed.
+Where `<hash>` identifies the Git common directory (or the absolute path for a
+non-Git project), indexed scope, embedding model and dimensions, vector
+precision, chunking profile, and index version. Worktrees in one repository
+share content-addressed file revisions and vectors while retaining independent
+project memberships. Vectors use int8 storage by default; set
+`LUMEN_VECTOR_STORAGE=float32` to opt out. No files are added to your repo.
 
 You can safely delete the entire `lumen` directory to clear all indexes, or let
 Lumen reclaim the space for you:
@@ -405,11 +409,15 @@ An index counts as used every time Lumen opens it (search, indexing, status, or
 session start), so indexes for projects you still work on are never removed.
 Indexes with an indexer currently running are always kept.
 
-**Git worktrees** are detected automatically. When you create a new worktree
-(`git worktree add` or `claude --worktree`), Lumen finds a sibling worktree's
-existing index and copies it as a seed. The Merkle tree diff then re-indexes
-only the files that actually differ — typically a handful of files instead of
-the entire codebase. No configuration needed; it just works.
+**Git worktrees** are detected automatically. A new worktree attaches unchanged
+path-and-content revisions directly from the repository collection and embeds
+only missing chunk inputs. Removing an old worktree drops its memberships;
+shared revisions and vectors remain until their final reference disappears.
+Legacy per-worktree indexes migrate lazily, reusing unchanged float32 vectors
+without contacting the embedding backend.
+
+For the complete storage key, sharing rules, status metrics, migration process,
+and cleanup lifecycle, see [Index storage and lifecycle](docs/INDEX_STORAGE.md).
 
 ## CLI Reference
 
@@ -470,6 +478,19 @@ to the model, set **Override Domain Type** → **Text Embedding**.
 
 Set `LUMEN_EMBED_MODEL` to a model from the supported table above. Each model
 gets its own database; the old index is not deleted automatically.
+
+Changing `LUMEN_VECTOR_STORAGE`, `LUMEN_EMBED_DIMS`, or `LUMEN_MAX_CHUNK_TOKENS`
+also selects a separate collection. Run `lumen clean` after the old profile is
+no longer in use if you want to reclaim its disk space.
+
+**Understanding index size and deduplication**
+
+Call `index_status` for the project. It reports project-local file and chunk
+counts alongside collection-wide unique vectors, shared references,
+deduplication ratio, vector precision, database size, and currently reclaimable
+SQLite pages. See
+[Index storage and lifecycle](docs/INDEX_STORAGE.md#reading-index-status) for
+definitions and examples.
 
 **Slow first indexing**
 

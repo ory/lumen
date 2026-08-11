@@ -61,25 +61,77 @@ func Hello() {}
 	}
 
 	// Verify the seeded DB works.
-	idx2, err := NewIndexer(dstPath, emb, 0)
+	idx2, err := NewIndexerForProject(dstPath, emb, 0, "int8", seedProjectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = idx2.Close() }()
 
-	status, err := idx2.Status(projectDir)
+	status, err := idx2.Status(seedProjectDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status.IndexedFiles == 0 {
 		t.Fatal("expected seeded DB to have indexed files")
 	}
-	seedMeta, err := store.ReadMetaAt(dstPath, "project_path")
+	seedDB, err := sql.Open("sqlite3", sqliteFileDSN(dstPath, "ro"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seedMeta["project_path"] != seedProjectDir {
-		t.Fatalf("seeded project_path = %q, want %q", seedMeta["project_path"], seedProjectDir)
+	defer func() { _ = seedDB.Close() }()
+	var seededProjectPath string
+	if err := seedDB.QueryRow(`SELECT path FROM projects WHERE path = ?`, seedProjectDir).Scan(&seededProjectPath); err != nil {
+		t.Fatal(err)
+	}
+	if seededProjectPath != seedProjectDir {
+		t.Fatalf("seeded project path = %q, want %q", seededProjectPath, seedProjectDir)
+	}
+}
+
+func TestSeedFromDonor_SelectsCompleteSharedProject(t *testing.T) {
+	incompleteProject := t.TempDir()
+	completeProject := t.TempDir()
+	writeGoFile(t, completeProject, "main.go", "package main\n\nfunc Complete() {}\n")
+
+	donorPath := filepath.Join(t.TempDir(), "donor.db")
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexerForProject(donorPath, emb, 512, "int8", incompleteProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.store.SetMeta("root_hash", ""); err != nil {
+		_ = idx.Close()
+		t.Fatal(err)
+	}
+	if _, err := idx.Index(context.Background(), completeProject, false, nil); err != nil {
+		_ = idx.Close()
+		t.Fatal(err)
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	destinationProject := t.TempDir()
+	dstPath := filepath.Join(t.TempDir(), "seeded.db")
+	seeded, err := SeedFromDonor(donorPath, dstPath, destinationProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !seeded {
+		t.Fatal("expected complete shared project to be selected as donor")
+	}
+
+	db, err := sql.Open("sqlite3", sqliteFileDSN(dstPath, "ro"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var projectPath string
+	if err := db.QueryRow(`SELECT path FROM projects WHERE path = ?`, destinationProject).Scan(&projectPath); err != nil {
+		t.Fatal(err)
+	}
+	if projectPath != destinationProject {
+		t.Fatalf("seeded project path = %q, want %q", projectPath, destinationProject)
 	}
 }
 
@@ -109,8 +161,13 @@ func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
 	if _, err := writer.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		t.Fatal(err)
 	}
+	var projectID int64
+	if err := writer.QueryRow(`SELECT id FROM projects WHERE path = ?`, projectDir).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := writer.Exec(
-		`INSERT INTO project_meta (key, value) VALUES ('snapshot_marker', 'committed')`,
+		`INSERT INTO project_meta (project_id, key, value) VALUES (?, 'snapshot_marker', 'committed')`,
+		projectID,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +180,8 @@ func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tx.Rollback() })
 	if _, err := tx.Exec(
-		`INSERT INTO project_meta (key, value) VALUES ('snapshot_uncommitted', 'hidden')`,
+		`INSERT INTO project_meta (project_id, key, value) VALUES (?, 'snapshot_uncommitted', 'hidden')`,
+		projectID,
 	); err != nil {
 		t.Fatal(err)
 	}

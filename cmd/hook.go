@@ -155,7 +155,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		cwd = ancestor
 	}
 
-	dbPath := config.DBPathForProject(cwd, modelName)
+	dbPath := configuredDBPath(cfg, cwd, modelName)
 	if _, err := os.Stat(dbPath); err != nil {
 		// No index yet — kick off background pre-warming so the first search
 		// in this session doesn't pay the full seed + embed cost synchronously.
@@ -166,7 +166,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		return directive + " No index yet — indexing in background."
 	}
 
-	s, err := store.New(dbPath, dims)
+	s, err := store.NewCollection(dbPath, dims, cfg.VectorStorage(), cwd)
 	if err != nil {
 		return directive
 	}

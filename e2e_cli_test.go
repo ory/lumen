@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/ory/lumen/internal/config"
+	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
 
 // gitSampleProject copies testdata/sample-project into a temp directory and
@@ -79,6 +79,7 @@ func runCLIWithDataHome(t *testing.T, dataHome string, args ...string) (stdout, 
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
 		"XDG_DATA_HOME=" + dataHome,
+		"XDG_CONFIG_HOME=" + filepath.Join(dataHome, "config"),
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 	}
@@ -136,17 +137,33 @@ func TestE2E_CLI_IndexForceReindex(t *testing.T) {
 	}
 }
 
-// openIndexDB opens the SQLite index database for a given project path and dataHome.
-func openIndexDB(t *testing.T, dataHome, projectPath string) *sql.DB {
+type projectIndexDB struct {
+	*sql.DB
+	projectID int64
+}
+
+// openIndexDB opens the shared SQLite collection and resolves the membership
+// for projectPath so raw SQL assertions remain project-local.
+func openIndexDB(t *testing.T, dataHome, projectPath string) *projectIndexDB {
 	t.Helper()
-	sqlite_vec.Auto()
+	if err := sqlite_vec.Auto(); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := config.DBPathForProjectBase(dataHome, projectPath, "all-minilm")
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		t.Fatalf("open index db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
-	return db
+	t.Cleanup(func() { _ = db.Close() })
+	absoluteProjectPath, err := filepath.Abs(projectPath)
+	if err != nil {
+		t.Fatalf("resolve project path: %v", err)
+	}
+	var projectID int64
+	if err := db.QueryRow("SELECT id FROM projects WHERE path = ?", filepath.Clean(absoluteProjectPath)).Scan(&projectID); err != nil {
+		t.Fatalf("resolve project membership: %v", err)
+	}
+	return &projectIndexDB{DB: db, projectID: projectID}
 }
 
 func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
@@ -163,7 +180,10 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	db := openIndexDB(t, dataHome, projectPath)
 
 	// --- Verify tables exist ---
-	expectedTables := []string{"files", "chunks", "project_meta", "vec_chunks"}
+	expectedTables := []string{
+		"collection_meta", "projects", "project_meta", "file_revisions",
+		"project_files", "vector_keys", "chunk_defs", "vec_vectors",
+	}
 	for _, table := range expectedTables {
 		var count int
 		err := db.QueryRow("SELECT count(*) FROM sqlite_master WHERE name = ?", table).Scan(&count)
@@ -175,17 +195,23 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 		}
 	}
 
-	// --- Verify files table ---
+	// --- Verify project files ---
 	var fileCount int
-	if err := db.QueryRow("SELECT count(*) FROM files").Scan(&fileCount); err != nil {
-		t.Fatalf("count files: %v", err)
+	if err := db.QueryRow("SELECT count(*) FROM project_files WHERE project_id = ?", db.projectID).Scan(&fileCount); err != nil {
+		t.Fatalf("count project files: %v", err)
 	}
 	if fileCount != 7 {
 		t.Errorf("expected 7 files, got %d", fileCount)
 	}
 
 	// All file paths should end in .go, .svelte, or .swift and have valid hashes.
-	rows, err := db.Query("SELECT path, hash FROM files ORDER BY path")
+	rows, err := db.Query(`
+		SELECT pf.relative_path, hex(fr.content_hash)
+		FROM project_files pf
+		JOIN file_revisions fr ON fr.id = pf.file_revision_id
+		WHERE pf.project_id = ?
+		ORDER BY pf.relative_path
+	`, db.projectID)
 	if err != nil {
 		t.Fatalf("query files: %v", err)
 	}
@@ -213,10 +239,15 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 		}
 	}
 
-	// --- Verify chunks table ---
+	// --- Verify project chunks ---
 	var chunkCount int
-	if err := db.QueryRow("SELECT count(*) FROM chunks").Scan(&chunkCount); err != nil {
-		t.Fatalf("count chunks: %v", err)
+	if err := db.QueryRow(`
+		SELECT count(*)
+		FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&chunkCount); err != nil {
+		t.Fatalf("count project chunks: %v", err)
 	}
 	if chunkCount < 15 {
 		t.Errorf("expected at least 15 chunks (fixture has ~20), got %d", chunkCount)
@@ -224,11 +255,12 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 
 	// Every chunk should reference a valid file and have sensible fields.
 	chunkRows, err := db.Query(`
-		SELECT c.id, c.file_path, c.symbol, c.kind, c.start_line, c.end_line
-		FROM chunks c
-		JOIN files f ON c.file_path = f.path
-		ORDER BY c.file_path, c.start_line
-	`)
+		SELECT cd.chunk_key, pf.relative_path, cd.symbol, cd.kind, cd.start_line, cd.end_line
+		FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ?
+		ORDER BY pf.relative_path, cd.start_line
+	`, db.projectID)
 	if err != nil {
 		t.Fatalf("query chunks: %v", err)
 	}
@@ -270,18 +302,24 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 		t.Error("expected at least one interface chunk")
 	}
 
-	// --- Verify vec_chunks has same count as chunks ---
+	// --- Verify every project chunk has a physical vector ---
 	var vecCount int
-	if err := db.QueryRow("SELECT count(*) FROM vec_chunks").Scan(&vecCount); err != nil {
-		t.Fatalf("count vec_chunks: %v", err)
+	if err := db.QueryRow(`
+		SELECT count(*)
+		FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		JOIN vec_vectors vv ON vv.vector_id = cd.vector_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&vecCount); err != nil {
+		t.Fatalf("count project chunk vectors: %v", err)
 	}
 	if vecCount != chunkCount {
-		t.Errorf("vec_chunks count (%d) should match chunks count (%d)", vecCount, chunkCount)
+		t.Errorf("project chunk vector count (%d) should match chunk count (%d)", vecCount, chunkCount)
 	}
 
 	// --- Verify project_meta ---
 	meta := make(map[string]string)
-	metaRows, err := db.Query("SELECT key, value FROM project_meta")
+	metaRows, err := db.Query("SELECT key, value FROM project_meta WHERE project_id = ?", db.projectID)
 	if err != nil {
 		t.Fatalf("query project_meta: %v", err)
 	}
@@ -301,11 +339,13 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 		t.Errorf("root_hash should be 64 hex chars, got %d", len(rh))
 	}
 
-	// vec_dimensions should be "384" (all-minilm).
-	if vd, ok := meta["vec_dimensions"]; !ok {
-		t.Error("project_meta missing vec_dimensions")
-	} else if vd != "384" {
-		t.Errorf("expected vec_dimensions=384, got %s", vd)
+	// vec_dimensions is collection-scoped and should be "384" (all-minilm).
+	var vecDimensions string
+	if err := db.QueryRow("SELECT value FROM collection_meta WHERE key = 'vec_dimensions'").Scan(&vecDimensions); err != nil {
+		t.Fatalf("query vec_dimensions: %v", err)
+	}
+	if vecDimensions != "384" {
+		t.Errorf("expected vec_dimensions=384, got %s", vecDimensions)
 	}
 
 	// embedding_model should be "all-minilm".
@@ -315,12 +355,12 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 		t.Errorf("expected embedding_model=all-minilm, got %s", em)
 	}
 
-	// --- Verify no orphan chunks (chunks without matching files) ---
+	// --- Verify no orphan chunks (chunks without matching revisions) ---
 	var orphans int
 	if err := db.QueryRow(`
-		SELECT count(*) FROM chunks c
-		LEFT JOIN files f ON c.file_path = f.path
-		WHERE f.path IS NULL
+		SELECT count(*) FROM chunk_defs cd
+		LEFT JOIN file_revisions fr ON fr.id = cd.file_revision_id
+		WHERE fr.id IS NULL
 	`).Scan(&orphans); err != nil {
 		t.Fatalf("query orphan chunks: %v", err)
 	}
@@ -338,7 +378,12 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	}
 	for symbol, expectedKind := range knownSymbols {
 		var kind string
-		err := db.QueryRow("SELECT kind FROM chunks WHERE symbol = ?", symbol).Scan(&kind)
+		err := db.QueryRow(`
+			SELECT cd.kind
+			FROM chunk_defs cd
+			JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+			WHERE pf.project_id = ? AND cd.symbol = ?
+		`, db.projectID, symbol).Scan(&kind)
 		if err == sql.ErrNoRows {
 			t.Errorf("expected symbol %q to exist in chunks", symbol)
 		} else if err != nil {
@@ -362,29 +407,34 @@ func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
 
 	db := openIndexDB(t, dataHome, projectPath)
 
-	// Grab the embedding vector of ValidateToken from vec_chunks.
-	var tokenID string
-	if err := db.QueryRow("SELECT id FROM chunks WHERE symbol = 'ValidateToken'").Scan(&tokenID); err != nil {
+	// Grab the embedding vector of ValidateToken from the shared vector table.
+	var tokenID int64
+	if err := db.QueryRow(`
+		SELECT cd.vector_id
+		FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ? AND cd.symbol = 'ValidateToken'
+	`, db.projectID).Scan(&tokenID); err != nil {
 		t.Fatalf("get ValidateToken id: %v", err)
 	}
 
 	// Use ValidateToken's own vector as the query vector — it should be
 	// the top result (distance ≈ 0, score ≈ 1).
 	var vecBlob []byte
-	if err := db.QueryRow("SELECT embedding FROM vec_chunks WHERE id = ?", tokenID).Scan(&vecBlob); err != nil {
+	if err := db.QueryRow("SELECT embedding FROM vec_vectors WHERE vector_id = ?", tokenID).Scan(&vecBlob); err != nil {
 		t.Fatalf("get ValidateToken embedding: %v", err)
 	}
 
 	// Run raw KNN query.
 	rows, err := db.Query(`
-		SELECT c.symbol, c.kind, v.distance
-		FROM vec_chunks v
-		JOIN chunks c ON v.id = c.id
-		WHERE v.embedding MATCH ?
-		AND v.k = 5
+		SELECT cd.symbol, cd.kind, v.distance
+		FROM vec_vectors v
+		JOIN chunk_defs cd ON cd.vector_id = v.vector_id
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE v.embedding MATCH vec_int8(?) AND v.k = 5 AND pf.project_id = ?
 		ORDER BY v.distance
 		LIMIT 5
-	`, vecBlob)
+	`, vecBlob, db.projectID)
 	if err != nil {
 		t.Fatalf("KNN query: %v", err)
 	}
@@ -416,9 +466,11 @@ func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
 		t.Errorf("self-similarity distance should be ≈ 0, got %f", results[0].distance)
 	}
 
-	// All distances should be non-negative and ordered ascending.
+	// Cosine distance can land a few ulps below zero for an identical int8
+	// vector, so allow a small numerical tolerance around the valid range.
+	const distanceTolerance = 1e-6
 	for i, r := range results {
-		if r.distance < 0 {
+		if r.distance < -distanceTolerance {
 			t.Errorf("result[%d] %s: distance should be >= 0, got %f", i, r.symbol, r.distance)
 		}
 		if i > 0 && r.distance < results[i-1].distance {
@@ -430,7 +482,7 @@ func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
 	// Scores (1 - distance) should all be in (0, 1].
 	for i, r := range results {
 		score := 1.0 - r.distance
-		if score <= 0 || score > 1 {
+		if score <= 0 || score > 1+distanceTolerance {
 			t.Errorf("result[%d] %s: score should be in (0, 1], got %f", i, r.symbol, score)
 		}
 	}
@@ -452,8 +504,16 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 
 	// Count initial state.
 	var initialFiles, initialChunks int
-	db.QueryRow("SELECT count(*) FROM files").Scan(&initialFiles)
-	db.QueryRow("SELECT count(*) FROM chunks").Scan(&initialChunks)
+	if err := db.QueryRow("SELECT count(*) FROM project_files WHERE project_id = ?", db.projectID).Scan(&initialFiles); err != nil {
+		t.Fatalf("count initial project files: %v", err)
+	}
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&initialChunks); err != nil {
+		t.Fatalf("count initial project chunks: %v", err)
+	}
 
 	if initialFiles != 7 {
 		t.Fatalf("expected 7 initial files, got %d", initialFiles)
@@ -461,7 +521,9 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 
 	// Get initial root hash.
 	var hash1 string
-	db.QueryRow("SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&hash1)
+	if err := db.QueryRow("SELECT value FROM project_meta WHERE project_id = ? AND key = 'root_hash'", db.projectID).Scan(&hash1); err != nil {
+		t.Fatalf("read initial root hash: %v", err)
+	}
 
 	// Add a new file.
 	newCode := "package project\n\n// Shutdown stops the server.\nfunc Shutdown() error { return nil }\n"
@@ -482,36 +544,65 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 
 	// Verify file count increased.
 	var newFileCount int
-	db.QueryRow("SELECT count(*) FROM files").Scan(&newFileCount)
+	if err := db.QueryRow("SELECT count(*) FROM project_files WHERE project_id = ?", db.projectID).Scan(&newFileCount); err != nil {
+		t.Fatalf("count project files after addition: %v", err)
+	}
 	if newFileCount != 8 {
 		t.Errorf("expected 8 files after adding one, got %d", newFileCount)
 	}
 
 	// Verify chunk count increased.
 	var newChunkCount int
-	db.QueryRow("SELECT count(*) FROM chunks").Scan(&newChunkCount)
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&newChunkCount); err != nil {
+		t.Fatalf("count project chunks after addition: %v", err)
+	}
 	if newChunkCount <= initialChunks {
 		t.Errorf("expected more chunks after adding file: before=%d, after=%d", initialChunks, newChunkCount)
 	}
 
 	// Verify new symbol exists.
 	var shutdownExists int
-	db.QueryRow("SELECT count(*) FROM chunks WHERE symbol = 'Shutdown'").Scan(&shutdownExists)
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ? AND cd.symbol = 'Shutdown'
+	`, db.projectID).Scan(&shutdownExists); err != nil {
+		t.Fatalf("query Shutdown symbol: %v", err)
+	}
 	if shutdownExists == 0 {
 		t.Error("expected Shutdown symbol in chunks after adding file")
 	}
 
-	// Verify vec_chunks stayed in sync.
+	// Verify every project chunk still has a physical vector.
 	var vecCount, chunkCount int
-	db.QueryRow("SELECT count(*) FROM vec_chunks").Scan(&vecCount)
-	db.QueryRow("SELECT count(*) FROM chunks").Scan(&chunkCount)
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		JOIN vec_vectors vv ON vv.vector_id = cd.vector_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&vecCount); err != nil {
+		t.Fatalf("count project chunk vectors: %v", err)
+	}
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ?
+	`, db.projectID).Scan(&chunkCount); err != nil {
+		t.Fatalf("count project chunks: %v", err)
+	}
 	if vecCount != chunkCount {
-		t.Errorf("vec_chunks (%d) out of sync with chunks (%d)", vecCount, chunkCount)
+		t.Errorf("project chunk vectors (%d) out of sync with chunks (%d)", vecCount, chunkCount)
 	}
 
 	// Root hash should have changed.
 	var hash2 string
-	db.QueryRow("SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&hash2)
+	if err := db.QueryRow("SELECT value FROM project_meta WHERE project_id = ? AND key = 'root_hash'", db.projectID).Scan(&hash2); err != nil {
+		t.Fatalf("read updated root hash: %v", err)
+	}
 	if hash2 == hash1 {
 		t.Error("root_hash should change after adding a file")
 	}
@@ -527,27 +618,37 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 
 	db = openIndexDB(t, dataHome, tmpDir)
 
-	// Verify file removed from files table.
+	// Verify file removed from the project's membership.
 	var dbFileExists int
-	db.QueryRow("SELECT count(*) FROM files WHERE path LIKE '%database.go'").Scan(&dbFileExists)
+	if err := db.QueryRow("SELECT count(*) FROM project_files WHERE project_id = ? AND relative_path LIKE '%database.go'", db.projectID).Scan(&dbFileExists); err != nil {
+		t.Fatalf("query removed project file: %v", err)
+	}
 	if dbFileExists != 0 {
 		t.Error("database.go should be removed from files table after deletion")
 	}
 
 	// Verify QueryUsers chunks are gone.
 	var queryUsersExists int
-	db.QueryRow("SELECT count(*) FROM chunks WHERE symbol = 'QueryUsers'").Scan(&queryUsersExists)
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
+		WHERE pf.project_id = ? AND cd.symbol = 'QueryUsers'
+	`, db.projectID).Scan(&queryUsersExists); err != nil {
+		t.Fatalf("query removed QueryUsers symbol: %v", err)
+	}
 	if queryUsersExists != 0 {
 		t.Error("QueryUsers chunks should be removed after deleting database.go")
 	}
 
 	// Verify no orphan chunks.
 	var orphans int
-	db.QueryRow(`
-		SELECT count(*) FROM chunks c
-		LEFT JOIN files f ON c.file_path = f.path
-		WHERE f.path IS NULL
-	`).Scan(&orphans)
+	if err := db.QueryRow(`
+		SELECT count(*) FROM chunk_defs cd
+		LEFT JOIN file_revisions fr ON fr.id = cd.file_revision_id
+		WHERE fr.id IS NULL
+	`).Scan(&orphans); err != nil {
+		t.Fatalf("query orphan chunks after deletion: %v", err)
+	}
 	if orphans != 0 {
 		t.Errorf("found %d orphan chunks after file deletion", orphans)
 	}

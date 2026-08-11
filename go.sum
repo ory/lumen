@@ -21,8 +21,6 @@ github.com/alexaandru/go-sitter-forest/svelte v1.9.2 h1:ixFAFy5oaPU3QU5XeR9tomoR
 github.com/alexaandru/go-sitter-forest/svelte v1.9.2/go.mod h1:Mfat0bA+ML4NR4cTz7eTz6ziL4KPSQSo2dX80U7GXpM=
 github.com/alexaandru/go-sitter-forest/swift v1.9.5 h1:CCfvj4BRjvN7HtznqDbgU7ylHHO9ML34ezsJFbErjV0=
 github.com/alexaandru/go-sitter-forest/swift v1.9.5/go.mod h1:EzSPcZpETNyJIoAyPdbQgFUxWM+vcO3y5eYh8kmNvNc=
-github.com/asg017/sqlite-vec-go-bindings v0.1.6 h1:Nx0jAzyS38XpkKznJ9xQjFXz2X9tI7KqjwVxV8RNoww=
-github.com/asg017/sqlite-vec-go-bindings v0.1.6/go.mod h1:A8+cTt/nKFsYCQF6OgzSNpKZrzNo5gQsXBTfsXHXY0Q=
 github.com/atomicgo/cursor v0.0.1/go.mod h1:cBON2QmmrysudxNBFthvMtN32r3jxVRIvzkUiF/RuIk=
 github.com/bradleyjkemp/cupaloy/v2 v2.8.0 h1:any4BmKE+jGIaMpnU8YgH/I2LPiLBufr6oMMlVBbn9M=
 github.com/bradleyjkemp/cupaloy/v2 v2.8.0/go.mod h1:bm7JXdkRd4BHJk9HpwqAI8BoAY1lps46Enkdqw6aRX0=

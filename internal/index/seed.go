@@ -78,8 +78,25 @@ func SeedFromDonorContext(ctx context.Context, donorPath, dstPath, projectPath s
 	if err != nil {
 		return false, fmt.Errorf("open donor: %w", err)
 	}
+	var shared bool
+	if err := db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collection_meta')`,
+	).Scan(&shared); err != nil {
+		_ = db.Close()
+		return false, fmt.Errorf("detect donor schema: %w", err)
+	}
 	var rootHash sql.NullString
-	if err := db.QueryRowContext(ctx, "SELECT value FROM project_meta WHERE key = 'root_hash'").Scan(&rootHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	rootHashQuery := "SELECT value FROM project_meta WHERE key = 'root_hash'"
+	if shared {
+		rootHashQuery = `
+			SELECT pm.value
+			FROM project_meta pm
+			JOIN projects p ON p.id = pm.project_id
+			WHERE pm.key = 'root_hash' AND pm.value <> ''
+			ORDER BY p.last_accessed_at DESC, p.id DESC
+			LIMIT 1`
+	}
+	if err := db.QueryRowContext(ctx, rootHashQuery).Scan(&rootHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		_ = db.Close()
 		return false, fmt.Errorf("read donor metadata: %w", err)
 	}
@@ -133,24 +150,74 @@ func sqliteFileDSN(path, mode string) string {
 	}).String()
 }
 
-func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) error {
+func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) (err error) {
 	db, err := sql.Open("sqlite3", sqliteFileDSN(dbPath, "rw"))
 	if err != nil {
-		return err
+		return fmt.Errorf("open seed snapshot: %w", err)
 	}
-	if _, err := db.ExecContext(ctx,
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close seed snapshot: %w", closeErr))
+		}
+	}()
+
+	var shared bool
+	if err := db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collection_meta')`,
+	).Scan(&shared); err != nil {
+		return fmt.Errorf("detect seed schema: %w", err)
+	}
+	if shared {
+		if err := setSharedSeedProjectPath(ctx, db, projectPath); err != nil {
+			return fmt.Errorf("stamp shared seed project path: %w", err)
+		}
+	} else if _, err := db.ExecContext(ctx,
 		`INSERT INTO project_meta (key, value) VALUES ('project_path', ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		projectPath,
 	); err != nil {
-		_ = db.Close()
-		return err
+		return fmt.Errorf("stamp seed project path: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		_ = db.Close()
+		return fmt.Errorf("checkpoint seed snapshot: %w", err)
+	}
+	return nil
+}
+
+// setSharedSeedProjectPath translates the legacy single-owner metadata update
+// to the repository-scoped schema. The completed donor project retains all of
+// its project_meta and project_files rows; only its canonical path changes.
+func setSharedSeedProjectPath(ctx context.Context, db *sql.DB, projectPath string) error {
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = filepath.Clean(abs)
+	}
+
+	var donorID int64
+	err := db.QueryRowContext(ctx, `
+		SELECT pm.project_id
+		FROM project_meta pm
+		JOIN projects p ON p.id = pm.project_id
+		WHERE pm.key = 'root_hash' AND pm.value <> ''
+		ORDER BY p.last_accessed_at DESC, p.id DESC
+		LIMIT 1`,
+	).Scan(&donorID)
+	if err != nil {
 		return err
 	}
-	return db.Close()
+
+	var existingID int64
+	err = db.QueryRowContext(ctx, `SELECT id FROM projects WHERE path = ?`, projectPath).Scan(&existingID)
+	switch {
+	case err == nil && existingID == donorID:
+		return nil
+	case err == nil:
+		return fmt.Errorf("seed project path %q already belongs to project %d", projectPath, existingID)
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+
+	_, err = db.ExecContext(ctx, `UPDATE projects SET path = ? WHERE id = ?`, projectPath, donorID)
+	return err
 }
 
 func removeSQLiteFiles(path string) {

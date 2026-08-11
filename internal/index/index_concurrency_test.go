@@ -364,6 +364,82 @@ done:
 	<-indexDone
 }
 
+func TestConcurrentProjectSelectionKeepsSearchAndStatusScoped(t *testing.T) {
+	const dims = 4
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+	writeGoFile(t, projectA, "alpha.go", `package alpha
+
+func Alpha() {}
+`)
+	writeGoFile(t, projectB, "beta.go", `package beta
+
+func Beta() {}
+`)
+
+	idx, err := NewIndexer(filepath.Join(t.TempDir(), "shared.db"), &mockEmbedder{dims: dims, model: "project-race"}, 512)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+	if _, err := idx.Index(context.Background(), projectA, false, nil); err != nil {
+		t.Fatalf("index project A: %v", err)
+	}
+	if _, err := idx.Index(context.Background(), projectB, false, nil); err != nil {
+		t.Fatalf("index project B: %v", err)
+	}
+
+	type projectCase struct {
+		path string
+		file string
+	}
+	cases := []projectCase{{path: projectA, file: "alpha.go"}, {path: projectB, file: "beta.go"}}
+	start := make(chan struct{})
+	errs := make(chan error, 41)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		if _, indexErr := idx.Index(context.Background(), projectA, false, nil); indexErr != nil {
+			errs <- fmt.Errorf("concurrent index project A: %w", indexErr)
+		}
+	}()
+	for i := range 40 {
+		tc := cases[i%len(cases)]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			results, searchErr := idx.Search(context.Background(), tc.path, []float32{0.1, 0.1, 0.1, 0.1}, 5, 0, "")
+			if searchErr != nil {
+				errs <- fmt.Errorf("search %s: %w", tc.path, searchErr)
+				return
+			}
+			if len(results) == 0 || results[0].FilePath != tc.file {
+				errs <- fmt.Errorf("search %s returned wrong membership: %+v", tc.path, results)
+				return
+			}
+			status, statusErr := idx.Status(tc.path)
+			if statusErr != nil {
+				errs <- fmt.Errorf("status %s: %w", tc.path, statusErr)
+				return
+			}
+			if status.ProjectPath != tc.path || status.IndexedFiles != 1 {
+				errs <- fmt.Errorf("status %s returned wrong membership: %+v", tc.path, status)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 // TestSearch_RespectsContextCancellation verifies that a blocked Search call
 // returns promptly when its context is cancelled.
 func TestSearch_RespectsContextCancellation(t *testing.T) {

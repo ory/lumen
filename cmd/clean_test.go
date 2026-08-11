@@ -18,8 +18,11 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,10 +87,25 @@ func projectDir(t *testing.T, name string) string {
 // runCleanIndexes invokes the cleanup sweep against the data dir under tmp.
 func runCleanIndexes(t *testing.T, tmp string, days int) (stdout, stderr string, err error) {
 	t.Helper()
-	outBuf := new(bytes.Buffer)
-	errBuf := new(bytes.Buffer)
-	err = cleanIndexes(errBuf, outBuf, filepath.Join(tmp, "lumen"), days, cleanNow)
-	return outBuf.String(), errBuf.String(), err
+	reporter := newBufferCleanReporter()
+	summary, err := cleanIndexes(reporter, filepath.Join(tmp, "lumen"), days, cleanNow)
+	return formatCleanSummary(summary), reporter.output.String(), err
+}
+
+type bufferCleanReporter struct {
+	output bytes.Buffer
+}
+
+func newBufferCleanReporter() *bufferCleanReporter {
+	return &bufferCleanReporter{}
+}
+
+func (r *bufferCleanReporter) Info(message string) {
+	_, _ = fmt.Fprintln(&r.output, message)
+}
+
+func (r *bufferCleanReporter) Error(message string) {
+	_, _ = fmt.Fprintln(&r.output, message)
 }
 
 // runCleanCmd invokes runClean through a command carrying the real clean flags.
@@ -307,6 +325,40 @@ func TestClean_LeavesNonIndexFilesAlone(t *testing.T) {
 	assert.FileExists(t, logPath, "debug.log must not be removed")
 }
 
+func TestCleanIndexReportsLockAcquisitionErrors(t *testing.T) {
+	original := tryAcquireExclusive
+	t.Cleanup(func() { tryAcquireExclusive = original })
+	tryAcquireExclusive = func(string) (*indexlock.Lock, error) {
+		return nil, errors.New("permission denied")
+	}
+	reporter := newBufferCleanReporter()
+	removed, _, err := cleanIndex(reporter, "abc", t.TempDir(), 30, time.Now())
+	if err == nil || removed {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+	if !strings.Contains(reporter.output.String(), "Failed to acquire index lock") || strings.Contains(reporter.output.String(), "currently running") {
+		t.Fatalf("unexpected stderr: %s", reporter.output.String())
+	}
+}
+
+func TestRunDailyCleanupUsesProvidedLoggerAndStampsSuccess(t *testing.T) {
+	dataDir := t.TempDir()
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	now := time.Date(2026, 8, 8, 12, 0, 0, 0, time.UTC)
+	runDailyCleanup(dataDir, now, logger)
+	stamp, err := os.ReadFile(filepath.Join(dataDir, ".last-cleanup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(stamp) != now.Format(time.RFC3339) {
+		t.Fatalf("stamp = %q, want %q", stamp, now.Format(time.RFC3339))
+	}
+	if !strings.Contains(logs.String(), "daily cleanup complete") {
+		t.Fatalf("provided logger did not receive cleanup summary: %s", logs.String())
+	}
+}
+
 // TestClean_HandlesMultipleModelsPerProject verifies each model's index is aged
 // independently, since switching models creates a separate index directory.
 func TestClean_HandlesMultipleModelsPerProject(t *testing.T) {
@@ -442,6 +494,56 @@ func TestClean_HoldsLockDuringRemovalAndReleasesItAfterFailure(t *testing.T) {
 	lock, lockErr := indexlock.TryAcquire(lockPath)
 	require.NoError(t, lockErr)
 	require.NotNil(t, lock, "cleanup must release the index lock after a removal failure")
+	lock.Release()
+}
+
+func TestClean_HoldsCollectionLockThroughSharedCleanupAndRemoval(t *testing.T) {
+	tmp := resolvedTempDir(t)
+	t.Setenv("XDG_DATA_HOME", tmp)
+
+	project := projectDir(t, "stale-shared")
+	dbPath := config.DBPathForProjectProfile(project, embedder.DefaultModel, 4, "int8", 512)
+	require.NoError(t, os.MkdirAll(filepath.Dir(dbPath), 0o755))
+	s, err := store.NewCollection(dbPath, 4, "int8", project)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	db, err := sql.Open("sqlite3", dbPath)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE projects SET last_accessed_at = ? WHERE path = ?`, daysAgo(45), project)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	hashDir := filepath.Dir(dbPath)
+	lockPath := indexlock.LockPathForDB(dbPath)
+	removeErr := errors.New("injected removal failure")
+	cleanupLockHeld := false
+	removeLockHeld := false
+	originalCleanup := cleanupCollectionAt
+	originalRemove := removeIndexDir
+	cleanupCollectionAt = func(path string, cutoff time.Time) (store.CleanupStats, bool, error) {
+		assert.Equal(t, dbPath, path)
+		cleanupLockHeld = indexlock.IsAnyHeld(lockPath)
+		return originalCleanup(path, cutoff)
+	}
+	removeIndexDir = func(path string) error {
+		assert.Equal(t, hashDir, path)
+		removeLockHeld = indexlock.IsAnyHeld(lockPath)
+		return removeErr
+	}
+	t.Cleanup(func() {
+		cleanupCollectionAt = originalCleanup
+		removeIndexDir = originalRemove
+	})
+
+	_, _, err = runCleanIndexes(t, tmp, 30)
+	require.ErrorIs(t, err, removeErr)
+	assert.True(t, cleanupLockHeld, "cleanup must hold the collection lock while mutating the database")
+	assert.True(t, removeLockHeld, "cleanup must retain the collection lock while removing the directory")
+	assert.DirExists(t, hashDir, "the injected removal failure must leave the collection directory")
+
+	lock, lockErr := indexlock.TryAcquire(lockPath)
+	require.NoError(t, lockErr)
+	require.NotNil(t, lock, "cleanup must release the collection lock after a failure")
 	lock.Release()
 }
 

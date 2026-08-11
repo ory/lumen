@@ -62,6 +62,7 @@ func defaultServerForBackend(backend string) ServerConfig {
 func defaultsMap() map[string]any {
 	return map[string]any{
 		"max_chunk_tokens": 512,
+		"vector_storage":   "int8",
 		"freshness_ttl":    "60s",
 		"reindex_timeout":  "0s",
 		"log_level":        "info",
@@ -220,6 +221,9 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	if v := os.Getenv("LUMEN_LOG_LEVEL"); v != "" {
 		globals["log_level"] = v
 	}
+	if v := os.Getenv("LUMEN_VECTOR_STORAGE"); v != "" {
+		globals["vector_storage"] = strings.ToLower(v)
+	}
 	if len(globals) > 0 {
 		_ = k.Load(confmap.Provider(globals, "."), nil)
 	}
@@ -301,6 +305,14 @@ func (s *ConfigService) MaxChunkTokens() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.k.Int("max_chunk_tokens")
+}
+
+// VectorStorage returns the sqlite-vec element type used for persisted
+// embeddings. int8 is the default; float32 is retained as an opt-in override.
+func (s *ConfigService) VectorStorage() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.ToLower(strings.TrimSpace(s.k.String("vector_storage")))
 }
 
 func (s *ConfigService) FreshnessTTL() time.Duration {
@@ -429,6 +441,10 @@ func (s *ConfigService) ServersForModel(model string) ([]int, error) {
 // other goroutines, or on a temporary ConfigService (as in reload). Must not
 // be called while holding s.mu — it acquires RLock via Servers().
 func (s *ConfigService) validate() error {
+	storage := s.VectorStorage()
+	if storage != "int8" && storage != "float32" {
+		return fmt.Errorf("config: vector_storage must be int8 or float32, got %q", storage)
+	}
 	servers := s.Servers()
 	if len(servers) == 0 {
 		return fmt.Errorf("config: servers list is empty")

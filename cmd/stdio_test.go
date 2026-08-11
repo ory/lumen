@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -45,6 +46,16 @@ var (
 	updateGolden = flag.Bool("update-golden", false, "update golden test files")
 	discardLog   = slog.New(slog.NewTextHandler(io.Discard, nil))
 )
+
+func TestIndexStatusOutputDeduplicationRateJSONTag(t *testing.T) {
+	data, err := json.Marshal(IndexStatusOutput{DeduplicationRate: 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"deduplication_rate":0.5`) || strings.Contains(string(data), "deduplication_ratio") {
+		t.Fatalf("unexpected JSON: %s", data)
+	}
+}
 
 // assertGolden compares got against the golden file at path. If -update-golden
 // is set, it writes got to the golden file instead.
@@ -399,10 +410,10 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 		t.Fatalf("expected same effective root, got %q vs %q", rootA, rootB)
 	}
 
-	if _, err := os.Stat(config.DBPathForProject(rootA, "model-a")); err != nil {
+	if _, err := os.Stat(ic.dbPath(rootA, "model-a")); err != nil {
 		t.Fatalf("expected model-a DB to exist: %v", err)
 	}
-	if _, err := os.Stat(config.DBPathForProject(rootB, "model-b")); err != nil {
+	if _, err := os.Stat(ic.dbPath(rootB, "model-b")); err != nil {
 		t.Fatalf("expected model-b DB to exist: %v", err)
 	}
 
@@ -556,7 +567,7 @@ func TestIndexerCache_GetOrCreate_PreferredRoot(t *testing.T) {
 			cfg:      newTestConfigService(t, 512),
 		}
 		// Pre-create the DB file at parentDir so the preferred root is adopted.
-		dbPath := config.DBPathForProject(parentDir, "stub")
+		dbPath := ic.dbPath(parentDir, "stub")
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1110,7 +1121,7 @@ func TestEnsureIndexed_SkipsWhenLockHeld(t *testing.T) {
 		t.Fatalf("getOrCreate: %v", err)
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, ic.embedder.ModelName())
+	dbPath := ic.dbPath(effectiveRoot, ic.embedder.ModelName())
 	lockPath := indexlock.LockPathForDB(dbPath)
 
 	// Ensure the lock file's parent directory exists (getOrCreate creates the DB
@@ -1223,8 +1234,10 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
+	cfg := newTestConfigService(t, 512)
 	// Build a real DB at the expected path and stamp it with a recent timestamp.
-	dbPath := config.DBPathForProject(projectDir, "stub")
+	dbPath := configuredDBPath(cfg, projectDir, "stub")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1232,10 +1245,9 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
-		cfg:      newTestConfigService(t, 512),
+		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")
 	if err != nil {
@@ -1256,7 +1268,9 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dbPath := config.DBPathForProject(projectDir, "stub")
+	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
+	cfg := newTestConfigService(t, 512)
+	dbPath := configuredDBPath(cfg, projectDir, "stub")
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1265,10 +1279,9 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	ic := &indexerCache{
 		embedder: &stubEmbedder{},
-		cfg:      newTestConfigService(t, 512),
+		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")
 	if err != nil {
@@ -1380,6 +1393,128 @@ func TestGetOrCreate_SeedCancelledByClose(t *testing.T) {
 	}
 }
 
+func TestGetOrCreateSupportsNilConfig(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	projectDir := t.TempDir()
+	ic := &indexerCache{embedder: &stubEmbedder{}, log: discardLog}
+	idx, _, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ic.maxChunkTokens() != 0 || ic.vectorStorage() != "int8" {
+		t.Fatalf("nil-config defaults = %d, %q", ic.maxChunkTokens(), ic.vectorStorage())
+	}
+	if err := idx.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyMigrationPreparationRunsInBackgroundIndexing(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	projectDir := t.TempDir()
+	cfg := newTestConfigService(t, 512)
+	original := prepareMigrationFunc
+	t.Cleanup(func() { prepareMigrationFunc = original })
+	prepareCalls := 0
+	prepareMigrationFunc = func(_ *index.Indexer, gotProject, _ string) error {
+		prepareCalls++
+		if gotProject != projectDir {
+			t.Errorf("project = %q, want %q", gotProject, projectDir)
+			return nil
+		}
+		return nil
+	}
+	ic := &indexerCache{
+		embedder: &stubEmbedder{},
+		cfg:      cfg,
+		log:      discardLog,
+		ensureFreshFunc: func(_ context.Context, _ *index.Indexer, _ string, _ index.ProgressFunc) (bool, index.Stats, error) {
+			if prepareCalls != 1 {
+				t.Errorf("PrepareLegacyMigration calls before EnsureFresh = %d, want 1", prepareCalls)
+				return false, index.Stats{}, nil
+			}
+			return false, index.Stats{}, nil
+		},
+	}
+	idx, effectiveRoot, _, err := ic.getOrCreate(projectDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+	if prepareCalls != 0 {
+		t.Fatalf("PrepareLegacyMigration ran during getOrCreate: %d calls", prepareCalls)
+	}
+	input := SemanticSearchInput{Cwd: projectDir, Path: projectDir, Query: "test"}
+	if _, err := ic.ensureIndexed(idx, input, effectiveRoot, ic.dbPath(effectiveRoot, "stub"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if prepareCalls != 1 {
+		t.Fatalf("PrepareLegacyMigration calls = %d, want 1", prepareCalls)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		ic.mu.RLock()
+		active := ic.reindexing[cacheKey(effectiveRoot, "stub")]
+		ic.mu.RUnlock()
+		if !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background reindex state was not cleared")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	ic.mu.Lock()
+	for key, entry := range ic.cache {
+		entry.lastCheckedAt = time.Time{}
+		ic.cache[key] = entry
+	}
+	ic.mu.Unlock()
+	if _, err := ic.ensureIndexed(idx, input, effectiveRoot, ic.dbPath(effectiveRoot, "stub"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if prepareCalls != 1 {
+		t.Fatalf("PrepareLegacyMigration calls after second refresh = %d, want 1", prepareCalls)
+	}
+}
+
+func TestStartDailyCleanupIsAsyncAndTracked(t *testing.T) {
+	original := runDailyCleanupFunc
+	started := make(chan struct{})
+	release := make(chan struct{})
+	runDailyCleanupFunc = func(string, time.Time, *slog.Logger) {
+		close(started)
+		<-release
+	}
+	t.Cleanup(func() { runDailyCleanupFunc = original })
+
+	ic := &indexerCache{}
+	ic.startDailyCleanup(t.TempDir(), time.Now(), discardLog)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("daily cleanup did not start")
+	}
+
+	closeDone := make(chan struct{})
+	go func() {
+		ic.Close()
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+		t.Fatal("Close returned before tracked daily cleanup completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after daily cleanup completed")
+	}
+}
+
 func TestFormatSearchResults_IncludesSeedWarning(t *testing.T) {
 	out := SemanticSearchOutput{
 		Results:     nil,
@@ -1443,7 +1578,7 @@ func TestEnsureIndexed_FreshnessTTL(t *testing.T) {
 		Limit: 8,
 	}
 
-	dbPath := config.DBPathForProject(effectiveRoot, ic.embedder.ModelName())
+	dbPath := ic.dbPath(effectiveRoot, ic.embedder.ModelName())
 
 	// First call: no TTL entry yet — runs EnsureFresh and records lastCheckedAt.
 	_, err = ic.ensureIndexed(idx, input, effectiveRoot, dbPath, nil)
@@ -1625,7 +1760,7 @@ func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	idx, err := index.NewIndexer(dbPath, &stubEmbedder{}, 512)
+	idx, err := index.NewIndexerForProject(dbPath, &stubEmbedder{}, 512, "int8", tmpDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1633,7 +1768,14 @@ func TestEnsureIndexed_SkipsMerkleWalkWhenRecentlyIndexedExternally(t *testing.T
 
 	// Simulate an external process (e.g. lumen index from SessionStart) having
 	// recently written last_indexed_at to the DB.
-	if err := writeDBWithLastIndexedAt(t, dbPath, time.Now().Add(-5*time.Second)); err != nil {
+	external, err := store.NewCollection(dbPath, 4, "int8", tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := external.SetMeta("last_indexed_at", time.Now().Add(-5*time.Second).UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if err := external.Close(); err != nil {
 		t.Fatal(err)
 	}
 

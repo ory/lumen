@@ -221,11 +221,28 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 
 // setupIndexer receives dbPath so it is computed exactly once in runIndex.
 func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath string, logger *slog.Logger) (*index.Indexer, error) {
-	idx, err := index.NewIndexer(dbPath, emb, cfg.MaxChunkTokens())
+	return setupIndexerForProject(cfg, emb, dbPath, "", logger)
+}
+
+func configuredDBPath(cfg *config.ConfigService, projectPath, model string) string {
+	dimensions := cfg.ServerDims(0)
+	return config.DBPathForProjectProfile(projectPath, model, dimensions, cfg.VectorStorage(), cfg.MaxChunkTokens())
+}
+
+func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath, projectPath string, logger *slog.Logger) (*index.Indexer, error) {
+	idx, err := index.NewIndexerForProject(dbPath, emb, cfg.MaxChunkTokens(), cfg.VectorStorage(), projectPath)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}
 	idx.SetLogger(logger)
+	if projectPath != "" {
+		legacyPath := config.LegacyDBPathForProject(projectPath, emb.ModelName())
+		if err := idx.PrepareLegacyMigration(projectPath, legacyPath); err != nil {
+			if logger != nil {
+				logger.Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
+			}
+		}
+	}
 	return idx, nil
 }
 
@@ -233,47 +250,40 @@ func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbP
 // returns the stats and elapsed time. skipped is true when another indexer holds
 // the lock. err is nil if indexing was cancelled by a signal.
 func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.FailoverEmbedder, projectPath string, p *tui.Progress, logger *slog.Logger) (stats index.Stats, elapsed time.Duration, skipped bool, err error) {
-	dbPath := config.DBPathForProject(projectPath, emb.ModelName())
+	dbPath := configuredDBPath(cfg, projectPath, emb.ModelName())
 	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
 		err = fmt.Errorf("create db directory: %w", mkErr)
 		return
 	}
 
-	lockPath := indexlock.LockPathForDB(dbPath)
-	lock, lockErr := indexlock.TryAcquire(lockPath)
+	collectionLock, lockErr := indexlock.TryAcquireShared(indexlock.LockPathForDB(dbPath))
 	if lockErr != nil {
-		err = fmt.Errorf("acquire index lock: %w", lockErr)
+		err = fmt.Errorf("acquire collection lock: %w", lockErr)
 		return
 	}
-	if lock == nil {
+	if collectionLock == nil {
 		skipped = true
 		return
 	}
-	defer lock.Release()
+	defer collectionLock.Release()
+	projectLock, lockErr := indexlock.TryAcquire(indexlock.LockPathForProject(dbPath, projectPath))
+	if lockErr != nil {
+		err = fmt.Errorf("acquire project index lock: %w", lockErr)
+		return
+	}
+	if projectLock == nil {
+		skipped = true
+		return
+	}
+	defer projectLock.Release()
 
-	// Install signal handling before donor seeding: copying a large sibling
-	// index can take seconds, and cancellation must be able to close/remove the
-	// seed temp file before the process exits.
+	// Cancel context on SIGTERM or SIGINT so the indexer stops cleanly and
+	// the deferred lock releases run before exit.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	// Reuse a sibling worktree's index for a brand-new database instead of
-	// re-embedding from scratch. The index lock serializes CLI indexers, while
-	// SeedFromDonor's seed lock also serializes this copy with MCP callers.
-	// A forced rebuild cannot reuse the copied embeddings, so skip the donor
-	// copy in that mode.
 	force, _ := cmd.Flags().GetBool("force")
-	if !force {
-		seedFromDonorIfNew(ctx, dbPath, projectPath, emb.ModelName(), logger, seedOptions{
-			status: p.Info,
-		})
-	}
-	if ctx.Err() != nil {
-		logger.Info("indexing cancelled by signal", "project", projectPath)
-		return
-	}
-
-	idx, setupErr := setupIndexer(cfg, emb, dbPath, logger)
+	idx, setupErr := setupIndexerForProject(cfg, emb, dbPath, projectPath, logger)
 	if setupErr != nil {
 		err = setupErr
 		return

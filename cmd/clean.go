@@ -17,6 +17,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,7 +36,13 @@ const (
 	maxCleanDays     = 106751
 )
 
-var removeIndexDir = os.RemoveAll
+const dailyCleanupInterval = 24 * time.Hour
+
+var (
+	removeIndexDir      = os.RemoveAll
+	cleanupCollectionAt = store.CleanupCollectionAt
+	tryAcquireExclusive = indexlock.TryAcquire
+)
 
 func init() {
 	addCleanFlags(cleanCmd)
@@ -46,24 +53,23 @@ func init() {
 // definition never drifts from what runClean reads.
 func addCleanFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("days", defaultCleanDays,
-		"remove indexes not used in the last N days (0 removes every eligible index except those protected by active locks)")
+		"remove indexes not used in the last N days (0 removes every index that is not currently being written)")
 }
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Remove unused or orphaned lumen indexes",
-	Long: fmt.Sprintf(`Deletes unused lumen index databases under ~/.local/share/lumen/.
+	Long: fmt.Sprintf(`Garbage-collects lumen indexes under ~/.local/share/lumen/.
 
-An index is removed when it has not been opened for --days days (default %d),
-or when the project it was built for no longer exists — indexes are keyed by
-project path, embedding model, and index version, so renamed projects, deleted
-checkouts, and abandoned models leave behind data that is never read again.
+Shared collections lose project memberships that have not been opened for
+--days days (default %d), or whose worktree no longer exists. Unreferenced file
+revisions, chunks, and vectors are then deleted and free pages are reclaimed.
+Legacy per-project index directories are removed using the same age policy.
 
 Indexes written by older binaries that never recorded an access time fall back
 to their last indexing time; those without any usable timestamp are removed.
 
-Use "lumen clean --days 0" to drop every eligible cached index except those
-protected by active locks, and
+Use "lumen clean --days 0" to drop every cached index on this host, and
 "lumen index --force <project-path>" to rebuild a single project from scratch.
 
 Indexes with an indexer currently running are always kept.`, defaultCleanDays),
@@ -83,27 +89,83 @@ func runClean(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--days must not exceed %d, got %d", maxCleanDays, days)
 	}
 	dataDir := filepath.Join(config.XDGDataDir(), "lumen")
-	return cleanIndexes(cmd.ErrOrStderr(), cmd.OutOrStdout(), dataDir, days, time.Now())
+	reporter := interactiveCleanReporter{progress: tui.NewProgress(os.Stderr)}
+	summary, err := cleanIndexes(reporter, dataDir, days, time.Now())
+	if output := formatCleanSummary(summary); output != "" {
+		fmt.Printf("%s", output)
+	}
+	return err
 }
 
-// cleanIndexes removes every stale index directory directly under dataDir,
-// reporting each decision on stderr and a summary on stdout. now is injected so
-// the age cutoff is testable. Failures to remove a single directory are
-// reported and the sweep continues; the first such failure is returned once
-// every directory has been considered.
-func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.Time) error {
-	progress := tui.NewProgress(stderr)
+type cleanReporter interface {
+	Info(string)
+	Error(string)
+}
+
+type interactiveCleanReporter struct {
+	progress *tui.Progress
+}
+
+func (r interactiveCleanReporter) Info(message string) {
+	r.progress.Info(message)
+}
+
+func (interactiveCleanReporter) Error(message string) {
+	fmt.Fprintf(os.Stderr, "%s\n", message)
+}
+
+type slogCleanReporter struct {
+	logger *slog.Logger
+}
+
+func (r slogCleanReporter) Info(message string) {
+	r.logger.Info("daily cleanup detail", "message", message)
+}
+
+func (r slogCleanReporter) Error(message string) {
+	r.logger.Warn("daily cleanup issue", "message", message)
+}
+
+type cleanSummary struct {
+	noData          bool
+	removed         int
+	skipped         int
+	projectsRemoved int
+	vectorsRemoved  int
+	bytesReclaimed  int64
+}
+
+func formatCleanSummary(summary cleanSummary) string {
+	if summary.noData {
+		return ""
+	}
+	output := fmt.Sprintf("Removed %d index director%s, skipped %d.\n",
+		summary.removed, pluralY(summary.removed), summary.skipped)
+	if summary.projectsRemoved > 0 || summary.vectorsRemoved > 0 || summary.bytesReclaimed > 0 {
+		output += fmt.Sprintf("Shared cleanup: %d projects, %d vectors, %d bytes reclaimed.\n",
+			summary.projectsRemoved, summary.vectorsRemoved, summary.bytesReclaimed)
+	}
+	return output
+}
+
+// cleanIndexes removes every stale index directory directly under dataDir and
+// reports individual decisions through reporter. The returned summary is
+// rendered by the caller using the output strategy for its execution context.
+// Failures to remove a single directory are reported and the sweep continues;
+// the first such failure is returned after every directory has been considered.
+func cleanIndexes(reporter cleanReporter, dataDir string, days int, now time.Time) (cleanSummary, error) {
+	var summary cleanSummary
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			progress.Info("No index data found — nothing to clean.")
-			return nil
+			reporter.Info("No index data found — nothing to clean.")
+			summary.noData = true
+			return summary, nil
 		}
-		return fmt.Errorf("read data dir: %w", err)
+		return summary, fmt.Errorf("read data dir: %w", err)
 	}
 
 	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
-	removed, skipped := 0, 0
 	var firstErr error
 
 	for _, entry := range entries {
@@ -113,44 +175,66 @@ func cleanIndexes(stderr, stdout io.Writer, dataDir string, days int, now time.T
 			continue
 		}
 		hashDir := filepath.Join(dataDir, entry.Name())
-		wasRemoved, err := cleanIndex(progress, entry.Name(), hashDir, days, cutoff)
+		wasRemoved, sharedStats, cleanErr := cleanIndex(reporter, entry.Name(), hashDir, days, cutoff)
+		summary.projectsRemoved += sharedStats.ProjectsRemoved
+		summary.vectorsRemoved += sharedStats.VectorsRemoved
+		summary.bytesReclaimed += sharedStats.BytesReclaimed
 		if wasRemoved {
-			removed++
+			summary.removed++
 		} else {
-			skipped++
+			summary.skipped++
 		}
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
+		if cleanErr != nil && firstErr == nil {
+			firstErr = cleanErr
 		}
 	}
-
-	_, _ = fmt.Fprintf(stdout, "Removed %d index director%s, skipped %d.\n",
-		removed, pluralY(removed), skipped)
-	return firstErr
+	return summary, firstErr
 }
 
-// cleanIndex evaluates and removes one index while holding its writer lock.
-func cleanIndex(progress *tui.Progress, name, hashDir string, days int, cutoff time.Time) (bool, error) {
+// cleanIndex cleans one legacy index or shared collection while retaining the
+// exclusive collection lock for the entire database cleanup and removal.
+func cleanIndex(reporter cleanReporter, name, hashDir string, days int, cutoff time.Time) (bool, store.CleanupStats, error) {
 	dbPath := filepath.Join(hashDir, "index.db")
-	lock, err := indexlock.TryAcquire(indexlock.LockPathForDB(dbPath))
-	if err != nil || lock == nil {
-		progress.Info(fmt.Sprintf("Keeping %s: an indexer is currently running.", name))
-		return false, nil
+	lock, lockErr := tryAcquireExclusive(indexlock.LockPathForDB(dbPath))
+	if lockErr != nil {
+		reporter.Error(fmt.Sprintf("Failed to acquire index lock for %s: %v", name, lockErr))
+		return false, store.CleanupStats{}, fmt.Errorf("acquire index lock for %s: %w", name, lockErr)
+	}
+	if lock == nil {
+		reporter.Info(fmt.Sprintf("Keeping %s: an indexer is currently running.", name))
+		return false, store.CleanupStats{}, nil
 	}
 	defer lock.Release()
 
+	sharedStats, shared, sharedErr := cleanupCollectionAt(dbPath, cutoff)
+	if shared {
+		if sharedErr != nil {
+			reporter.Error(fmt.Sprintf("Failed to clean shared collection %s: %v", name, sharedErr))
+			return false, store.CleanupStats{}, fmt.Errorf("clean shared collection %s: %w", name, sharedErr)
+		}
+		if sharedStats.ProjectsLeft > 0 {
+			reporter.Info(fmt.Sprintf("Cleaned %s: removed %d projects and %d vectors.", name, sharedStats.ProjectsRemoved, sharedStats.VectorsRemoved))
+			return false, sharedStats, nil
+		}
+		// Empty collections have no future owner and can be removed as a
+		// directory, reclaiming sidecars and metadata in one operation.
+		if err := removeIndexDir(hashDir); err != nil {
+			reporter.Error(fmt.Sprintf("Failed to remove %s: %v", hashDir, err))
+			return false, sharedStats, fmt.Errorf("remove empty collection %s: %w", hashDir, err)
+		}
+		return true, sharedStats, nil
+	}
+
 	stale, reason := isIndexStale(dbPath, days, cutoff)
 	if !stale {
-		return false, nil
+		return false, store.CleanupStats{}, nil
 	}
 	if err := removeIndexDir(hashDir); err != nil {
-		progress.Info(fmt.Sprintf("Failed to remove %s: %v", hashDir, err))
-		return false, fmt.Errorf("remove %s: %w", hashDir, err)
+		reporter.Error(fmt.Sprintf("Failed to remove %s: %v", hashDir, err))
+		return false, store.CleanupStats{}, fmt.Errorf("remove %s: %w", hashDir, err)
 	}
-	progress.Info(fmt.Sprintf("Removed %s (%s).", name, reason))
-	return true, nil
+	reporter.Info(fmt.Sprintf("Removed %s (%s).", name, reason))
+	return true, store.CleanupStats{}, nil
 }
 
 // isIndexStale reports whether the index at dbPath is no longer worth keeping,
@@ -216,4 +300,37 @@ func pluralY(n int) string {
 		return "y"
 	}
 	return "ies"
+}
+
+// runDailyCleanup performs the MCP-startup maintenance sweep at most once per
+// day. The stamp is deliberately outside collection directories so it is not
+// mistaken for an index by cleanIndexes.
+func runDailyCleanup(dataDir string, now time.Time, logger *slog.Logger) {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	stampPath := filepath.Join(dataDir, ".last-cleanup")
+	if info, err := os.Stat(stampPath); err == nil && now.Sub(info.ModTime()) < dailyCleanupInterval {
+		logger.Debug("daily cleanup skipped: stamp is fresh", "stamp_path", stampPath)
+		return
+	}
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		logger.Warn("daily cleanup: create data directory", "path", dataDir, "error", err)
+		return
+	}
+	summary, err := cleanIndexes(slogCleanReporter{logger: logger}, dataDir, defaultCleanDays, now)
+	if err != nil {
+		logger.Warn("daily cleanup failed", "error", err)
+		return
+	}
+	logger.Info("daily cleanup complete",
+		"indexes_removed", summary.removed,
+		"indexes_skipped", summary.skipped,
+		"projects_removed", summary.projectsRemoved,
+		"vectors_removed", summary.vectorsRemoved,
+		"bytes_reclaimed", summary.bytesReclaimed,
+	)
+	if err := os.WriteFile(stampPath, []byte(now.UTC().Format(time.RFC3339)), 0o600); err != nil {
+		logger.Warn("daily cleanup: write stamp", "path", stampPath, "error", err)
+	}
 }
