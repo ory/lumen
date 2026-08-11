@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "description": "Precise local semantic code search for Codex, powered by local embedding models.",
   "author": {
     "name": "Ory Corp",
@@ -25,7 +25,9 @@
     "longDescription": "Index and search a codebase semantically with local embedding models and no cloud service.",
     "developerName": "Ory Corp",
     "category": "Developer Tools",
-    "capabilities": ["Read"],
+    "capabilities": [
+      "Read"
+    ],
     "websiteURL": "https://github.com/ory/lumen",
     "defaultPrompt": [
       "Find the code relevant to this task with Lumen.",
