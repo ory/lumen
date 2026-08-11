@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.42](https://github.com/ory/lumen/compare/v0.0.41...v0.0.42) (2026-08-11)
+
+
+### Features
+
+* **clean:** remove stale and orphaned indexes ([#180](https://github.com/ory/lumen/issues/180)) ([f62bf57](https://github.com/ory/lumen/commit/f62bf57cc08d307f7d81801fd297c7e199ed4d66))
+* **codex:** add native Lumen plugin package ([#184](https://github.com/ory/lumen/issues/184)) ([f0a2622](https://github.com/ory/lumen/commit/f0a262205fc4833e486bfe17589f413a59a35983))
+* share and compress Lumen indexes across worktrees ([#183](https://github.com/ory/lumen/issues/183)) ([80fe333](https://github.com/ory/lumen/commit/80fe333f533408c4b5e5e751477e3772cbae2d69))
+
+
+### Bug Fixes
+
+* **clean:** address review feedback ([#182](https://github.com/ory/lumen/issues/182)) ([cce6305](https://github.com/ory/lumen/commit/cce6305835a9b69ee6cabb2cac6846bed1672890))
+* **index:** safely seed nested worktree indexes ([#178](https://github.com/ory/lumen/issues/178)) ([ce62b60](https://github.com/ory/lumen/commit/ce62b6051ac5cb46418b8bfbc4c43ce32cb74bd2))
+* qualify plugin MCP tool references ([#179](https://github.com/ory/lumen/issues/179)) ([f854abc](https://github.com/ory/lumen/commit/f854abc34d7c0f6874fd55933317035f1e8b605e))
+
 ## [0.0.41](https://github.com/ory/lumen/compare/v0.0.40...v0.0.41) (2026-05-20)
 
 

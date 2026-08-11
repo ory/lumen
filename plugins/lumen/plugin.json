@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "lumen",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "description": "Precise local semantic code search for coding agents, powered by local embedding models.",
   "author": {
     "name": "Ory Corp",
