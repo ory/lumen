@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,12 +22,21 @@ import (
 
 // ServerConfig holds per-server configuration.
 type ServerConfig struct {
-	Backend   string  `koanf:"backend"`
-	Host      string  `koanf:"host"`
-	Model     string  `koanf:"model"`
-	Dims      int     `koanf:"dims"`
-	CtxLength int     `koanf:"ctx_length"`
-	MinScore  float64 `koanf:"min_score"`
+	Backend         string  `koanf:"backend"`
+	Host            string  `koanf:"host"`
+	Model           string  `koanf:"model"`
+	Dims            int     `koanf:"dims"`
+	CtxLength       int     `koanf:"ctx_length"`
+	MinScore        float64 `koanf:"min_score"`
+	APIKey          string  `koanf:"api_key"`
+	SkipHealthCheck bool    `koanf:"skip_health_check"`
+}
+
+// SkipsHealthCheck reports whether health probes should be bypassed for this
+// server. skip_health_check is an escape hatch for OpenAI-compatible gateways
+// that do not implement /v1/models, so it is ignored for other backends.
+func (s ServerConfig) SkipsHealthCheck() bool {
+	return s.SkipHealthCheck && s.Backend == BackendOpenAI
 }
 
 // ConfigService wraps koanf and provides typed config access.
@@ -50,12 +60,27 @@ func defaultServerForBackend(backend string) ServerConfig {
 			Host:    "http://localhost:1234",
 			Model:   models.DefaultLMStudioModel,
 		}
-	default:
+	case BackendOpenAI:
+		// No sane localhost default for a remote/internal gateway — host and
+		// model must be set explicitly via env vars or config file.
+		return ServerConfig{
+			Backend: BackendOpenAI,
+		}
+	case BackendOllama:
 		return ServerConfig{
 			Backend: BackendOllama,
 			Host:    "http://localhost:11434",
 			Model:   models.DefaultOllamaModel,
 		}
+	default:
+		// Preserve whatever was passed instead of silently normalizing an
+		// unrecognized value to Ollama. This function is reached from
+		// applyEnvOverrides with a raw, unvalidated LUMEN_BACKEND value — a
+		// typo like "OpenAI" (wrong case) must surface as validate()'s
+		// "unknown backend" error, not silently redirect the server to
+		// localhost Ollama while dropping an api_key that was only valid for
+		// the originally configured backend.
+		return ServerConfig{Backend: backend}
 	}
 }
 
@@ -131,14 +156,7 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 		_ = k.Unmarshal("servers", &servers)
 		if len(servers) > 0 {
 			servers[0].Model = svc.modelOverride
-			serverMaps := make([]map[string]any, len(servers))
-			for i, s := range servers {
-				serverMaps[i] = map[string]any{
-					"backend": s.Backend, "host": s.Host, "model": s.Model,
-					"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
-				}
-			}
-			_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+			_ = k.Load(confmap.Provider(map[string]any{"servers": serverConfigMaps(servers)}, "."), nil)
 		}
 	}
 
@@ -156,14 +174,7 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 		// Drop the existing list first — koanf merge would otherwise keep
 		// stale entries beyond the filtered length.
 		k.Delete("servers")
-		serverMaps := make([]map[string]any, len(filtered))
-		for i, s := range filtered {
-			serverMaps[i] = map[string]any{
-				"backend": s.Backend, "host": s.Host, "model": s.Model,
-				"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
-			}
-		}
-		_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+		_ = k.Load(confmap.Provider(map[string]any{"servers": serverConfigMaps(filtered)}, "."), nil)
 	}
 
 	if err := svc.validate(); err != nil {
@@ -235,9 +246,13 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	ctx := os.Getenv("LUMEN_EMBED_CTX")
 	ollamaHost := os.Getenv("OLLAMA_HOST")
 	lmStudioHost := os.Getenv("LM_STUDIO_HOST")
+	openAIHost := os.Getenv("OPENAI_BASE_URL")
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	skipHealthCheck := os.Getenv("LUMEN_EMBED_SKIP_HEALTH_CHECK")
 
 	// Only apply if at least one server env var is explicitly set
-	hasOverride := backendEnv != "" || model != "" || dims != "" || ctx != "" || ollamaHost != "" || lmStudioHost != ""
+	hasOverride := backendEnv != "" || model != "" || dims != "" || ctx != "" ||
+		ollamaHost != "" || lmStudioHost != "" || openAIHost != "" || openAIKey != "" || skipHealthCheck != ""
 	if !hasOverride {
 		return
 	}
@@ -250,10 +265,30 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	}
 	srv := servers[0]
 
-	// If backend is explicitly overridden, reset server[0] to backend-specific
-	// defaults first to avoid mixed config (e.g. lmstudio backend with Ollama host/model).
-	if backendEnv != "" {
+	// If backend is explicitly overridden to a DIFFERENT backend than what's
+	// currently configured, reset server[0] to backend-specific defaults
+	// first to avoid mixed config (e.g. lmstudio backend with Ollama
+	// host/model). Skip the reset when backendEnv just confirms the backend
+	// that's already configured (e.g. LUMEN_BACKEND=openai set redundantly
+	// alongside a config.yaml that already has backend: openai) — otherwise
+	// this would silently wipe an explicitly configured host/model. For
+	// ollama/lmstudio that wipe is masked by their localhost defaults (it
+	// just silently redirects a remote host back to localhost); for openai,
+	// which has no usable default host, it turns into a hard validation
+	// failure at startup. SkipHealthCheck is always carried forward across an
+	// actual backend switch — it's a harmless no-op for any backend. APIKey is
+	// only carried forward when switching INTO openai: validate() rejects a
+	// non-empty api_key on any other backend, so carrying it into e.g. ollama
+	// would turn a same-invocation `LUMEN_BACKEND=ollama` override (with an
+	// openai server left configured in config.yaml) into a hard startup
+	// failure instead of the intended backend switch.
+	if backendEnv != "" && backendEnv != srv.Backend {
+		prevAPIKey, prevSkipHealthCheck := srv.APIKey, srv.SkipHealthCheck
 		srv = defaultServerForBackend(backendEnv)
+		if backendEnv == BackendOpenAI {
+			srv.APIKey = prevAPIKey
+		}
+		srv.SkipHealthCheck = prevSkipHealthCheck
 	}
 
 	if model != "" {
@@ -272,9 +307,27 @@ func applyEnvOverrides(k *koanf.Koanf) {
 		if lmStudioHost != "" {
 			srv.Host = lmStudioHost
 		}
+	case BackendOpenAI:
+		if openAIHost != "" {
+			srv.Host = openAIHost
+		}
 	default:
 		if ollamaHost != "" {
 			srv.Host = ollamaHost
+		}
+	}
+
+	// OPENAI_API_KEY only applies to the openai backend — otherwise an
+	// unrelated OPENAI_API_KEY left in the environment (e.g. for another
+	// tool) would silently attach itself to an ollama/lmstudio server
+	// config, where it's never sent and would trip the api_key validation
+	// below for no reason.
+	if openAIKey != "" && selectedBackend == BackendOpenAI {
+		srv.APIKey = openAIKey
+	}
+	if skipHealthCheck != "" {
+		if b, err := strconv.ParseBool(skipHealthCheck); err == nil {
+			srv.SkipHealthCheck = b
 		}
 	}
 
@@ -291,14 +344,23 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	servers[0] = srv
 
 	// Re-marshal servers back into koanf
-	serverMaps := make([]map[string]any, len(servers))
+	_ = k.Load(confmap.Provider(map[string]any{"servers": serverConfigMaps(servers)}, "."), nil)
+}
+
+// serverConfigMaps converts ServerConfig entries into the map literal shape
+// koanf expects. All three call sites that rebuild the servers list (model
+// override, server-selection filter, env override) must go through this
+// helper so new fields aren't silently dropped on one of the paths.
+func serverConfigMaps(servers []ServerConfig) []map[string]any {
+	out := make([]map[string]any, len(servers))
 	for i, s := range servers {
-		serverMaps[i] = map[string]any{
+		out[i] = map[string]any{
 			"backend": s.Backend, "host": s.Host, "model": s.Model,
 			"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
+			"api_key": s.APIKey, "skip_health_check": s.SkipHealthCheck,
 		}
 	}
-	_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+	return out
 }
 
 func (s *ConfigService) MaxChunkTokens() int {
@@ -436,6 +498,16 @@ func (s *ConfigService) ServersForModel(model string) ([]int, error) {
 	return indices, nil
 }
 
+// isLoopbackHost reports whether host is "localhost" or a loopback IP,
+// exempting local dev/test gateways from the api_key-requires-https rule.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // validate checks the current configuration for correctness.
 // Must be called either on a ConfigService that has not yet been shared with
 // other goroutines, or on a temporary ConfigService (as in reload). Must not
@@ -453,7 +525,7 @@ func (s *ConfigService) validate() error {
 		if srv.Backend == "" {
 			return fmt.Errorf("config: servers[%d]: backend is required", i)
 		}
-		if srv.Backend != BackendOllama && srv.Backend != BackendLMStudio {
+		if srv.Backend != BackendOllama && srv.Backend != BackendLMStudio && srv.Backend != BackendOpenAI {
 			return fmt.Errorf("config: servers[%d]: unknown backend %q", i, srv.Backend)
 		}
 		if srv.Model == "" {
@@ -465,6 +537,12 @@ func (s *ConfigService) validate() error {
 		u, err := url.Parse(srv.Host)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 			return fmt.Errorf("config: servers[%d]: host %q must be a valid http/https URL", i, srv.Host)
+		}
+		if srv.APIKey != "" && srv.Backend != BackendOpenAI {
+			return fmt.Errorf("config: servers[%d]: api_key is only supported for the %q backend, got %q", i, BackendOpenAI, srv.Backend)
+		}
+		if srv.APIKey != "" && u.Scheme != "https" && !isLoopbackHost(u.Hostname()) {
+			return fmt.Errorf("config: servers[%d]: api_key requires an https host (or loopback for local testing), got %q", i, srv.Host)
 		}
 		if s.serverDims(i) == 0 {
 			return fmt.Errorf("config: servers[%d]: cannot resolve dims for model %q — set dims explicitly", i, srv.Model)

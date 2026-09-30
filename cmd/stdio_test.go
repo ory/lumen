@@ -487,6 +487,94 @@ servers:
 	}
 }
 
+func TestHandleHealthCheck_RespectsSkipHealthCheck(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST", "OPENAI_API_KEY", "OPENAI_BASE_URL", "LUMEN_EMBED_SKIP_HEALTH_CHECK"} {
+		t.Setenv(k, "")
+	}
+
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	// /v1/models always 503s, simulating a gateway that doesn't implement it,
+	// even though /v1/embeddings itself works fine.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	if err := os.WriteFile(cfgFile, []byte(fmt.Sprintf(`
+servers:
+  - backend: openai
+    host: %s
+    model: remote-embed
+    dims: 3
+    skip_health_check: true
+`, srv.URL)), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	svc, err := config.NewConfigService(cfgFile)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	fe := embedder.NewFailoverEmbedder(svc)
+
+	ic := &indexerCache{embedder: fe, cfg: svc}
+	result, _, err := ic.handleHealthCheck(context.Background(), &mcp.CallToolRequest{}, HealthCheckInput{})
+	if err != nil {
+		t.Fatalf("handleHealthCheck: %v", err)
+	}
+	text := mustTextResult(t, result)
+	if !strings.Contains(text, "Status: OK") {
+		t.Fatalf("expected skip_health_check to report OK without probing /v1/models, got: %s", text)
+	}
+}
+
+func TestHandleHealthCheck_SkipHealthCheckIgnoredForNonOpenAI(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST", "OPENAI_API_KEY", "OPENAI_BASE_URL", "LUMEN_EMBED_SKIP_HEALTH_CHECK"} {
+		t.Setenv(k, "")
+	}
+
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "config.yaml")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	if err := os.WriteFile(cfgFile, []byte(fmt.Sprintf(`
+servers:
+  - backend: lmstudio
+    host: %s
+    model: local-embed
+    dims: 3
+    skip_health_check: true
+`, srv.URL)), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	svc, err := config.NewConfigService(cfgFile)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	fe := embedder.NewFailoverEmbedder(svc)
+
+	ic := &indexerCache{embedder: fe, cfg: svc}
+	result, _, err := ic.handleHealthCheck(context.Background(), &mcp.CallToolRequest{}, HealthCheckInput{})
+	if err != nil {
+		t.Fatalf("handleHealthCheck: %v", err)
+	}
+	text := mustTextResult(t, result)
+	if strings.Contains(text, "Status: OK") {
+		t.Fatalf("skip_health_check must only apply to the openai backend, got: %s", text)
+	}
+}
+
 func TestHandleHealthCheck_ModelMissingIsError(t *testing.T) {
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
 		t.Setenv(k, "")

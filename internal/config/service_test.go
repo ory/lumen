@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,6 +144,256 @@ func TestEnvServerMapping_LMStudio(t *testing.T) {
 	}
 	if got := svc.Servers()[0].Host; got != "http://lms:2222" {
 		t.Errorf("Host = %q, want http://lms:2222", got)
+	}
+}
+
+func TestEnvServerMapping_OpenAI(t *testing.T) {
+	for _, k := range []string{"LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("LUMEN_BACKEND", "openai")
+	t.Setenv("OPENAI_BASE_URL", "https://api.example.com")
+	t.Setenv("OPENAI_API_KEY", "sk-test-123")
+	t.Setenv("LUMEN_EMBED_MODEL", "text-embedding-3-small")
+	t.Setenv("LUMEN_EMBED_DIMS", "1536")
+	svc, err := NewConfigService("")
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	s := svc.Servers()[0]
+	if s.Backend != BackendOpenAI {
+		t.Errorf("Backend = %q, want %q", s.Backend, BackendOpenAI)
+	}
+	if s.Host != "https://api.example.com" {
+		t.Errorf("Host = %q, want https://api.example.com", s.Host)
+	}
+	if s.APIKey != "sk-test-123" {
+		t.Errorf("APIKey = %q, want sk-test-123", s.APIKey)
+	}
+}
+
+func TestEnvServerMapping_SkipHealthCheck(t *testing.T) {
+	for _, k := range []string{"LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST", "OPENAI_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	t.Setenv("LUMEN_BACKEND", "openai")
+	t.Setenv("OPENAI_BASE_URL", "https://api.example.com")
+	t.Setenv("LUMEN_EMBED_MODEL", "text-embedding-3-small")
+	t.Setenv("LUMEN_EMBED_DIMS", "1536")
+	t.Setenv("LUMEN_EMBED_SKIP_HEALTH_CHECK", "true")
+	svc, err := NewConfigService("")
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	if !svc.Servers()[0].SkipHealthCheck {
+		t.Error("SkipHealthCheck = false, want true")
+	}
+}
+
+func TestValidation_OpenAIBackendAccepted(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
+		t.Setenv(k, "")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`servers: [{backend: openai, host: "https://api.example.com", model: text-embedding-3-small, dims: 1536}]`), 0644)
+	if _, err := NewConfigService(f); err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+}
+
+// TestAPIKeyAndSkipHealthCheck_SurviveModelOverride guards against the
+// serverMaps rebuild in the WithModelOverride path silently dropping
+// api_key/skip_health_check — every serverMaps literal must carry both fields.
+func TestAPIKeyAndSkipHealthCheck_SurviveModelOverride(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OPENAI_API_KEY", "OPENAI_BASE_URL"} {
+		t.Setenv(k, "")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-yaml-key
+    skip_health_check: true
+`), 0644)
+	svc, err := NewConfigService(f, WithModelOverride("text-embedding-3-large"))
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	s := svc.Servers()[0]
+	if s.APIKey != "sk-yaml-key" {
+		t.Errorf("APIKey = %q, want sk-yaml-key (dropped by WithModelOverride rebuild)", s.APIKey)
+	}
+	if !s.SkipHealthCheck {
+		t.Error("SkipHealthCheck = false, want true (dropped by WithModelOverride rebuild)")
+	}
+}
+
+// TestAPIKeyAndSkipHealthCheck_SurviveServerSelection guards the same rebuild
+// in the WithServerSelection filter path.
+func TestAPIKeyAndSkipHealthCheck_SurviveServerSelection(t *testing.T) {
+	clearServerEnv(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-yaml-key
+    skip_health_check: true
+`), 0644)
+	svc, err := NewConfigService(f, WithServerSelection("text-embedding-3-small", ""))
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	s := svc.Servers()[0]
+	if s.APIKey != "sk-yaml-key" {
+		t.Errorf("APIKey = %q, want sk-yaml-key (dropped by WithServerSelection rebuild)", s.APIKey)
+	}
+	if !s.SkipHealthCheck {
+		t.Error("SkipHealthCheck = false, want true (dropped by WithServerSelection rebuild)")
+	}
+}
+
+// TestAPIKeyAndSkipHealthCheck_SurviveReload guards the reload() path, which
+// reuses applyEnvOverrides and must not drop api_key/skip_health_check either.
+func TestAPIKeyAndSkipHealthCheck_SurviveReload(t *testing.T) {
+	clearServerEnv(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-yaml-key
+    skip_health_check: true
+`), 0644)
+	svc, err := NewConfigService(f)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	svc.reload()
+	s := svc.Servers()[0]
+	if s.APIKey != "sk-yaml-key" {
+		t.Errorf("APIKey = %q, want sk-yaml-key (dropped on reload)", s.APIKey)
+	}
+	if !s.SkipHealthCheck {
+		t.Error("SkipHealthCheck = false, want true (dropped on reload)")
+	}
+}
+
+// TestAPIKeyAndSkipHealthCheck_SurviveBackendEnvReset guards against
+// applyEnvOverrides' backend-switch reset: when LUMEN_BACKEND is set,
+// server[0] is rebuilt from defaultServerForBackend to avoid mixed host/model
+// config (e.g. a stale Ollama host surviving a switch to lmstudio). Host,
+// Model and Dims are expected to be re-supplied via their own env vars in
+// that case (as the README's env-var example does) — but api_key has no env
+// var in this codepath's "supply everything via env" pattern other than
+// OPENAI_API_KEY, so a deployment that intentionally keeps only the secret
+// in config.yaml (env vars for everything else, api_key from a mounted
+// file/secret) must not have it silently dropped by the reset.
+func TestAPIKeyAndSkipHealthCheck_SurviveBackendEnvReset(t *testing.T) {
+	clearServerEnv(t)
+	t.Setenv("OPENAI_API_KEY", "")
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-yaml-key
+    skip_health_check: true
+`), 0644)
+	// Host/Model/Dims are re-supplied via env, matching the documented
+	// "Or via environment variables" pattern — only api_key is left to come
+	// from the YAML file's secret.
+	t.Setenv("LUMEN_BACKEND", "openai")
+	t.Setenv("OPENAI_BASE_URL", "https://api.example.com")
+	t.Setenv("LUMEN_EMBED_MODEL", "text-embedding-3-small")
+	t.Setenv("LUMEN_EMBED_DIMS", "1536")
+	svc, err := NewConfigService(f)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v", err)
+	}
+	s := svc.Servers()[0]
+	if s.APIKey != "sk-yaml-key" {
+		t.Errorf("APIKey = %q, want sk-yaml-key (dropped by LUMEN_BACKEND reset)", s.APIKey)
+	}
+	if !s.SkipHealthCheck {
+		t.Error("SkipHealthCheck = false, want true (dropped by LUMEN_BACKEND reset)")
+	}
+}
+
+// TestBackendEnvSwitch_AwayFromOpenAI_DropsAPIKey covers an actual backend
+// switch (unlike TestAPIKeyAndSkipHealthCheck_SurviveBackendEnvReset above,
+// where LUMEN_BACKEND merely confirms the backend already configured in
+// config.yaml and the reset branch never runs). Here config.yaml configures
+// an openai server with api_key set, and LUMEN_BACKEND=ollama switches to a
+// genuinely different backend for this invocation — the documented
+// "Selecting a server per invocation" pattern. validate() rejects a non-empty
+// api_key on any backend other than openai, so the carried-over API key must
+// not survive the switch, or NewConfigService fails outright.
+func TestBackendEnvSwitch_AwayFromOpenAI_DropsAPIKey(t *testing.T) {
+	clearServerEnv(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-yaml-key
+`), 0644)
+	t.Setenv("LUMEN_BACKEND", "ollama")
+	svc, err := NewConfigService(f)
+	if err != nil {
+		t.Fatalf("NewConfigService: %v (a carried-over api_key must not fail validation on a backend switch)", err)
+	}
+	s := svc.Servers()[0]
+	if s.Backend != BackendOllama {
+		t.Errorf("Backend = %q, want %q", s.Backend, BackendOllama)
+	}
+	if s.APIKey != "" {
+		t.Errorf("APIKey = %q, want empty (api_key must not carry over to a non-openai backend)", s.APIKey)
+	}
+}
+
+// TestBackendEnvSwitch_UnrecognizedValueErrors guards defaultServerForBackend
+// against silently normalizing a mistyped LUMEN_BACKEND value to Ollama.
+// Before this test's fix, defaultServerForBackend's `default:` arm returned
+// Ollama defaults for ANY string it didn't recognize as lmstudio or openai —
+// including a case-typo like "OpenAI" instead of "openai" — which made
+// NewConfigService succeed with backend silently switched to ollama (and,
+// with an openai server configured, its api_key silently dropped) instead of
+// reporting an error for the unrecognized backend.
+func TestBackendEnvSwitch_UnrecognizedValueErrors(t *testing.T) {
+	clearServerEnv(t)
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-prod-secret
+`), 0644)
+	// Case typo: "OpenAI" instead of "openai".
+	t.Setenv("LUMEN_BACKEND", "OpenAI")
+	_, err := NewConfigService(f)
+	if err == nil {
+		t.Fatal("NewConfigService: want error for unrecognized LUMEN_BACKEND value, got nil (silently fell back to another backend)")
 	}
 }
 
@@ -345,6 +596,18 @@ func TestValidation_InvalidHost(t *testing.T) {
 	}
 }
 
+func TestValidation_APIKeyRequiresHTTPS(t *testing.T) {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "OPENAI_API_KEY", "OPENAI_BASE_URL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
+		t.Setenv(k, "")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "config.yaml")
+	_ = os.WriteFile(f, []byte(`servers: [{backend: openai, host: "http://insecure:1234", model: text-embedding-3-small, dims: 1536, api_key: sk-test}]`), 0644)
+	if _, err := NewConfigService(f); err == nil {
+		t.Fatal("expected error: api_key over plain http must fail validation")
+	}
+}
+
 func TestValidation_MissingModel(t *testing.T) {
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
@@ -457,7 +720,10 @@ func writeThreeServerYAML(t *testing.T) string {
 
 func clearServerEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
+	for _, k := range []string{
+		"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX",
+		"OPENAI_API_KEY", "OPENAI_BASE_URL", "LUMEN_EMBED_SKIP_HEALTH_CHECK",
+	} {
 		t.Setenv(k, "")
 	}
 }
@@ -642,5 +908,26 @@ func TestWithServerSelection_EmptyArgsNoop(t *testing.T) {
 	}
 	if got := len(svc.Servers()); got != 3 {
 		t.Errorf("Servers() len = %d, want 3 (no filter should be applied)", got)
+	}
+}
+
+func TestServerConfig_SkipsHealthCheck(t *testing.T) {
+	tests := []struct {
+		backend string
+		skip    bool
+		want    bool
+	}{
+		{BackendOpenAI, true, true},
+		{BackendOpenAI, false, false},
+		{BackendOllama, true, false},
+		{BackendLMStudio, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s/%v", tt.backend, tt.skip), func(t *testing.T) {
+			s := ServerConfig{Backend: tt.backend, SkipHealthCheck: tt.skip}
+			if got := s.SkipsHealthCheck(); got != tt.want {
+				t.Errorf("SkipsHealthCheck() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

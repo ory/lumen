@@ -36,7 +36,7 @@ import (
 
 func init() {
 	indexCmd.Flags().StringP("model", "m", "", "embedding model (default: $LUMEN_EMBED_MODEL or "+embedder.DefaultModel+")")
-	indexCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\" or \"lmstudio\"); disambiguates when --model is configured on multiple backends")
+	indexCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\", \"lmstudio\", or \"openai\"); disambiguates when --model is configured on multiple backends")
 	indexCmd.Flags().BoolP("force", "f", false, "force full re-index")
 	rootCmd.AddCommand(indexCmd)
 }
@@ -195,9 +195,9 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 	if model == "" && backend == "" {
 		return config.NewConfigService(path)
 	}
-	if backend != "" && backend != config.BackendOllama && backend != config.BackendLMStudio {
-		return nil, fmt.Errorf("unknown backend %q (must be %q or %q)",
-			backend, config.BackendOllama, config.BackendLMStudio)
+	if backend != "" && backend != config.BackendOllama && backend != config.BackendLMStudio && backend != config.BackendOpenAI {
+		return nil, fmt.Errorf("unknown backend %q (must be %q, %q, or %q)",
+			backend, config.BackendOllama, config.BackendLMStudio, config.BackendOpenAI)
 	}
 
 	cfg, selErr := config.NewConfigService(path, config.WithServerSelection(model, backend))

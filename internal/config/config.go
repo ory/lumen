@@ -31,6 +31,10 @@ const (
 	BackendOllama = "ollama"
 	// BackendLMStudio is the backend identifier for LM Studio.
 	BackendLMStudio = "lmstudio"
+	// BackendOpenAI is the backend identifier for OpenAI-compatible remote
+	// embedding servers (OpenAI itself, or any internal gateway exposing the
+	// same /v1/embeddings wire format).
+	BackendOpenAI = "openai"
 )
 
 // DBPathForProject returns the default int8/512-token collection path. New

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -139,6 +140,12 @@ func (f *FailoverEmbedder) Embed(ctx context.Context, texts []string) ([][]float
 			return result, nil
 		}
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// Caller cancellation or deadline expiration, not a server
+			// problem — don't mark the active server unhealthy or failover.
+			return nil, ctxErr
+		}
+
 		if !isTransientError(err) {
 			return nil, err // 4xx = config error, don't failover
 		}
@@ -173,12 +180,14 @@ func (f *FailoverEmbedder) serversChanged() bool {
 		return true
 	}
 	for i, srv := range current {
-		// Compare key fields — if any differ, servers have changed.
-		if f.servers[i].emb == nil {
-			continue // not initialized yet, can't compare
-		}
-		cached := f.cachedConfigs[i]
-		if srv.Backend != cached.Backend || srv.Host != cached.Host || srv.Model != cached.Model {
+		// Compare the whole struct (all fields are comparable) so that any
+		// config change — including ones added after this comparison was
+		// first written, like APIKey or SkipHealthCheck — forces a
+		// re-init instead of silently keeping a stale cached embedder.
+		// Servers without an embedder are compared too: a primary that
+		// failed its probe must be retried once its config is corrected,
+		// even while a healthy fallback is active.
+		if f.cachedConfigs[i] != srv {
 			return true
 		}
 	}
@@ -239,6 +248,9 @@ func (f *FailoverEmbedder) probeHealth(ctx context.Context, i int) bool {
 		return false
 	}
 	srv := servers[i]
+	if srv.SkipsHealthCheck() {
+		return true
+	}
 	probeCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
 	defer cancel()
 	if err := ProbeServer(probeCtx, srv); err != nil {
@@ -268,6 +280,8 @@ func (f *FailoverEmbedder) ensureEmbedder(i int) error {
 		emb, err = NewOllama(srv.Model, dims, ctxLen, srv.Host)
 	case "lmstudio":
 		emb, err = NewLMStudio(srv.Model, dims, srv.Host)
+	case "openai":
+		emb, err = NewOpenAI(srv.Model, dims, srv.Host, srv.APIKey)
 	default:
 		return fmt.Errorf("unknown backend %q", srv.Backend)
 	}
@@ -279,12 +293,13 @@ func (f *FailoverEmbedder) ensureEmbedder(i int) error {
 }
 
 // isTransientError returns true if the error represents a transient failure
-// that warrants failover (5xx HTTP errors or network errors). Returns false
-// for 4xx errors (configuration errors, no failover).
+// that warrants failover (5xx HTTP errors, 429 rate limiting, or network
+// errors). Returns false for other 4xx errors (configuration errors, no
+// failover).
 func isTransientError(err error) bool {
 	var ee *EmbedError
 	if errors.As(err, &ee) {
-		return ee.StatusCode >= 500
+		return ee.StatusCode >= 500 || ee.StatusCode == http.StatusTooManyRequests
 	}
 	return true // network errors are transient
 }

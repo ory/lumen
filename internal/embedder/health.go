@@ -24,21 +24,31 @@ import (
 	"github.com/ory/lumen/internal/config"
 )
 
+// authProbeClient carries health probes that send a bearer token. It refuses
+// https→http redirects so the token cannot be forwarded in plaintext; keyless
+// probes keep using http.DefaultClient.
+var authProbeClient = &http.Client{CheckRedirect: refuseHTTPSDowngrade}
+
 // ProbeServer verifies that an embedding service is reachable and that the
 // configured model is actually loaded. A listening LM Studio or Ollama process
 // without the requested model cannot serve embeddings and must not be selected
 // as a healthy failover target.
 func ProbeServer(ctx context.Context, srv config.ServerConfig) error {
 	endpoint := strings.TrimRight(srv.Host, "/") + "/api/tags"
-	if srv.Backend == config.BackendLMStudio {
-		endpoint = strings.TrimRight(srv.Host, "/") + "/v1/models"
+	if srv.Backend == config.BackendLMStudio || srv.Backend == config.BackendOpenAI {
+		endpoint = normalizeBaseURL(srv.Host) + "/v1/models"
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("create health request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if srv.Backend == config.BackendOpenAI && srv.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+srv.APIKey)
+		client = authProbeClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("service unreachable: %w", err)
 	}
@@ -63,7 +73,7 @@ func ProbeServer(ctx context.Context, srv config.ServerConfig) error {
 		for _, model := range body.Models {
 			available = append(available, model.Name, model.Model)
 		}
-	case config.BackendLMStudio:
+	case config.BackendLMStudio, config.BackendOpenAI:
 		var body struct {
 			Data []struct {
 				ID string `json:"id"`

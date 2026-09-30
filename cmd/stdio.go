@@ -1132,6 +1132,10 @@ func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRe
 	host := srv.Host
 	model := srv.Model
 
+	if srv.SkipsHealthCheck() {
+		return healthResult(backend, host, model, true, "skip_health_check is set; service was not probed"), nil, nil
+	}
+
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 

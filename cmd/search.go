@@ -79,7 +79,7 @@ func init() {
 	searchCmd.Flags().BoolP("force", "f", false, "force full re-index before searching")
 	searchCmd.Flags().Bool("trace", false, "print per-phase timing to stderr")
 	searchCmd.Flags().StringP("model", "m", "", "embedding model override")
-	searchCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\" or \"lmstudio\")")
+	searchCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\", \"lmstudio\", or \"openai\")")
 	rootCmd.AddCommand(searchCmd)
 }
 

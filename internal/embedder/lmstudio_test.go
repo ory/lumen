@@ -23,12 +23,12 @@ import (
 	"time"
 )
 
-func makeLMStudioResponse(embeddings [][]float32) lmstudioEmbedResponse {
-	data := make([]lmstudioEmbedItem, len(embeddings))
+func makeLMStudioResponse(embeddings [][]float32) openaiEmbedResponse {
+	data := make([]openaiEmbedItem, len(embeddings))
 	for i, e := range embeddings {
-		data[i] = lmstudioEmbedItem{Embedding: e, Index: i}
+		data[i] = openaiEmbedItem{Embedding: e, Index: i}
 	}
-	return lmstudioEmbedResponse{Data: data}
+	return openaiEmbedResponse{Data: data}
 }
 
 func TestLMStudioEmbedder_Embed(t *testing.T) {
@@ -64,8 +64,8 @@ func TestLMStudioEmbedder_Embed(t *testing.T) {
 func TestLMStudioEmbedder_OrderingByIndex(t *testing.T) {
 	// Mock returns items in reversed index order to verify sorting.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		resp := lmstudioEmbedResponse{
-			Data: []lmstudioEmbedItem{
+		resp := openaiEmbedResponse{
+			Data: []openaiEmbedItem{
 				{Embedding: []float32{0.9, 0.9, 0.9, 0.9}, Index: 1},
 				{Embedding: []float32{0.1, 0.2, 0.3, 0.4}, Index: 0},
 			},

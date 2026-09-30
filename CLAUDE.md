@@ -128,10 +128,13 @@ their repo-root counterparts. Install-specific entrypoints live in `.codex/`,
 
 | Variable                 | Default                  | Description                                |
 | ------------------------ | ------------------------ | ------------------------------------------ |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama`, `lmstudio`, or `openai`) |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
 | `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
+| `OPENAI_BASE_URL`        | —                        | OpenAI-compatible server URL (`openai` backend) |
+| `OPENAI_API_KEY`         | —                        | Bearer token for the `openai` backend      |
+| `LUMEN_EMBED_SKIP_HEALTH_CHECK` | `false`           | Skip `/v1/models` probe (`openai` backend) |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting      |
 | `LUMEN_VECTOR_STORAGE`   | `int8`                   | Vector precision (`int8` or `float32`)     |
 

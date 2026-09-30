@@ -273,9 +273,12 @@ All configuration is via environment variables:
 | Variable                 | Default                  | Description                                                   |
 | ------------------------ | ------------------------ | ------------------------------------------------------------- |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model; use with `LUMEN_EMBED_DIMS` for unlisted models |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`)                    |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama`, `lmstudio`, or `openai`)          |
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                             |
 | `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                                          |
+| `OPENAI_BASE_URL`        | —                        | OpenAI-compatible server URL (required for `openai` backend)  |
+| `OPENAI_API_KEY`         | —                        | Bearer token for the `openai` backend; omit for gateways that trust network position |
+| `LUMEN_EMBED_SKIP_HEALTH_CHECK` | `false`           | Skip the `/v1/models` probe (`openai` backend); needed when a gateway doesn't expose that endpoint |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting                         |
 | `LUMEN_VECTOR_STORAGE`   | `int8`                   | Vector precision (`int8` or `float32`)                         |
 | `LUMEN_EMBED_DIMS`       | —                        | Override embedding dimensions (required for unlisted models)  |
@@ -304,7 +307,9 @@ of the database path hash, so different models never collide.
 > **Caveat**: the DB path hash includes the model name but not the backend. If
 > the same model name is configured on two backends (e.g. an Ollama and an LM
 > Studio entry both named `foo`), they share the same index — use distinct
-> model names per backend to avoid collisions.
+> model names per backend to avoid collisions. This applies to the `openai`
+> backend too — a model name shared with an Ollama or LM Studio entry collides
+> in the index cache.
 
 ### Selecting a server per invocation
 
@@ -347,6 +352,37 @@ LUMEN_EMBED_MODEL=mlx-community/Qwen3-Embedding-8B-4bit-DWQ
 LUMEN_EMBED_DIMS=4096
 LUMEN_EMBED_CTX=40960   # optional, defaults to 8192
 ```
+
+### Remote / internal OpenAI-compatible servers
+
+The `openai` backend targets any service exposing an OpenAI-compatible
+`/v1/embeddings` endpoint — OpenAI itself, or an internal gateway. Configure
+it via `config.yaml`:
+
+```yaml
+servers:
+  - backend: openai
+    host: https://api.example.com
+    model: text-embedding-3-small
+    dims: 1536
+    api_key: sk-...           # optional — omit for gateways that trust network position
+    skip_health_check: true   # optional — set when the gateway doesn't expose /v1/models
+```
+
+Or via environment variables:
+
+```sh
+LUMEN_BACKEND=openai
+OPENAI_BASE_URL=https://api.example.com
+OPENAI_API_KEY=sk-...
+LUMEN_EMBED_MODEL=text-embedding-3-small
+LUMEN_EMBED_DIMS=1536
+```
+
+`skip_health_check` exists because many custom gateways proxy a different
+provider underneath (Bedrock, Gemini, etc.) and don't implement `/v1/models`
+in the OpenAI shape, or don't implement it at all. Without it, Lumen's health
+probe would incorrectly mark a working server as unhealthy.
 
 ## Controlling what gets indexed
 
