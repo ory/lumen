@@ -404,7 +404,9 @@ Indexes with an indexer currently running are always kept.
 **Git worktrees** are detected automatically. A new worktree attaches unchanged
 path-and-content revisions directly from the repository collection and embeds
 only missing chunk inputs. Removing an old worktree drops its memberships;
-shared revisions and vectors remain until their final reference disappears.
+shared revisions and vectors remain while referenced. Ordinary edits retain
+recently unused revisions under a 256 MiB, seven-day logical cache policy;
+explicit cleanup can reclaim them sooner.
 Legacy per-worktree indexes migrate lazily, reusing unchanged float32 vectors
 without contacting the embedding backend.
 

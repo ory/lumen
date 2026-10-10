@@ -174,7 +174,7 @@ func TestCollectFilePaths_SkipsSymlinks(t *testing.T) {
 		t.Skip("symlinks not supported:", err)
 	}
 
-	paths, err := collectFilePaths(dir, DefaultSkip)
+	paths, err := collectFilePaths(dir, DefaultSkip, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestCollectFilePaths_SkipsLargeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	paths, err := collectFilePaths(dir, DefaultSkip)
+	paths, err := collectFilePaths(dir, DefaultSkip, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

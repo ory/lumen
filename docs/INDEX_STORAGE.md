@@ -52,13 +52,70 @@ the same vector.
 
 When a file changes, Lumen chunks the new revision, checks which exact inputs
 already exist, and sends only missing inputs to the embedding service. Unique
-constraints make concurrent worktree indexing safe; two indexers may compute the
-same embedding during a race, but only one stored vector remains.
+constraints protect stored vectors. Before embedding, indexers claim exact input
+hashes in SQLite with renewable two-minute leases. Concurrent worktrees reuse
+completed results. Failed owners release their claims; crashed owners lose them
+when the lease expires. A ten-minute, 64 MiB serialized-result cache bridges the
+interval before all file revisions have been committed. Expired or excess results
+are pruned when new results are published. Force-index bypasses this cache.
 
-Search remains project-local. Lumen scans collection vectors adaptively, then
-joins candidates through the requested project's memberships and optional path
-filter. Results from another worktree are never returned merely because the
-underlying storage is shared.
+Backend requests share one compute slot per user data directory, across
+repositories and processes. Queries announce priority using OS locks; background
+indexing yields before its next request. Running requests are not preempted.
+This coordination requires no standalone daemon. Separate `XDG_DATA_HOME`
+settings intentionally have separate budgets.
+
+Search first materializes the requesting project's memberships and optional
+literal path prefix, then scores each distinct eligible vector once. It sorts
+matching chunks by distance and stable location keys in one SQL query. Other
+worktrees and retained revisions do not contribute distance calculations.
+This is an exact scan of eligible vectors, not an approximate nearest-neighbor
+index; its cost still grows with the requesting worktree.
+
+## Incremental freshness
+
+A disposable JSON cache beside the collection stores worktree-specific content
+hashes and file metadata. Ordinary checks walk directory entries and compare
+size, mode, mtime, device/inode identity, and ctime. Unchanged files outside a
+two-second timestamp race window reuse their hashes on macOS and Linux. Other
+platforms conservatively read content until equivalent metadata support is added.
+
+In-process filesystem watchers invalidate changed paths. Metadata reconciliation
+continues after restart and even when watches are unavailable, so correctness
+does not rely on event delivery. Watch overflow, hourly reconciliation, and
+`--force` trigger content hashing. Ignore rules are reevaluated each scan.
+This avoids ordinary full-content reads; directory walking and Merkle root
+construction remain proportional to file count. No Git object ID is substituted
+for actual worktree content.
+
+## Comparing embedding inputs
+
+Path-aware embedding remains the default. Run an isolated quality experiment:
+
+```bash
+lumen experiment-input dataset.json --k 10
+```
+
+The dataset contains already-chunked bodies and explicit relevance judgments:
+
+```json
+{
+  "chunks": [
+    {"path": "auth/login.go", "body": "func Login() { /* ... */ }"},
+    {"path": "legacy/login.go", "body": "func Login() { /* ... */ }"}
+  ],
+  "queries": [
+    {"text": "login handler", "relevant_paths": ["auth/login.go"]}
+  ]
+}
+```
+
+The command embeds both input formats using the configured backend and reports
+unique-input counts, mean path recall at k, and mean reciprocal rank at k over
+chunk-ranked results. Use representative queries, ambiguous bodies, and renamed
+files; the tiny example above is only a format illustration. It does not modify
+production indexes or add path ranking. No retrieval-quality improvement is
+assumed until evaluated with real judgments.
 
 ## Vector storage
 
@@ -92,7 +149,7 @@ The MCP `index_status` tool reports:
 | `indexed_files`       | Current project | File memberships stored for this project                     |
 | `total_chunks`        | Current project | Chunk references reachable by this project                   |
 | `unique_vectors`      | Collection      | Physical vectors stored once in the collection               |
-| `shared_references`   | Collection      | Chunk references beyond the unique-vector count              |
+| `shared_references`   | Collection      | Active chunk references beyond active unique vectors              |
 | `deduplication_ratio` | Collection      | `shared_references / (unique_vectors + shared_references)`   |
 | `vector_storage`      | Collection      | `int8` or `float32`                                          |
 | `database_bytes`      | Collection      | Allocated SQLite database pages                              |
@@ -100,7 +157,7 @@ The MCP `index_status` tool reports:
 | `last_indexed_at`     | Current project | Last completed indexing timestamp                            |
 | `stale`               | Current project | Whether the source tree differs from the stored Merkle state |
 
-For example, `10,000` unique vectors and `15,000` shared references means
+When no unused vectors are retained, `10,000` unique vectors and `15,000` shared references means
 `25,000` total chunk references are represented by `10,000` physical vectors,
 for a deduplication ratio of 60%.
 
@@ -125,6 +182,22 @@ the new index format:
 
 If legacy recovery cannot be completed, Lumen leaves the source database in
 place and embeds the missing inputs normally.
+
+## Recently unused revisions
+
+Ordinary replacement retains unreferenced complete revisions for up to seven
+days, under a 256 MiB logical byte budget per collection. Reattaching a revision
+makes it active again. Eviction favors recently unused revisions and never
+deletes a referenced revision or a vector still needed by another revision.
+The budget conservatively counts vector bytes per revision plus chunk metadata;
+SQLite page and WAL overhead are additional. Maintenance is lazy, during
+replacement/removal; expiry does not run on a timer. The store API
+`SetRevisionCachePolicy(bytes, ttl)` supports changing the policy or disabling it
+with zero. There is currently no CLI/config option for this policy.
+
+`unique_vectors` includes retained physical vectors; `shared_references` counts
+only active references. Consequently the reported deduplication ratio includes
+retention overhead in its denominator.
 
 ## Cleanup and disk reclamation
 

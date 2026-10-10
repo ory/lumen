@@ -33,6 +33,7 @@ const reprobeInterval = 30 * time.Second
 // When the ConfigService's server list changes (e.g. via hot reload), the
 // embedder re-initializes on the next Embed call.
 type FailoverEmbedder struct {
+	budgetDir     string
 	cfg           *config.ConfigService
 	logger        *slog.Logger
 	mu            sync.Mutex
@@ -116,6 +117,11 @@ func (f *FailoverEmbedder) ModelName() string {
 // all servers for health and selects the first healthy one. On transient
 // errors (5xx, network) it fails over to the next healthy server.
 func (f *FailoverEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	release, err := acquireBudget(ctx, f.budgetDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	f.mu.Lock()
 	f.maybeReprobe(ctx, true)
 	f.mu.Unlock()

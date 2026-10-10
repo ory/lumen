@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	"github.com/ory/lumen/internal/chunker"
 	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
 )
@@ -69,7 +70,19 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 		"PRAGMA cache_size=-64000",
 		"PRAGMA temp_store=MEMORY",
 	} {
-		if _, err := db.Exec(pragma); err != nil {
+		var pragmaErr error
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			_, pragmaErr = db.Exec(pragma)
+			var sqliteErr sqlite3.Error
+			if !errors.As(pragmaErr, &sqliteErr) || (sqliteErr.Code != sqlite3.ErrBusy && sqliteErr.Code != sqlite3.ErrLocked) || time.Now().After(deadline) {
+				break
+			}
+			// Switching a newly-created database to WAL can return BUSY without
+			// invoking SQLite's busy handler while another opener changes the mode.
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := pragmaErr; err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("exec %q: %w", pragma, err)
 		}
@@ -133,6 +146,12 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 
 func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS embedding_claims (
+ input_hash BLOB PRIMARY KEY,
+ owner TEXT NOT NULL,
+ expires_at INTEGER NOT NULL,
+ result BLOB
+ ) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS collection_meta (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -163,6 +182,11 @@ func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) er
 			PRIMARY KEY(project_id, relative_path)
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS idx_project_files_revision ON project_files(file_revision_id)`,
+		`CREATE TABLE IF NOT EXISTS revision_cache (
+ revision_id INTEGER PRIMARY KEY REFERENCES file_revisions(id) ON DELETE CASCADE,
+ unused_at INTEGER NOT NULL,
+ bytes INTEGER NOT NULL
+ )`,
 		`CREATE TABLE IF NOT EXISTS vector_keys (
 			id INTEGER PRIMARY KEY,
 			input_hash BLOB NOT NULL UNIQUE
@@ -523,6 +547,9 @@ func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chu
 }
 
 func replaceProjectFileTx(tx *sql.Tx, projectID int64, path string, revisionID int64) (int64, error) {
+	if _, err := tx.Exec(`DELETE FROM revision_cache WHERE revision_id = ?`, revisionID); err != nil {
+		return 0, err
+	}
 	var displaced int64
 	err := tx.QueryRow(`SELECT file_revision_id FROM project_files WHERE project_id = ? AND relative_path = ?`, projectID, path).Scan(&displaced)
 	if err != nil && err != sql.ErrNoRows {
@@ -648,7 +675,7 @@ func (s *Store) removeProjectFile(path string) error {
 	return tx.Commit()
 }
 
-func gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
+func deleteRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
 	seen := make(map[int64]struct{}, len(revisionIDs))
 	for _, revisionID := range revisionIDs {
 		if revisionID == 0 {
@@ -764,75 +791,58 @@ func (s *Store) searchShared(ctx context.Context, queryVec []float32, limit int,
 	if err != nil {
 		return nil, fmt.Errorf("serialize query: %w", err)
 	}
-	var totalVectors int
-	if err := s.reader().QueryRow(`SELECT count(*) FROM vector_keys`).Scan(&totalVectors); err != nil {
-		return nil, err
+	// Materialize project membership before touching vectors. Each eligible
+	// vector is scored once, even when several chunks reference it. This also
+	// preserves deterministic chunk-level tie breaking without global KNN
+	// overfetching (which can otherwise search the collection repeatedly).
+	where := "pf.project_id = ?"
+	args := []any{s.projectID}
+	if pathPrefix != "" {
+		where += " AND (pf.relative_path = ? OR substr(pf.relative_path, 1, length(?) + 1) = ? || '/')"
+		args = append(args, pathPrefix, pathPrefix, pathPrefix)
 	}
-	if totalVectors == 0 {
-		return nil, nil
+	queryExpression := "?"
+	vectorExpression := "v.embedding"
+	if s.vectorStorage == "int8" {
+		queryExpression = "vec_int8(?)"
+		vectorExpression = "vec_int8(v.embedding)"
 	}
-	candidates := min(totalVectors, max(limit, 32))
-	for {
-		results, boundaryDistance, err := s.searchSharedCandidates(ctx, blob, limit, candidates, maxDistance, pathPrefix)
-		if err != nil {
-			return nil, err
-		}
-		if candidates >= totalVectors || (len(results) >= limit && results[len(results)-1].Distance < boundaryDistance) {
-			return results, nil
-		}
-		candidates = min(totalVectors, candidates*2)
-	}
-}
-
-func (s *Store) searchSharedCandidates(ctx context.Context, blob []byte, limit, candidates int, maxDistance float64, pathPrefix string) ([]SearchResult, float64, error) {
-	where := []string{"pf.project_id = ?"}
-	args := []any{blob, candidates, s.projectID}
+	args = append(args, blob)
+	distanceWhere := ""
 	if maxDistance > 0 {
-		where = append(where, "knn.distance < ?")
+		distanceWhere = "WHERE scored.distance < ?"
 		args = append(args, maxDistance)
 	}
-	if pathPrefix != "" {
-		where = append(where, "(pf.relative_path = ? OR pf.relative_path LIKE ? || '/%')")
-		args = append(args, pathPrefix, pathPrefix)
-	}
 	args = append(args, limit)
-	matchExpression := "?"
-	if s.vectorStorage == "int8" {
-		matchExpression = "vec_int8(?)"
-	}
-	query := `WITH knn AS (
-		SELECT vector_id, distance FROM vec_vectors
-		WHERE embedding MATCH ` + matchExpression + ` AND k = ?
+	query := `WITH eligible AS MATERIALIZED (
+		SELECT pf.relative_path, cd.*
+		FROM project_files pf
+		JOIN chunk_defs cd ON cd.file_revision_id = pf.file_revision_id
+		WHERE ` + where + `
+	), scored AS MATERIALIZED (
+		SELECT ids.vector_id, vec_distance_cosine(` + vectorExpression + `, ` + queryExpression + `) AS distance
+		FROM (SELECT DISTINCT vector_id FROM eligible) ids
+		CROSS JOIN vec_vectors v ON v.vector_id = ids.vector_id
 	)
-	SELECT pf.relative_path, cd.symbol, cd.kind, cd.start_line, cd.end_line, knn.distance,
-		max(knn.distance) OVER ()
-	FROM knn
-	JOIN chunk_defs cd ON cd.vector_id = knn.vector_id
-	JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id
-	WHERE ` + strings.Join(where, " AND ") + `
-	ORDER BY knn.distance, pf.relative_path, cd.start_line, cd.end_line, cd.symbol, cd.id
+	SELECT e.relative_path, e.symbol, e.kind, e.start_line, e.end_line, scored.distance
+	FROM eligible e JOIN scored ON scored.vector_id = e.vector_id
+	` + distanceWhere + `
+	ORDER BY scored.distance, e.relative_path, e.start_line, e.end_line, e.symbol, e.id
 	LIMIT ?`
 	rows, err := s.reader().QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("shared search query: %w", err)
+		return nil, fmt.Errorf("shared search query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var results []SearchResult
-	var boundaryDistance float64
 	for rows.Next() {
 		var result SearchResult
-		if err := rows.Scan(&result.FilePath, &result.Symbol, &result.Kind, &result.StartLine, &result.EndLine, &result.Distance, &boundaryDistance); err != nil {
-			return nil, 0, err
+		if err := rows.Scan(&result.FilePath, &result.Symbol, &result.Kind, &result.StartLine, &result.EndLine, &result.Distance); err != nil {
+			return nil, err
 		}
 		results = append(results, result)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, 0, err
-	}
-	return results, boundaryDistance, nil
+	return results, rows.Err()
 }
 
 func (s *Store) sharedStats() (StoreStats, error) {
@@ -863,7 +873,11 @@ func (s *Store) CollectionStats() (CollectionStats, error) {
 	if err != nil {
 		return stats, err
 	}
-	stats.SharedReferences = stats.ChunkReferences - stats.UniqueVectors
+	var activeVectors int
+	if err := s.reader().QueryRow(`SELECT count(DISTINCT cd.vector_id) FROM chunk_defs cd JOIN project_files pf ON pf.file_revision_id=cd.file_revision_id`).Scan(&activeVectors); err != nil {
+		return stats, err
+	}
+	stats.SharedReferences = stats.ChunkReferences - activeVectors
 	stats.VectorStorage = s.vectorStorage
 	var pageCount, pageSize, freelist int64
 	if err := s.reader().QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {

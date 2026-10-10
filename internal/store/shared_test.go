@@ -20,7 +20,7 @@ import (
 	"github.com/ory/lumen/internal/chunker"
 )
 
-func TestSharedReplacementGarbageCollectsDisplacedRevision(t *testing.T) {
+func TestSharedReplacementRetainsDisplacedRevision(t *testing.T) {
 	s, err := NewCollection(":memory:", 4, "int8", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +38,8 @@ func TestSharedReplacementGarbageCollectsDisplacedRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.UniqueVectors != 1 || stats.ChunkReferences != 1 {
-		t.Fatalf("displaced revision was not collected: %+v", stats)
+	if stats.UniqueVectors != 2 || stats.ChunkReferences != 1 {
+		t.Fatalf("displaced revision was not retained: %+v", stats)
 	}
 }
 
@@ -96,6 +96,9 @@ func TestSharedCollectionReusesRevisionsAndVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
+	if err := s.SetRevisionCachePolicy(0, 0); err != nil {
+		t.Fatal(err)
+	}
 
 	chunks := []chunker.Chunk{
 		{ID: "a", FilePath: "main.go", Symbol: "A", Kind: "function", StartLine: 1, EndLine: 2, Content: "func A() {}"},
@@ -216,7 +219,7 @@ func TestSharedCollectionValidatesStorageProfile(t *testing.T) {
 	}
 }
 
-func TestSharedSearchAdaptivelyExpandsSparseProjectCandidates(t *testing.T) {
+func TestSharedSearchScopesSparseProjectCandidates(t *testing.T) {
 	s, err := NewCollection(":memory:", 4, "int8", "/project-a")
 	if err != nil {
 		t.Fatal(err)
@@ -246,13 +249,13 @@ func TestSharedSearchAdaptivelyExpandsSparseProjectCandidates(t *testing.T) {
 	}
 
 	// The nearest 80 global vectors belong to project A. Project B's result
-	// is only found after candidate doubling exhausts that dense prefix.
+	// must be found without allowing that dense prefix to consume its limit.
 	results, err := s.Search(context.Background(), []float32{1, 0, 0, 0}, 1, 0, "nested")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(results) != 1 || results[0].Symbol != "Target" {
-		t.Fatalf("adaptive sparse-project search failed: %+v", results)
+		t.Fatalf("scoped sparse-project search failed: %+v", results)
 	}
 }
 
@@ -536,5 +539,32 @@ func TestSharedInt8StorageAtMostTwentyPercentOfSeparateFloat32(t *testing.T) {
 	ratio := float64(sharedInfo.Size()) / float64(separateBytes)
 	if ratio > 0.20 {
 		t.Fatalf("shared int8 size ratio = %.3f (%d/%d), want <= 0.20", ratio, sharedInfo.Size(), separateBytes)
+	}
+}
+
+func TestSharedSearchLiteralPrefixAndDeterministicTies(t *testing.T) {
+	for _, storage := range []string{"int8", "float32"} {
+		t.Run(storage, func(t *testing.T) {
+			s, err := NewCollection(":memory:", 4, storage, "/project")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = s.Close() }()
+			for _, path := range []string{"pkg_/z.go", "pkg_/a.go", "pkgX/wrong.go"} {
+				chunk := chunker.Chunk{ID: path, FilePath: path, Content: path, StartLine: 1, EndLine: 1}
+				if _, err := s.StoreFileRevision(path, path, []chunker.Chunk{chunk}, map[int][]float32{0: {1, 0, 0, 0}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 3 {
+				results, err := s.Search(context.Background(), []float32{1, 0, 0, 0}, 1, 0, "pkg_")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(results) != 1 || results[0].FilePath != "pkg_/a.go" {
+					t.Fatalf("prefix/tie result: %+v", results)
+				}
+			}
+		})
 	}
 }

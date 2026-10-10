@@ -159,7 +159,13 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 		if len(batchTexts) == 0 {
 			return drainReady()
 		}
-		embedded, err := idx.emb.Embed(ctx, batchTexts)
+		var embedded [][]float32
+		var err error
+		if force {
+			embedded, err = idx.emb.Embed(ctx, batchTexts)
+		} else {
+			embedded, err = idx.store.EmbedShared(ctx, batchTexts, idx.emb.Embed)
+		}
 		if err != nil {
 			return fmt.Errorf("embed shared batch: %w", err)
 		}
@@ -205,6 +211,9 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 				continue
 			}
 			return stats, fmt.Errorf("read file %s: %w", relativePath, err)
+		}
+		if fmt.Sprintf("%x", sha256.Sum256(content)) != contentHash {
+			return stats, fmt.Errorf("file changed after freshness scan: %s", relativePath)
 		}
 		if isBinaryContent(content) {
 			if err := idx.store.DeleteFileChunks(relativePath); err != nil {
