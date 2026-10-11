@@ -23,6 +23,7 @@ lumen
 
 bench-swe/bench-swe
 bench-swe/overview.txt
+bench-swe/node_modules/
 
 **/.claude/worktrees
 **/.claire
