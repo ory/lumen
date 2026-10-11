@@ -68,6 +68,7 @@ func baseEnv(dataHome string) []string {
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 		"XDG_DATA_HOME=" + dataHome,
+		"LUMEN_RETRIEVAL=semantic",
 	}
 }
 

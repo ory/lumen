@@ -104,7 +104,7 @@ func mustGetwd(t *testing.T) string {
 func newTestConfigService(t *testing.T, maxChunkTokens int) *config.ConfigService {
 	t.Helper()
 	t.Setenv("LUMEN_MAX_CHUNK_TOKENS", strconv.Itoa(maxChunkTokens))
-	svc, err := config.NewConfigService("")
+	svc, err := config.NewConfigService("", config.WithRetrieval("semantic"))
 	if err != nil {
 		t.Fatalf("NewConfigService: %v", err)
 	}
@@ -422,6 +422,7 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 }
 
 func TestHandleHealthCheck_UsesActiveFailoverServer(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
 		t.Setenv(k, "")
 	}
@@ -488,6 +489,7 @@ servers:
 }
 
 func TestHandleHealthCheck_ModelMissingIsError(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
 		t.Setenv(k, "")
 	}

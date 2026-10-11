@@ -122,6 +122,7 @@ func TestSearchCmd_FlagsRegistered(t *testing.T) {
 // Red: passing the directory directly must fail with a SQLite error.
 // Green: passing config.DBPathForProject(dir, model) must succeed.
 func TestSetupIndexer_DBPathVsDirectory(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	dir := t.TempDir()
 	cfg, err := config.NewConfigService("")
 	if err != nil {

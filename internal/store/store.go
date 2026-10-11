@@ -72,12 +72,16 @@ func deleteDBFiles(path string) {
 
 // SearchResult represents a single result from a vector search.
 type SearchResult struct {
-	FilePath  string
-	Symbol    string
-	Kind      string
-	StartLine int
-	EndLine   int
-	Distance  float64
+	Exported    bool
+	ContentHash string
+	References  []string
+	Imports     []string
+	FilePath    string
+	Symbol      string
+	Kind        string
+	StartLine   int
+	EndLine     int
+	Distance    float64
 }
 
 // StoreStats holds aggregate statistics about the store contents.
@@ -98,6 +102,7 @@ type Store struct {
 	db            *sql.DB
 	readDB        *sql.DB // separate read-only connection; nil for :memory: databases
 	dimensions    int
+	lexical       bool
 	shared        bool
 	vectorStorage string
 	projectPath   string

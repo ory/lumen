@@ -2,7 +2,31 @@
 
 Lumen stores indexes outside the source repository in repository-scoped,
 content-addressed SQLite collections. This lets Git worktrees reuse unchanged
-file revisions and embeddings without copying a complete database per worktree.
+file revisions and index entries without copying a complete database per worktree.
+
+## Default lexical storage
+
+BM25 collections are model-independent and separate from opt-in semantic
+collections. Each unique path/content revision has shared chunk entries and
+separate worktree memberships. FTS5 uses contentless-delete tables, retaining
+positions and column sizes for ranking without a second copy of source bodies.
+Paths, symbols, signatures, comments and bodies are indexed separately.
+
+Search filters project membership and path before applying result limits.
+BM25 document-frequency statistics remain collection-wide, so other indexed
+worktree revisions can influence ranks, but cannot leak into returned results.
+Snippets come from the active worktree after validating the full file hash;
+stale or missing content is omitted until refresh.
+
+`index_status` reports `unique_lexical_entries` and shared references in BM25 mode;
+vector precision and unique-vector counts describe semantic mode only. Cleanup
+removes unreferenced lexical entries when the final membership disappears.
+Switching to BM25 creates a fresh lexical profile and leaves existing vector
+collections available for `--retrieval semantic`.
+
+The model/dimensions/vector-storage and legacy migration details below describe
+**semantic mode**. Repository, scope, chunking and format identity, membership
+isolation and cleanup also apply to lexical collections.
 
 ## Collection identity
 
@@ -93,7 +117,7 @@ The MCP `index_status` tool reports:
 | `total_chunks`        | Current project | Chunk references reachable by this project                   |
 | `unique_vectors`      | Collection      | Physical vectors stored once in the collection               |
 | `shared_references`   | Collection      | Chunk references beyond the unique-vector count              |
-| `deduplication_ratio` | Collection      | `shared_references / (unique_vectors + shared_references)`   |
+| `deduplication_rate` | Collection      | `shared_references / (unique_vectors + shared_references)`   |
 | `vector_storage`      | Collection      | `int8` or `float32`                                          |
 | `database_bytes`      | Collection      | Allocated SQLite database pages                              |
 | `reclaimable_bytes`   | Collection      | Free SQLite pages that incremental vacuum may reclaim        |

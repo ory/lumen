@@ -31,8 +31,10 @@ runtime behavior for this repository outside the Claude plugin install path.
 
 ### Testing
 
-- **Unit + integration**: `go test ./...`
-- **E2E tests**: `go test -tags e2e ./...` (requires Ollama/LM Studio running)
+- **Unit + integration**: `go test -tags fts5 ./...` (or `make test`; BM25
+  needs SQLite FTS5, which go-sqlite3 only compiles with the `fts5` tag)
+- **E2E tests**: `go test -tags fts5,e2e ./...` (requires Ollama/LM Studio
+  running)
 - **All tests must pass before commit**
 - Coverage tracked but not enforced
 - **TDD required**: All features and bug fixes must follow red/green TDD — write

@@ -173,6 +173,7 @@ func TestVectorStorageConfiguration(t *testing.T) {
 		}
 	})
 	t.Run("rejects unknown storage", func(t *testing.T) {
+		t.Setenv("LUMEN_RETRIEVAL", "semantic")
 		t.Setenv("LUMEN_VECTOR_STORAGE", "float16")
 		if _, err := NewConfigService(""); err == nil {
 			t.Fatal("expected invalid vector storage to fail validation")

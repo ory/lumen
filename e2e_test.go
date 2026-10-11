@@ -57,9 +57,11 @@ type indexStatusOutput struct {
 var serverBinary string
 
 func TestMain(m *testing.M) {
+	// This suite exercises embedding retrieval against a real Ollama backend.
+	_ = os.Setenv("LUMEN_RETRIEVAL", "semantic")
 	// Build the server binary.
 	bin := filepath.Join(os.TempDir(), "lumen-e2e-test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd := exec.Command("go", "build", "-tags", "fts5", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -132,6 +134,7 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 
 	cmd := exec.Command(serverBinary, "stdio")
 	cmd.Env = []string{
+		"LUMEN_RETRIEVAL=semantic",
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
 		"LUMEN_FRESHNESS_TTL=1s",

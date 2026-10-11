@@ -55,6 +55,7 @@ func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, fun
 					Command: lumenBinary,
 					Args:    []string{"stdio"},
 					Env: map[string]string{
+						"LUMEN_RETRIEVAL":   "semantic",
 						"LUMEN_BACKEND":     backend,
 						"LUMEN_EMBED_MODEL": model,
 					},

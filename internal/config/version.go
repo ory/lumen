@@ -30,4 +30,6 @@ package config
 //	    now produce class-qualified symbols (e.g. Animal.speak)
 //	3 — Svelte chunker added; .svelte files now indexed via two-phase TS injection
 //	4 — repository-scoped content-addressed collections with int8 vectors
-const IndexVersion = "4"
+//	5 — leading comments of exported JS/TS declarations now start the chunk
+//	    (including the export keyword); BM25 metadata added to chunks
+const IndexVersion = "5"

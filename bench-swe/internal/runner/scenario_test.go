@@ -99,6 +99,9 @@ func TestWriteMCPConfig(t *testing.T) {
 				if len(srv.Args) != 1 || srv.Args[0] != "stdio" {
 					t.Errorf("Args = %v, want [stdio]", srv.Args)
 				}
+				if srv.Env["LUMEN_RETRIEVAL"] != "semantic" {
+					t.Errorf("historical embedding benchmark must opt into semantic retrieval, got %q", srv.Env["LUMEN_RETRIEVAL"])
+				}
 				if srv.Env["LUMEN_BACKEND"] != "ollama" {
 					t.Errorf("LUMEN_BACKEND = %q, want ollama", srv.Env["LUMEN_BACKEND"])
 				}

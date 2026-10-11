@@ -43,7 +43,7 @@ func init() {
 
 var indexCmd = &cobra.Command{
 	Use:   "index <project-path>",
-	Short: "Index a project for semantic search",
+	Short: "Index a project for code search (BM25 by default)",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runIndex,
 }
@@ -74,16 +74,18 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 
 	emb := newEmbedder(cfg)
-	emb.SetLogger(logger)
+	if emb != nil {
+		emb.SetLogger(logger)
+	}
 
-	modelName := emb.ModelName()
+	modelName := retrievalModel(emb)
 
 	// Normalize to the git repository root when inside a git repo so that
 	// indexing a subdirectory produces the same DB as indexing the repo root.
 	// For non-git directories, walk up to reuse an existing ancestor index.
 	if root, err := git.RepoRoot(projectPath); err == nil {
 		projectPath = root
-	} else if ancestor := findAncestorIndex(projectPath, modelName); ancestor != "" {
+	} else if ancestor := findAncestorIndexWithPath(projectPath, func(project string) string { return configuredDBPath(cfg, project, modelName) }); ancestor != "" {
 		projectPath = ancestor
 	}
 
@@ -123,9 +125,16 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 
 	p := tui.NewProgress(os.Stderr)
-	dims := cfg.ServerDims(0)
+	dims := 0
+	if cfg.Retrieval() == "semantic" {
+		dims = cfg.ServerDims(0)
+	}
 	logger.Info("indexing started", "project", projectPath, "model", modelName, "dims", dims)
-	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, modelName, dims))
+	if cfg.Retrieval() == "bm25" {
+		p.Info(fmt.Sprintf("Indexing %s (BM25, local)", projectPath))
+	} else {
+		p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, modelName, dims))
+	}
 	stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, projectPath, p, logger)
 	if err != nil {
 		logger.Error("indexing failed", "project", projectPath, "err", err)
@@ -177,7 +186,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 }
 
 // loadConfigWithFlags loads the ConfigService, honouring the --model and
-// --backend flags if set.
+// --backend flags if set. Both flags are rejected in bm25 mode.
 //
 // Selection flow:
 //  1. No flags set → use YAML/env as-is.
@@ -191,17 +200,26 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 	model, _ := cmd.Flags().GetString("model")
 	backend, _ := cmd.Flags().GetString("backend")
 	path := config.DefaultConfigPath()
+	mode, _ := cmd.Flags().GetString("retrieval")
+	opts := []config.Option{}
+	if mode != "" {
+		opts = append(opts, config.WithRetrieval(mode))
+	}
 
 	if model == "" && backend == "" {
-		return config.NewConfigService(path)
+		return config.NewConfigService(path, opts...)
 	}
 	if backend != "" && backend != config.BackendOllama && backend != config.BackendLMStudio {
 		return nil, fmt.Errorf("unknown backend %q (must be %q or %q)",
 			backend, config.BackendOllama, config.BackendLMStudio)
 	}
 
-	cfg, selErr := config.NewConfigService(path, config.WithServerSelection(model, backend))
+	cfg, selErr := config.NewConfigService(path, append(opts, config.WithServerSelection(model, backend))...)
 	if selErr == nil {
+		if cfg.Retrieval() == "bm25" {
+			// BM25 has no embedding model; never discard an explicit selection.
+			return nil, fmt.Errorf("--model and --backend select an embedding server and require retrieval=semantic (pass --retrieval=semantic or set LUMEN_RETRIEVAL=semantic)")
+		}
 		return cfg, nil
 	}
 
@@ -213,7 +231,7 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 			canonical = c
 		}
 		if _, ok := embedder.KnownModels[canonical]; ok {
-			return config.NewConfigService(path, config.WithModelOverride(model))
+			return config.NewConfigService(path, append(opts, config.WithModelOverride(model))...)
 		}
 	}
 	return nil, selErr
@@ -225,11 +243,21 @@ func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbP
 }
 
 func configuredDBPath(cfg *config.ConfigService, projectPath, model string) string {
+	if cfg.Retrieval() == "bm25" {
+		return config.LexicalDBPath(projectPath, cfg.MaxChunkTokens())
+	}
 	dimensions := cfg.ServerDims(0)
 	return config.DBPathForProjectProfile(projectPath, model, dimensions, cfg.VectorStorage(), cfg.MaxChunkTokens())
 }
 
 func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath, projectPath string, logger *slog.Logger) (*index.Indexer, error) {
+	if cfg.Retrieval() == "bm25" {
+		idx, err := index.NewLexicalIndexer(dbPath, cfg.MaxChunkTokens(), projectPath)
+		if err == nil {
+			idx.SetLogger(logger)
+		}
+		return idx, err
+	}
 	idx, err := index.NewIndexerForProject(dbPath, emb, cfg.MaxChunkTokens(), cfg.VectorStorage(), projectPath)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
@@ -250,7 +278,7 @@ func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmb
 // returns the stats and elapsed time. skipped is true when another indexer holds
 // the lock. err is nil if indexing was cancelled by a signal.
 func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.FailoverEmbedder, projectPath string, p *tui.Progress, logger *slog.Logger) (stats index.Stats, elapsed time.Duration, skipped bool, err error) {
-	dbPath := configuredDBPath(cfg, projectPath, emb.ModelName())
+	dbPath := configuredDBPath(cfg, projectPath, retrievalModel(emb))
 	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
 		err = fmt.Errorf("create db directory: %w", mkErr)
 		return

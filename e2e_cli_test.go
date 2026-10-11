@@ -76,6 +76,7 @@ func runCLIWithDataHome(t *testing.T, dataHome string, args ...string) (stdout, 
 
 	cmd := exec.Command(serverBinary, args...)
 	cmd.Env = []string{
+		"LUMEN_RETRIEVAL=semantic",
 		"OLLAMA_HOST=" + ollamaHost,
 		"LUMEN_EMBED_MODEL=all-minilm",
 		"XDG_DATA_HOME=" + dataHome,

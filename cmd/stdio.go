@@ -53,13 +53,14 @@ var stdioCmd = &cobra.Command{
 
 // SemanticSearchInput defines the parameters for the semantic_search tool.
 type SemanticSearchInput struct {
-	Query    string   `json:"query" jsonschema:"Natural language search query"`
-	Path     string   `json:"path,omitempty" jsonschema:"Absolute path to search in. Defaults to cwd. When a subdirectory of cwd, results are filtered to that subtree."`
-	Cwd      string   `json:"cwd,omitempty" jsonschema:"The current working directory / project root. Used as index root when provided."`
-	Limit    int      `json:"limit,omitempty" jsonschema:"Max results to return, default 8. Pass a higher value for broader coverage."`
-	MinScore *float64 `json:"min_score,omitempty" jsonschema:"Minimum score threshold (-1 to 1). Results below this score are excluded. Default depends on embedding model. Use -1 to return all results."`
-	Summary  bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
-	MaxLines int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
+	LexicalOnly bool     `json:"lexical_only,omitempty" jsonschema:"Disable related structural context for the BM25 baseline."`
+	Query       string   `json:"query" jsonschema:"Natural language search query"`
+	Path        string   `json:"path,omitempty" jsonschema:"Absolute path to search in. Defaults to cwd. When a subdirectory of cwd, results are filtered to that subtree."`
+	Cwd         string   `json:"cwd,omitempty" jsonschema:"The current working directory / project root. Used as index root when provided."`
+	Limit       int      `json:"limit,omitempty" jsonschema:"Max direct results, default 8. BM25 may append up to two related snippets unless lexical_only is true."`
+	MinScore    *float64 `json:"min_score,omitempty" jsonschema:"Semantic mode only: minimum cosine score (-1 to 1), default depends on model. BM25 has unbounded lexical scores: omit min_score or use -1/0; positive thresholds are rejected."`
+	Summary     bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
+	MaxLines    int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
 }
 
 // SearchResultItem represents a single search result returned to the caller.
@@ -70,11 +71,14 @@ type SearchResultItem struct {
 	StartLine int     `json:"start_line"`
 	EndLine   int     `json:"end_line"`
 	Score     float32 `json:"score"`
+	RelatedTo string  `json:"related_to,omitempty"`
+	Relation  string  `json:"relation,omitempty"`
 	Content   string  `json:"content,omitempty"`
 }
 
 // SemanticSearchOutput is the structured output of the semantic_search tool.
 type SemanticSearchOutput struct {
+	Retrieval    string             `json:"retrieval,omitempty"`
 	Results      []SearchResultItem `json:"results"`
 	Reindexed    bool               `json:"reindexed"`
 	IndexedFiles int                `json:"indexed_files,omitempty"`
@@ -91,19 +95,21 @@ type IndexStatusInput struct {
 
 // IndexStatusOutput is the structured output of the index_status tool.
 type IndexStatusOutput struct {
-	ProjectPath       string  `json:"project_path"`
-	TotalFiles        int     `json:"total_files"`
-	IndexedFiles      int     `json:"indexed_files"`
-	TotalChunks       int     `json:"total_chunks"`
-	UniqueVectors     int     `json:"unique_vectors"`
-	SharedReferences  int     `json:"shared_references"`
-	DeduplicationRate float64 `json:"deduplication_rate"`
-	VectorStorage     string  `json:"vector_storage"`
-	DatabaseBytes     int64   `json:"database_bytes"`
-	ReclaimableBytes  int64   `json:"reclaimable_bytes"`
-	LastIndexedAt     string  `json:"last_indexed_at"`
-	EmbeddingModel    string  `json:"embedding_model"`
-	Stale             bool    `json:"stale"`
+	Retrieval            string  `json:"retrieval,omitempty"`
+	UniqueLexicalEntries int     `json:"unique_lexical_entries,omitempty"`
+	ProjectPath          string  `json:"project_path"`
+	TotalFiles           int     `json:"total_files"`
+	IndexedFiles         int     `json:"indexed_files"`
+	TotalChunks          int     `json:"total_chunks"`
+	UniqueVectors        int     `json:"unique_vectors"`
+	SharedReferences     int     `json:"shared_references"`
+	DeduplicationRate    float64 `json:"deduplication_rate"`
+	VectorStorage        string  `json:"vector_storage"`
+	DatabaseBytes        int64   `json:"database_bytes"`
+	ReclaimableBytes     int64   `json:"reclaimable_bytes"`
+	LastIndexedAt        string  `json:"last_indexed_at"`
+	EmbeddingModel       string  `json:"embedding_model"`
+	Stale                bool    `json:"stale"`
 }
 
 // HealthCheckInput defines the parameters for the health_check tool.
@@ -171,7 +177,12 @@ func cacheKey(projectPath, model string) string {
 	return projectPath + "\x00" + model
 }
 
+func (ic *indexerCache) lexical() bool { return ic.cfg != nil && ic.cfg.Retrieval() == "bm25" }
+
 func (ic *indexerCache) currentModel() string {
+	if ic.lexical() {
+		return "lumen-bm25-v1"
+	}
 	if ic.embedder == nil {
 		return ""
 	}
@@ -558,12 +569,21 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 	if seedCtx == nil {
 		seedCtx = context.Background()
 	}
-	seedWarning := seedFromDonorIfNew(seedCtx, dbPath, effectiveRoot, modelName, ic.logger(), seedOptions{
-		findDonor: ic.findDonorFunc,
-		seed:      ic.seedFunc,
-	})
+	seedWarning := ""
+	if !ic.lexical() {
+		seedWarning = seedFromDonorIfNew(seedCtx, dbPath, effectiveRoot, modelName, ic.logger(), seedOptions{
+			findDonor: ic.findDonorFunc,
+			seed:      ic.seedFunc,
+		})
+	}
 
-	idx, err := index.NewIndexerForProject(dbPath, ic.embedder, ic.maxChunkTokens(), ic.vectorStorage(), effectiveRoot)
+	var idx *index.Indexer
+	var err error
+	if ic.lexical() {
+		idx, err = index.NewLexicalIndexer(dbPath, ic.maxChunkTokens(), effectiveRoot)
+	} else {
+		idx, err = index.NewIndexerForProject(dbPath, ic.embedder, ic.maxChunkTokens(), ic.vectorStorage(), effectiveRoot)
+	}
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
@@ -623,6 +643,15 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		return nil, nil, err
 	}
 	out.SeedWarning = seedWarning
+	if ic.lexical() {
+		items, err := lexicalSearchItems(ctx, idx, effectiveRoot, input.Path, input.Query, input.Limit, input.MinScore, !input.LexicalOnly, input.Summary, input.MaxLines)
+		if err != nil {
+			return nil, nil, err
+		}
+		out.Results = items
+		out.Retrieval = "bm25"
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatSearchResults(input.Path, out)}}}, nil, nil
+	}
 
 	// Bound embedQuery so a slow or saturated embedding backend cannot hang
 	// the MCP call. Two regimes:
@@ -781,6 +810,9 @@ func validateSearchInput(input *SemanticSearchInput) error {
 }
 
 func buildProgressFunc(ctx context.Context, req *mcp.CallToolRequest) index.ProgressFunc {
+	if req == nil || req.Params == nil {
+		return nil
+	}
 	token := req.Params.GetProgressToken()
 	if token == nil {
 		return nil
@@ -921,7 +953,7 @@ func (ic *indexerCache) ensureIndexed(idx *index.Indexer, input SemanticSearchIn
 			}
 		}
 
-		if ic.markMigrationPrepared(reindexKey) {
+		if !ic.lexical() && ic.markMigrationPrepared(reindexKey) {
 			legacyPath := config.LegacyDBPathForProject(projectDir, modelName)
 			if err := prepareMigrationFunc(idx, projectDir, legacyPath); err != nil {
 				ic.logger().Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
@@ -1105,6 +1137,11 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 		EmbeddingModel:    info.EmbeddingModel,
 	}
 
+	if idx.Lexical() {
+		out.Retrieval = "bm25"
+		out.UniqueLexicalEntries = out.UniqueVectors
+		out.UniqueVectors = 0
+	}
 	fresh, err := idx.IsFresh(effectiveRoot)
 	if err != nil {
 		return nil, nil, fmt.Errorf("check freshness: %w", err)
@@ -1120,6 +1157,9 @@ func (ic *indexerCache) handleIndexStatus(_ context.Context, _ *mcp.CallToolRequ
 // handleHealthCheck pings the configured embedding service and reports status.
 // It checks the currently active server (after failover), not always server[0].
 func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRequest, _ HealthCheckInput) (*mcp.CallToolResult, any, error) {
+	if ic.lexical() {
+		return healthResult("local", "", "bm25", true, "BM25 uses local SQLite; no embedding service required"), nil, nil
+	}
 	servers := ic.cfg.Servers()
 	idx := 0
 	if fe, ok := ic.embedder.(*embedder.FailoverEmbedder); ok {
@@ -1355,6 +1395,9 @@ var xmlEscaper = strings.NewReplacer(
 // reduce repetition. Overlapping chunks are merged before this function is
 // called, so no per-file cap is needed.
 func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
+	if out.Retrieval == "bm25" {
+		return formatLexicalResults(projectPath, out)
+	}
 	if len(out.Results) == 0 {
 		var b strings.Builder
 		b.WriteString("No results found.")
@@ -1378,6 +1421,9 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Found %d results", len(out.Results))
+	if out.Retrieval != "" {
+		fmt.Fprintf(&b, " [retrieval=%s]", out.Retrieval)
+	}
 	if out.Reindexed {
 		fmt.Fprintf(&b, " (indexed %d files)", out.IndexedFiles)
 	}
@@ -1426,8 +1472,12 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 		})
 		fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(g.rel))
 		for _, r := range g.results {
-			fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
-				r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
+			if r.RelatedTo != "" {
+				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" related-to=\"%s\" relation=\"%s\">\n", r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), xmlEscaper.Replace(r.RelatedTo), xmlEscaper.Replace(r.Relation))
+			} else {
+				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+					r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
+			}
 			if r.Content != "" {
 				b.WriteString(r.Content)
 				b.WriteByte('\n')
@@ -1442,6 +1492,9 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 
 // formatIndexStatus builds a compact plaintext representation of index status.
 func formatIndexStatus(out IndexStatusOutput) string {
+	if out.Retrieval == "bm25" {
+		return fmt.Sprintf("BM25 index: %s\nFiles: %d | Chunks: %d | Unique lexical entries: %d | Shared references: %d | Deduplication: %.1f%% | Database: %d bytes\nLast indexed: %s | Stale: %t", out.ProjectPath, out.IndexedFiles, out.TotalChunks, out.UniqueLexicalEntries, out.SharedReferences, out.DeduplicationRate*100, out.DatabaseBytes, out.LastIndexedAt, out.Stale)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Index: %s\n", out.ProjectPath)
 	fmt.Fprintf(&b, "Files: %d | Indexed: %d | Chunks: %d | Model: %s\n", out.TotalFiles, out.IndexedFiles, out.TotalChunks, out.EmbeddingModel)
@@ -1461,8 +1514,8 @@ func formatIndexStatus(out IndexStatusOutput) string {
 	return b.String()
 }
 
-func runStdio(_ *cobra.Command, _ []string) error {
-	cfg, err := config.NewConfigService(config.DefaultConfigPath())
+func runStdio(cmd *cobra.Command, _ []string) error {
+	cfg, err := loadConfigWithFlags(cmd)
 	if err != nil {
 		return err
 	}
@@ -1474,14 +1527,16 @@ func runStdio(_ *cobra.Command, _ []string) error {
 	emb := newEmbedder(cfg)
 
 	logger, logFile := newDebugLogger()
-	emb.SetLogger(logger)
+	if emb != nil {
+		emb.SetLogger(logger)
+	}
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
 	}
 
 	logger.Info("lumen config",
-		"model", emb.ModelName(),
-		"backend", cfg.Servers()[0].Backend,
+		"retrieval", cfg.Retrieval(),
+		"model", retrievalModel(emb),
 		"freshness_ttl", cfg.FreshnessTTL().String(),
 	)
 	closeCtx, closeFn := context.WithCancel(context.Background())
@@ -1504,45 +1559,22 @@ func runStdio(_ *cobra.Command, _ []string) error {
 		Name: "semantic_search",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
-			Title:        "Semantic Code Search",
+			Title:        "Code Search",
 		},
-		Description: `Search indexed codebase using natural language. ALWAYS use semantic_search as the FIRST tool for code discovery and exploration.
+		Description: `Search indexed code using BM25 by default, with exact identifier/path boosts and bounded structural context. The semantic_search tool name is retained for compatibility. Configure retrieval=semantic explicitly to use embeddings.
 
-Do NOT default to Grep, Glob, or Read for search tasks — only use them for exact literal string lookups.
+Use for code discovery and exploration. Auto-indexes stale or empty projects. BM25 uses local files and SQLite and requires no embedding service. Identifiers, paths, comments and natural language terms are searchable, but vocabulary mismatch can reduce recall. For empty BM25 results, try concrete identifiers or alternate terms; cosine min_score thresholds do not apply.
 
-Before using Search, Grep, Glob, Find, or Read for any search, stop and ask:
-
-> "Do I already know the exact literal string I'm searching for?"
-
-- **No** — understanding how something works, finding where something is implemented, exploring
-  unfamiliar code → use **semantic search**
-- **Yes** — a specific function name, import path, variable name, or error message you already
-  know exists → Grep/Glob is acceptable for that exact string only
-
-# ALWAYS use semantic search as the first tool for code discovery
-
-This includes:
-
-- Understanding how a system or feature works
-- Finding where functionality is implemented
-- Discovering what calls what or how components connect
-- Locating code related to a concept or domain term
-- Finding relevant code before making changes
-
-Auto-indexes if the index is stale or empty.
-
-Tip: If a search returns no results, retry with a lower min_score (e.g. 0.0 or -1) before trying a completely different query. Increase limit (e.g. limit: 20) for broader coverage.`,
+limit caps direct hits; BM25 may append at most two one-hop related snippets with related-to provenance and no score. Set lexical_only=true for the lexical baseline. Direct BM25 scores are unbounded lexical ranks (higher is better), not cosine similarity. In semantic mode only, min_score=-1 disables the cosine noise floor. Increase limit for broader coverage.`,
 	}, indexers.handleSemanticSearch)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "health_check",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
-			Title:        "Embedding Service Health Check",
+			Title:        "Retrieval Health Check",
 		},
-		Description: `Check if the configured embedding service (Ollama or LM Studio) is reachable and healthy.
-
-Reports backend type, host, model name, and connection status. Use this to diagnose embedding failures or verify service availability.`,
+		Description: `Report the active retrieval mode. BM25 is local and needs no embedding service; this check does not probe embedding servers or individual project databases. In semantic mode, probe the configured embedding service and model.`,
 	}, indexers.handleHealthCheck)
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -1551,7 +1583,7 @@ Reports backend type, host, model name, and connection status. Use this to diagn
 			ReadOnlyHint: true,
 			Title:        "Code Index Status",
 		},
-		Description: `Check the indexing status of a project. Shows total files, indexed chunks, and embedding model.
+		Description: `Check the indexing status of a project. Shows total files, indexed chunks, deduplicated storage, and active retrieval mode. BM25 reports unique lexical entries; semantic mode reports vector storage and embedding model.
 
 Use this to verify a project is indexed before searching, or to check if the index is up to date.
 

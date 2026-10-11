@@ -315,6 +315,7 @@ func TestGenerateSessionContextInternal_SpawnsWhenNoDB(t *testing.T) {
 }
 
 func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
@@ -341,6 +342,7 @@ func TestGenerateSessionContextInternal_NoSpawnWhenFresh(t *testing.T) {
 }
 
 func TestGenerateSessionContextInternal_ZeroChunksIsNotReady(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
@@ -370,6 +372,7 @@ func TestGenerateSessionContextInternal_ZeroChunksIsNotReady(t *testing.T) {
 }
 
 func TestGenerateSessionContextInternal_LastIndexFailureIsUnhealthy(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
@@ -410,6 +413,7 @@ func TestGenerateSessionContextInternal_LastIndexFailureIsUnhealthy(t *testing.T
 }
 
 func TestGenerateSessionContextInternal_SpawnsWhenStale(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 
@@ -435,6 +439,7 @@ func TestGenerateSessionContextInternal_SpawnsWhenStale(t *testing.T) {
 }
 
 func TestGenerateSessionContextInternal_MessageWithDonor(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 
@@ -460,7 +465,26 @@ func TestGenerateSessionContextInternal_MessageWithoutDonor(t *testing.T) {
 	}
 }
 
+func TestGenerateSessionContextInternal_BM25SkipsDonorLookup(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "bm25")
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	result := generateSessionContextInternal("/my/worktree",
+		func(_, _ string) string {
+			t.Error("findDonor must not run in bm25 mode")
+			return "/some/donor.db"
+		},
+		func(_ string) {},
+	)
+	if !strings.Contains(result, "No index yet") {
+		t.Errorf("expected no-index message in bm25 mode, got: %s", result)
+	}
+}
+
 func TestGenerateSessionContextInternal_NormalizesToGitRoot(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
@@ -518,6 +542,7 @@ func TestGenerateSessionContextInternal_NormalizesToGitRoot(t *testing.T) {
 }
 
 func TestGenerateSessionContextInternal_NonGitUsesParentIndex(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", tmpDir)
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)

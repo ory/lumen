@@ -128,3 +128,8 @@ func XDGConfigDir() string {
 func DefaultConfigPath() string {
 	return filepath.Join(XDGConfigDir(), "lumen", "config.yaml")
 }
+
+// LexicalDBPath returns a model-independent repository collection for lexical v1.
+func LexicalDBPath(projectPath string, maxChunkTokens int) string {
+	return DBPathForProjectProfile(projectPath, "lumen-bm25-v1", 0, "lexical", maxChunkTokens)
+}

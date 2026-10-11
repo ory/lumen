@@ -31,3 +31,6 @@ bench-swe/overview.txt
 # scripts/ test-only npm install (cross-spawn for spawn-semantics test)
 scripts/node_modules/
 scripts/package-lock.json
+
+# Locally generated analysis artifacts
+/output/

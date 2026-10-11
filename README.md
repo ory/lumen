@@ -8,10 +8,14 @@
 
 Claude reads entire files to find what it needs. Lumen gives it a map.
 
-Lumen is a 100% local semantic code search engine for AI coding agents. No API
-keys, no cloud, no external database, just open-source embedding models
-([Ollama](https://ollama.com/) or [LM Studio](https://lmstudio.ai/)), SQLite,
-and your CPU. A single static binary and your own local embedding server.
+Lumen is a local code search engine for AI coding agents. Its default uses
+code-aware BM25 in SQLite: no API keys, model download, or embedding server.
+It returns symbol-sized snippets and a small amount of related local code.
+Embedding-based semantic search remains an explicit opt-in.
+
+The benchmark figures below describe the previous **semantic retrieval** setup,
+not the new BM25 default. See the [retrieval evaluation](docs/BENCHMARKS.md#retrieval-evaluation)
+for a reproducible lexical baseline and structural-context comparison.
 
 The payoff is measurable and reproducible: across 9 benchmark runs on 9
 languages and real GitHub bug-fix tasks, Lumen cuts cost in **every single
@@ -69,16 +73,9 @@ _Claude Code asking about the
 > indexing coordination uses `flock(2)` on Unix and `LockFileEx` on Windows
 > (via [gofrs/flock](https://github.com/gofrs/flock)).
 
-1. [Ollama](https://ollama.com/) installed and running, then pull the default
-   embedding model:
-   ```bash
-   ollama pull ordis/jina-embeddings-v2-base-code
-   ```
-2. One of:
-   [Claude Code](https://code.claude.com/docs/en/quickstart),
-   [Cursor](https://cursor.com/),
-   [Codex](https://developers.openai.com/codex/cli), or
-   [OpenCode](https://opencode.ai/)
+Install one of [Claude Code](https://code.claude.com/docs/en/quickstart),
+[Cursor](https://cursor.com/), [Codex](https://developers.openai.com/codex/cli),
+or [OpenCode](https://opencode.ai/). No embedding service is needed for the default.
 
 **Note:** Installation differs by platform. Claude Code and Codex install from
 plugin marketplaces. OpenCode installs from npm. Cursor packaging is shipped
@@ -179,38 +176,46 @@ or refreshes the index automatically.
 
 ## What you get
 
-- **Semantic vector search** — Claude finds relevant functions, types, and
-  modules by meaning, not keyword matching
-- **Auto-indexing** — indexes on session start, only re-processes changed files
-  via Merkle tree diffing
-- **Incremental updates** — re-indexes only what changed; large codebases
-  re-index in seconds after the first run
+- **Code-aware BM25** — weighted paths, symbols, signatures, comments and bodies;
+  complete identifiers are preserved and also split into words
+- **Bounded related context** — at most two extra local snippets from one-hop
+  direct calls, within 6000 bytes, starting from the top three direct matches
+- **Incremental indexing** — Merkle hashes identify changed files
 - **12 language families** — Go, Python, TypeScript, JavaScript, Svelte, Rust,
   Ruby, Java, PHP, C/C++, C#, Dart
-- **Git worktree support** — worktrees share index data automatically; a new
-  worktree seeds from a sibling's index and only re-indexes changed files,
-  turning minutes of embedding into seconds
-- **Zero cloud** — embeddings stay on your machine; no data leaves your network
-- **Ollama and LM Studio** — works with either local embedding backend
+- **Git worktree support** — unchanged revisions share index entries
+- **Optional semantic retrieval** — explicitly select Ollama or LM Studio embeddings
 
 ## How it works
 
-Lumen sits between your codebase and Claude as an MCP server. When a session
-starts, it walks your project and builds a **Merkle tree** over file hashes:
-only changed files get re-chunked and re-embedded. Each file is split into
-semantic chunks (functions, types, methods) using Go's native AST or tree-sitter
-grammars for other languages. Chunks are embedded and stored in **SQLite +
-sqlite-vec** using cosine-distance KNN for retrieval.
+Lumen splits source into functions, types and methods using native Go AST and
+tree-sitter parsers. SQLite FTS5 ranks fields with BM25 and exact symbol/path
+boosts. Fresh snippets are read from the active worktree after hash validation.
 
-```
-Files → semantic chunks → vector embeddings → SQLite/sqlite-vec → KNN search
+```text
+Files → symbol chunks + identifiers → shared FTS5 index → BM25 matches → bounded related context
 ```
 
-When Claude needs to understand code, it calls `semantic_search` instead of
-reading entire files. The index is stored outside your repo
-(`~/.local/share/lumen/<hash>/index.db`). Git worktrees from the same repository
-use one collection for a compatible model, vector-storage, and chunking profile;
-non-Git projects use private collections. Different profiles never collide.
+The MCP tool retains the name `semantic_search` for compatibility. Default
+searches need no model or backend connection. `lumen search --lexical-only "query"`
+or MCP `lexical_only: true` disables related context for a lexical baseline.
+Related snippets carry `related_to` and `relation`, not a relevance score.
+BM25 scores are positive ranking values, not cosine similarity or probabilities;
+omit `min_score` (positive thresholds require semantic mode).
+
+Expansion conservatively follows unambiguous direct functions in the same file,
+plus directly exported named local JavaScript/TypeScript functions and exported
+Go functions reached through local-package aliases.
+It is not a full call graph: ambiguous dispatch, external dependencies and
+unproven reexports are skipped. Structured data and Markdown use lexical search
+only. No Go-to-JavaScript HTTP traversal is inferred.
+
+Vocabulary mismatch remains a limitation: a query about duplicate payments may
+miss `IdempotencyStore` without matching words or a discoverable calling function.
+The new baseline is evaluated rather than assumed equivalent to embeddings.
+
+Indexes stay outside the repository. Compatible Git worktrees share a collection
+but retain separate memberships; lexical profiles are independent of models.
 
 ## Benchmarks
 
@@ -268,10 +273,23 @@ for all 10 per-language benchmark deep dives.
 
 ## Configuration
 
-All configuration is via environment variables:
+Set `retrieval: bm25` or `retrieval: semantic` in configuration, use
+`LUMEN_RETRIEVAL`, or pass `--retrieval` on the CLI. Default: `bm25`.
+Restart the MCP server after changing retrieval mode.
+
+For optional semantic mode, run your embedding service and pull its model, then:
+
+```bash
+ollama pull ordis/jina-embeddings-v2-base-code
+lumen --retrieval semantic index .
+lumen --retrieval semantic search "refresh access token"
+```
+
+Embedding settings below apply only to semantic retrieval:
 
 | Variable                 | Default                  | Description                                                   |
 | ------------------------ | ------------------------ | ------------------------------------------------------------- |
+| `LUMEN_RETRIEVAL`       | `bm25`                   | Retrieval mode: `bm25` or `semantic`                           |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model; use with `LUMEN_EMBED_DIMS` for unlisted models |
 | `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`)                    |
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                             |
@@ -311,26 +329,27 @@ of the database path hash, so different models never collide.
 `lumen index` and `lumen search` accept `--model`/`-m` and `--backend`/`-b`
 to pick from a multi-server `config.yaml`. The selection filters the
 configured servers to those matching both fields; failover still works
-within the filtered subset.
+within the filtered subset. Both flags require `--retrieval semantic`; in the
+default BM25 mode they are rejected instead of silently ignored.
 
 ```sh
 # Index with the Ollama server matching this model name.
-lumen index --model ordis/jina-embeddings-v2-base-code .
+lumen --retrieval semantic index --model ordis/jina-embeddings-v2-base-code .
 
 # Same model name hosted on LM Studio (present in YAML, not in the
 # static registry) — accepted because the name is configured.
-lumen index --model text-embedding-jina-embeddings-v2-base-code .
+lumen --retrieval semantic index --model text-embedding-jina-embeddings-v2-base-code .
 
 # Disambiguate when the same model is configured on two backends.
-lumen index --model my-embed --backend lmstudio .
+lumen --retrieval semantic index --model my-embed --backend lmstudio .
 
 # Pick the first configured Ollama server regardless of model.
-lumen search --backend ollama "…"
+lumen --retrieval semantic search --backend ollama "…"
 ```
 
 If `--model` is not configured in YAML but is a known registry model (and
 `--backend` is unset), Lumen falls back to mutating the default server's
-model — preserving `lumen index --model all-minilm .` for users with no YAML.
+model — preserving `lumen --retrieval semantic index --model all-minilm .` for users with no YAML.
 
 ### Using a custom or unlisted model
 
@@ -381,12 +400,12 @@ Index databases are stored outside your project:
 ~/.local/share/lumen/<hash>/index.db
 ```
 
-Where `<hash>` identifies the Git common directory (or the absolute path for a
-non-Git project), indexed scope, embedding model and dimensions, vector
-precision, chunking profile, and index version. Worktrees in one repository
-share content-addressed file revisions and vectors while retaining independent
-project memberships. Vectors use int8 storage by default; set
-`LUMEN_VECTOR_STORAGE=float32` to opt out. No files are added to your repo.
+The hash identifies repository, indexed scope, chunking profile and format.
+BM25 uses a model-independent profile. Semantic profiles additionally include
+model, dimensions and vector precision (`int8` by default). Worktrees share
+content-addressed revisions while retaining separate memberships. No files are
+added to your repository. Existing vector collections remain available in
+semantic mode; selecting BM25 does not destructively migrate them.
 
 You can safely delete the entire `lumen` directory to clear all indexes, or let
 Lumen reclaim the space for you:
@@ -401,12 +420,10 @@ An index counts as used every time Lumen opens it (search, indexing, status, or
 session start), so indexes for projects you still work on are never removed.
 Indexes with an indexer currently running are always kept.
 
-**Git worktrees** are detected automatically. A new worktree attaches unchanged
-path-and-content revisions directly from the repository collection and embeds
-only missing chunk inputs. Removing an old worktree drops its memberships;
-shared revisions and vectors remain until their final reference disappears.
-Legacy per-worktree indexes migrate lazily, reusing unchanged float32 vectors
-without contacting the embedding backend.
+**Git worktrees** attach unchanged path-and-content revisions directly from the
+repository collection. Removing an old worktree drops its memberships; shared
+entries remain until their final reference disappears. Semantic mode retains
+its existing legacy vector migration path.
 
 For the complete storage key, sharing rules, status metrics, migration process,
 and cleanup lifecycle, see [Index storage and lifecycle](docs/INDEX_STORAGE.md).
@@ -425,7 +442,8 @@ lumen help
 
 **Ollama not running / "connection refused"**
 
-Start Ollama and verify the model is pulled:
+This applies only to `--retrieval semantic`. For the default BM25 mode, no
+Ollama service is needed. In semantic mode, start Ollama and pull the model:
 
 ```bash
 ollama serve
@@ -478,17 +496,17 @@ no longer in use if you want to reclaim its disk space.
 **Understanding index size and deduplication**
 
 Call `index_status` for the project. It reports project-local file and chunk
-counts alongside collection-wide unique vectors, shared references,
-deduplication ratio, vector precision, database size, and currently reclaimable
+counts alongside collection-wide lexical entries (or semantic vectors), shared
+references, deduplication ratio, database size, and currently reclaimable
 SQLite pages. See
 [Index storage and lifecycle](docs/INDEX_STORAGE.md#reading-index-status) for
 definitions and examples.
 
 **Slow first indexing**
 
-The first run embeds every file. Subsequent runs only process changed files
-(typically a few seconds). For large projects (100k+ lines), first indexing can
-take several minutes — this is a one-time cost.
+The first run parses and indexes every eligible file. Subsequent runs process
+changed files. Semantic mode additionally embeds new chunks and can take
+considerably longer depending on the model and hardware.
 
 ## Development
 

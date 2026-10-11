@@ -123,6 +123,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 		indexStart := time.Now()
 		cmd := exec.CommandContext(ctx, cfg.LumenBinary, "index", repoDir)
 		cmd.Env = append(os.Environ(),
+			"LUMEN_RETRIEVAL=semantic",
 			"LUMEN_BACKEND="+cfg.Backend,
 			"LUMEN_EMBED_MODEL="+cfg.EmbedModel,
 		)
@@ -167,6 +168,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	claudeCmd := exec.CommandContext(runCtx, "claude", args...)
 	claudeCmd.Dir = repoDir
 	claudeCmd.Env = append(cleanEnvForClaude(),
+		"LUMEN_RETRIEVAL=semantic",
 		"LUMEN_BACKEND="+cfg.Backend,
 		"LUMEN_EMBED_MODEL="+cfg.EmbedModel,
 	)

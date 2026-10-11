@@ -18,7 +18,7 @@ Refresh or rebuild the bundled Lumen index for the current project.
 3. If the user explicitly asks for a clean rebuild, explain the options and
    run one via the shell:
    - `lumen index --force .` — reprocesses every file for the current project
-     without wiping other worktrees or their shared vectors. Prefer this.
+     without wiping other worktrees or their shared index entries. Prefer this.
    - `lumen clean --days 0 && lumen index .` — deletes every cached index not
      held by an active indexer lock before rebuilding; locked collections are
      skipped and counted in the summary. Use only when the user asks for a full
@@ -26,6 +26,6 @@ Refresh or rebuild the bundled Lumen index for the current project.
    - `lumen clean` — removes indexes for projects that no longer exist or have
      not been used in 30 days. Use to reclaim disk space, not to rebuild the
      current project.
-4. After the refresh or rebuild, report the new index status, including vector
-   precision, unique vectors, shared references, deduplication ratio, database
+4. After the refresh or rebuild, report the new index status, including retrieval
+   mode, lexical entries or semantic vectors, shared references, deduplication ratio, database
    bytes, and reclaimable bytes when available.

@@ -73,7 +73,8 @@ func init() {
 	searchCmd.Flags().StringP("path", "p", "", "directory to search (default: cwd)")
 	searchCmd.Flags().String("cwd", "", "project root when path is a subdirectory")
 	searchCmd.Flags().IntP("n-results", "n", 8, "max results to return")
-	searchCmd.Flags().Float64("min-score", 0, "minimum score threshold (-1 to 1)")
+	searchCmd.Flags().Float64("min-score", 0, "semantic mode only: minimum cosine score (-1 to 1); omit for BM25")
+	searchCmd.Flags().Bool("lexical-only", false, "disable related structural context for the BM25 baseline")
 	searchCmd.Flags().Bool("summary", false, "omit code snippets, return location only")
 	searchCmd.Flags().Int("max-lines", 0, "truncate snippets at N lines (0 = unlimited)")
 	searchCmd.Flags().BoolP("force", "f", false, "force full re-index before searching")
@@ -85,7 +86,7 @@ func init() {
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search an indexed project for semantically similar code",
+	Short: "Search code with BM25 and bounded structural context (semantic opt-in)",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runSearch,
 }
@@ -123,10 +124,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
 	}
-	emb.SetLogger(logger)
-	modelName := emb.ModelName()
+	if emb != nil {
+		emb.SetLogger(logger)
+	}
+	modelName := retrievalModel(emb)
 
-	indexRoot, projectPath, err := resolveIndexRoot(pathFlag, cwdFlag, modelName)
+	indexRoot, projectPath, err := resolveIndexRootWithPath(pathFlag, cwdFlag, func(project string) string { return configuredDBPath(cfg, project, modelName) })
 	if err != nil {
 		return fmt.Errorf("resolve paths: %w", err)
 	}
@@ -177,7 +180,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 }
 
 func finishSearch(
-	_ *cobra.Command,
+	cmd *cobra.Command,
 	ctx context.Context,
 	tr *tracer,
 	idx *index.Indexer,
@@ -190,6 +193,17 @@ func finishSearch(
 	reindexed bool,
 	indexedFiles int,
 ) error {
+	if idx.Lexical() {
+		lexicalOnly, _ := cmd.Flags().GetBool("lexical-only")
+		items, err := lexicalSearchItems(ctx, idx, indexRoot, searchPath, query, nResults, minScore, !lexicalOnly, summary, maxLines)
+		if err != nil {
+			return err
+		}
+		tr.record("BM25 search", fmt.Sprintf("%d results including bounded related context", len(items)))
+		tr.print(os.Stderr)
+		fmt.Println(formatSearchResults(searchPath, SemanticSearchOutput{Results: items, Reindexed: reindexed, IndexedFiles: indexedFiles, Retrieval: "bm25"}))
+		return nil
+	}
 	// Span 4: query embedding
 	vecs, err := emb.Embed(ctx, []string{query})
 	if err != nil {

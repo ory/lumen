@@ -154,7 +154,16 @@ func (idx *Indexer) rebuildStore(projectPath string) error {
 			_ = os.Remove(idx.dsn + suffix)
 		}
 	}
-	s, err := store.NewCollection(idx.dsn, idx.emb.Dimensions(), idx.vectorStorage, projectPath)
+	var s *store.Store
+	var err error
+	if idx.Lexical() {
+		s, err = store.OpenLexicalCollection(idx.dsn)
+		if err == nil {
+			err = s.UseProject(projectPath)
+		}
+	} else {
+		s, err = store.NewCollection(idx.dsn, idx.emb.Dimensions(), idx.vectorStorage, projectPath)
+	}
 	if err != nil {
 		return fmt.Errorf("open fresh store: %w", err)
 	}
@@ -342,6 +351,9 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 		}
 		_ = idx.store.SetMeta(store.MetaLastIndexError, "")
 	}()
+	if idx.Lexical() {
+		return idx.indexLexicalWithTree(ctx, projectDir, force, curTree, progress)
+	}
 	if idx.store.IsShared() {
 		return idx.indexSharedWithTree(ctx, projectDir, oldRootHash, force, curTree, progress)
 	}

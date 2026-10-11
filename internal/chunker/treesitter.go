@@ -78,6 +78,8 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 		return nil, fmt.Errorf("parse %s: %w", filePath, err)
 	}
 
+	imports := treeImports(root, content)
+	shadowed := treeShadowedNames(root, content)
 	var chunks []Chunk
 
 	for _, rule := range c.rules {
@@ -110,14 +112,28 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 			}
 			startLine := int(declNode.StartPoint().Row) + 1
 			startByte := declNode.StartByte()
-			if comment := findLeadingComments(declNode); comment != nil {
+			leadingNode := declNode
+			if p := declNode.Parent(); p != nil && p.Type() == "export_statement" {
+				leadingNode = p
+			}
+			if comment := findLeadingComments(leadingNode); comment != nil {
 				startLine = int(comment.StartPoint().Row) + 1
 				startByte = comment.StartByte()
 			}
 			endLine := int(declNode.EndPoint().Row) + 1
 			snippet := string(content[startByte:declNode.EndByte()])
 
-			chunks = append(chunks, makeChunk(filePath, symbol, rule.kind, startLine, endLine, snippet))
+			chunk := makeChunk(filePath, symbol, rule.kind, startLine, endLine, snippet)
+			populateTreeMetadata(&chunk, declNode, content, startByte)
+			chunk.Imports = imports
+			filtered := chunk.References[:0]
+			for _, ref := range chunk.References {
+				if !shadowed[ref] {
+					filtered = append(filtered, ref)
+				}
+			}
+			chunk.References = filtered
+			chunks = append(chunks, chunk)
 		}
 	}
 
