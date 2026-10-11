@@ -1550,6 +1550,12 @@ func runStdio(cmd *cobra.Command, _ []string) error {
 	defer indexers.Close()
 	indexers.startDailyCleanup(filepath.Join(config.XDGDataDir(), "lumen"), time.Now(), logger)
 
+	server := newMCPServer(indexers)
+	return server.Run(context.Background(), &mcp.StdioTransport{})
+}
+
+// newMCPServer registers the Lumen tools on a fresh MCP server.
+func newMCPServer(indexers *indexerCache) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "lumen",
 		Version: "0.1.0",
@@ -1557,6 +1563,11 @@ func runStdio(cmd *cobra.Command, _ []string) error {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "semantic_search",
+		// Claude Code defers MCP tools behind ToolSearch by default; without
+		// this the model only sees the tool name and must load it first, and
+		// in practice reaches for Bash grep instead. Load the search tool
+		// upfront with its description; the other tools stay deferred.
+		Meta: mcp.Meta{"anthropic/alwaysLoad": true},
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint: true,
 			Title:        "Code Search",
@@ -1590,5 +1601,5 @@ Use this to verify a project is indexed before searching, or to check if the ind
 Note: You do NOT need to call index_status before semantic_search. Semantic search auto-indexes automatically. Only use this tool when the user explicitly asks about index status, or to diagnose why search results seem incomplete.`,
 	}, indexers.handleIndexStatus)
 
-	return server.Run(context.Background(), &mcp.StdioTransport{})
+	return server
 }
