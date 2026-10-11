@@ -15,6 +15,7 @@ import (
 type Config struct {
 	RepoRoot    string
 	LumenBinary string
+	Retrieval   string
 	Backend     string
 	EmbedModel  string
 	OllamaHost  string
@@ -27,8 +28,11 @@ func Validate(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("build: %w", err)
 	}
 
-	if err := checkOllama(cfg); err != nil {
-		return fmt.Errorf("ollama: %w", err)
+	// BM25 is purely lexical; only semantic retrieval needs an embedding server.
+	if cfg.Retrieval == "semantic" {
+		if err := checkOllama(cfg); err != nil {
+			return fmt.Errorf("ollama: %w", err)
+		}
 	}
 
 	if err := checkClaude(ctx); err != nil {
@@ -45,7 +49,8 @@ func Validate(ctx context.Context, cfg *Config) error {
 
 func buildLumen(ctx context.Context, cfg *Config) error {
 	fmt.Print("  Building lumen... ")
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", cfg.LumenBinary, ".")
+	// BM25 needs SQLite FTS5, which go-sqlite3 only compiles with the fts5 tag.
+	cmd := exec.CommandContext(ctx, "go", "build", "-tags", "fts5", "-o", cfg.LumenBinary, ".")
 	cmd.Dir = cfg.RepoRoot
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -104,7 +109,7 @@ func probeScenarios(ctx context.Context, cfg *Config) error {
 }
 
 func probeBaseline(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.Baseline, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.Baseline, cfg.LumenBinary, cfg.Retrieval, cfg.Backend, cfg.EmbedModel)
 	if err != nil {
 		return err
 	}
@@ -123,7 +128,7 @@ func probeBaseline(ctx context.Context, cfg *Config) error {
 }
 
 func probeWithLumen(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Retrieval, cfg.Backend, cfg.EmbedModel)
 	if err != nil {
 		return err
 	}
@@ -142,10 +147,10 @@ func probeWithLumen(ctx context.Context, cfg *Config) error {
 }
 
 // probeHookFiringWithLumen verifies that the PreToolUse hook intercepts a
-// natural-language Grep call and redirects Claude to mcp__lumen__semantic_search
+// natural-language Grep call and redirects Claude to the lumen search tool
 // in with-lumen (where Grep/Glob are available alongside lumen).
 func probeHookFiringWithLumen(ctx context.Context, cfg *Config) error {
-	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := runner.WriteMCPConfig(runner.WithLumen, cfg.LumenBinary, cfg.Retrieval, cfg.Backend, cfg.EmbedModel)
 	if err != nil {
 		return err
 	}
@@ -165,8 +170,9 @@ func probeHookFiringWithLumen(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	if !strings.Contains(out, "mcp__lumen__semantic_search") {
-		return fmt.Errorf("with-lumen hook probe: PreToolUse hook did not redirect to mcp__lumen__semantic_search")
+	want := "mcp__" + runner.MCPServerName + "__semantic_search"
+	if !strings.Contains(out, want) {
+		return fmt.Errorf("with-lumen hook probe: PreToolUse hook did not redirect to %s", want)
 	}
 	return nil
 }

@@ -47,14 +47,14 @@ func (tc ToolCall) SearchPath() string {
 }
 
 // HasLumenSearch returns true if the raw JSONL file contains at least one
-// mcp__lumen__semantic_search tool call.
+// lumen search tool call.
 func HasLumenSearch(rawPath string) (bool, error) {
 	calls, err := ExtractToolCalls(rawPath)
 	if err != nil {
 		return false, err
 	}
 	for _, tc := range calls {
-		if tc.Name == "mcp__lumen__semantic_search" {
+		if IsLumenSearchTool(tc.Name) {
 			return true, nil
 		}
 	}
@@ -143,4 +143,10 @@ func extractContentBlocks(evt map[string]any) []map[string]any {
 	}
 
 	return blocks
+}
+
+// IsLumenSearchTool reports whether a tool name is lumen's search tool under
+// either the bare MCP server name or the plugin-qualified one.
+func IsLumenSearchTool(name string) bool {
+	return name == "mcp__lumen__semantic_search" || name == "mcp__plugin_lumen_lumen__semantic_search"
 }

@@ -18,6 +18,7 @@ import (
 
 type Config struct {
 	ResultsDir  string
+	Retrieval   string
 	EmbedModel  string
 	ClaudeModel string
 	Tasks       []task.Task
@@ -34,7 +35,7 @@ type taskResult struct {
 	metrics   *metrics.Metrics
 	judge     *judge.JudgeResult
 	patch     string
-	lumenUsed bool // true if mcp__lumen__semantic_search was called at least once
+	lumenUsed bool // true if the lumen search tool was called at least once
 	toolCalls int  // total tool call count from raw JSONL
 }
 
@@ -82,7 +83,7 @@ func loadResults(cfg *Config) []taskResult {
 					tr.toolCalls = len(calls)
 					if s == runner.WithLumen {
 						for _, tc := range calls {
-							if tc.Name == "mcp__lumen__semantic_search" {
+							if analysis.IsLumenSearchTool(tc.Name) {
 								tr.lumenUsed = true
 								break
 							}
@@ -101,6 +102,7 @@ func loadResults(cfg *Config) []taskResult {
 
 type summaryData struct {
 	Date               string
+	Retrieval          string
 	EmbedModel         string
 	ClaudeModel        string
 	ResultsTableHeader string
@@ -140,6 +142,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 
 	data := summaryData{
 		Date:        time.Now().UTC().Format("2006-01-02 15:04 UTC"),
+		Retrieval:   cfg.Retrieval,
 		EmbedModel:  cfg.EmbedModel,
 		ClaudeModel: cfg.ClaudeModel,
 	}

@@ -175,3 +175,16 @@ func TestExtractToolCalls_MissingFile(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
+
+func TestIsLumenSearchTool(t *testing.T) {
+	for name, want := range map[string]bool{
+		"mcp__lumen__semantic_search":              true,
+		"mcp__plugin_lumen_lumen__semantic_search": true,
+		"mcp__lumen__index_status":                 false,
+		"Grep":                                     false,
+	} {
+		if got := IsLumenSearchTool(name); got != want {
+			t.Errorf("IsLumenSearchTool(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

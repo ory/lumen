@@ -17,10 +17,21 @@ type Config struct {
 	LumenBinary string
 	RepoRoot    string
 	ResultsDir  string
+	Retrieval   string // bm25 or semantic
 	Backend     string
 	EmbedModel  string
 	ClaudeModel string
 	TotalRuns   int
+}
+
+// lumenEnv returns the environment variables that select the retrieval mode
+// and embedding server for every lumen invocation in a run.
+func lumenEnv(cfg *Config) []string {
+	return []string{
+		"LUMEN_RETRIEVAL=" + cfg.Retrieval,
+		"LUMEN_BACKEND=" + cfg.Backend,
+		"LUMEN_EMBED_MODEL=" + cfg.EmbedModel,
+	}
 }
 
 type RunResult struct {
@@ -122,11 +133,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 		fmt.Printf("  %-20s %-10s indexing...\n", t.ID, string(s))
 		indexStart := time.Now()
 		cmd := exec.CommandContext(ctx, cfg.LumenBinary, "index", repoDir)
-		cmd.Env = append(os.Environ(),
-			"LUMEN_RETRIEVAL=semantic",
-			"LUMEN_BACKEND="+cfg.Backend,
-			"LUMEN_EMBED_MODEL="+cfg.EmbedModel,
-		)
+		cmd.Env = append(os.Environ(), lumenEnv(cfg)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			fmt.Printf("  %-20s %-10s index FAILED (%v): %s\n", t.ID, string(s), err, out)
 		} else {
@@ -135,7 +142,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	}
 
 	// Write MCP config
-	mcpPath, cleanup, err := WriteMCPConfig(s, cfg.LumenBinary, cfg.Backend, cfg.EmbedModel)
+	mcpPath, cleanup, err := WriteMCPConfig(s, cfg.LumenBinary, cfg.Retrieval, cfg.Backend, cfg.EmbedModel)
 	if err != nil {
 		return nil, fmt.Errorf("writing MCP config: %w", err)
 	}
@@ -167,11 +174,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 
 	claudeCmd := exec.CommandContext(runCtx, "claude", args...)
 	claudeCmd.Dir = repoDir
-	claudeCmd.Env = append(cleanEnvForClaude(),
-		"LUMEN_RETRIEVAL=semantic",
-		"LUMEN_BACKEND="+cfg.Backend,
-		"LUMEN_EMBED_MODEL="+cfg.EmbedModel,
-	)
+	claudeCmd.Env = append(cleanEnvForClaude(), lumenEnv(cfg)...)
 	rawFile, err := os.Create(rawPath)
 	if err != nil {
 		return nil, fmt.Errorf("creating raw file: %w", err)

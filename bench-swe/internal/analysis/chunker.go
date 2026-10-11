@@ -36,7 +36,7 @@ type langStats struct {
 	Language     string
 	TotalTasks   int
 	TotalRuns    int
-	InvalidRuns  int // with-lumen runs where mcp__lumen__semantic_search was never called
+	InvalidRuns  int // with-lumen runs where the lumen search tool was never called
 	TotalQueries int
 	FilesHit     int
 	FilesMissed  int
@@ -126,7 +126,7 @@ func extractSearchCalls(rawPath string) ([]searchCall, error) {
 
 	var calls []searchCall
 	for _, tc := range allCalls {
-		if tc.Name == "mcp__lumen__semantic_search" {
+		if IsLumenSearchTool(tc.Name) {
 			query, _ := tc.Input["query"].(string)
 			calls = append(calls, searchCall{Query: query, CWD: tc.SearchPath(), Results: tc.Result})
 		}

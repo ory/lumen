@@ -4,7 +4,7 @@ import "text/template"
 
 var summaryTmpl = template.Must(template.New("summary").Parse(`# SWE-Bench Summary
 
-Generated: {{ .Date }} | Embed: ` + "`{{ .EmbedModel }}`" + ` | Claude: ` + "`{{ .ClaudeModel }}`" + `
+Generated: {{ .Date }} | Retrieval: ` + "`{{ .Retrieval }}`" + ` | Embed: ` + "`{{ .EmbedModel }}`" + ` | Claude: ` + "`{{ .ClaudeModel }}`" + `
 
 | Scenario | Description |
 |----------|-------------|

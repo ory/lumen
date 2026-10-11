@@ -23,6 +23,7 @@ import (
 
 var (
 	flagEmbedModel    string
+	flagRetrieval     string
 	flagClaudeModel   string
 	flagLanguage      []string
 	flagScenario      string
@@ -43,6 +44,7 @@ var runCmd = &cobra.Command{
 
 func init() {
 	runCmd.Flags().StringVar(&flagEmbedModel, "embed-model", "ordis/jina-embeddings-v2-base-code", "Embedding model")
+	runCmd.Flags().StringVar(&flagRetrieval, "retrieval", "bm25", "Lumen retrieval mode (bm25|semantic)")
 	runCmd.Flags().StringVar(&flagClaudeModel, "claude-model", "haiku", "Claude model for tasks")
 	runCmd.Flags().StringArrayVar(&flagLanguage, "language", nil, "Filter by language (repeatable)")
 	runCmd.Flags().StringVar(&flagScenario, "scenario", "all", "Scenario filter (baseline|with-lumen|all)")
@@ -70,6 +72,10 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	lumenBinary := filepath.Join(repoRoot, "bin", "lumen")
 	tasksDir := filepath.Join(benchDir, "tasks")
 
+	if !runner.ValidRetrieval(flagRetrieval) {
+		return fmt.Errorf("unknown retrieval mode %q (valid: bm25, semantic)", flagRetrieval)
+	}
+
 	// Detect backend
 	backend := os.Getenv("LUMEN_BACKEND")
 	if backend == "" {
@@ -82,10 +88,9 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	// Results directory
 	resultsDir := flagResultsDir
 	if resultsDir == "" {
-		modelSlug := filepath.Base(flagEmbedModel)
 		ts := time.Now().Format("20060102-150405")
 		resultsDir = filepath.Join(repoRoot, "bench-results",
-			fmt.Sprintf("swe-%s-%s-%s", ts, backend, modelSlug))
+			fmt.Sprintf("swe-%s-%s", ts, resultsSlug(flagRetrieval, backend, flagEmbedModel)))
 	}
 	if err := os.MkdirAll(resultsDir, 0o755); err != nil {
 		return fmt.Errorf("creating results dir: %w", err)
@@ -97,6 +102,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 		pfCfg := &preflight.Config{
 			RepoRoot:    repoRoot,
 			LumenBinary: lumenBinary,
+			Retrieval:   flagRetrieval,
 			Backend:     backend,
 			EmbedModel:  flagEmbedModel,
 			OllamaHost:  os.Getenv("OLLAMA_HOST"),
@@ -145,6 +151,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 		LumenBinary: lumenBinary,
 		RepoRoot:    repoRoot,
 		ResultsDir:  resultsDir,
+		Retrieval:   flagRetrieval,
 		Backend:     backend,
 		EmbedModel:  flagEmbedModel,
 		ClaudeModel: flagClaudeModel,
@@ -272,6 +279,7 @@ func runBenchmarks(cmd *cobra.Command, args []string) error {
 	p.Info("Generating reports...")
 	rptCfg := &report.Config{
 		ResultsDir:  resultsDir,
+		Retrieval:   flagRetrieval,
 		EmbedModel:  flagEmbedModel,
 		ClaudeModel: flagClaudeModel,
 		Tasks:       tasks,
@@ -336,4 +344,13 @@ func findBenchDir() (string, error) {
 		return dir, nil
 	}
 	return "", fmt.Errorf("cannot find bench-swe directory (looked for tasks/ in cwd, bench-swe/, and exe dir)")
+}
+
+// resultsSlug names a results directory after what produced the index: the
+// embedding backend and model for semantic retrieval, or just "bm25".
+func resultsSlug(retrieval, backend, embedModel string) string {
+	if retrieval == "bm25" {
+		return "bm25"
+	}
+	return backend + "-" + filepath.Base(embedModel)
 }

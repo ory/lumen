@@ -30,6 +30,13 @@ func ParseScenarios(filter string) ([]Scenario, error) {
 	}
 }
 
+// MCPServerName is the MCP server name the benchmark registers lumen under.
+// The plugin hooks (SessionStart nudge, PreToolUse suggestion) tell Claude to
+// call mcp__plugin_lumen_lumen__semantic_search, the name a real plugin
+// install produces. Registering the dynamic server as "plugin_lumen_lumen"
+// yields the same tool name so the hooks point at a tool that exists.
+const MCPServerName = "plugin_lumen_lumen"
+
 type mcpConfig struct {
 	MCPServers map[string]mcpServer `json:"mcpServers"`
 }
@@ -40,10 +47,19 @@ type mcpServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
+// ValidRetrieval reports whether mode is a retrieval mode lumen accepts.
+func ValidRetrieval(mode string) bool {
+	return mode == "bm25" || mode == "semantic"
+}
+
 // WriteMCPConfig writes a temp MCP config JSON file.
 // Returns path to the temp file and a cleanup function.
-func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, func(), error) {
+func WriteMCPConfig(s Scenario, lumenBinary, retrieval, backend, model string) (string, func(), error) {
 	var cfg mcpConfig
+
+	if !ValidRetrieval(retrieval) {
+		return "", nil, fmt.Errorf("unknown retrieval mode %q (valid: bm25, semantic)", retrieval)
+	}
 
 	switch s {
 	case Baseline:
@@ -51,11 +67,11 @@ func WriteMCPConfig(s Scenario, lumenBinary, backend, model string) (string, fun
 	case WithLumen:
 		cfg = mcpConfig{
 			MCPServers: map[string]mcpServer{
-				"lumen": {
+				MCPServerName: {
 					Command: lumenBinary,
 					Args:    []string{"stdio"},
 					Env: map[string]string{
-						"LUMEN_RETRIEVAL":   "semantic",
+						"LUMEN_RETRIEVAL":   retrieval,
 						"LUMEN_BACKEND":     backend,
 						"LUMEN_EMBED_MODEL": model,
 					},
