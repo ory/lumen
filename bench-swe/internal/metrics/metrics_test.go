@@ -190,3 +190,43 @@ func TestLoadFromFile_Errors(t *testing.T) {
 		}
 	})
 }
+
+func TestCodexEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "raw.jsonl")
+	data := `{"type":"thread.started","thread_id":"123"}
+{"type":"item.completed","item":{"type":"agent_message","text":"Fixed."}}
+{"type": "turn.completed", "usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":50}}
+{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":10}}
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ExtractFromJSONL(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.CostUnknown || m.CostLabel() != "n/a" || m.InputTokens != 280 || m.CacheRead != 820 || m.OutputTokens != 60 || m.TotalTokens() != 1160 {
+		t.Fatalf("incorrect Codex normalization: %+v", m)
+	}
+	answer, err := ExtractAnswer(path)
+	if err != nil || answer != "Fixed." {
+		t.Fatalf("answer %q: %v", answer, err)
+	}
+}
+
+func TestFailedCompletion(t *testing.T) {
+	for _, content := range []string{
+		`{"type":"turn.failed","error":{"message":"limit reached"}}`,
+		`{"type":"result","subtype":"error_max_turns","is_error":true,"result":"unfinished"}`,
+		`{"type":"turn.completed","usage":{}}
+{"type":"turn.failed","error":{"message":"failed later"}}`,
+	} {
+		path := filepath.Join(t.TempDir(), "raw.jsonl")
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ExtractFromJSONL(path); err == nil {
+			t.Fatalf("accepted failed run: %s", content)
+		}
+	}
+}

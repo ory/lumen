@@ -1,12 +1,17 @@
 package judge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/aeneasr/lumen/bench-swe/internal/agent"
+	"github.com/aeneasr/lumen/bench-swe/internal/metrics"
 )
 
 type Rating string
@@ -25,6 +30,10 @@ type JudgeResult struct {
 }
 
 func Judge(ctx context.Context, issueTitle, issueBody, goldPatch, candidatePatch, scenario string) (*JudgeResult, error) {
+	return JudgeWithAgent(ctx, agent.Config{Provider: "claude", Transport: "cli", Auth: "subscription", Model: "claude-sonnet-4-6"}, issueTitle, issueBody, goldPatch, candidatePatch, scenario)
+}
+
+func JudgeWithAgent(ctx context.Context, cfg agent.Config, issueTitle, issueBody, goldPatch, candidatePatch, scenario string) (*JudgeResult, error) {
 	if strings.TrimSpace(candidatePatch) == "" {
 		return &JudgeResult{
 			Rating:      Poor,
@@ -54,20 +63,36 @@ On the FIRST line, respond with EXACTLY this JSON (no markdown fencing):
 
 Then write 2-3 sentences explaining your reasoning.`, issueTitle, issueBody, goldPatch, scenario, candidatePatch)
 
-	args := []string{
-		"-p", prompt,
-		"--model", "claude-sonnet-4-6",
-		"--effort", "medium",
-	}
-
-	cmd := exec.CommandContext(ctx, "claude", args...)
-	cmd.Env = cleanEnvForClaude()
-	out, err := cmd.Output()
+	dir, err := os.MkdirTemp("", "bench-judge-*")
 	if err != nil {
-		return nil, fmt.Errorf("running judge: %w", err)
+		return nil, err
 	}
-
-	return parseJudgeOutput(string(out))
+	defer func() { _ = os.RemoveAll(dir) }()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	cmd, cleanup, err := agent.Command(ctx, agent.Request{Config: cfg, CWD: dir, ReadOnly: true, Prompt: prompt + "\nDo not call tools; judge only the supplied patches."})
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	rawPath := filepath.Join(dir, "judge.jsonl")
+	raw, err := os.Create(rawPath)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stdout = raw
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	_ = raw.Close()
+	if err != nil {
+		return nil, fmt.Errorf("running %s judge: %w: %s", cfg.Provider, err, strings.TrimSpace(stderr.String()))
+	}
+	answer, err := metrics.ExtractAnswer(rawPath)
+	if err != nil {
+		return nil, err
+	}
+	return parseJudgeOutput(answer)
 }
 
 func parseJudgeOutput(output string) (*JudgeResult, error) {
@@ -128,16 +153,6 @@ func SaveResult(result *JudgeResult, jsonPath, mdPath string) error {
 	// Save explanation markdown
 	md := fmt.Sprintf("## Rating: %s\n\n%s\n", result.Rating, result.Explanation)
 	return os.WriteFile(mdPath, []byte(md), 0o644)
-}
-
-func cleanEnvForClaude() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "CLAUDECODE=") {
-			env = append(env, e)
-		}
-	}
-	return env
 }
 
 func LoadResult(jsonPath string) (*JudgeResult, error) {

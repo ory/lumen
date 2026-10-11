@@ -38,12 +38,6 @@ import (
 // These mirror cmd.SemanticSearchInput etc. but are intentionally
 // decoupled so the E2E tests don't depend on cmd internals.
 
-type semanticSearchOutput struct {
-	Results      []searchResultItem `json:"results"`
-	Reindexed    bool               `json:"reindexed"`
-	IndexedFiles int                `json:"indexed_files,omitempty"`
-}
-
 type indexStatusOutput struct {
 	ProjectPath    string `json:"project_path"`
 	TotalFiles     int    `json:"total_files"`
@@ -56,10 +50,25 @@ type indexStatusOutput struct {
 
 var serverBinary string
 
+// TestMain builds the server binary once. It deliberately does not require an
+// embedding service: BM25 suites run offline, and semantic suites gate
+// themselves with requireSemantic.
 func TestMain(m *testing.M) {
-	// Build the server binary.
-	bin := filepath.Join(os.TempDir(), "lumen-e2e-test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
+	// Never let the developer's Git signing or global config leak into the
+	// fixture repositories the suites create.
+	_ = os.Setenv("GIT_CONFIG_COUNT", "1")
+	_ = os.Setenv("GIT_CONFIG_KEY_0", "commit.gpgsign")
+	_ = os.Setenv("GIT_CONFIG_VALUE_0", "false")
+	_ = os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	// A per-run directory: concurrent E2E runs must not build over or delete
+	// each other's server binary.
+	binDir, err := os.MkdirTemp("", "lumen-e2e-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create binary directory: %v\n", err)
+		os.Exit(1)
+	}
+	bin := filepath.Join(binDir, "lumen")
+	cmd := exec.Command("go", "build", "-tags", "fts5", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -67,51 +76,74 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to build server binary: %v\n", err)
 		os.Exit(1)
 	}
-	defer os.Remove(bin)
+	serverBinary = bin
+	code := m.Run()
+	_ = os.RemoveAll(binDir)
+	os.Exit(code)
+}
 
-	// Check Ollama health.
-	ollamaHost := os.Getenv("OLLAMA_HOST")
-	if ollamaHost == "" {
-		ollamaHost = "http://localhost:11434"
-	}
+var semanticCheck = sync.OnceValue(func() error {
+	ollamaHost := ollamaHostForTest()
 	resp, err := http.Get(ollamaHost)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Ollama is unreachable at %s: %v — skipping E2E tests\n", ollamaHost, err)
-		os.Exit(1)
+		return fmt.Errorf("Ollama is unreachable at %s: %w", ollamaHost, err)
 	}
-	resp.Body.Close()
-
-	// Check that the all-minilm model is available in Ollama.
+	_ = resp.Body.Close()
 	tagsResp, err := http.Get(ollamaHost + "/api/tags")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to list Ollama models: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to list Ollama models: %w", err)
 	}
+	defer func() { _ = tagsResp.Body.Close() }()
 	var tagsBody struct {
 		Models []struct {
 			Name string `json:"name"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(tagsResp.Body).Decode(&tagsBody); err != nil {
-		tagsResp.Body.Close()
-		fmt.Fprintf(os.Stderr, "failed to decode Ollama model list: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to decode Ollama model list: %w", err)
 	}
-	tagsResp.Body.Close()
-	hasMinilm := false
 	for _, m := range tagsBody.Models {
 		if strings.HasPrefix(m.Name, "all-minilm") {
-			hasMinilm = true
-			break
+			return nil
 		}
 	}
-	if !hasMinilm {
-		fmt.Fprintf(os.Stderr, "E2E tests require the all-minilm model in Ollama — run: ollama pull all-minilm\n")
-		os.Exit(1)
-	}
+	return fmt.Errorf("semantic E2E tests require the all-minilm model in Ollama — run: ollama pull all-minilm")
+})
 
-	serverBinary = bin
-	os.Exit(m.Run())
+// requireSemantic gates suites that exercise embedding retrieval. They skip
+// when no embedding service is available, unless LUMEN_E2E_SEMANTIC=require
+// (set by `make e2e-semantic` and CI), which turns absence into a failure.
+func requireSemantic(t *testing.T) {
+	t.Helper()
+	if err := semanticCheck(); err != nil {
+		if os.Getenv("LUMEN_E2E_SEMANTIC") == "require" {
+			t.Fatal(err)
+		}
+		t.Skipf("semantic retrieval unavailable: %v", err)
+	}
+}
+
+// childEnv returns an isolated environment for a lumen child process with the
+// retrieval mode selected explicitly. Every child selects its mode: inheriting
+// the default would silently change what a suite measures.
+func childEnv(mode, dataHome string) []string {
+	env := []string{
+		"LUMEN_RETRIEVAL=" + mode,
+		"XDG_DATA_HOME=" + dataHome,
+		"XDG_CONFIG_HOME=" + filepath.Join(dataHome, "config"),
+		"HOME=" + os.Getenv("HOME"),
+		"PATH=" + os.Getenv("PATH"),
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=commit.gpgsign",
+		"GIT_CONFIG_VALUE_0=false",
+		"GIT_CONFIG_NOSYSTEM=1",
+	}
+	if mode == "semantic" {
+		return append(env, "OLLAMA_HOST="+ollamaHostForTest(), "LUMEN_EMBED_MODEL=all-minilm")
+	}
+	// BM25 must never need an embedding service; point any accidental use at
+	// a closed port so it fails loudly instead of using a developer's Ollama.
+	return append(env, "OLLAMA_HOST=http://127.0.0.1:9", "LM_STUDIO_HOST=http://127.0.0.1:9")
 }
 
 // startServer launches the MCP server as a subprocess and returns a connected client session.
@@ -123,27 +155,16 @@ func startServer(t *testing.T) *mcp.ClientSession {
 // startServerWithOpts launches the MCP server with custom client options.
 func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
-
-	dataHome := t.TempDir()
-	ollamaHost := os.Getenv("OLLAMA_HOST")
-	if ollamaHost == "" {
-		ollamaHost = "http://localhost:11434"
-	}
+	requireSemantic(t)
 
 	cmd := exec.Command(serverBinary, "stdio")
-	cmd.Env = []string{
-		"OLLAMA_HOST=" + ollamaHost,
-		"LUMEN_EMBED_MODEL=all-minilm",
+	cmd.Env = append(childEnv("semantic", t.TempDir()),
 		"LUMEN_FRESHNESS_TTL=1s",
 		// all-minilm uses BERT WordPiece tokenisation which is ~4x denser than
 		// our 4-chars-per-token estimate, so cap chunks at 100 "tokens" (400
 		// chars) to stay within the model's 512-token context window.
 		"LUMEN_MAX_CHUNK_TOKENS=100",
-		"XDG_DATA_HOME=" + dataHome,
-		"XDG_CONFIG_HOME=" + dataHome,
-		"HOME=" + os.Getenv("HOME"),
-		"PATH=" + os.Getenv("PATH"),
-	}
+	)
 
 	transport := &mcp.CommandTransport{Command: cmd}
 	client := mcp.NewClient(&mcp.Implementation{
@@ -158,7 +179,7 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 	}
 
 	t.Cleanup(func() {
-		session.Close()
+		_ = session.Close()
 	})
 
 	return session
@@ -177,81 +198,13 @@ func getTextContent(t *testing.T, result *mcp.CallToolResult) string {
 	return tc.Text
 }
 
-// fileRe matches <result:file filename="..."> opening tags.
-var fileRe = regexp.MustCompile(`^<result:file filename="([^"]+)">$`)
-
-// chunkRe matches <result:chunk ...> opening tags like:
-//
-//	<result:chunk line-start="10" line-end="19" symbol="ValidateToken" kind="function" score="0.66">
-var chunkRe = regexp.MustCompile(`^\s*<result:chunk line-start="(\d+)" line-end="(\d+)" symbol="([^"]+)" kind="([^"]+)" score="(-?\d+\.\d+)">$`)
-
 // parseSearchText parses the XML-tagged output of semantic_search into a semanticSearchOutput.
 func parseSearchText(t *testing.T, text string) semanticSearchOutput {
 	t.Helper()
-
-	var out semanticSearchOutput
-
-	// Parse "(indexed M files)" first — present in both "Found N results" and "No results found." output.
-	if strings.Contains(text, "(indexed") {
-		re := regexp.MustCompile(`\(indexed (\d+) files\)`)
-		if m := re.FindStringSubmatch(text); m != nil {
-			out.IndexedFiles, _ = strconv.Atoi(m[1])
-			out.Reindexed = true
-		}
+	out, err := parseSearchOutput(text)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.HasPrefix(text, "No results found") {
-		return out
-	}
-
-	lines := strings.Split(text, "\n")
-	currentFile := ""
-	inChunk := false
-	var chunkItem searchResultItem
-	var contentLines []string
-
-	flushChunk := func() {
-		if !inChunk {
-			return
-		}
-		chunkItem.Content = strings.TrimSpace(strings.Join(contentLines, "\n"))
-		out.Results = append(out.Results, chunkItem)
-		inChunk = false
-		contentLines = nil
-	}
-
-	for _, line := range lines {
-		if m := fileRe.FindStringSubmatch(line); m != nil {
-			flushChunk()
-			currentFile = m[1]
-			continue
-		}
-		if m := chunkRe.FindStringSubmatch(line); m != nil {
-			flushChunk()
-			startLine, _ := strconv.Atoi(m[1])
-			endLine, _ := strconv.Atoi(m[2])
-			score, _ := strconv.ParseFloat(m[5], 32)
-			chunkItem = searchResultItem{
-				FilePath:  currentFile,
-				Symbol:    m[3],
-				Kind:      m[4],
-				StartLine: startLine,
-				EndLine:   endLine,
-				Score:     float32(score),
-			}
-			inChunk = true
-			continue
-		}
-		if inChunk {
-			trimmed := strings.TrimPrefix(line, "  ")
-			if trimmed == "</result:chunk>" {
-				flushChunk()
-				continue
-			}
-			contentLines = append(contentLines, trimmed)
-		}
-	}
-	flushChunk()
-
 	return out
 }
 
@@ -399,6 +352,7 @@ func copyDir(t *testing.T, src, dst string) {
 
 // validChunkKinds is the set of chunk kinds produced by the Go AST chunker.
 var validChunkKinds = map[string]bool{
+	"section": true, "template": true, "style": true, "statement": true,
 	"function":  true,
 	"method":    true,
 	"type":      true,
@@ -551,8 +505,18 @@ func TestE2E_IndexAndSearchResults(t *testing.T) {
 }
 
 func TestE2E_PlaintextContent(t *testing.T) {
+	runPlaintextContent(t, "semantic", func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_PlaintextContent(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runPlaintextContent(t, "bm25", func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runPlaintextContent(t *testing.T, mode string, start func() *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 	projectPath := sampleProjectPath(t)
 
 	// Get raw result to inspect Content (text) alongside StructuredContent.
@@ -606,7 +570,11 @@ func TestE2E_PlaintextContent(t *testing.T) {
 	if !ok {
 		t.Fatalf("index_status: expected TextContent, got %T", statusResult.Content[0])
 	}
-	if !strings.Contains(stc.Text, "Index:") || !strings.Contains(stc.Text, "Files:") {
+	header := "Index:"
+	if mode == "bm25" {
+		header = "BM25 index:"
+	}
+	if !strings.Contains(stc.Text, header) || !strings.Contains(stc.Text, "Files:") {
 		t.Errorf("index_status plaintext should contain 'Index:' and 'Files:', got: %s", stc.Text)
 	}
 }
@@ -667,8 +635,18 @@ func TestE2E_SearchRelevanceRanking(t *testing.T) {
 }
 
 func TestE2E_LimitParameter(t *testing.T) {
+	runLimitParameter(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_LimitParameter(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runLimitParameter(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runLimitParameter(t *testing.T, start func() *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 	projectPath := sampleProjectPath(t)
 
 	// limit=1 should return exactly 1. Use min_score=-1 to bypass score filtering.
@@ -755,8 +733,18 @@ func TestE2E_MinScoreFilter(t *testing.T) {
 }
 
 func TestE2E_IncrementalIndex(t *testing.T) {
+	runIncrementalIndex(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_IncrementalIndex(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runIncrementalIndex(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runIncrementalIndex(t *testing.T, start func() *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	tmpDir := t.TempDir()
 	copyDir(t, sampleProjectPath(t), tmpDir)
@@ -927,11 +915,21 @@ func TestE2E_IndexStatus(t *testing.T) {
 }
 
 func TestE2E_ProgressNotifications(t *testing.T) {
+	runProgressNotifications(t, "semantic", func(o *mcp.ClientOptions) *mcp.ClientSession { return startServerWithOpts(t, o) })
+}
+
+func TestE2E_BM25_ProgressNotifications(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runProgressNotifications(t, "bm25", func(o *mcp.ClientOptions) *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, o) })
+}
+
+func runProgressNotifications(t *testing.T, mode string, start func(*mcp.ClientOptions) *mcp.ClientSession) {
 	t.Parallel()
 	var mu sync.Mutex
 	var notifications []mcp.ProgressNotificationParams
 
-	session := startServerWithOpts(t, &mcp.ClientOptions{
+	session := start(&mcp.ClientOptions{
 		ProgressNotificationHandler: func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -971,49 +969,65 @@ func TestE2E_ProgressNotifications(t *testing.T) {
 		}
 	}
 
-	// First notification should be "Found N files to index".
-	if !strings.Contains(got[0].Message, "Found") || !strings.Contains(got[0].Message, "files to index") {
-		t.Errorf("first notification message should contain 'Found ... files to index', got %q", got[0].Message)
-	}
-
-	// All notifications must have Total > 0 and Progress <= Total.
-	for i, n := range got {
-		if n.Total <= 0 {
-			t.Errorf("notification[%d]: expected Total > 0, got %f", i, n.Total)
+	// BM25 reports per-file progress and completion; it has no embedding
+	// phase or separate discovery message.
+	if mode == "bm25" {
+		for i, n := range got {
+			if n.Total <= 0 || n.Progress > n.Total || (i > 0 && n.Progress < got[i-1].Progress) {
+				t.Errorf("notification[%d]: progress %v/%v not monotonic within total", i, n.Progress, n.Total)
+			}
 		}
-		if n.Progress > n.Total {
-			t.Errorf("notification[%d]: Progress (%f) > Total (%f)", i, n.Progress, n.Total)
+		if !strings.Contains(got[0].Message, "Indexing ") {
+			t.Errorf("first notification = %q, want per-file Indexing message", got[0].Message)
 		}
-	}
-
-	// Should have at least one processing notification with file count.
-	hasProcessing := false
-	for _, n := range got {
-		if strings.Contains(n.Message, "Processing file") && strings.Contains(n.Message, "/") {
-			hasProcessing = true
-			break
+		if last := got[len(got)-1]; !strings.Contains(strings.ToLower(last.Message), "indexing complete") || last.Progress != last.Total {
+			t.Errorf("last notification = %+v, want completion", last)
 		}
-	}
-	if !hasProcessing {
-		t.Error("expected at least one 'Processing file N/M' progress notification")
-	}
-
-	// Should have at least one embed notification.
-	hasEmbed := false
-	for _, n := range got {
-		if strings.Contains(n.Message, "Embedded") {
-			hasEmbed = true
-			break
+	} else {
+		// First notification should be "Found N files to index".
+		if !strings.Contains(got[0].Message, "Found") || !strings.Contains(got[0].Message, "files to index") {
+			t.Errorf("first notification message should contain 'Found ... files to index', got %q", got[0].Message)
 		}
-	}
-	if !hasEmbed {
-		t.Error("expected at least one 'Embedded' progress notification")
-	}
 
-	// Last notification should be the completion message.
-	last := got[len(got)-1]
-	if !strings.Contains(last.Message, "Indexing complete") {
-		t.Errorf("last notification should contain 'Indexing complete', got %q", last.Message)
+		// All notifications must have Total > 0 and Progress <= Total.
+		for i, n := range got {
+			if n.Total <= 0 {
+				t.Errorf("notification[%d]: expected Total > 0, got %f", i, n.Total)
+			}
+			if n.Progress > n.Total {
+				t.Errorf("notification[%d]: Progress (%f) > Total (%f)", i, n.Progress, n.Total)
+			}
+		}
+
+		// Should have at least one processing notification with file count.
+		hasProcessing := false
+		for _, n := range got {
+			if strings.Contains(n.Message, "Processing file") && strings.Contains(n.Message, "/") {
+				hasProcessing = true
+				break
+			}
+		}
+		if !hasProcessing {
+			t.Error("expected at least one 'Processing file N/M' progress notification")
+		}
+
+		// Should have at least one embed notification.
+		hasEmbed := false
+		for _, n := range got {
+			if strings.Contains(n.Message, "Embedded") {
+				hasEmbed = true
+				break
+			}
+		}
+		if !hasEmbed {
+			t.Error("expected at least one 'Embedded' progress notification")
+		}
+
+		// Last notification should be the completion message.
+		last := got[len(got)-1]
+		if !strings.Contains(last.Message, "Indexing complete") {
+			t.Errorf("last notification should contain 'Indexing complete', got %q", last.Message)
+		}
 	}
 
 	// Second search (no changes) should NOT produce progress notifications
@@ -1042,8 +1056,18 @@ func TestE2E_ProgressNotifications(t *testing.T) {
 }
 
 func TestE2E_ErrorHandling(t *testing.T) {
+	runErrorHandling(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_ErrorHandling(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runErrorHandling(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runErrorHandling(t *testing.T, start func() *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Non-existent project path should return IsError=true.
 	result := callSearchRaw(t, session, map[string]any{
@@ -1163,11 +1187,21 @@ func HandleHealth(w http.ResponseWriter, r *http.Request) {
 // worktree that has a modified file, searching from the worktree path triggers
 // indexing and returns the worktree's version of the file — not the main repo's.
 func TestE2E_WorktreeIndexesChangedFile(t *testing.T) {
+	runWorktreeIndexesChangedFile(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_WorktreeIndexesChangedFile(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runWorktreeIndexesChangedFile(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runWorktreeIndexesChangedFile(t *testing.T, start func() *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Set up a main repo with auth.go committed.
 	repoDir := t.TempDir()
@@ -1253,11 +1287,21 @@ func ValidateTokenV2(token string) bool {
 // ancestor directory with no existing DB, the index is scoped to path — not
 // cwd. This was the root cause of multi-minute searches in monorepos.
 func TestE2E_CwdNotAdoptedWhenNoDBExists(t *testing.T) {
+	runCwdNotAdoptedWhenNoDBExists(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_CwdNotAdoptedWhenNoDBExists(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runCwdNotAdoptedWhenNoDBExists(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runCwdNotAdoptedWhenNoDBExists(t *testing.T, start func() *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Layout: repo/ (git root = cwd)
 	//           main.go
@@ -1346,11 +1390,21 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 // subdirectory in a git repo creates one shared index at the git root, and
 // a sibling subdirectory search reuses it without triggering a re-index.
 func TestE2E_GitRootFallbackSharedIndex(t *testing.T) {
+	runGitRootFallbackSharedIndex(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_GitRootFallbackSharedIndex(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runGitRootFallbackSharedIndex(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runGitRootFallbackSharedIndex(t *testing.T, start func() *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Layout: repo/ (git root)
 	//           pkg/
@@ -1426,8 +1480,18 @@ func HandleLogin() {}
 // within the TTL window skip the merkle tree walk (Reindexed stays false even
 // after the TTL would have expired if files had not changed).
 func TestE2E_FreshnessTTLSkipsMerkleWalk(t *testing.T) {
+	runFreshnessTTLSkipsMerkleWalk(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_FreshnessTTLSkipsMerkleWalk(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runFreshnessTTLSkipsMerkleWalk(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runFreshnessTTLSkipsMerkleWalk(t *testing.T, start func() *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	tmpDir := t.TempDir()
 	copyDir(t, sampleProjectPath(t), tmpDir)
@@ -1505,11 +1569,21 @@ func gitE2ERun(t *testing.T, dir string, args ...string) {
 // git worktree checked out under the project root are not counted or returned
 // by the main-repo index.
 func TestE2E_InternalWorktreeFilesExcludedFromIndex(t *testing.T) {
+	runInternalWorktreeFilesExcludedFromIndex(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_InternalWorktreeFilesExcludedFromIndex(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runInternalWorktreeFilesExcludedFromIndex(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runInternalWorktreeFilesExcludedFromIndex(t *testing.T, start func() *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Set up a git repo with one .go file.
 	repoDir := t.TempDir()
@@ -1565,11 +1639,21 @@ func FeatureFlag() bool { return false }
 // TestE2E_InternalWorktreeSearchNoReindex verifies that searching with a path
 // prefix inside the internal worktree directory does not trigger a re-index.
 func TestE2E_InternalWorktreeSearchNoReindex(t *testing.T) {
+	runInternalWorktreeSearchNoReindex(t, func() *mcp.ClientSession { return startServer(t) })
+}
+
+func TestE2E_BM25_InternalWorktreeSearchNoReindex(t *testing.T) {
+	trap := newEmbeddingTrap(t)
+	t.Cleanup(func() { trap.assertUnused(t) })
+	runInternalWorktreeSearchNoReindex(t, func() *mcp.ClientSession { return startBM25ServerWithOpts(t, trap, nil) })
+}
+
+func runInternalWorktreeSearchNoReindex(t *testing.T, start func() *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
+	session := start()
 
 	// Set up a git repo with one .go file and an internal worktree.
 	repoDir := t.TempDir()

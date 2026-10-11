@@ -1,0 +1,131 @@
+[
+  {"id": "lang.dart.http_request_handler_middleware", "corpus": "fixtures/dart", "language": "dart", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "HTTP request handler middleware",
+   "targets": [
+     {"file": "handler.dart", "contains": ["typedef Handler = FutureOr<Response> Function(Request request);"]},
+     {"file": "middleware.dart", "contains": ["typedef Middleware = Handler Function(Handler innerHandler);"]},
+     {"file": "middleware.dart", "symbol": "createMiddleware", "contains": ["requestHandler ??= (request) => null;"]}
+   ]},
+  {"id": "lang.dart.server_pipeline_shelf_handler", "corpus": "fixtures/dart", "language": "dart", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "server pipeline shelf handler",
+   "targets": [
+     {"file": "pipeline.dart", "symbol": "Pipeline", "contains": ["class Pipeline {"]},
+     {"file": "pipeline.dart", "symbol": "addHandler", "line": 35},
+     {"file": "pipeline.dart", "symbol": "addHandler", "contains": ["_parent(_middleware(handler))"]},
+     {"file": "server_handler.dart", "symbol": "ServerHandler", "contains": ["class ServerHandler {"]},
+     {"file": "server.dart", "symbol": "Server", "contains": ["abstract class Server {"]}
+   ]},
+  {"id": "lang.dart.response_body_status_code", "corpus": "fixtures/dart", "language": "dart", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "response body status code",
+   "targets": [
+     {"file": "response.dart", "symbol": "Response", "contains": ["final int statusCode;"]},
+     {"file": "response.dart", "line": 272, "contains": ["throw ArgumentError('Invalid status code: $statusCode.');"]},
+     {"file": "response.dart", "symbol": "change", "contains": ["body ??= extractBody(this);"]}
+   ]},
+  {"id": "lang.dart.cascade_route_matching", "corpus": "fixtures/dart", "language": "dart", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "cascade route matching",
+   "targets": [
+     {"file": "cascade.dart", "symbol": "Cascade", "contains": ["class Cascade {"]},
+     {"file": "cascade.dart", "symbol": "handler", "contains": ["if (_shouldCascade(response)) return handler(request);"]},
+     {"file": "router_entry.dart", "symbol": "match", "contains": ["_routePattern.firstMatch(path)"]},
+     {"file": "router.dart", "symbol": "call", "contains": ["route.match('/${request.url.path}')"]}
+   ]},
+  {"id": "lang.dart.logging_middleware_interceptor", "corpus": "fixtures/dart", "language": "dart", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "logging middleware interceptor",
+   "targets": [
+     {"file": "middleware.dart", "contains": ["Common uses for middleware include caching, logging, and authentication."]},
+     {"file": "middleware.dart", "symbol": "createMiddleware", "contains": ["requestHandler ??= (request) => null;"]},
+     {"file": "pipeline.dart", "symbol": "Pipeline", "contains": [".addMiddleware(loggingMiddleware)"]}
+   ],
+   "note": "The shelf logRequests middleware itself is not in the fixture; 'interceptor' has no match. The Middleware typedef doc names logging as a use, and Pipeline's doc example adds loggingMiddleware."},
+
+  {"id": "dart.response_moved_permanently", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "301 moved permanently redirect with Location header",
+   "targets": [{"file": "response.dart", "line": 82, "contains": ["Response.movedPermanently("]}],
+   "distractors": [
+     {"file": "response.dart", "line": 97, "contains": ["Response.found("]},
+     {"file": "response.dart", "line": 120, "contains": ["Response.seeOther("]}
+   ]},
+  {"id": "dart.response_found_302", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "302 Found temporary redirect response",
+   "targets": [{"file": "response.dart", "line": 97, "contains": ["Response.found("]}],
+   "distractors": [{"file": "response.dart", "line": 82, "contains": ["Response.movedPermanently("]}]},
+  {"id": "dart.middleware_extensions_add_middleware", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "MiddlewareExtensions addMiddleware merge two middleware",
+   "targets": [{"file": "middleware_extensions.dart", "symbol": "addMiddleware", "contains": ["Middleware addMiddleware(Middleware other)"]}],
+   "distractors": [{"file": "pipeline.dart", "symbol": "addMiddleware", "contains": ["Pipeline addMiddleware(Middleware middleware)"]}],
+   "note": "Extension member versus the Pipeline method of the same name."},
+  {"id": "dart.pipeline_middleware_ordering", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "which middleware in a pipeline processes the response first",
+   "targets": [{"file": "pipeline.dart", "symbol": "addMiddleware", "contains": ["Pipeline addMiddleware(Middleware middleware)"]}],
+   "distractors": [{"file": "middleware_extensions.dart", "symbol": "addMiddleware"}],
+   "note": "Answered by the addMiddleware doc: the added middleware is the last to process a request and the first to process a response."},
+  {"id": "dart.pipeline_add_handler_composition", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "_Pipeline addHandler wraps handler with parent and middleware",
+   "targets": [{"file": "pipeline.dart", "symbol": "addHandler", "contains": ["_parent(_middleware(handler))"]}],
+   "distractors": [
+     {"file": "pipeline.dart", "symbol": "addHandler", "line": 35},
+     {"file": "middleware_extensions.dart", "symbol": "addHandler"}
+   ]},
+  {"id": "dart.message_read_as_string", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "readAsString decode body using charset from Content-Type",
+   "targets": [{"file": "message.dart", "symbol": "readAsString", "contains": ["encoding.decodeStream(read())"]}],
+   "distractors": [
+     {"file": "body.dart", "symbol": "read", "contains": ["_stream = null;"]},
+     {"file": "message.dart", "symbol": "encoding", "contains": ["Encoding.getByName(contentType.parameters['charset'])"]}
+   ]},
+  {"id": "dart.message_content_length_getter", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "contentLength getter parses the content-length header",
+   "targets": [{"file": "message.dart", "symbol": "contentLength", "contains": ["int.parse(headers['content-length']!)"]}],
+   "distractors": [{"file": "body.dart", "contains": ["final int? contentLength;"]}],
+   "note": "Message.contentLength getter versus the Body.contentLength field."},
+  {"id": "dart.unmodifiable_map_index_assign", "corpus": "fixtures/dart", "language": "dart", "kind": "syntax", "category": "supported", "origin": "brainstorm-dart", "query": "operator []= override in empty unmodifiable map",
+   "targets": [{"file": "shelf_unmodifiable_map.dart", "contains": ["void operator []=(String key, Object value) => super[key] = const Object();"]}],
+   "distractors": [{"file": "shelf_unmodifiable_map.dart", "symbol": "addAll", "contains": ["super.addAll({})"]}],
+   "note": "Dart operator declarations are not a captured declaration kind; the operator is only reachable through the enclosing class span."},
+  {"id": "dart.unmodifiable_map_add_all", "corpus": "fixtures/dart", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "_EmptyShelfUnmodifiableMap addAll override",
+   "targets": [{"file": "shelf_unmodifiable_map.dart", "contains": ["void addAll(Map<String, Object> other) => super.addAll({});"]}],
+   "distractors": [{"file": "shelf_unmodifiable_map.dart", "symbol": "ShelfUnmodifiableMap", "contains": ["source = Map<String, Object>.from(source);"]}]},
+
+  {"id": "dart.widget_mounted_set_state", "corpus": "retrieval/corpora/dart-widget", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "check mounted before setState in stream listener",
+   "targets": [{"file": "lib/src/feed_page.dart", "symbol": "_onPosts", "contains": ["if (!mounted) return;"]}],
+   "distractors": [{"file": "lib/src/profile_page.dart", "symbol": "_toggleEditing", "contains": ["_editing = !_editing;"]}]},
+  {"id": "dart.widget_dispose_cancel_subscription", "corpus": "retrieval/corpora/dart-widget", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "cancel stream subscription in dispose",
+   "targets": [{"file": "lib/src/feed_page.dart", "symbol": "dispose", "contains": ["_subscription?.cancel();"]}],
+   "distractors": [
+     {"file": "lib/src/profile_page.dart", "symbol": "dispose", "contains": ["_nameController.dispose();"]},
+     {"file": "lib/src/post_repository.dart", "symbol": "close", "contains": ["_controller.close()"]}
+   ]},
+  {"id": "dart.widget_subscribe_init_state", "corpus": "retrieval/corpora/dart-widget", "language": "dart", "kind": "task", "category": "supported", "origin": "brainstorm-dart", "query": "subscribe to watchPosts stream in initState",
+   "targets": [{"file": "lib/src/feed_page.dart", "symbol": "initState", "contains": ["widget.repository.watchPosts().listen(_onPosts)"]}],
+   "distractors": [
+     {"file": "lib/src/post_repository.dart", "symbol": "watchPosts"},
+     {"file": "lib/src/profile_page.dart", "symbol": "initState"}
+   ]},
+  {"id": "dart.widget_dispose_vocabulary", "corpus": "retrieval/corpora/dart-widget", "language": "dart", "kind": "vocabulary", "category": "diagnostic", "origin": "brainstorm-dart", "query": "stop listening for updates when the page is torn down",
+   "targets": [{"file": "lib/src/feed_page.dart", "symbol": "dispose", "contains": ["_subscription?.cancel();"]}],
+   "note": "Lifecycle paraphrase; shares only generic 'page' with the answer (cancel/dispose/subscription are not in the query)."},
+
+  {"id": "dart.chunker_mixin_swim", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Swimming mixin swim", "max_rank": 1,
+   "targets": [
+     {"file": "lib/sample.dart", "symbol": "Swimming.swim", "contains": ["print('swimming');"]},
+     {"file": "lib/sample.dart", "symbol": "Swimming", "contains": ["mixin Swimming {"]}
+   ]},
+  {"id": "dart.chunker_async_generator", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "generatorFn async* Stream yield",
+   "targets": [{"file": "lib/adversarial.dart", "symbol": "generatorFn"}],
+   "distractors": [{"file": "lib/adversarial.dart", "symbol": "syncGenerator"}]},
+  {"id": "dart.chunker_sync_generator", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "syncGenerator sync* Iterable",
+   "targets": [{"file": "lib/adversarial.dart", "symbol": "syncGenerator"}],
+   "distractors": [{"file": "lib/adversarial.dart", "symbol": "generatorFn"}]},
+  {"id": "dart.chunker_future_async_fn", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "asyncFn", "max_rank": 1,
+   "targets": [{"file": "lib/adversarial.dart", "symbol": "asyncFn"}]},
+  {"id": "dart.chunker_factory_constructor", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "factory BaseClass.create",
+   "targets": [{"file": "lib/adversarial.dart", "contains": ["factory BaseClass.create() => BaseClass('default');"]}],
+   "distractors": [{"file": "lib/adversarial.dart", "contains": ["BaseClass.named(String n) : name = n;"]}],
+   "note": "Factory constructors are not a captured declaration kind; reachable only through the class span."},
+  {"id": "dart.chunker_extension_getter", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "StringHelper isBlank", "max_rank": 1,
+   "targets": [
+     {"file": "lib/sample.dart", "symbol": "StringHelper.isBlank"},
+     {"file": "lib/sample.dart", "symbol": "StringHelper", "contains": ["bool get isBlank => trim().isEmpty;"]}
+   ]},
+  {"id": "dart.chunker_abstract_repository_save", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Repository save", "max_rank": 1,
+   "targets": [
+     {"file": "lib/sample.dart", "symbol": "Repository.save"},
+     {"file": "lib/sample.dart", "symbol": "Repository", "contains": ["Future<void> save(Object entity);"]}
+   ]},
+  {"id": "dart.chunker_enum_getter", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Status display", "max_rank": 1,
+   "targets": [
+     {"file": "lib/adversarial.dart", "symbol": "display"},
+     {"file": "lib/adversarial.dart", "symbol": "Status", "contains": ["String get display => name.toUpperCase();"]}
+   ]},
+  {"id": "dart.chunker_typedef", "corpus": "retrieval/corpora/dart-chunker", "language": "dart", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "JsonMap", "max_rank": 1,
+   "targets": [{"file": "lib/adversarial.dart", "symbol": "JsonMap", "contains": ["typedef JsonMap = Map<String, dynamic>;"]}]}
+]

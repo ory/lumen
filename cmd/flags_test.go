@@ -21,6 +21,8 @@ import (
 // flagsTestHarness sets up an isolated XDG_CONFIG_HOME with the given YAML,
 // clears server env vars, and returns the cobra command to exercise.
 func flagsTestHarness(t *testing.T, yaml string) *cobra.Command {
+	// This harness exercises embedding server selection, which is opt-in.
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	t.Helper()
 
 	home := t.TempDir()
@@ -193,3 +195,52 @@ servers:
     model: ordis/jina-embeddings-v2-base-code
     dims: 768
 `
+
+func TestSemanticFlagsApplyBeforeProfileValidation(t *testing.T) {
+	t.Run("known model repairs invalid base model", func(t *testing.T) {
+		cmd := flagsTestHarness(t, "servers:\n  - backend: ollama\n    host: http://localhost:11434\n    model: unknown-model\n")
+		_ = cmd.Flags().Set("model", "all-minilm")
+		cfg, err := loadConfigWithFlags(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Servers()[0].Model != "all-minilm" {
+			t.Fatalf("wrong model: %+v", cfg.Servers())
+		}
+	})
+	t.Run("selection excludes invalid unselected server", func(t *testing.T) {
+		cmd := flagsTestHarness(t, "servers:\n  - backend: invalid\n    host: wrong\n    model: unknown-model\n  - backend: ollama\n    host: http://localhost:11434\n    model: all-minilm\n")
+		_ = cmd.Flags().Set("model", "all-minilm")
+		cfg, err := loadConfigWithFlags(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.Servers()) != 1 || cfg.Servers()[0].Model != "all-minilm" {
+			t.Fatalf("wrong servers: %+v", cfg.Servers())
+		}
+	})
+}
+
+func TestEmbeddingFlagsRejectedInBM25Mode(t *testing.T) {
+	yaml := "servers:\n  - backend: ollama\n    host: http://localhost:11434\n    model: all-minilm\n"
+	for _, flags := range []map[string]string{
+		{"model": "all-minilm"},
+		{"backend": "ollama"},
+		{"model": "all-minilm", "backend": "ollama"},
+	} {
+		cmd := flagsTestHarness(t, yaml)
+		t.Setenv("LUMEN_RETRIEVAL", "bm25")
+		for name, value := range flags {
+			_ = cmd.Flags().Set(name, value)
+		}
+		_, err := loadConfigWithFlags(cmd)
+		if err == nil || !strings.Contains(err.Error(), "retrieval=semantic") {
+			t.Fatalf("%v in bm25 mode: want rejection mentioning retrieval=semantic, got %v", flags, err)
+		}
+	}
+	cmd := flagsTestHarness(t, yaml)
+	_ = cmd.Flags().Set("model", "all-minilm")
+	if _, err := loadConfigWithFlags(cmd); err != nil {
+		t.Fatalf("semantic mode with --model: %v", err)
+	}
+}

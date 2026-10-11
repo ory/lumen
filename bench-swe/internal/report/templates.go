@@ -4,11 +4,11 @@ import "text/template"
 
 var summaryTmpl = template.Must(template.New("summary").Parse(`# SWE-Bench Summary
 
-Generated: {{ .Date }} | Embed: ` + "`{{ .EmbedModel }}`" + ` | Claude: ` + "`{{ .ClaudeModel }}`" + `
+Generated: {{ .Date }} | Retrieval: ` + "`{{ .Retrieval }}`" + ` | Embed: ` + "`{{ .EmbedModel }}`" + ` | Agent: ` + "`{{ .Agent }}`" + ` | Runner: ` + "`{{ .Runner }}`" + ` | Model: ` + "`{{ .Model }}`" + `
 
 | Scenario | Description |
 |----------|-------------|
-| **baseline** | Default Claude tools, no Lumen |
+| **baseline** | Default agent tools, no Lumen |
 | **with-lumen** | All default tools + Lumen |
 
 ## Results by Task
@@ -45,9 +45,9 @@ Generated: {{ .Date }}
 
 ### Metrics
 
-| Scenario | Duration | Input Tok | Cache Read | Output Tok | Cost |
-|----------|----------|-----------|------------|------------|------|
-{{ range .MetricsRows }}| **{{ .Scenario }}** | {{ .Duration }} | {{ .InputTokens }} | {{ .CacheRead }} | {{ .OutputTokens }} | {{ .Cost }} |
+| Scenario | Duration | Input Tok | Cache Read | Output Tok | Cost | Tests |
+|----------|----------|-----------|------------|------------|------|-------|
+{{ range .MetricsRows }}| **{{ .Scenario }}** | {{ .Duration }} | {{ .InputTokens }} | {{ .CacheRead }} | {{ .OutputTokens }} | {{ .Cost }} | {{ .Tests }} |
 {{ end }}
 {{ range .ScenarioDetails }}### {{ .Scenario }}
 

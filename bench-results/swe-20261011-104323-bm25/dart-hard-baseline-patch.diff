@@ -1,0 +1,30 @@
+diff --git a/pkgs/shelf_router/CHANGELOG.md b/pkgs/shelf_router/CHANGELOG.md
+index 6e88703..91bc41b 100644
+--- a/pkgs/shelf_router/CHANGELOG.md
++++ b/pkgs/shelf_router/CHANGELOG.md
+@@ -1,6 +1,7 @@
+ ## 1.1.5-wip
+ 
+ * Require Dart `^3.3.0`.
++* Don't modify the `content-length` header in responses to `HEAD` requests.
+ 
+ ## 1.1.4
+ 
+diff --git a/pkgs/shelf_router/lib/src/router.dart b/pkgs/shelf_router/lib/src/router.dart
+index 720d3c3..99dfd1f 100644
+--- a/pkgs/shelf_router/lib/src/router.dart
++++ b/pkgs/shelf_router/lib/src/router.dart
+@@ -59,10 +59,10 @@ extension RouterParams on Request {
+ }
+ 
+ /// Middleware to remove body from request.
++///
++/// The `content-length` header is left untouched, as a response to a `HEAD`
++/// request should report the length of the body a `GET` would have returned.
+ final _removeBody = createMiddleware(responseHandler: (r) {
+-  if (r.headers.containsKey('content-length')) {
+-    r = r.change(headers: {'content-length': '0'});
+-  }
+   return r.change(body: <int>[]);
+ });
+ 

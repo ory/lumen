@@ -143,7 +143,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		return directive + " No index yet — auto-created on first call."
 	}
 	emb := newEmbedder(cfg)
-	modelName := emb.ModelName()
+	modelName := retrievalModel(emb)
 	dims := cfg.ServerDims(0)
 
 	// Normalize cwd to the git repository root so the DB path matches what
@@ -151,7 +151,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 	// up to reuse an existing ancestor index.
 	if root, err := git.RepoRoot(cwd); err == nil {
 		cwd = root
-	} else if ancestor := findAncestorIndex(cwd, modelName); ancestor != "" {
+	} else if ancestor := findAncestorIndexWithPath(cwd, func(project string) string { return configuredDBPath(cfg, project, modelName) }); ancestor != "" {
 		cwd = ancestor
 	}
 
@@ -160,13 +160,23 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		// No index yet — kick off background pre-warming so the first search
 		// in this session doesn't pay the full seed + embed cost synchronously.
 		bgIndexer(cwd)
-		if donorPath := findDonor(cwd, modelName); donorPath != "" {
+		// Only semantic indexes are seeded from sibling worktrees; skip the git
+		// subprocess otherwise.
+		if cfg.Retrieval() == "semantic" && findDonor(cwd, modelName) != "" {
 			return directive + " Sibling worktree index found — indexing in background."
 		}
 		return directive + " No index yet — indexing in background."
 	}
 
-	s, err := store.NewCollection(dbPath, dims, cfg.VectorStorage(), cwd)
+	var s *store.Store
+	if cfg.Retrieval() == "bm25" {
+		s, err = store.OpenLexicalCollection(dbPath)
+		if err == nil {
+			err = s.UseProject(cwd)
+		}
+	} else {
+		s, err = store.NewCollection(dbPath, dims, cfg.VectorStorage(), cwd)
+	}
 	if err != nil {
 		return directive
 	}

@@ -241,6 +241,7 @@ servers:
 }
 
 func TestDimsUnresolvable_Error(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -298,6 +299,7 @@ func TestServersForModel_NoMatch(t *testing.T) {
 }
 
 func TestValidation_MissingBackend(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -310,6 +312,7 @@ func TestValidation_MissingBackend(t *testing.T) {
 }
 
 func TestValidation_UnknownBackend(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -322,6 +325,7 @@ func TestValidation_UnknownBackend(t *testing.T) {
 }
 
 func TestValidation_EmptyServerList(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -334,6 +338,7 @@ func TestValidation_EmptyServerList(t *testing.T) {
 }
 
 func TestValidation_InvalidHost(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -346,6 +351,7 @@ func TestValidation_InvalidHost(t *testing.T) {
 }
 
 func TestValidation_MissingModel(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
 		t.Setenv(k, "")
 	}
@@ -463,6 +469,7 @@ func clearServerEnv(t *testing.T) {
 }
 
 func TestWithServerSelection_ByModel_UnambiguousYAMLEntry(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	cfg := writeThreeServerYAML(t)
 	// ordis/jina-embeddings-v2-base-code appears on exactly one server — the
@@ -484,6 +491,7 @@ func TestWithServerSelection_ByModel_UnambiguousYAMLEntry(t *testing.T) {
 }
 
 func TestWithServerSelection_ByModel_LMStudioName(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	cfg := writeThreeServerYAML(t)
 	// The LM-Studio-specific name is not in KnownModels, but it's in the YAML
@@ -505,6 +513,7 @@ func TestWithServerSelection_ByModel_LMStudioName(t *testing.T) {
 }
 
 func TestWithServerSelection_ByModelAndBackend(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.yaml")
@@ -534,6 +543,7 @@ servers:
 }
 
 func TestWithServerSelection_ByBackendOnly(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	cfg := writeThreeServerYAML(t)
 	svc, err := NewConfigService(cfg, WithServerSelection("", BackendOllama))
@@ -550,6 +560,7 @@ func TestWithServerSelection_ByBackendOnly(t *testing.T) {
 }
 
 func TestWithServerSelection_AliasResolution(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.yaml")
@@ -571,6 +582,7 @@ servers:
 }
 
 func TestWithServerSelection_NoMatchReturnsError(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	cfg := writeThreeServerYAML(t)
 	_, err := NewConfigService(cfg, WithServerSelection("no-such-model", ""))
@@ -580,6 +592,7 @@ func TestWithServerSelection_NoMatchReturnsError(t *testing.T) {
 }
 
 func TestWithServerSelection_BackendOnlyNoMatch(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.yaml")
@@ -596,6 +609,7 @@ servers:
 }
 
 func TestWithServerSelection_PreservesOrder(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	dir := t.TempDir()
 	f := filepath.Join(dir, "config.yaml")
@@ -633,6 +647,7 @@ servers:
 }
 
 func TestWithServerSelection_EmptyArgsNoop(t *testing.T) {
+	t.Setenv("LUMEN_RETRIEVAL", "semantic")
 	clearServerEnv(t)
 	cfg := writeThreeServerYAML(t)
 	// Empty model and empty backend → no filter applied.

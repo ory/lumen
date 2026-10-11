@@ -17,7 +17,11 @@ import (
 )
 
 type Config struct {
+	Agent       string
+	Runner      string
+	Model       string
 	ResultsDir  string
+	Retrieval   string
 	EmbedModel  string
 	ClaudeModel string
 	Tasks       []task.Task
@@ -34,11 +38,24 @@ type taskResult struct {
 	metrics   *metrics.Metrics
 	judge     *judge.JudgeResult
 	patch     string
-	lumenUsed bool // true if mcp__lumen__semantic_search was called at least once
+	lumenUsed bool // true if a Lumen search completed successfully
 	toolCalls int  // total tool call count from raw JSONL
 }
 
+func (cfg *Config) normalizeAgent() {
+	if cfg.Agent == "" {
+		cfg.Agent = "claude"
+	}
+	if cfg.Runner == "" {
+		cfg.Runner = "cli"
+	}
+	if cfg.Model == "" && cfg.Agent == "claude" {
+		cfg.Model = cfg.ClaudeModel
+	}
+}
+
 func Generate(cfg *Config) error {
+	cfg.normalizeAgent()
 	results := loadResults(cfg)
 
 	if err := generateSummary(cfg, results); err != nil {
@@ -82,7 +99,7 @@ func loadResults(cfg *Config) []taskResult {
 					tr.toolCalls = len(calls)
 					if s == runner.WithLumen {
 						for _, tc := range calls {
-							if tc.Name == "mcp__lumen__semantic_search" {
+							if analysis.IsLumenSearchTool(tc.Name) && tc.Completed && !tc.Failed {
 								tr.lumenUsed = true
 								break
 							}
@@ -100,7 +117,11 @@ func loadResults(cfg *Config) []taskResult {
 // Template data types for summary report.
 
 type summaryData struct {
+	Agent              string
+	Runner             string
+	Model              string
 	Date               string
+	Retrieval          string
 	EmbedModel         string
 	ClaudeModel        string
 	ResultsTableHeader string
@@ -131,6 +152,7 @@ type langAgg struct {
 }
 
 func generateSummary(cfg *Config, results []taskResult) error {
+	cfg.normalizeAgent()
 	path := filepath.Join(cfg.ResultsDir, "summary-report.md")
 	f, err := os.Create(path)
 	if err != nil {
@@ -139,7 +161,9 @@ func generateSummary(cfg *Config, results []taskResult) error {
 	defer func() { _ = f.Close() }()
 
 	data := summaryData{
+		Agent: cfg.Agent, Runner: cfg.Runner, Model: cfg.Model,
 		Date:        time.Now().UTC().Format("2006-01-02 15:04 UTC"),
+		Retrieval:   cfg.Retrieval,
 		EmbedModel:  cfg.EmbedModel,
 		ClaudeModel: cfg.ClaudeModel,
 	}
@@ -170,7 +194,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 		fmt.Fprintf(&row, "| %s | %s |", t.ID, t.Language)
 		for _, s := range cfg.Scenarios {
 			runs := findResults(results, t.ID, s)
-			if s == runner.WithLumen && allRunsInvalid(runs) {
+			if len(validRuns(runs)) == 0 {
 				row.WriteString(" INVALID |")
 				continue
 			}
@@ -185,7 +209,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 			runs := findResults(results, t.ID, s)
 			m := medianMetrics(runs)
 			if m != nil {
-				label := fmt.Sprintf("$%.4f", m.CostUSD)
+				label := m.CostLabel()
 				if multiRun {
 					label += "†"
 				}
@@ -214,6 +238,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 	for _, s := range cfg.Scenarios {
 		agg := scenarioAgg{Name: string(s)}
 		var totalCost float64
+		costKnown := true
 		var totalTime int64
 		var totalTokens int64
 		count := 0
@@ -233,13 +258,17 @@ func generateSummary(cfg *Config, results []taskResult) error {
 			m := medianMetrics(validRuns(runs))
 			if m != nil {
 				totalCost += m.CostUSD
+				costKnown = costKnown && !m.CostUnknown
 				totalTime += m.DurationMS
-				totalTokens += m.InputTokens + m.OutputTokens
+				totalTokens += m.TotalTokens()
 				count++
 			}
 		}
 		if count > 0 {
 			agg.AvgCost = fmt.Sprintf("$%.4f", totalCost/float64(count))
+			if !costKnown {
+				agg.AvgCost = "n/a"
+			}
 			agg.AvgTime = fmt.Sprintf("%.1fs", float64(totalTime)/float64(count)/1000)
 			agg.AvgTokens = fmt.Sprintf("%d", totalTokens/int64(count))
 		} else {
@@ -261,7 +290,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 			bestR := judge.Poor
 			for _, s := range cfg.Scenarios {
 				runs := findResults(results, t.ID, s)
-				jr := bestRating(runs)
+				jr := bestRating(validRuns(runs))
 				if jr != nil && ratingRank(jr.Rating) > ratingRank(bestR) {
 					bestR = jr.Rating
 				}
@@ -270,7 +299,7 @@ func generateSummary(cfg *Config, results []taskResult) error {
 			var bestScenarios []runner.Scenario
 			for _, s := range cfg.Scenarios {
 				runs := findResults(results, t.ID, s)
-				jr := bestRating(runs)
+				jr := bestRating(validRuns(runs))
 				if jr != nil && ratingRank(jr.Rating) == ratingRank(bestR) {
 					bestScenarios = append(bestScenarios, s)
 				}
@@ -312,6 +341,7 @@ type detailTask struct {
 }
 
 type detailMetricsRow struct {
+	Tests        string
 	Scenario     string
 	Duration     string
 	InputTokens  string
@@ -354,14 +384,17 @@ func generateDetail(cfg *Config, results []taskResult) error {
 				if cfg.Runs > 1 {
 					label = fmt.Sprintf("%s run%d", s, r.runIndex)
 				}
-				row := detailMetricsRow{Scenario: label}
+				row := detailMetricsRow{Scenario: label, Tests: "not recorded"}
 				if r.metrics != nil {
 					m := r.metrics
 					row.Duration = fmt.Sprintf("%.1fs", float64(m.DurationMS)/1000)
 					row.InputTokens = fmt.Sprintf("%d", m.InputTokens)
 					row.CacheRead = fmt.Sprintf("%d", m.CacheRead)
 					row.OutputTokens = fmt.Sprintf("%d", m.OutputTokens)
-					row.Cost = fmt.Sprintf("$%.4f", m.CostUSD)
+					row.Cost = m.CostLabel()
+					if m.TestStatus != "" {
+						row.Tests = m.TestStatus
+					}
 				} else {
 					row.Duration = "—"
 					row.InputTokens = "—"
@@ -426,7 +459,7 @@ func findResults(results []taskResult, taskID string, s runner.Scenario) []taskR
 func medianMetrics(runs []taskResult) *metrics.Metrics {
 	var ms []*metrics.Metrics
 	for _, r := range runs {
-		if r.metrics != nil {
+		if r.metrics != nil && r.metrics.Error == "" {
 			ms = append(ms, r.metrics)
 		}
 	}
@@ -437,30 +470,26 @@ func medianMetrics(runs []taskResult) *metrics.Metrics {
 		return ms[0]
 	}
 
-	// Sort by cost and take median
-	sort.Slice(ms, func(i, j int) bool { return ms[i].CostUSD < ms[j].CostUSD })
+	// Sort by cost when all costs are available; otherwise use tokens.
+	costKnown := true
+	for _, m := range ms {
+		costKnown = costKnown && !m.CostUnknown
+	}
+	sort.Slice(ms, func(i, j int) bool {
+		if !costKnown {
+			return ms[i].TotalTokens() < ms[j].TotalTokens()
+		}
+		return ms[i].CostUSD < ms[j].CostUSD
+	})
 	med := ms[len(ms)/2]
 	return med
-}
-
-// allRunsInvalid returns true if all with-lumen runs failed to call semantic search.
-func allRunsInvalid(runs []taskResult) bool {
-	if len(runs) == 0 {
-		return false
-	}
-	for _, r := range runs {
-		if r.lumenUsed {
-			return false
-		}
-	}
-	return true
 }
 
 // validRuns filters out with-lumen runs where lumen was not used.
 func validRuns(runs []taskResult) []taskResult {
 	var out []taskResult
 	for _, r := range runs {
-		if r.scenario != runner.WithLumen || r.lumenUsed {
+		if r.metrics != nil && r.metrics.Error == "" && (r.scenario != runner.WithLumen || r.lumenUsed) {
 			out = append(out, r)
 		}
 	}
@@ -511,7 +540,7 @@ func totalTokens(m *metrics.Metrics) int64 {
 	if m == nil {
 		return 0
 	}
-	return m.InputTokens + m.OutputTokens + m.CacheRead
+	return m.TotalTokens()
 }
 
 func ratingName(rank int) string {
@@ -542,15 +571,16 @@ func pctDiff(label, better, worse string, base, cmp float64) string {
 // Output is appended to the file (not overwritten) so that multiple runs
 // can be compared side-by-side.
 func GenerateOverview(cfg *Config) error {
+	cfg.normalizeAgent()
 	results := loadResults(cfg)
 
 	var b strings.Builder
 
 	// Run marker for distinguishing appended runs
-	fmt.Fprintf(&b, "=== Run: %s | embed=%s | claude=%s ===\n\n",
+	fmt.Fprintf(&b, "=== Run: %s | embed=%s | agent=%s | runner=%s | model=%s ===\n\n",
 		time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		cfg.EmbedModel,
-		cfg.ClaudeModel,
+		cfg.Agent, cfg.Runner, cfg.Model,
 	)
 
 	const (
@@ -562,6 +592,7 @@ func GenerateOverview(cfg *Config) error {
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", sep))
 
 	var totalCost float64
+	costKnown := true
 	counts := map[judge.Rating]int{}
 	invalidCount := 0
 
@@ -586,7 +617,7 @@ func GenerateOverview(cfg *Config) error {
 		for _, s := range cfg.Scenarios {
 			runs := findResults(results, t.ID, s)
 			for _, r := range runs {
-				invalid := r.scenario == runner.WithLumen && !r.lumenUsed
+				invalid := r.metrics == nil || r.metrics.Error != "" || (r.scenario == runner.WithLumen && !r.lumenUsed)
 				valid := "YES"
 				if invalid {
 					valid = "NO"
@@ -607,9 +638,10 @@ func GenerateOverview(cfg *Config) error {
 					counts[r.judge.Rating]++
 				}
 				if r.metrics != nil {
-					cost = fmt.Sprintf("$%.4f", r.metrics.CostUSD)
+					cost = r.metrics.CostLabel()
 					dur = fmt.Sprintf("%.1fs", float64(r.metrics.DurationMS)/1000)
 					totalCost += r.metrics.CostUSD
+					costKnown = costKnown && !r.metrics.CostUnknown
 					tokens = fmt.Sprintf("%d", totalTokens(r.metrics))
 				}
 				if r.toolCalls > 0 {
@@ -641,7 +673,7 @@ func GenerateOverview(cfg *Config) error {
 						}
 					}
 				}
-				if r.scenario == runner.WithLumen && r.lumenUsed && r.metrics != nil {
+				if r.scenario == runner.WithLumen && r.lumenUsed && r.metrics != nil && !invalid {
 					hasLumen = true
 					if r.metrics.CostUSD < lmMinCost {
 						lmMinCost = r.metrics.CostUSD
@@ -668,14 +700,16 @@ func GenerateOverview(cfg *Config) error {
 	}
 
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("-", sep))
-	fmt.Fprintf(&b, "Perfect: %d  Good: %d  Poor: %d  Invalid: %d  Total cost: $%.4f\n",
-		counts[judge.Perfect], counts[judge.Good], counts[judge.Poor], invalidCount, totalCost)
+	fmt.Fprintf(&b, "Perfect: %d  Good: %d  Poor: %d  Invalid: %d  Total cost: %s\n",
+		counts[judge.Perfect], counts[judge.Good], counts[judge.Poor], invalidCount, (&metrics.Metrics{CostUSD: totalCost, CostUnknown: !costKnown}).CostLabel())
 
 	// Comparison summary: worst baseline vs best with-lumen
 	if hasBaseline && hasLumen {
 		fmt.Fprintf(&b, "\n--- Comparison: worst baseline vs best with-lumen ---\n")
-		fmt.Fprint(&b, pctDiff("Cost:", "cheaper", "more expensive",
-			blMaxCost, lmMinCost))
+		if costKnown {
+			fmt.Fprint(&b, pctDiff("Cost:", "cheaper", "more expensive",
+				blMaxCost, lmMinCost))
+		}
 		fmt.Fprint(&b, pctDiff("Time:", "faster", "slower",
 			float64(blMaxTime)/1000, float64(lmMinTime)/1000))
 		fmt.Fprint(&b, pctDiff("Tokens:", "fewer tokens", "more tokens",

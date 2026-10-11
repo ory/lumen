@@ -1,0 +1,97 @@
+[
+  {"id": "lang.ruby.route_matching_url", "corpus": "fixtures/ruby", "language": "ruby", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "route matching URL",
+   "targets": [
+     {"file": "sinatra-base.rb", "symbol": "process_route"},
+     {"file": "sinatra-base.rb", "symbol": "route!"},
+     {"file": "sinatra-base.rb", "symbol": "route", "contains": ["signature = compile!(verb, path, block, **options)"]},
+     {"file": "sinatra-base.rb", "symbol": "compile", "contains": ["Mustermann.new(path"]}
+   ]},
+  {"id": "lang.ruby.controller_action_rendering", "corpus": "fixtures/ruby", "language": "ruby", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "controller action rendering",
+   "targets": [
+     {"file": "metal.rb", "contains": ["render \"hello/index\""]},
+     {"file": "metal.rb", "symbol": "action", "contains": ["ActionDispatch::Request.new(env)"]},
+     {"file": "metal.rb", "symbol": "dispatch", "contains": ["process(name)"]},
+     {"file": "sinatra-base.rb", "symbol": "render", "line": 843}
+   ],
+   "note": "ActionController::Metal documents its rendering helpers and builds Rack endpoints for actions; Sinatra#render renders templates for handlers."},
+  {"id": "lang.ruby.database_record_query_scope", "corpus": "fixtures/ruby", "language": "ruby", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "database record query scope",
+   "targets": [
+     {"file": "relation.rb", "symbol": "scoping"},
+     {"file": "relation.rb", "symbol": "_scoping"},
+     {"file": "relation.rb", "symbol": "_exec_scope"},
+     {"file": "relation.rb", "symbol": "scope_for_create"}
+   ]},
+  {"id": "lang.ruby.authentication_callback_filter", "corpus": "fixtures/ruby", "language": "ruby", "kind": "language", "category": "diagnostic", "origin": "lang-suite", "query": "authentication callback filter",
+   "targets": [
+     {"file": "sinatra-base.rb", "symbol": "before", "contains": ["add_filter(:before, path, **options, &block)"]},
+     {"file": "sinatra-base.rb", "symbol": "filter!"},
+     {"file": "metal.rb", "symbol": "middleware", "contains": ["use AuthenticationMiddleware"]}
+   ],
+   "note": "The corpus has no authentication filter or before_action callback; only Sinatra's generic before filters and a doc example mounting AuthenticationMiddleware are partial answers."},
+  {"id": "lang.ruby.module_include_concern", "corpus": "fixtures/ruby", "language": "ruby", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "module include concern",
+   "targets": [
+     {"file": "concern.rb", "symbol": "append_features"},
+     {"file": "concern.rb", "symbol": "included", "contains": ["@_included_block = block"]},
+     {"file": "concern.rb", "symbol": "Concern"},
+     {"file": "concern.rb", "symbol": "class_methods"}
+   ]},
+
+  {"id": "ruby.concern_append_features", "corpus": "fixtures/ruby", "language": "ruby", "kind": "task", "category": "supported", "origin": "brainstorm-ruby", "query": "append_features dependencies included block",
+   "targets": [{"file": "concern.rb", "symbol": "append_features", "contains": ["@_dependencies.each { |dep| base.include(dep) }"]}],
+   "distractors": [{"file": "concern.rb", "symbol": "prepend_features"}],
+   "note": "append_features (include path), not the structurally identical prepend_features."},
+  {"id": "ruby.callbacks_create_or_update", "corpus": "fixtures/ruby", "language": "ruby", "kind": "exact", "category": "supported", "origin": "brainstorm-ruby", "query": "create_or_update _run_save_callbacks", "max_rank": 1,
+   "targets": [{"file": "callbacks.rb", "symbol": "create_or_update", "contains": ["_run_save_callbacks { super }"]}],
+   "distractors": [
+     {"file": "callbacks.rb", "symbol": "_create_record"},
+     {"file": "callbacks.rb", "symbol": "_update_record"}
+   ]},
+  {"id": "ruby.relation_scoping_ensure_restore", "corpus": "fixtures/ruby", "language": "ruby", "kind": "task", "category": "supported", "origin": "brainstorm-ruby", "query": "_scoping ensure restore previous current scope",
+   "targets": [{"file": "relation.rb", "symbol": "_scoping", "contains": ["registry.set_current_scope(model, previous)"]}],
+   "distractors": [{"file": "relation.rb", "symbol": "scoping", "contains": ["already_in_scope?(registry)"]}],
+   "note": "The private _scoping helper restores the previous scope in its ensure clause even when the block raises; public scoping only delegates."},
+  {"id": "ruby.sinatra_get_registers_head", "corpus": "fixtures/ruby", "language": "ruby", "kind": "task", "category": "supported", "origin": "brainstorm-ruby", "query": "get route also registers HEAD route",
+   "targets": [{"file": "sinatra-base.rb", "symbol": "get", "contains": ["route('HEAD', path, opts, &block)"]}],
+   "distractors": [{"file": "sinatra-base.rb", "symbol": "head", "contains": ["route 'HEAD',"]}],
+   "note": "Sinatra get defines both GET and HEAD; the one-line head helper only registers HEAD."},
+  {"id": "ruby.sinatra_generate_method", "corpus": "fixtures/ruby", "language": "ruby", "kind": "task", "category": "supported", "origin": "brainstorm-ruby", "query": "define_method instance_method remove_method unbound method",
+   "targets": [{"file": "sinatra-base.rb", "symbol": "generate_method", "contains": ["remove_method method_name"]}],
+   "distractors": [{"file": "engine.rb", "contains": ["define_method(:railtie_namespace)"]}]},
+  {"id": "ruby.validations_valid_predicate", "corpus": "fixtures/ruby", "language": "ruby", "kind": "exact", "category": "supported", "origin": "brainstorm-ruby", "query": "valid? default_validation_context",
+   "targets": [{"file": "validations.rb", "symbol": "valid?", "contains": ["context ||= default_validation_context"]}],
+   "distractors": [{"file": "metal.rb", "symbol": "valid?"}],
+   "note": "Symbol keeps the trailing ?; Middleware#valid? in metal.rb is unrelated."},
+  {"id": "ruby.validations_save_bang", "corpus": "fixtures/ruby", "language": "ruby", "kind": "exact", "category": "supported", "origin": "brainstorm-ruby", "query": "save! raise_validation_error",
+   "targets": [{"file": "validations.rb", "symbol": "save!", "contains": ["perform_validations(options) ? super : raise_validation_error"]}],
+   "distractors": [{"file": "validations.rb", "symbol": "save"}],
+   "note": "Symbol keeps the trailing !; plain save returns false instead of raising."},
+  {"id": "ruby.metal_response_body_setter", "corpus": "fixtures/ruby", "language": "ruby", "kind": "exact", "category": "supported", "origin": "brainstorm-ruby", "query": "response_body=", "max_rank": 1,
+   "targets": [{"file": "metal.rb", "symbol": "response_body=", "contains": ["response.reset_body!"]}],
+   "distractors": [{"file": "metal.rb", "symbol": "response="}],
+   "note": "Setter symbol keeps the trailing =."},
+
+  {"id": "ruby.chunker.singleton_method", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "open account opening entry",
+   "targets": [{"file": "lib/ledger/account.rb", "symbol": "open", "contains": ["def self.open(owner, currency: DEFAULT_CURRENCY)"]}]},
+  {"id": "ruby.chunker.alias", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "alias total balance",
+   "targets": [{"file": "lib/ledger/account.rb", "symbol": "total"}],
+   "note": "alias keyword inside a class becomes its own declaration."},
+  {"id": "ruby.chunker.class_constant", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "DEFAULT_CURRENCY",
+   "targets": [
+     {"file": "lib/ledger/account.rb", "symbol": "DEFAULT_CURRENCY"},
+     {"file": "lib/ledger/account.rb", "symbol": "open", "contains": ["currency: DEFAULT_CURRENCY"]}
+   ]},
+  {"id": "ruby.chunker.nested_class_method", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "entry signed_amount debit",
+   "targets": [{"file": "lib/ledger/account.rb", "symbol": "signed_amount", "contains": ["debit? ? -amount : amount"]}]},
+  {"id": "ruby.chunker.reopened_class_bang", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "freeze! account reason", "max_rank": 1,
+   "targets": [{"file": "lib/ledger/account/freezing.rb", "symbol": "freeze!", "contains": ["@frozen_reason = reason"]}],
+   "distractors": [{"file": "lib/ledger/account/freezing.rb", "symbol": "unfreeze!"}],
+   "note": "Ledger::Account reopened in a second file; bang method name preserved."},
+  {"id": "ruby.chunker.reopened_core_class", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "to_cents", "max_rank": 1,
+   "targets": [{"file": "lib/ledger/core_ext/string.rb", "symbol": "to_cents"}]},
+  {"id": "ruby.chunker.module_singleton", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "monthly_summary", "max_rank": 1,
+   "targets": [{"file": "lib/ledger/reporting.rb", "symbol": "monthly_summary"}]},
+  {"id": "ruby.chunker.commented_out_method", "corpus": "retrieval/corpora/ruby-chunker", "language": "ruby", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "balance entries sum",
+   "targets": [{"file": "lib/ledger/account.rb", "symbol": "balance", "contains": ["entries.sum(&:signed_amount)"]}],
+   "distractors": [{"file": "lib/ledger/account.rb", "symbol": "legacy_balance"}],
+   "note": "The commented-out legacy_balance must not become a declaration."}
+]

@@ -1,0 +1,50 @@
+diff --git a/pkgs/shelf_router/CHANGELOG.md b/pkgs/shelf_router/CHANGELOG.md
+index 6e88703..db19ab9 100644
+--- a/pkgs/shelf_router/CHANGELOG.md
++++ b/pkgs/shelf_router/CHANGELOG.md
+@@ -1,6 +1,7 @@
+ ## 1.1.5-wip
+ 
+ * Require Dart `^3.3.0`.
++* Don't modify the `content-length` header for `HEAD` requests, per RFC 9110.
+ 
+ ## 1.1.4
+ 
+diff --git a/pkgs/shelf_router/lib/src/router.dart b/pkgs/shelf_router/lib/src/router.dart
+index 720d3c3..d68627a 100644
+--- a/pkgs/shelf_router/lib/src/router.dart
++++ b/pkgs/shelf_router/lib/src/router.dart
+@@ -60,9 +60,6 @@ extension RouterParams on Request {
+ 
+ /// Middleware to remove body from request.
+ final _removeBody = createMiddleware(responseHandler: (r) {
+-  if (r.headers.containsKey('content-length')) {
+-    r = r.change(headers: {'content-length': '0'});
+-  }
+   return r.change(body: <int>[]);
+ });
+ 
+diff --git a/pkgs/shelf_router/test/router_test.dart b/pkgs/shelf_router/test/router_test.dart
+index fdffa51..782d922 100644
+--- a/pkgs/shelf_router/test/router_test.dart
++++ b/pkgs/shelf_router/test/router_test.dart
+@@ -72,6 +72,19 @@ void main() {
+     expect(await head('/wrong-path'), 200);
+   });
+ 
++  test('head preserves content-length', () async {
++    var app = Router();
++
++    app.get('/hello', (Request request) => Response.ok('hello-world'));
++
++    server.mount(app.call);
++
++    final response = await http.head(Uri.parse('${server.url}/hello'));
++    expect(response.statusCode, 200);
++    expect(response.headers['content-length'], '11');
++    expect(response.body, isEmpty);
++  });
++
+   test('params', () async {
+     var app = Router();
+ 

@@ -1,0 +1,11 @@
+--- a/internal/store/lexical.go
++++ b/internal/store/lexical.go
+@@ -181,7 +181,7 @@
+ 	if limit <= 0 || match == "" {
+ 		return nil, nil
+ 	}
+-	sqlQuery := `SELECT ` + lexicalResultColumns + `, bm25(lexical_chunks, 12, 16, 6, 3, 1) - CASE WHEN lower(cd.symbol)=lower(?) THEN 1000 WHEN lower(pf.relative_path)=lower(?) THEN 500 ELSE 0 END AS score FROM project_files pf ` + lexicalResultJoins + ` JOIN lexical_chunks ON lexical_chunks.rowid=cd.id WHERE lexical_chunks MATCH ? AND pf.project_id=?`
++	sqlQuery := `SELECT ` + lexicalResultColumns + `, bm25(lexical_chunks, 12, 16, 6, 3, 1) - CASE WHEN lower(cd.symbol)=lower(?) THEN 1000 WHEN lower(pf.relative_path)=lower(?) THEN 500 ELSE 0 END AS score FROM lexical_chunks CROSS JOIN chunk_defs cd ON lexical_chunks.rowid=cd.id CROSS JOIN project_files pf ON cd.file_revision_id=pf.file_revision_id CROSS JOIN file_revisions fr ON fr.id=pf.file_revision_id WHERE lexical_chunks MATCH ? AND pf.project_id=?`
+ 	args := []any{strings.TrimSpace(query), strings.TrimSpace(query), match, s.projectID}
+ 	sqlQuery, args = lexicalPathFilter(sqlQuery, args, pathFilter)
+ 	sqlQuery += ` ORDER BY score, pf.relative_path, cd.start_line, cd.id LIMIT ?`

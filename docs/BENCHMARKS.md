@@ -1,5 +1,91 @@
 # Lumen Benchmarks
 
+## Retrieval case catalog
+
+The main retrieval quality measurement is the shared, source-judged case
+catalog in [`testdata/retrieval`](../testdata/retrieval/README.md): 445
+outcomes over 20 language groups, run offline through BM25 by `make test` /
+`make eval` and through the executable server by `make e2e-bm25` (and, as a
+diagnostic, `make e2e-semantic-catalog`). Results, the before/after
+comparison and remaining misses are in
+[RETRIEVAL_PARITY.md](RETRIEVAL_PARITY.md).
+
+## Retrieval evaluation (smoke corpus)
+
+The BM25 default has a small, deterministic retrieval corpus in
+`internal/index/retrieval_benchmark_test.go`. It includes exact symbol, path,
+comment, named imported helper and vocabulary-mismatch queries. Both lexical-only
+and expanded retrieval use the **same corpus, queries and judgments**.
+
+```bash
+CGO_ENABLED=1 go test -tags=fts5 ./internal/index -run '^TestRetrievalEvaluation' -v -count=1
+CGO_ENABLED=1 go test -tags=fts5 ./internal/index -run '^$' -bench '^BenchmarkRetrieval$' -benchmem
+```
+
+The evaluation reports direct hit@3 and MRR@3 separately from context-target
+recall (the imported helper query). A helper found as either a direct match or
+related snippet counts toward context recall, never toward the query's direct
+target metric. It also reports extra snippet bytes, index-build time, allocated
+SQLite page bytes (excluding WAL), and query latency. The microbenchmark cycles
+through the same five queries, reporting `extra-bytes/op`, `index-bytes` and
+`build-ms`. Latency includes local freshness validation reads.
+
+The intentionally mismatched query remains in the denominator. This five-file
+fixture checks behavior and makes the comparison repeatable; it is not evidence
+of general semantic equivalence or production-scale performance.
+
+For a real configured embedding service, opt into the same-corpus semantic run:
+
+```bash
+LUMEN_BENCH_SEMANTIC=1 CGO_ENABLED=1 go test -tags=fts5 ./internal/index -run '^TestRetrievalEvaluationSemantic$' -v -count=1
+```
+
+It uses the normal configuration and real model, reports its identity/dimensions,
+and includes embedding latency in query time. Without opt-in, or if the service
+is unreachable, the test explicitly skips; no embedding scores are fabricated.
+Semantic indexing errors after a successful service probe fail the test.
+
+### Local fixture result
+
+A local run on macOS arm64 / Apple M4 Max (`-benchtime=200ms`) reported:
+
+| Retrieval | Direct hit@3 | Direct MRR@3 | Context-target recall | Query benchmark | Extra bytes/query |
+| --- | --- | --- | --- | --- | --- |
+| BM25 only | 0.80 | 0.80 | 0.00 | 157 µs | 0 |
+| BM25 + bounded context | 0.80 | 0.80 | 1.00 | 206 µs | 31.6 |
+
+Both modes used the same 77,824-byte SQLite page allocation; the measured build
+was 29.66 ms. Four direct targets ranked first; the vocabulary-mismatch target
+was missed in both modes. Expansion added the 79-byte helper on each of two
+queries, including the one labeled for context evaluation. The semantic run was
+skipped because `LUMEN_BENCH_SEMANTIC` was not enabled. These are local synthetic
+fixture measurements, not production quality or embedding-comparison results.
+
+### Local repository feasibility check
+
+A verification run indexed this Lumen checkout (188 files, 1,914 chunks) into an
+isolated data directory with embedding endpoints unavailable. The indexing phase
+reported 319 ms; the whole CLI invocation took 1.098 s. After closing SQLite,
+the database occupied 2,363,392 bytes and the WAL was empty.
+
+| Query type | Lexical-only whole CLI median | Default whole CLI median |
+| --- | --- | --- |
+| Exact symbol | 542 ms | 564 ms |
+| Natural-language cleanup query | 451 ms | 431 ms |
+
+The exact symbol ranked first. For the cleanup query, a relevant test ranked
+first and the implementation ranked third; default retrieval also returned
+valid imported helper context. These two queries are a feasibility check on one
+local checkout, not a labeled quality benchmark. Whole CLI times include startup
+and freshness work. The small timing differences do not establish a performance
+advantage for either mode.
+
+## Historical semantic task evaluation
+
+All task results below were collected with **embedding-based semantic retrieval**.
+They do not measure the new BM25 default or establish equivalent retrieval quality.
+
+
 Lumen is evaluated using **bench-swe**: a SWE-bench-style harness that measures
 whether Lumen reduces cost, time, and token usage when Claude fixes real GitHub
 bugs. Results are fully reproducible and all artifacts are committed to this

@@ -23,7 +23,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "lumen",
-	Short: "Local semantic code search for AI agents",
+	Short: "Local code search for AI agents",
 }
 
 // Execute runs the root command.
@@ -31,4 +31,8 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().String("retrieval", "", "retrieval mode: bm25 (default) or semantic (requires embedding service)")
 }

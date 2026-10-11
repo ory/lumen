@@ -203,6 +203,7 @@ func writeToolCallJSONL(t *testing.T, path string, bashCalls, lumenCalls int) {
 	}
 	for range lumenCalls {
 		_, _ = fmt.Fprintf(f, `{"type":"tool_use","id":"tc_%d","name":"mcp__lumen__semantic_search","input":{"query":"test"}}%s`, idx, "\n")
+		_, _ = fmt.Fprintf(f, `{"type":"tool_result","tool_use_id":"tc_%d","content":"found"}%s`, idx, "\n")
 		idx++
 	}
 }
@@ -445,5 +446,36 @@ func TestGenerate_EmptyResults(t *testing.T) {
 	// Detail report should also exist
 	if _, err := os.Stat(filepath.Join(dir, "detail-report.md")); err != nil {
 		t.Errorf("detail report not created: %v", err)
+	}
+}
+
+func TestCodexUnknownCostAndFailedRuns(t *testing.T) {
+	dir := t.TempDir()
+	m := &metrics.Metrics{Agent: "codex", Runner: "sdk", CostUnknown: true, InputTokens: 100, CacheRead: 50, OutputTokens: 20, DurationMS: 500}
+	if err := m.SaveToFile(filepath.Join(dir, "task-1-baseline-metrics.json")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{ResultsDir: dir, Agent: "codex", Runner: "sdk", Model: "test-codex", Tasks: []task.Task{{ID: "task-1", Language: "go"}}, Scenarios: []runner.Scenario{runner.Baseline}, OutputPath: filepath.Join(dir, "overview.txt")}
+	if err := Generate(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := GenerateOverview(cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"summary-report.md", "detail-report.md", "overview.txt"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "$0.0000") || !strings.Contains(string(data), "n/a") {
+			t.Fatalf("misleading cost in %s: %s", name, data)
+		}
+	}
+	m.Error = "timed out"
+	if err := m.SaveToFile(filepath.Join(dir, "task-1-baseline-metrics.json")); err != nil {
+		t.Fatal(err)
+	}
+	if got := validRuns(loadResults(cfg)); len(got) != 0 {
+		t.Fatal("failed agent run counted as valid")
 	}
 }

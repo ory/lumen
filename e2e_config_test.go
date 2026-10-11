@@ -50,7 +50,7 @@ func startServerWithEnv(t *testing.T, env []string) *mcp.ClientSession {
 	if err != nil {
 		t.Fatalf("failed to connect to server: %v", err)
 	}
-	t.Cleanup(func() { session.Close() })
+	t.Cleanup(func() { _ = session.Close() })
 	return session
 }
 
@@ -68,6 +68,7 @@ func baseEnv(dataHome string) []string {
 		"HOME=" + os.Getenv("HOME"),
 		"PATH=" + os.Getenv("PATH"),
 		"XDG_DATA_HOME=" + dataHome,
+		"LUMEN_RETRIEVAL=semantic",
 	}
 }
 
@@ -100,6 +101,7 @@ func newDownServer(t *testing.T) *httptest.Server {
 // --- Happy Path Tests ---
 
 func TestE2E_Config_YAMLDrivesServerSelection(t *testing.T) {
+	requireSemantic(t)
 	configHome := writeConfigYAML(t, fmt.Sprintf(`
 servers:
   - backend: ollama
@@ -131,6 +133,7 @@ freshness_ttl: 1s
 }
 
 func TestE2E_Config_MultiServerFailover(t *testing.T) {
+	requireSemantic(t)
 	down := newDownServer(t)
 
 	configHome := writeConfigYAML(t, fmt.Sprintf(`
@@ -165,6 +168,7 @@ freshness_ttl: 1s
 }
 
 func TestE2E_Config_HotReloadServerFailover(t *testing.T) {
+	requireSemantic(t)
 	// Start with only an unhealthy server — search should fail.
 	down := newDownServer(t)
 
@@ -228,6 +232,7 @@ freshness_ttl: 1s
 // --- Edge Case Tests ---
 
 func TestE2E_Config_EnvVarsOverrideYAML(t *testing.T) {
+	requireSemantic(t)
 	// config.yaml references a model that doesn't exist
 	configHome := writeConfigYAML(t, fmt.Sprintf(`
 servers:
@@ -259,6 +264,7 @@ freshness_ttl: 1s
 }
 
 func TestE2E_Config_InvalidReloadPreservesPrevious(t *testing.T) {
+	requireSemantic(t)
 	configHome := writeConfigYAML(t, fmt.Sprintf(`
 servers:
   - backend: ollama
@@ -303,6 +309,7 @@ freshness_ttl: 1s
 }
 
 func TestE2E_Config_NoConfigFileEnvVarsOnly(t *testing.T) {
+	requireSemantic(t)
 	// Don't create a config.yaml — set XDG_CONFIG_HOME to an empty temp dir
 	configHome := t.TempDir()
 	dataHome := t.TempDir()

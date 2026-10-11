@@ -1,0 +1,8 @@
+{
+  "cost_usd": 0.16727530000000002,
+  "duration_ms": 59407,
+  "input_tokens": 16,
+  "cache_read": 256193,
+  "cache_created": 27571,
+  "output_tokens": 3134
+}

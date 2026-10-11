@@ -80,11 +80,11 @@ func Hello() {}
 	}
 	defer func() { _ = seedDB.Close() }()
 	var seededProjectPath string
-	if err := seedDB.QueryRow(`SELECT path FROM projects WHERE path = ?`, seedProjectDir).Scan(&seededProjectPath); err != nil {
+	if err := seedDB.QueryRow(`SELECT path FROM projects WHERE path = ?`, store.CanonicalProjectPath(seedProjectDir)).Scan(&seededProjectPath); err != nil {
 		t.Fatal(err)
 	}
-	if seededProjectPath != seedProjectDir {
-		t.Fatalf("seeded project path = %q, want %q", seededProjectPath, seedProjectDir)
+	if seededProjectPath != store.CanonicalProjectPath(seedProjectDir) {
+		t.Fatalf("seeded project path = %q, want %q", seededProjectPath, store.CanonicalProjectPath(seedProjectDir))
 	}
 }
 
@@ -127,11 +127,11 @@ func TestSeedFromDonor_SelectsCompleteSharedProject(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	var projectPath string
-	if err := db.QueryRow(`SELECT path FROM projects WHERE path = ?`, destinationProject).Scan(&projectPath); err != nil {
+	if err := db.QueryRow(`SELECT path FROM projects WHERE path = ?`, store.CanonicalProjectPath(destinationProject)).Scan(&projectPath); err != nil {
 		t.Fatal(err)
 	}
-	if projectPath != destinationProject {
-		t.Fatalf("seeded project path = %q, want %q", projectPath, destinationProject)
+	if want := store.CanonicalProjectPath(destinationProject); projectPath != want {
+		t.Fatalf("seeded project path = %q, want %q", projectPath, want)
 	}
 }
 
@@ -162,7 +162,7 @@ func TestSeedFromDonor_SnapshotsCommittedWALWithActiveWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	var projectID int64
-	if err := writer.QueryRow(`SELECT id FROM projects WHERE path = ?`, projectDir).Scan(&projectID); err != nil {
+	if err := writer.QueryRow(`SELECT id FROM projects WHERE path = ?`, store.CanonicalProjectPath(projectDir)).Scan(&projectID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := writer.Exec(

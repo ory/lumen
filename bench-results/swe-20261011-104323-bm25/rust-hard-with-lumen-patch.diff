@@ -1,0 +1,42 @@
+diff --git a/crates/toml/examples/tmp_repro.rs b/crates/toml/examples/tmp_repro.rs
+new file mode 100644
+index 0000000..e8ef1a4
+--- /dev/null
++++ b/crates/toml/examples/tmp_repro.rs
+@@ -0,0 +1,6 @@
++fn main() {
++    let s = "[fruit.apple.texture]\nsmooth = true\n\n[fruit]\napple.color = \"red\"\napple.taste.sweet = true\n";
++    println!("{:?}", s.parse::<toml::Table>());
++    let bad = "[fruit.apple]\n[fruit]\napple.color = \"red\"\n";
++    println!("{:?}", bad.parse::<toml::Table>().is_err());
++}
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b1..8acecb8 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -224,7 +224,9 @@ impl<'i> State<'i> {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        // Tables implicitly created by a nested `[table.header]` can still be extended
++        let mixed_table_types = parent_table.is_dotted() == path.is_empty()
++            && !(!path.is_empty() && parent_table.is_implicit());
+         if mixed_table_types {
+             let key_span = get_key_span(&key);
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..625dd52 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -307,7 +307,9 @@ impl State {
+             return;
+         };
+         // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
+-        let mixed_table_types = parent_table.is_dotted() == path.is_empty();
++        // Tables implicitly created by a nested `[table.header]` can still be extended
++        let mixed_table_types = parent_table.is_dotted() == path.is_empty()
++            && !(!path.is_empty() && parent_table.is_implicit());
+         if mixed_table_types {
+             let key_span = get_key_span(&key).expect("all keys have spans");
+             errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));

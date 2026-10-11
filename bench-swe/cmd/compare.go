@@ -49,6 +49,7 @@ func runCompare(_ *cobra.Command, args []string) error {
 	var totalTimeDelta int64
 	var totalTokenDelta int64
 	compared := 0
+	costCompared := 0
 
 	for key := range allKeys {
 		m1 := pairs1[key]
@@ -68,16 +69,19 @@ func runCompare(_ *cobra.Command, args []string) error {
 		if m1 != nil && m2 != nil {
 			cd := m2.CostUSD - m1.CostUSD
 			td := m2.DurationMS - m1.DurationMS
-			tkd := (m2.InputTokens + m2.OutputTokens) - (m1.InputTokens + m1.OutputTokens)
+			tkd := m2.TotalTokens() - m1.TotalTokens()
 
-			totalCostDelta += cd
+			if !m1.CostUnknown && !m2.CostUnknown {
+				totalCostDelta += cd
+				costCompared++
+				costDelta = formatDelta(cd, m1.CostUSD, "$%.4f")
+			}
 			totalTimeDelta += td
 			totalTokenDelta += tkd
 			compared++
 
-			costDelta = formatDelta(cd, m1.CostUSD, "$%.4f")
 			timeDelta = formatDeltaTime(td, m1.DurationMS)
-			tokenDelta = formatDeltaInt(tkd, m1.InputTokens+m1.OutputTokens)
+			tokenDelta = formatDeltaInt(tkd, m1.TotalTokens())
 		}
 
 		// Track quality changes
@@ -103,10 +107,14 @@ func runCompare(_ *cobra.Command, args []string) error {
 	fmt.Printf("- **Quality**: %d improvements, %d regressions, %d unchanged\n",
 		improvements, regressions, unchanged)
 	if compared > 0 {
-		avgCost := totalCostDelta / float64(compared)
+		avgCost := totalCostDelta / float64(max(1, costCompared))
 		avgTime := float64(totalTimeDelta) / float64(compared) / 1000
 		avgTokens := totalTokenDelta / int64(compared)
-		fmt.Printf("- **Avg Cost Delta**: $%.4f per task\n", avgCost)
+		if costCompared > 0 {
+			fmt.Printf("- **Avg Cost Delta**: $%.4f per task\n", avgCost)
+		} else {
+			fmt.Println("- **Avg Cost Delta**: n/a")
+		}
 		fmt.Printf("- **Avg Time Delta**: %.1fs per task\n", avgTime)
 		fmt.Printf("- **Avg Token Delta**: %d per task\n", avgTokens)
 	}

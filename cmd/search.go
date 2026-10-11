@@ -73,9 +73,11 @@ func init() {
 	searchCmd.Flags().StringP("path", "p", "", "directory to search (default: cwd)")
 	searchCmd.Flags().String("cwd", "", "project root when path is a subdirectory")
 	searchCmd.Flags().IntP("n-results", "n", 8, "max results to return")
-	searchCmd.Flags().Float64("min-score", 0, "minimum score threshold (-1 to 1)")
+	searchCmd.Flags().Float64("min-score", 0, "semantic mode only: minimum cosine score (-1 to 1); omit for BM25")
+	searchCmd.Flags().Bool("lexical-only", false, "disable related structural context for the BM25 baseline")
 	searchCmd.Flags().Bool("summary", false, "omit code snippets, return location only")
 	searchCmd.Flags().Int("max-lines", 0, "truncate snippets at N lines (0 = unlimited)")
+	searchCmd.Flags().Int("max-tokens", 0, "output budget in estimated tokens (UTF-8 bytes / 4; hard cap max-tokens*4 bytes incl. final newline); 0 = 4000, -1 = unlimited, minimum 256")
 	searchCmd.Flags().BoolP("force", "f", false, "force full re-index before searching")
 	searchCmd.Flags().Bool("trace", false, "print per-phase timing to stderr")
 	searchCmd.Flags().StringP("model", "m", "", "embedding model override")
@@ -85,7 +87,7 @@ func init() {
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search an indexed project for semantically similar code",
+	Short: "Search code with BM25 and bounded structural context (semantic opt-in)",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runSearch,
 }
@@ -100,6 +102,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	summary, _ := cmd.Flags().GetBool("summary")
 	maxLines, _ := cmd.Flags().GetInt("max-lines")
 	force, _ := cmd.Flags().GetBool("force")
+	maxTokens, _ := cmd.Flags().GetInt("max-tokens")
+	budget, err := newOutputBudget(maxTokens)
+	if err != nil {
+		return err
+	}
 
 	var minScore *float64
 	if cmd.Flags().Changed("min-score") {
@@ -123,10 +130,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
 	}
-	emb.SetLogger(logger)
-	modelName := emb.ModelName()
+	if emb != nil {
+		emb.SetLogger(logger)
+	}
+	modelName := retrievalModel(emb)
 
-	indexRoot, projectPath, err := resolveIndexRoot(pathFlag, cwdFlag, modelName)
+	indexRoot, projectPath, err := resolveIndexRootWithPath(pathFlag, cwdFlag, func(project string) string { return configuredDBPath(cfg, project, modelName) })
 	if err != nil {
 		return fmt.Errorf("resolve paths: %w", err)
 	}
@@ -154,7 +163,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("force reindex: %w", err)
 		}
 		tr.record("merkle + freshness", fmt.Sprintf("reindexed %d files", s.IndexedFiles))
-		return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, true, s.IndexedFiles)
+		return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, budget, true, s.IndexedFiles)
 	}
 
 	reindexed, s, err := idx.EnsureFresh(ctx, indexRoot, nil)
@@ -173,11 +182,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if reindexed {
 		indexedFiles = s.IndexedFiles
 	}
-	return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, reindexed, indexedFiles)
+	return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, budget, reindexed, indexedFiles)
 }
 
 func finishSearch(
-	_ *cobra.Command,
+	cmd *cobra.Command,
 	ctx context.Context,
 	tr *tracer,
 	idx *index.Indexer,
@@ -187,9 +196,22 @@ func finishSearch(
 	minScore *float64,
 	summary bool,
 	maxLines int,
+	budget outputBudget,
 	reindexed bool,
 	indexedFiles int,
 ) error {
+	if idx.Lexical() {
+		lexicalOnly, _ := cmd.Flags().GetBool("lexical-only")
+		items, err := lexicalSearchItems(ctx, idx, indexRoot, searchPath, query, nResults, minScore, !lexicalOnly, summary, maxLines)
+		if err != nil {
+			return err
+		}
+		tr.record("BM25 search", fmt.Sprintf("%d results including bounded related context", len(items)))
+		tr.print(os.Stderr)
+		// The cap includes fmt.Println's final newline.
+		fmt.Println(boundedSearchText(searchPath, SemanticSearchOutput{Results: items, Reindexed: reindexed, IndexedFiles: indexedFiles, Retrieval: "bm25"}, budget, 1))
+		return nil
+	}
 	// Span 4: query embedding
 	vecs, err := emb.Embed(ctx, []string{query})
 	if err != nil {
@@ -253,6 +275,6 @@ func finishSearch(
 		Reindexed:    reindexed,
 		IndexedFiles: indexedFiles,
 	}
-	fmt.Println(formatSearchResults(searchPath, out))
+	fmt.Println(boundedSearchText(searchPath, out, budget, 1))
 	return nil
 }

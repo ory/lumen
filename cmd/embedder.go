@@ -21,5 +21,15 @@ import (
 
 // newEmbedder creates a FailoverEmbedder from the given ConfigService.
 func newEmbedder(cfg *config.ConfigService) *embedder.FailoverEmbedder {
+	if cfg.Retrieval() == "bm25" {
+		return nil
+	}
 	return embedder.NewFailoverEmbedder(cfg)
+}
+
+func retrievalModel(emb *embedder.FailoverEmbedder) string {
+	if emb == nil {
+		return "lumen-bm25-v1"
+	}
+	return emb.ModelName()
 }

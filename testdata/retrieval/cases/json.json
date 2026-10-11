@@ -1,0 +1,113 @@
+[
+  {"id": "lang.json.build_scripts_commands", "corpus": "fixtures/json", "language": "json", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "build scripts commands",
+   "targets": [
+     {"file": "vue-package.json", "symbol": "scripts", "contains": ["\"build\": \"node scripts/build.js\""]},
+     {"file": "typescript-package.json", "symbol": "scripts", "contains": ["\"build\": \"npm run build:compiler && npm run build:tests\""]},
+     {"file": "vite-package.json", "symbol": "scripts", "contains": ["\"build\": \"pnpm -r --filter='./packages/*' run build\""]},
+     {"file": "react-package.json", "symbol": "scripts.build", "contains": ["build-all-release-channels.js"]},
+     {"file": "tailwind-package.json", "contains": ["\"build\": \"turbo build --filter=!./playgrounds/*\""]},
+     {"file": "eslint-package.json", "symbol": "scripts", "contains": ["\"build:site\": \"node Makefile.js gensite\""]},
+     {"file": "prettier-package.json", "symbol": "scripts.build"},
+     {"file": "babel-package.json", "symbol": "scripts", "contains": ["\"build\": \"make build\""]},
+     {"file": "svelte-package.json", "contains": ["\"build\": \"pnpm -r --filter=./packages/* build\""]}
+   ]},
+  {"id": "lang.json.typescript_compiler_options", "corpus": "fixtures/json", "language": "json", "kind": "language", "category": "diagnostic", "origin": "lang-suite",
+   "query": "TypeScript compiler options",
+   "targets": [
+     {"file": "vue-package.json", "symbol": "scripts", "contains": ["\"ts-check\": \"tsc -p tsconfig.json --noEmit\""]},
+     {"file": "eslint-package.json", "symbol": "scripts", "contains": ["\"test:types\": \"tsc -p tests/lib/types/tsconfig.json\""]},
+     {"file": "typescript-package.json", "symbol": "scripts"}
+   ],
+   "note": "Source audit: the JSON corpus has no tsconfig/compilerOptions; the closest answers are tsc invocations in package.json scripts."},
+  {"id": "lang.json.package_dependencies_versions", "corpus": "fixtures/json", "language": "json", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "package dependencies versions",
+   "targets": [
+     {"file": "express-package.json", "symbol": "dependencies", "contains": ["\"body-parser\": \"^2.2.1\""]},
+     {"file": "express-package.json", "symbol": "devDependencies", "contains": ["\"mocha\": \"^10.7.3\""]},
+     {"file": "vue-package.json", "symbol": "dependencies"},
+     {"file": "vue-package.json", "symbol": "devDependencies"},
+     {"file": "eslint-package.json", "symbol": "dependencies"},
+     {"file": "svelte-package.json", "contains": ["\"devDependencies\": {"]},
+     {"file": "tailwind-package.json", "contains": ["\"devDependencies\": {"]},
+     {"file": "vite-package.json", "symbol": "devDependencies"},
+     {"file": "typescript-package.json", "symbol": "devDependencies"}
+   ]},
+  {"id": "lang.json.api_paths_endpoints", "corpus": "fixtures/json", "language": "json", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "API paths endpoints",
+   "targets": [
+     {"file": "petstore-openapi.json", "symbol": "paths./pet"},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/findByStatus"},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/findByTags"},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.get"},
+     {"file": "petstore-openapi.json", "symbol": "paths./store/order"},
+     {"file": "petstore-openapi.json", "symbol": "paths./user"},
+     {"file": "petstore-openapi.json", "symbol": "paths./user/login"}
+   ],
+   "note": "Any OpenAPI path operation is acceptable."},
+  {"id": "json.express_test_ci_lcov", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "express test-ci script nyc lcovonly reporter",
+   "targets": [
+     {"file": "express-package.json", "symbol": "scripts", "contains": ["\"test-ci\": \"nyc --exclude examples --exclude test --exclude benchmarks --reporter=lcovonly --reporter=text npm test\""]}
+   ],
+   "distractors": [
+     {"file": "express-package.json", "symbol": "devDependencies"},
+     {"file": "webpack-package.json", "symbol": "scripts.cover"},
+     {"file": "react-package.json", "symbol": "scripts.test"}
+   ]},
+  {"id": "json.express_body_parser_dependency", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "express runtime dependency body-parser version",
+   "targets": [
+     {"file": "express-package.json", "symbol": "dependencies", "contains": ["\"body-parser\": \"^2.2.1\""]}
+   ],
+   "distractors": [
+     {"file": "express-package.json", "symbol": "devDependencies", "contains": ["\"cookie-parser\": \"1.4.7\""]},
+     {"file": "webpack-package.json", "symbol": "dependencies"},
+     {"file": "prettier-package.json", "symbol": "dependencies"}
+   ]},
+  {"id": "json.babel_large_key_split", "corpus": "fixtures/json", "language": "json", "kind": "exact", "category": "supported", "origin": "chunker-fixture",
+   "query": "@babel/preset-env devDependencies",
+   "targets": [
+     {"file": "babel-package.json", "symbol": "devDependencies.@babel/preset-env"}
+   ],
+   "distractors": [
+     {"file": "babel-package.json", "symbol": "devDependencies.@babel/preset-typescript"},
+     {"file": "babel-package.json", "symbol": "devDependencies.@babel/core"}
+   ],
+   "note": "Transferred from TestStructuredChunker_JSON_LargeFile_SplitsAtKeys: an oversized devDependencies map splits per key."},
+  {"id": "json.petstore_get_pet_by_id", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "GET /pet/{petId} find pet by ID getPetById",
+   "targets": [
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.get", "contains": ["\"operationId\": \"getPetById\""]}
+   ],
+   "distractors": [
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.delete", "contains": ["\"operationId\": \"deletePet\""]},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.post", "contains": ["\"operationId\": \"updatePetWithForm\""]},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet", "contains": ["\"operationId\": \"updatePet\""]}
+   ]},
+  {"id": "json.petstore_find_by_status", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "find pets by status query parameter available pending sold",
+   "targets": [
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/findByStatus", "contains": ["\"operationId\": \"findPetsByStatus\""]}
+   ],
+   "distractors": [
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/findByTags"},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.delete"},
+     {"file": "petstore-openapi.json", "symbol": "paths./pet/{petId}.post"}
+   ]},
+  {"id": "json.openapi_ref_literal", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "operations whose schema $ref is #/components/schemas/Order",
+   "targets": [
+     {"file": "petstore-openapi.json", "symbol": "paths./store/order", "contains": ["#/components/schemas/Order"]},
+     {"file": "petstore-openapi.json", "symbol": "paths./store/order/{orderId}", "contains": ["#/components/schemas/Order"]}
+   ],
+   "note": "Literal $ref retrieval: the operations that reference the Order schema. Resolving the ref to components.schemas.Order is not expected."},
+  {"id": "json.openapi_order_schema", "corpus": "fixtures/json", "language": "json", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "Order schema shipDate status complete",
+   "targets": [
+     {"file": "petstore-openapi.json", "symbol": "components.schemas.Order", "contains": ["\"shipDate\""]}
+   ],
+   "distractors": [
+     {"file": "petstore-openapi.json", "symbol": "paths./store/order"}
+   ]}
+]

@@ -30,4 +30,14 @@ package config
 //	    now produce class-qualified symbols (e.g. Animal.speak)
 //	3 — Svelte chunker added; .svelte files now indexed via two-phase TS injection
 //	4 — repository-scoped content-addressed collections with int8 vectors
-const IndexVersion = "4"
+//	5 — leading comments of exported JS/TS declarations now start the chunk
+//	    (including the export keyword); BM25 metadata added to chunks
+//	6 — BM25 indexing splits oversized chunks at LUMEN_MAX_CHUNK_TOKENS like
+//	    the semantic path; existing lexical indexes hold multi-thousand-line
+//	    documents that overflow MCP tool output
+//	7 — extraction parity: Svelte template/style/statement regions, fence-aware
+//	    Markdown H1-H6, source-accurate YAML/JSON spans, Dart/Rust/Python/Ruby/
+//	    JS/C/C++/C# declaration fixes, JS/TS export-clause and default-export
+//	    metadata, initializer call references, .mts/.cts/.cjs files, and the
+//	    lexical_vocab table for IDF-weighted BM25 coverage
+const IndexVersion = "7"

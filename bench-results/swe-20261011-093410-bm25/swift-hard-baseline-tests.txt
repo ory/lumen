@@ -1,0 +1,263 @@
+warning: 'repo': found 7 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/artifactbundle.info.json.template
+warning: 'repo': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Stub/Source_Linux/TestProject/TestProject/Info.plist
+warning: 'repo': found 6 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+Building for debugging...
+[Computing dependencies]
+[Pre-planning 1 / 2958]
+[Planning 2271 / 2958]
+[Planning deferred tasks]
+[Constructing 881 / 7262]
+[Starting]
+[71 / 376] SourceryLibTests-product
+[78 / 193] CCryptoBoringSSL
+[85 / 180] CwlMachBadInstructionHandler
+[86 / 180] CwlCatchExceptionSupport
+[101 / 216]
+[121 / 217] CwlCatchException
+[123 / 236]
+[128 / 258]
+[135 / 263]
+[147 / 263]
+[155 / 264]
+[171 / 264]
+[174 / 264]
+[178 / 264] Quick
+[184 / 264] Quick
+[192 / 264]
+[198 / 264] CwlPreconditionTesting
+[216 / 281] Nimble
+[219 / 281]
+[220 / 281] Nimble
+[232 / 281] Nimble
+[234 / 281] Nimble
+[235 / 281]
+[237 / 281] QuickObjCRuntime
+[251 / 284] SourceryLibTests-product
+[251 / 284] TemplatesTests-product
+[253 / 294] SourceryLibTests-product
+[254 / 311]
+[271 / 311] SourceryLibTests-product
+[276 / 311] SourceryLibTests-product
+[277 / 311] SourceryLibTests-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:313:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m311 |[0;0m }
+[0;36m312 |[0;0m 
+[0;36m313 |[0;0m extension Source: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m314 |[0;0m     public static func == (lhs: Source, rhs: Source) -> Bool {
+[0;36m315 |[0;0m         switch (lhs, rhs) {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:326:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m324 |[0;0m }
+[0;36m325 |[0;0m 
+[0;36m326 |[0;0m extension Project: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m327 |[0;0m     public static func == (lhs: Project, rhs: Project) -> Bool {
+[0;36m328 |[0;0m         return lhs.root == rhs.root
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:332:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m330 |[0;0m }
+[0;36m331 |[0;0m 
+[0;36m332 |[0;0m extension Paths: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m333 |[0;0m     public static func == (lhs: Paths, rhs: Paths) -> Bool {
+[0;36m334 |[0;0m         return lhs.include == rhs.include
+[291 / 311] SourceryLibTests-product
+[295 / 311] SourceryLibTests-product
+[295 / 311] CodableContextTests-product
+[297 / 311] TemplatesTests-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:313:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m311 |[0;0m }
+[0;36m312 |[0;0m 
+[0;36m313 |[0;0m extension Source: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m314 |[0;0m     public static func == (lhs: Source, rhs: Source) -> Bool {
+[0;36m315 |[0;0m         switch (lhs, rhs) {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:326:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m324 |[0;0m }
+[0;36m325 |[0;0m 
+[0;36m326 |[0;0m extension Project: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m327 |[0;0m     public static func == (lhs: Project, rhs: Project) -> Bool {
+[0;36m328 |[0;0m         return lhs.root == rhs.root
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:332:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m330 |[0;0m }
+[0;36m331 |[0;0m 
+[0;36m332 |[0;0m extension Paths: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m333 |[0;0m     public static func == (lhs: Paths, rhs: Paths) -> Bool {
+[0;36m334 |[0;0m         return lhs.include == rhs.include
+[299 / 311] TemplatesTests-product
+[301 / 311] SourceryLibTests-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:90:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m88 |[0;0m                 expect {
+ [0;36m89 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+ [0;36m90 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<% invalid %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m91 |[0;0m                     }
+ [0;36m92 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:100:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m98 |[0;0m                 expect {
+ [0;36m99 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+[0;36m100 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<%_ for (type of types.implementing.Some) { -%><% } %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m101 |[0;0m                     }
+[0;36m102 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:110:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m108 |[0;0m                 expect {
+[0;36m109 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+[0;36m110 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<%_ for (type of types.implements.Some) { -%><% } %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m111 |[0;0m                     }
+[0;36m112 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:41:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m39 |[0;0m 
+ [0;36m40 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m41 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m42 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m43 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:41:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m39 |[0;0m 
+ [0;36m40 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m41 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m42 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m43 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:52:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m50 |[0;0m 
+ [0;36m51 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m52 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m53 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m54 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:52:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m50 |[0;0m 
+ [0;36m51 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m52 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m53 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m54 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:63:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m61 |[0;0m 
+ [0;36m62 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m63 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m64 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m65 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:63:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m61 |[0;0m 
+ [0;36m62 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m63 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m64 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m65 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:240:25: [1;33mwarning: [1;39munstructured throwing task created by 'init(name:priority:operation:)' is not used, which may accidentally ignore errors thrown inside the task[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task\NoUseUnstructuredThrowingTask]8;;\]
+[0;36m238 |[0;0m                         }
+[0;36m239 |[0;0m                         let semaphore = DispatchSemaphore(value: 0)
+[0;36m240 |[0;0m                         Task {
+    [0;36m|[0;0m                         |- [1;33mwarning: [1;39munstructured throwing task created by 'init(name:priority:operation:)' is not used, which may accidentally ignore errors thrown inside the task[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task\NoUseUnstructuredThrowingTask]8;;\]
+    [0;36m|[0;0m                         `- [1;39mnote: [1;39mto silence this warning, handle the error inside the task, or store/discard the task value explicitly[0;0m
+[0;36m241 |[0;0m                             _ = try await withThrowingTaskGroup(of: Int.self) { taskGroup in
+[0;36m242 |[0;0m                                 for _ in 0 ..< iterations {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:37:48: [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m35 |[0;0m                 func templateContextData(_ code: String) -> TemplateContext? {
+ [0;36m36 |[0;0m                     guard let parserResult = try? makeParser(for: code).parse() else { fail(); return nil }
+ [0;36m37 |[0;0m                     let data = NSKeyedArchiver.archivedData(withRootObject: parserResult)
+    [0;36m|[0;0m                                                `- [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m38 |[0;0m 
+ [0;36m39 |[0;0m                     let result = Composer.uniqueTypesAndFunctions(parserResult)
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:40:81: [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m38 |[0;0m 
+ [0;36m39 |[0;0m                     let result = Composer.uniqueTypesAndFunctions(parserResult)
+ [0;36m40 |[0;0m                     return TemplateContext(parserResult: try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? FileParserResult, types: .init(types: result.types, typealiases: result.typealiases), functions: result.functions, arguments: [:])
+    [0;36m|[0;0m                                                                                 `- [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m41 |[0;0m                 }
+ [0;36m42 |[0;0m 
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:58:44: [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m56 |[0;0m                 }
+ [0;36m57 |[0;0m 
+ [0;36m58 |[0;0m                 let data = NSKeyedArchiver.archivedData(withRootObject: context)
+    [0;36m|[0;0m                                            `- [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m59 |[0;0m                 let unarchived = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? TemplateContext
+ [0;36m60 |[0;0m 
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-2822792234/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:59:56: [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m57 |[0;0m 
+ [0;36m58 |[0;0m                 let data = NSKeyedArchiver.archivedData(withRootObject: context)
+ [0;36m59 |[0;0m                 let unarchived = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? TemplateContext
+    [0;36m|[0;0m                                                        `- [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m60 |[0;0m 
+ [0;36m61 |[0;0m                 expect(context.types).to(equal(unarchived?.types))
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#NoUseUnstructuredThrowingTask]: <https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task>
+[305 / 311] SourceryLibTests-product
+[307 / 311] SourceryLibTests-product
+[309 / 311] SourceryLibTests-product
+Build complete! (14,33 sec)
+Test Suite 'Selected tests' started at 2026-10-11 09:47:22.534.
+Test Suite 'TemplatesTests.xctest' started at 2026-10-11 09:47:22.540.
+Test Suite 'TemplatesTests.xctest' passed at 2026-10-11 09:47:22.540.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:47:22.540.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.007) seconds
+Test Suite 'Selected tests' started at 2026-10-11 09:47:22.700.
+Test Suite 'SourceryLibTests.xctest' started at 2026-10-11 09:47:22.706.
+Test Suite 'SourceryLibTests.xctest' passed at 2026-10-11 09:47:22.706.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:47:22.706.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.006) seconds
+Test Suite 'Selected tests' started at 2026-10-11 09:47:22.808.
+Test Suite 'CodableContextTests.xctest' started at 2026-10-11 09:47:22.814.
+Test Suite 'CodableContextTests.xctest' passed at 2026-10-11 09:47:22.814.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:47:22.814.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.007) seconds

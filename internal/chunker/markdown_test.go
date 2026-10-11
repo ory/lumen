@@ -15,6 +15,8 @@
 package chunker
 
 import (
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -78,4 +80,110 @@ without any headings.
 	if chunks[0].Symbol != "preamble" {
 		t.Errorf("chunk[0].Symbol = %q, want preamble", chunks[0].Symbol)
 	}
+}
+
+// assertMarkdownExactLines checks that each chunk's Content equals the exact source
+// lines of its 1-based inclusive span.
+func assertMarkdownExactLines(t *testing.T, src string, chunks []Chunk) {
+	t.Helper()
+	lines := strings.Split(src, "\n")
+	for _, ch := range chunks {
+		if ch.StartLine < 1 || ch.EndLine < ch.StartLine || ch.EndLine > len(lines) {
+			t.Errorf("chunk %q has invalid span %d-%d", ch.Symbol, ch.StartLine, ch.EndLine)
+			continue
+		}
+		want := strings.Join(lines[ch.StartLine-1:ch.EndLine], "\n")
+		if ch.Content != want {
+			t.Errorf("chunk %q content does not match lines %d-%d:\n got %q\nwant %q", ch.Symbol, ch.StartLine, ch.EndLine, ch.Content, want)
+		}
+	}
+}
+
+func markdownSymbols(chunks []Chunk) []string {
+	out := make([]string, len(chunks))
+	for i, ch := range chunks {
+		out[i] = ch.Symbol
+	}
+	return out
+}
+
+func TestMarkdownChunker_FencedCommentIsNotHeading(t *testing.T) {
+	src := "# Tool\n\n## Installation\n\nInstall it.\n\n```sh\n# install tool production\nnpm install tool\n```\n\nDone.\n\n## Usage\n\nRun it.\n"
+	chunks, err := NewMarkdownChunker().Chunk("docs/tool.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := markdownSymbols(chunks)
+	want := []string{"Tool", "Installation", "Usage"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("symbols = %q, want %q", got, want)
+	}
+	inst := chunks[1]
+	if !strings.Contains(inst.Content, "# install tool production") || !strings.Contains(inst.Content, "Done.") {
+		t.Errorf("Installation section lost its fenced block: %q", inst.Content)
+	}
+	if inst.StartLine != 3 || inst.EndLine != 12 {
+		t.Errorf("Installation span = %d-%d, want 3-12", inst.StartLine, inst.EndLine)
+	}
+	assertMarkdownExactLines(t, src, chunks)
+}
+
+func TestMarkdownChunker_TildeAndLongFences(t *testing.T) {
+	src := "# A\n\n~~~python\n# not a heading\n```\n# still not a heading\n~~~\n\n# B\n\n````md\n```\n# nested fence content\n```\n````\n\n# C\n"
+	chunks, err := NewMarkdownChunker().Chunk("x.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := markdownSymbols(chunks)
+	want := []string{"A", "B", "C"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("symbols = %q, want %q", got, want)
+	}
+	assertMarkdownExactLines(t, src, chunks)
+}
+
+func TestMarkdownChunker_UnclosedFenceRunsToEOF(t *testing.T) {
+	src := "# Setup\n\n```bash\n# configure\nmake\n\n# Build\nmake all\n"
+	chunks, err := NewMarkdownChunker().Chunk("x.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := markdownSymbols(chunks)
+	if !slices.Equal(got, []string{"Setup"}) {
+		t.Fatalf("symbols = %q, want [Setup]", got)
+	}
+	if !strings.Contains(chunks[0].Content, "make all") {
+		t.Errorf("unclosed fence content missing: %q", chunks[0].Content)
+	}
+	assertMarkdownExactLines(t, src, chunks)
+}
+
+func TestMarkdownChunker_AllHeadingLevels(t *testing.T) {
+	src := "# One\na\n## Two\nb\n### Three\nc\n#### Four\nd\n##### Five ####\ne\n###### Six\nf\n####### Seven is text\ng\n#NoSpace is text\n"
+	chunks, err := NewMarkdownChunker().Chunk("x.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := markdownSymbols(chunks)
+	want := []string{"One", "Two", "Three", "Four", "Five", "Six"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("symbols = %q, want %q", got, want)
+	}
+	if !strings.Contains(chunks[5].Content, "#NoSpace is text") || !strings.Contains(chunks[5].Content, "####### Seven") {
+		t.Errorf("non-headings should stay in the H6 section: %q", chunks[5].Content)
+	}
+	assertMarkdownExactLines(t, src, chunks)
+}
+
+func TestMarkdownChunker_MDX(t *testing.T) {
+	src := "import { Chart } from './chart'\n\nexport const meta = { title: 'Docs' }\n\n# Charts\n\n<Chart data={data} />\n\n```jsx\n# not heading\n```\n"
+	chunks, err := NewMarkdownChunker().Chunk("docs/charts.mdx", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := markdownSymbols(chunks)
+	if !slices.Equal(got, []string{"preamble", "Charts"}) {
+		t.Fatalf("symbols = %q, want [preamble Charts]", got)
+	}
+	assertMarkdownExactLines(t, src, chunks)
 }

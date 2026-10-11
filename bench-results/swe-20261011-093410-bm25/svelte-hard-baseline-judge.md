@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly targets the same file and line as the gold patch, adding `dark:hover:text-gray-300` to fix the button disappearing on hover in dark mode. However, it differs from the gold patch in two ways: it uses `gray-300` instead of `white` for the hover color (slightly less contrast), and it omits the `dark:text-gray-400` base dark-mode text color that the gold patch adds to ensure the button is visible before hover as well. The candidate also includes a large unrelated `package-lock.json` diff. The core bug is addressed since the hover invisibility issue is fixed, but the solution is less complete than the gold patch.

@@ -31,15 +31,16 @@ type ServerConfig struct {
 
 // ConfigService wraps koanf and provides typed config access.
 type ConfigService struct {
-	k             *koanf.Koanf
-	mu            sync.RWMutex
-	configPath    string
-	modelOverride string // set via WithModelOverride, applied after env vars
-	selectModel   string // set via WithServerSelection, filters server list
-	selectBackend string // set via WithServerSelection, filters server list
-	watcher       *fsnotify.Watcher
-	stopCh        chan struct{}
-	stopOnce      sync.Once
+	k                 *koanf.Koanf
+	mu                sync.RWMutex
+	configPath        string
+	retrievalOverride string
+	modelOverride     string // set via WithModelOverride, applied after env vars
+	selectModel       string // set via WithServerSelection, filters server list
+	selectBackend     string // set via WithServerSelection, filters server list
+	watcher           *fsnotify.Watcher
+	stopCh            chan struct{}
+	stopOnce          sync.Once
 }
 
 func defaultServerForBackend(backend string) ServerConfig {
@@ -61,6 +62,7 @@ func defaultServerForBackend(backend string) ServerConfig {
 
 func defaultsMap() map[string]any {
 	return map[string]any{
+		"retrieval":        "bm25",
 		"max_chunk_tokens": 512,
 		"vector_storage":   "int8",
 		"freshness_ttl":    "60s",
@@ -78,6 +80,17 @@ func defaultsMap() map[string]any {
 
 // Option configures a ConfigService.
 type Option func(*ConfigService)
+
+// WithRetrieval selects bm25 (default) or semantic retrieval.
+func WithRetrieval(mode string) Option {
+	return func(s *ConfigService) { s.retrievalOverride = mode }
+}
+
+func (s *ConfigService) Retrieval() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.ToLower(strings.TrimSpace(s.k.String("retrieval")))
+}
 
 // WithModelOverride overrides the embedding model for servers[0], taking effect
 // after env var processing. Use this instead of os.Setenv to avoid mutating
@@ -125,6 +138,9 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 		opt(svc)
 	}
 
+	if svc.retrievalOverride != "" {
+		_ = k.Load(confmap.Provider(map[string]any{"retrieval": svc.retrievalOverride}, "."), nil)
+	}
 	// Layer 4: programmatic overrides (e.g. CLI flags via WithModelOverride)
 	if svc.modelOverride != "" {
 		var servers []ServerConfig
@@ -143,7 +159,7 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 	}
 
 	// Layer 5: CLI server selection filter (WithServerSelection).
-	if svc.selectModel != "" || svc.selectBackend != "" {
+	if svc.Retrieval() == "semantic" && (svc.selectModel != "" || svc.selectBackend != "") {
 		var servers []ServerConfig
 		_ = k.Unmarshal("servers", &servers)
 		filtered := filterServers(servers, svc.selectModel, svc.selectBackend)
@@ -206,6 +222,9 @@ func describeServers(servers []ServerConfig) string {
 // applyEnvOverrides reads legacy env vars and merges them into koanf.
 func applyEnvOverrides(k *koanf.Koanf) {
 	globals := make(map[string]any)
+	if v := os.Getenv("LUMEN_RETRIEVAL"); v != "" {
+		globals["retrieval"] = strings.ToLower(v)
+	}
 
 	if v := os.Getenv("LUMEN_MAX_CHUNK_TOKENS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -441,6 +460,13 @@ func (s *ConfigService) ServersForModel(model string) ([]int, error) {
 // other goroutines, or on a temporary ConfigService (as in reload). Must not
 // be called while holding s.mu — it acquires RLock via Servers().
 func (s *ConfigService) validate() error {
+	mode := s.Retrieval()
+	if mode != "bm25" && mode != "semantic" {
+		return fmt.Errorf("config: retrieval must be bm25 or semantic, got %q", mode)
+	}
+	if mode == "bm25" {
+		return nil
+	}
 	storage := s.VectorStorage()
 	if storage != "int8" && storage != "float32" {
 		return fmt.Errorf("config: vector_storage must be int8 or float32, got %q", storage)
@@ -542,25 +568,11 @@ func (s *ConfigService) watchLoop() {
 }
 
 func (s *ConfigService) reload() {
-	k := koanf.New(".")
-	_ = k.Load(confmap.Provider(defaultsMap(), "."), nil)
-
-	if s.configPath != "" {
-		if _, err := os.Stat(s.configPath); err == nil {
-			if err := k.Load(file.Provider(s.configPath), yaml.Parser()); err != nil {
-				return // keep previous config
-			}
-		}
+	next, err := NewConfigService(s.configPath, WithRetrieval(s.Retrieval()), WithModelOverride(s.modelOverride), WithServerSelection(s.selectModel, s.selectBackend))
+	if err != nil {
+		return
 	}
-
-	applyEnvOverrides(k)
-
-	tmp := &ConfigService{k: k}
-	if err := tmp.validate(); err != nil {
-		return // keep previous config on validation error
-	}
-
 	s.mu.Lock()
-	s.k = k
+	s.k = next.k
 	s.mu.Unlock()
 }

@@ -139,3 +139,36 @@ func TestReload_ConcurrentReads(t *testing.T) {
 	}
 	close(done)
 }
+
+func TestReloadPreservesRetrievalAndServerSelection(t *testing.T) {
+	for _, key := range []string{"LUMEN_RETRIEVAL", "LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "OLLAMA_HOST", "LM_STUDIO_HOST"} {
+		t.Setenv(key, "")
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "servers:\n  - backend: ollama\n    host: http://localhost:11434\n    model: all-minilm\n  - backend: lmstudio\n    host: http://localhost:1234\n    model: selected-model\n    dims: 4\n"
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewConfigService(path, WithRetrieval("semantic"), WithServerSelection("selected-model", "lmstudio"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("retrieval: bm25\nlog_level: debug\n"+body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.reload()
+	if cfg.Retrieval() != "semantic" || len(cfg.Servers()) != 1 || cfg.Servers()[0].Model != "selected-model" || cfg.Servers()[0].Backend != "lmstudio" || cfg.LogLevel() != "debug" {
+		t.Fatalf("lost startup selection: %s %+v", cfg.Retrieval(), cfg.Servers())
+	}
+	bm, err := NewConfigService(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("retrieval: semantic\nservers: []\nlog_level: warn\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bm.reload()
+	if bm.Retrieval() != "bm25" || bm.LogLevel() != "warn" {
+		t.Fatal("running BM25 switched retrieval on reload")
+	}
+}

@@ -1,0 +1,21 @@
+Research 16/25 — Operations research: selecting complementary evidence under a token budget
+Verified 2026-10-11; recommendation: HIGH-priority context-packaging experiment, not an independently sufficient retriever.
+
+Primary literature
+1. Goldstein & Carbonell, October 1998, “Summarization: (1) Using MMR for Diversity-Based Reranking and (2) Evaluating Summaries.” https://aclanthology.org/X98-1025/ (full paper inspected: https://aclanthology.org/X98-1025.pdf). MMR selects relevance minus maximum similarity to previously selected documents/passages. Established baseline for reducing repetition. Their pilot retrieval study had five users and explicitly lacked statistically significant speed/recall results; do not advertise modern agent efficiency as proven by this paper.
+2. Sviridenko, January 2004, “A note on maximizing a submodular set function subject to a knapsack constraint.” https://doi.org/10.1016/S0167-6377(03)00062-2 (full paper inspected: https://thibaut.horel.org/submodularity/papers/sviridenko2004.pdf). Proves a 1−1/e approximation for nonnegative, monotone submodular objectives with additive item costs. The algorithm combines partial enumeration and greedy completion; O(n^5) value evaluations. This does NOT justify claiming the same guarantee for ordinary marginal-gain-per-token greedy with arbitrary span lengths.
+3. Feige & Izsak, ITCS 2013; author manuscript May 29, 2013, “Welfare Maximization and the Supermodular Degree.” https://www.wisdom.weizmann.ac.il/~feige/mypapers/SupermodularDegree.pdf. Formalizes bounded complementarities: another item's presence can increase an item's marginal value. Useful conceptual transfer for caller+callee, claim+qualification, and schema+usage evidence. Their welfare-allocation approximation is not automatically a guarantee for our token-knapsack problem.
+
+Proposed adaptation (engineering hypothesis; no novelty or benchmark superiority claim)
+After hybrid candidate retrieval, select source spans jointly instead of truncating the ranked list. Let C be context already shown; S new spans; c_i exact token cost including citation/header. First canonicalize overlapping text into nonoverlapping atomic spans, keeping costs additive. Define query-specific evidence facets a (e.g. failure condition, implementation, configuration, test), weights w_a≥0, coverage strength p_ai∈[0,1], and a sparse set E of verified complementary span pairs. Optimize:
+
+F(S|C) = Σ_a w_a[max_{i∈S∪C} p_ai − max_{i∈C} p_ai]
+          + γ Σ_(i,j)∈E b_ij[1({i,j}⊆S∪C) − 1({i,j}⊆C)]
+subject to Σ_i∈S c_i ≤ B; b_ij≥0.
+
+Coverage alone is monotone submodular. Positive pair bonuses introduce increasing returns: a callee's value rises once its caller is included. Thus ordinary submodular guarantees cease to apply. Restrict pair candidates to observed call/reference/document-qualification edges, and gate them on query relevance to avoid importing irrelevant neighborhoods.
+
+Practical selection: use bounded pair moves, marginal-gain-per-token greedy completion, and local one-for-two swaps over a small candidate pool. Treat this as a heuristic. An offline integer-program or exhaustive-search oracle on small pools can quantify objective regret. For binary facet coverage, introduce facet-coverage variables and pair variables constrained by both endpoint selections. A time-limited solver incumbent is not proof of optimality; retain its bound/gap. Preserve source citations and original text.
+
+Verification experiment
+Hold candidate pool, retrieval latency, model, and total token budget fixed. Compare relevance truncation, token-normalized ranking, MMR, coverage-only packing, and coverage+pair packing. Ablate pair bonuses, prior-context subtraction, and token costing. Include paraphrased queries plus tasks requiring complementary evidence; report task success, evidence recall, repeated tokens, total turns/tokens, and p50/p95 packing latency. Add a random-pair control to detect generic extra-context effects. Improvement is conditional on candidate recall: this layer cannot recover a missing passage and may hurt precision if inferred facets or pair weights are wrong.

@@ -27,13 +27,15 @@ func extractToolResultContent(v any) string {
 	return ""
 }
 
-// ToolCall represents a single tool invocation extracted from a Claude CLI JSONL file.
+// ToolCall represents a single tool invocation extracted from a Claude or Codex JSONL file.
 type ToolCall struct {
-	Index  int            `json:"index"`
-	ID     string         `json:"id"`
-	Name   string         `json:"name"`
-	Input  map[string]any `json:"input"`
-	Result string         `json:"result"`
+	Completed bool           `json:"completed"`
+	Failed    bool           `json:"failed"`
+	Index     int            `json:"index"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Input     map[string]any `json:"input"`
+	Result    string         `json:"result"`
 }
 
 // SearchPath returns the path/cwd from the tool call input,
@@ -47,21 +49,21 @@ func (tc ToolCall) SearchPath() string {
 }
 
 // HasLumenSearch returns true if the raw JSONL file contains at least one
-// mcp__lumen__semantic_search tool call.
+// lumen search tool call.
 func HasLumenSearch(rawPath string) (bool, error) {
 	calls, err := ExtractToolCalls(rawPath)
 	if err != nil {
 		return false, err
 	}
 	for _, tc := range calls {
-		if tc.Name == "mcp__lumen__semantic_search" {
+		if IsLumenSearchTool(tc.Name) && tc.Completed && !tc.Failed {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// ExtractToolCalls parses a Claude CLI raw JSONL file and returns all tool
+// ExtractToolCalls parses a Claude or Codex raw JSONL file and returns all tool
 // calls in order. It handles both top-level events (type:"tool_use") and
 // the nested message.content[] format used by the Claude CLI.
 func ExtractToolCalls(rawPath string) ([]ToolCall, error) {
@@ -85,6 +87,44 @@ func ExtractToolCalls(rawPath string) ([]ToolCall, error) {
 
 		var evt map[string]any
 		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+
+		// Codex emits item.started/updated/completed for the same ID. Only
+		// completed items count, preventing duplicate calls and phantom success.
+		if evt["type"] == "item.completed" {
+			item, _ := evt["item"].(map[string]any)
+			id, _ := item["id"].(string)
+			tc := ToolCall{Index: idx, ID: id, Completed: true}
+			switch item["type"] {
+			case "mcp_tool_call":
+				server, _ := item["server"].(string)
+				tool, _ := item["tool"].(string)
+				tc.Name = "mcp__" + server + "__" + tool
+				tc.Input, _ = item["arguments"].(map[string]any)
+				result, _ := item["result"].(map[string]any)
+				tc.Result = extractToolResultContent(result["content"])
+				tc.Failed = item["status"] != "completed" || item["error"] != nil || result["isError"] == true || result["is_error"] == true
+			case "command_execution":
+				tc.Name = "Bash"
+				tc.Input = map[string]any{"command": item["command"]}
+				tc.Result, _ = item["aggregated_output"].(string)
+				tc.Failed = item["status"] == "failed"
+			case "file_change":
+				tc.Name = "FileChange"
+				tc.Input = map[string]any{"changes": item["changes"]}
+				tc.Failed = item["status"] == "failed"
+			default:
+				continue
+			}
+			if i, exists := pendingIDs[id]; exists {
+				tc.Index = calls[i].Index
+				calls[i] = tc
+				continue
+			}
+			pendingIDs[id] = len(calls)
+			calls = append(calls, tc)
+			idx++
 			continue
 		}
 
@@ -113,13 +153,15 @@ func ExtractToolCalls(rawPath string) ([]ToolCall, error) {
 				toolUseID, _ := block["tool_use_id"].(string)
 				if i, ok := pendingIDs[toolUseID]; ok {
 					calls[i].Result = extractToolResultContent(block["content"])
+					calls[i].Completed = true
+					calls[i].Failed = block["is_error"] == true
 					delete(pendingIDs, toolUseID)
 				}
 			}
 		}
 	}
 
-	return calls, nil
+	return calls, scanner.Err()
 }
 
 // extractContentBlocks collects tool_use/tool_result blocks from a JSONL event.
@@ -143,4 +185,10 @@ func extractContentBlocks(evt map[string]any) []map[string]any {
 	}
 
 	return blocks
+}
+
+// IsLumenSearchTool reports whether a tool name is lumen's search tool under
+// either the bare MCP server name or the plugin-qualified one.
+func IsLumenSearchTool(name string) bool {
+	return name == "mcp__lumen__semantic_search" || name == "mcp__plugin_lumen_lumen__semantic_search"
 }

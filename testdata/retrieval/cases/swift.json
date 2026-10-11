@@ -1,0 +1,77 @@
+[
+  {"id": "swift.sample_cors_middleware", "corpus": "sample-project", "language": "swift", "kind": "language", "category": "supported", "origin": "sample-project",
+   "query": "CORS middleware origin allowed headers",
+   "targets": [
+     {"file": "CORSMiddleware.swift", "symbol": "CORSMiddleware", "contains": ["public final class CORSMiddleware: Middleware"]},
+     {"file": "CORSMiddleware.swift", "symbol": "AllowOriginSetting", "contains": ["public enum AllowOriginSetting: Sendable"]},
+     {"file": "CORSMiddleware.swift", "symbol": "Configuration", "contains": ["public struct Configuration: Sendable"]},
+     {"file": "CORSMiddleware.swift", "symbol": "respond", "contains": ["accessControlAllowHeaders"]}
+   ],
+   "note": "Transferred from TestE2E_SwiftIndexing: any CORSMiddleware.swift declaration within the top 10."},
+  {"id": "swift.session_authenticator_respond", "corpus": "fixtures/swift", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "session authenticator respond authenticate user id from session",
+   "targets": [
+     {"file": "SessionAuthenticatable.swift", "symbol": "respond", "contains": ["request.session.authenticated(User.self)"]}
+   ],
+   "distractors": [
+     {"file": "CORSMiddleware.swift", "symbol": "respond", "contains": ["request.isPreflight"]},
+     {"file": "SessionAuthenticatable.swift", "symbol": "authenticated", "contains": ["A.SessionID.init($0)"]}
+   ],
+   "note": "Both middlewares implement respond(to:chainingTo:); only the SessionAuthenticator extension restores the user from the session."},
+  {"id": "swift.cors_allow_origin_list", "corpus": "fixtures/swift", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "allow origin header only when request origin is in the list of allowed origins",
+   "targets": [
+     {"file": "CORSMiddleware.swift", "symbol": "header", "contains": ["return origins.contains(origin) ? origin : \"\""]}
+   ],
+   "distractors": [
+     {"file": "CORSMiddleware.swift", "symbol": "allowedOrigin", "contains": ["public let allowedOrigin: AllowOriginSetting"]}
+   ]},
+  {"id": "swift.content_decode_after_decode", "corpus": "fixtures/swift", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "decode request body Content then call afterDecode",
+   "targets": [
+     {"file": "Request.swift", "symbol": "decode", "contains": ["try decoded.afterDecode()"], "line": 169}
+   ],
+   "distractors": [
+     {"file": "Request.swift", "symbol": "decode", "contains": ["where D : Decodable"], "line": 148},
+     {"file": "Request.swift", "symbol": "decode", "contains": ["from: self.request.url"], "line": 114}
+   ],
+   "note": "Three decode overloads share a name; only the Content overload runs the afterDecode hook."},
+  {"id": "swift.cors_preflight", "corpus": "fixtures/swift", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "CORS preflight OPTIONS request with access-control-request-method gets an empty response",
+   "targets": [
+     {"file": "CORSMiddleware.swift", "symbol": "isPreflight", "contains": ["self.method == .OPTIONS && self.headers[.accessControlRequestMethod].first != nil"]},
+     {"file": "CORSMiddleware.swift", "symbol": "respond", "contains": ["let response = request.isPreflight"]}
+   ],
+   "distractors": [
+     {"file": "SessionAuthenticatable.swift", "symbol": "respond", "contains": ["request.session.authenticated(User.self)"]}
+   ]},
+  {"id": "swift.actor_refresh_token", "corpus": "retrieval/corpora/swift-auth", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "actor refresh expired access token async throws await exchange",
+   "targets": [
+     {"file": "Sources/Auth/TokenStore.swift", "symbol": "refreshToken", "contains": ["public func refreshToken(for account: String) async throws -> AccessToken"]}
+   ],
+   "distractors": [
+     {"file": "Sources/Auth/TokenCache.swift", "symbol": "token", "contains": ["return entries[account]"]},
+     {"file": "Sources/Auth/AccessToken.swift", "symbol": "refreshToken", "contains": ["public let refreshToken: String"]},
+     {"file": "Sources/Auth/AuthClient.swift", "symbol": "exchange", "contains": ["grant_type=refresh_token"]}
+   ],
+   "note": "The actor method serializes refreshes; the synchronous cache lookup and the stored refreshToken property share vocabulary but do not refresh."},
+  {"id": "swift.actor_refresh_token_exact", "corpus": "retrieval/corpora/swift-auth", "language": "swift", "kind": "exact", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "TokenStore refreshToken",
+   "targets": [
+     {"file": "Sources/Auth/TokenStore.swift", "symbol": "refreshToken", "contains": ["try await task.value"]}
+   ],
+   "distractors": [
+     {"file": "Sources/Auth/AccessToken.swift", "symbol": "refreshToken", "contains": ["public let refreshToken: String"]}
+   ]},
+  {"id": "swift.persisted_property_wrapper", "corpus": "retrieval/corpora/swift-auth", "language": "swift", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "property wrapper wrappedValue stored in UserDefaults",
+   "targets": [
+     {"file": "Sources/Settings/Persisted.swift", "symbol": "Persisted", "contains": ["public struct Persisted<Value: Codable>"]},
+     {"file": "Sources/Settings/Persisted.swift", "symbol": "wrappedValue", "contains": ["defaults.set(data, forKey: key)"]}
+   ],
+   "distractors": [
+     {"file": "Sources/Settings/AppSettings.swift", "contains": ["@Persisted(key: \"settings.theme\""]}
+   ],
+   "note": "AppSettings only applies @Persisted; the wrapper definition is the answer."}
+]

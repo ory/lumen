@@ -1,0 +1,22 @@
+Research 21 — skeptical retrieval reliability review (verified 2026-10-11)
+
+Recommendation: ship an adaptive hybrid only with an explicit evidence contract. Ranking is candidate discovery; rank, similarity, fusion score, and absence of hits are not proof that a proposition is true or false. Semantic search should broaden discovery, while original-query retrieval, source spans, constraints, and corpus coverage remain independently inspectable.
+
+Three primary evidence anchors
+
+1. Qin & Xie, Agent Retrieval Bench, arXiv preprint, 27 July 2026, https://arxiv.org/abs/2607.24882 ; full text https://arxiv.org/html/2607.24882v1 , sections 8.8 and 11. Independently verified: 50 natural no-gold cases versus 32 deliberately wrong-repository controls. Top-score abstention used repository-grouped five-fold cross-validation. On natural-only evaluation, selective success@20 fell versus always retrieving: lexical 0.499→0.294, Jina 0.489→0.334, BM25 0.463→0.220. Natural negatives remain plausible local queries, so simple score thresholds fail. This is a small diagnostic preprint, not evidence that every calibrated abstention approach fails. File-level context exposure also does not establish useful-span retrieval or patch success.
+
+2. Weller, Lawrie & Van Durme, NevIR: Negation in Neural Information Retrieval, EACL, March 2024, https://aclanthology.org/2024.eacl-long.139/ . Paired documents differ only in negation. Most evaluated retrievers behave similarly to or worse than random ranking; cross-encoders perform best, then late interaction, then bi-encoder/sparse neural approaches. A reranker helps but does not certify logical correctness. Avoid generalizing the 2024 model ranking to all current models.
+
+3. Liang, McDonald & Ounis, Auditing Query Drift: Do Users Actually Benefit from Pseudo-Relevance Feedback?, SIGIR 2026; online 19 July 2026, https://eprints.gla.ac.uk/383290/ , DOI https://doi.org/10.1145/3805712.3809916 . A first user study reports benefit on 20.9% of queries and degradation on 25.6%. Their second study reports greater relative improvement from avoiding harmful expansion than amplifying beneficial expansion. These are study-specific user-experience measurements, not universal retrieval gains. They justify measuring query-level regressions alongside averages.
+
+Engineering safeguards (proposed deductions, not established results)
+
+• Preserve the original query and a non-expanded lexical branch; expand only under a bounded budget. Never let generated expansion terms override exact identifiers, versions, entity names, explicit negation, or numeric constraints. RRF can combine rankings but is not calibrated answer confidence.
+• Separate ranking from an evidence-sufficiency decision. Return source file/hash/span, provenance, index generation, and coverage/freshness status. “No support found in searched scope” is valid; “does not exist” requires a complete appropriate search or explicit evidence.
+• Generated summaries, inferred edges, and hypothetical query documents may guide discovery but must not become source evidence. Put them in separate typed fields; expand back to actual original spans. Prevent benchmark queries/answers and agent-generated reports from entering the evaluated index.
+• Route explicit numeric/unit and identity constraints through structured verification when fields permit it; otherwise show candidate evidence and unresolved constraints. Semantic near-neighbors and wrong versions must remain distractors.
+
+Concrete acceptance tests
+
+Use held-out repositories/time periods with separately reported strata: real external-resolution negatives; wrong-repository controls; exact-symbol searches; ambiguous entities; negation minimal pairs; under/over/equal unit-normalized boundaries; wrong-version near-duplicates; expansion drift; deleted/changed files; and multi-hop queries needing all evidence spans. Compare original branch against expansion query-by-query and report harm rate, evidence recall per token, task success, natural-negative false-answer rate, positive false-abstention rate, and p95 total latency. Add a contamination canary: an unsupported generated hint must never be cited as source fact. Require zero identity/constraint violations on deterministic fixtures, retained exact-match recall, and statistically supported gains on held-out task outcomes before claiming superiority over rg.

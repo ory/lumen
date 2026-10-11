@@ -1,0 +1,32 @@
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b1..64c9102 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -430,6 +430,11 @@ fn descend_path<'t, 'i>(
+                             );
+                             return None;
+                         }
++                        if dotted {
++                            // Implicit table (e.g. parent of a later `[a.b.c]` header) is now
++                            // being extended with dotted keys
++                            sweet_child_of_mine.set_dotted(true);
++                        }
+                         sweet_child_of_mine
+                     }
+                     existing => {
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..7162eb3 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -485,6 +485,11 @@ fn descend_path<'t>(
+                             );
+                             return None;
+                         }
++                        if dotted {
++                            // Implicit table (e.g. parent of a later `[a.b.c]` header) is now
++                            // being extended with dotted keys
++                            sweet_child_of_mine.set_dotted(true);
++                        }
+                         sweet_child_of_mine
+                     }
+                     Item::Value(ref existing) => {

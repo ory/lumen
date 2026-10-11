@@ -40,6 +40,10 @@ import (
 //     matching the MCP guard that avoids creating a brand-new index at a large
 //     ancestor tree.
 func resolveIndexRoot(pathFlag, cwdFlag, model string) (indexRoot, searchPath string, err error) {
+	return resolveIndexRootWithPath(pathFlag, cwdFlag, func(project string) string { return config.DBPathForProject(project, model) })
+}
+
+func resolveIndexRootWithPath(pathFlag, cwdFlag string, dbPath func(string) string) (indexRoot, searchPath string, err error) {
 	// Determine the search target path.
 	searchPath = pathFlag
 	if searchPath == "" {
@@ -65,7 +69,7 @@ func resolveIndexRoot(pathFlag, cwdFlag, model string) (indexRoot, searchPath st
 	indexRoot = searchPath
 	if root, gitErr := git.RepoRoot(searchPath); gitErr == nil {
 		indexRoot = root
-	} else if ancestor := findAncestorIndex(searchPath, model); ancestor != "" {
+	} else if ancestor := findAncestorIndexWithPath(searchPath, dbPath); ancestor != "" {
 		indexRoot = ancestor
 	}
 
@@ -81,7 +85,7 @@ func resolveIndexRoot(pathFlag, cwdFlag, model string) (indexRoot, searchPath st
 
 		if indexRoot == searchPath {
 			// searchPath had no git root and no ancestor — check if cwd has an index.
-			if _, statErr := os.Stat(config.DBPathForProject(absCwd, model)); statErr == nil {
+			if _, statErr := os.Stat(dbPath(absCwd)); statErr == nil {
 				indexRoot = absCwd
 			}
 		}

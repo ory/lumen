@@ -1,0 +1,118 @@
+diff --git a/CHANGES.md b/CHANGES.md
+index 483f089..ca94637 100644
+--- a/CHANGES.md
++++ b/CHANGES.md
+@@ -3,6 +3,7 @@
+ ## 1.22.1 (PENDING)
+ 
+ ### Bug Fixes
++* In the CSS attribute selectors (`=`, `^=`, `$=`, `*=`), a quoted value was incorrectly trimmed, so `[xxx*=" paywalled "]` would match `xxx="xpaywalled"`. Quoted values now preserve their whitespace, and empty values such as `[data='']` are accepted.
+ * Previously cached child Elements of an Element were not correctly invalidated in `Node#replaceWith(Node)`, which could lead to incorrect results when subsequently calling `Element#children()`. [#2391](https://github.com/jhy/jsoup/issues/2391)
+ 
+ 
+diff --git a/src/main/java/org/jsoup/select/Evaluator.java b/src/main/java/org/jsoup/select/Evaluator.java
+index 8c93fba..a295232 100644
+--- a/src/main/java/org/jsoup/select/Evaluator.java
++++ b/src/main/java/org/jsoup/select/Evaluator.java
+@@ -272,7 +272,7 @@ public abstract class Evaluator {
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return element.hasAttr(key) && value.equalsIgnoreCase(element.attr(key).trim());
++            return element.hasAttr(key) && value.equalsIgnoreCase(element.attr(key));
+         }
+ 
+         @Override protected int cost() {
+@@ -315,7 +315,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueStarting extends AttributeKeyPair {
+         public AttributeWithValueStarting(String key, String value) {
+-            super(key, value, false);
++            super(key, value);
+         }
+ 
+         @Override
+@@ -338,7 +338,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueEnding extends AttributeKeyPair {
+         public AttributeWithValueEnding(String key, String value) {
+-            super(key, value, false);
++            super(key, value);
+         }
+ 
+         @Override
+@@ -416,12 +416,8 @@ public abstract class Evaluator {
+         final String value;
+ 
+         public AttributeKeyPair(String key, String value) {
+-            this(key, value, true);
+-        }
+-
+-        public AttributeKeyPair(String key, String value, boolean trimQuoted) {
+             Validate.notEmpty(key);
+-            Validate.notEmpty(value);
++            Validate.notNull(value);
+ 
+             this.key = normalize(key);
+             boolean quoted = value.startsWith("'") && value.endsWith("'")
+@@ -429,12 +425,8 @@ public abstract class Evaluator {
+             if (quoted)
+                 value = value.substring(1, value.length() - 1);
+ 
+-            // normalize value based on whether it was quoted and trimQuoted flag
+-            // keeps whitespace for attribute val starting or ending, when quoted
+-            if (trimQuoted || !quoted)
+-                this.value = normalize(value); // lowercase and trims
+-            else
+-                this.value = lowerCase(value); // only lowercase
++            // quoted values keep their whitespace; unquoted values are lowercased and trimmed
++            this.value = quoted ? lowerCase(value) : normalize(value);
+         }
+     }
+ 
+diff --git a/src/test/java/org/jsoup/select/SelectorTest.java b/src/test/java/org/jsoup/select/SelectorTest.java
+index 6207a6c..b1eee57 100644
+--- a/src/test/java/org/jsoup/select/SelectorTest.java
++++ b/src/test/java/org/jsoup/select/SelectorTest.java
+@@ -895,20 +895,36 @@ public class SelectorTest {
+ 
+         Document doc = Jsoup.parse(html);
+ 
++        // unquoted values are trimmed; quoted values keep their whitespace
+         Elements found = doc.select("div[class=value ]");
+-        assertEquals(2, found.size());
++        assertEquals(1, found.size());
+         assertEquals("class without space", found.get(0).text());
+-        assertEquals("class with space", found.get(1).text());
+ 
+         found = doc.select("div[class=\"value \"]");
+-        assertEquals(2, found.size());
+-        assertEquals("class without space", found.get(0).text());
+-        assertEquals("class with space", found.get(1).text());
++        assertEquals(1, found.size());
++        assertEquals("class with space", found.get(0).text());
+ 
+         found = doc.select("div[class=\"value\\ \"]");
+         assertEquals(0, found.size());
+     }
+ 
++    @Test void containsDoesNotTrimQuotedValue() {
++        Document doc = Jsoup.parse("<body><article xxx=\"xpaywalled\"></article></body>");
++        assertEquals(1, doc.select("article[xxx*=\"paywalled\"]").size());
++        assertEquals(0, doc.select("article[xxx*=\" paywalled \"]").size());
++        assertEquals(0, doc.select("article[xxx^=\" xpaywalled\"]").size());
++        assertEquals(0, doc.select("article[xxx$=\"xpaywalled \"]").size());
++        assertEquals(0, doc.select("article[xxx=\" xpaywalled \"]").size());
++    }
++
++    @Test void emptyAttributeValues() {
++        Document doc = Jsoup.parse("<div data=''>One</div><div data='x'>Two</div><div>Three</div>");
++        assertEquals(1, doc.select("div[data='']").size());
++        assertEquals(2, doc.select("div[data^='']").size());
++        assertEquals(2, doc.select("div[data$='']").size());
++        assertEquals(2, doc.select("div[data*='']").size());
++    }
++
+     @Test public void selectSameElements() {
+         final String html = "<div>one</div><div>one</div>";
+ 

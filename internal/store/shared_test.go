@@ -378,7 +378,7 @@ func TestSharedCleanupRemovesOnlyStaleMemberships(t *testing.T) {
 		t.Fatalf("attach second project: attached=%v err=%v", attached, err)
 	}
 	old := time.Now().Add(-60 * 24 * time.Hour).UTC().Format(time.RFC3339)
-	if _, err := s.db.Exec(`UPDATE projects SET last_accessed_at = ? WHERE path = ?`, old, projectA); err != nil {
+	if _, err := s.db.Exec(`UPDATE projects SET last_accessed_at = ? WHERE path = ?`, old, CanonicalProjectPath(projectA)); err != nil {
 		t.Fatal(err)
 	}
 	cleanup, err := s.CleanupStaleProjects(time.Now().Add(-30 * 24 * time.Hour))

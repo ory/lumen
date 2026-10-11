@@ -11,3 +11,6 @@ internal/sqlitevec/sqlite-vec.[ch] -text -whitespace linguist-vendored
 # core.autocrlf setting.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Preserve the BOM and CRLF bytes exercised by the retrieval line-number cases.
+testdata/retrieval/corpora/unicode-bom/web/invoice_lines.ts -text

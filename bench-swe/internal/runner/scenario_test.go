@@ -61,15 +61,17 @@ func TestWriteMCPConfig(t *testing.T) {
 	tests := []struct {
 		name      string
 		scenario  Scenario
+		retrieval string
 		wantLumen bool
 	}{
-		{name: "baseline has empty mcpServers", scenario: Baseline, wantLumen: false},
-		{name: "with-lumen has lumen server", scenario: WithLumen, wantLumen: true},
+		{name: "baseline has empty mcpServers", scenario: Baseline, retrieval: "bm25", wantLumen: false},
+		{name: "with-lumen bm25 has lumen server", scenario: WithLumen, retrieval: "bm25", wantLumen: true},
+		{name: "with-lumen semantic has lumen server", scenario: WithLumen, retrieval: "semantic", wantLumen: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, cleanup, err := WriteMCPConfig(tt.scenario, "/usr/local/bin/lumen", "ollama", "test-model")
+			path, cleanup, err := WriteMCPConfig(tt.scenario, "/usr/local/bin/lumen", tt.retrieval, "ollama", "test-model")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -86,18 +88,27 @@ func TestWriteMCPConfig(t *testing.T) {
 				t.Fatalf("parsing config: %v", err)
 			}
 
-			_, hasLumen := cfg.MCPServers["lumen"]
+			// The server name must match what the plugin hooks tell Claude to
+			// call (mcp__plugin_lumen_lumen__semantic_search), otherwise the
+			// SessionStart nudge references a tool that does not exist.
+			_, hasLumen := cfg.MCPServers[MCPServerName]
+			if _, bare := cfg.MCPServers["lumen"]; bare {
+				t.Error("MCP server registered under bare name \"lumen\"; hooks reference the plugin-qualified name")
+			}
 			if hasLumen != tt.wantLumen {
 				t.Errorf("has lumen server = %v, want %v", hasLumen, tt.wantLumen)
 			}
 
 			if tt.wantLumen {
-				srv := cfg.MCPServers["lumen"]
+				srv := cfg.MCPServers[MCPServerName]
 				if srv.Command != "/usr/local/bin/lumen" {
 					t.Errorf("Command = %q, want /usr/local/bin/lumen", srv.Command)
 				}
 				if len(srv.Args) != 1 || srv.Args[0] != "stdio" {
 					t.Errorf("Args = %v, want [stdio]", srv.Args)
+				}
+				if srv.Env["LUMEN_RETRIEVAL"] != tt.retrieval {
+					t.Errorf("LUMEN_RETRIEVAL = %q, want %q", srv.Env["LUMEN_RETRIEVAL"], tt.retrieval)
 				}
 				if srv.Env["LUMEN_BACKEND"] != "ollama" {
 					t.Errorf("LUMEN_BACKEND = %q, want ollama", srv.Env["LUMEN_BACKEND"])
@@ -116,8 +127,21 @@ func TestWriteMCPConfig(t *testing.T) {
 	}
 }
 
+func TestLumenEnv(t *testing.T) {
+	cfg := &Config{Retrieval: "bm25", Backend: "ollama", EmbedModel: "m"}
+	got := strings.Join(lumenEnv(cfg), " ")
+	for _, want := range []string{"LUMEN_RETRIEVAL=bm25", "LUMEN_BACKEND=ollama", "LUMEN_EMBED_MODEL=m"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lumenEnv missing %q in %q", want, got)
+		}
+	}
+	if _, _, err := WriteMCPConfig(WithLumen, "/bin/lumen", "fuzzy", "ollama", "m"); err == nil {
+		t.Fatal("expected error for unknown retrieval mode")
+	}
+}
+
 func TestWriteMCPConfig_UnknownScenario(t *testing.T) {
-	_, _, err := WriteMCPConfig(Scenario("unknown"), "/bin/lumen", "ollama", "model")
+	_, _, err := WriteMCPConfig(Scenario("unknown"), "/bin/lumen", "bm25", "ollama", "model")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

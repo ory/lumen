@@ -33,11 +33,15 @@ import (
 // Unlike findEffectiveRoot (MCP), this does not cap the walk at the git root
 // because callers have already confirmed path is not inside a git repo.
 func findAncestorIndex(path, model string) string {
+	return findAncestorIndexWithPath(path, func(project string) string { return config.DBPathForProject(project, model) })
+}
+
+func findAncestorIndexWithPath(path string, dbPath func(string) string) string {
 	candidate := filepath.Dir(path)
 	for {
 		unindexable, _ := merkle.IsRootUnindexable(candidate)
 		if !pathCrossesSkipDir(candidate, path) && !unindexable {
-			if _, err := os.Stat(config.DBPathForProject(candidate, model)); err == nil {
+			if _, err := os.Stat(dbPath(candidate)); err == nil {
 				return candidate
 			}
 		}

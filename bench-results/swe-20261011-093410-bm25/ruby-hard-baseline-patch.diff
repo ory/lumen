@@ -1,0 +1,25 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index dd24c4e..6c8c22f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -14,6 +14,7 @@
+ 
+ #### Fixes
+ 
++* [#2584](https://github.com/ruby-grape/grape/pull/2584): Fix wrong content type when `Accept` header is `*/*` - [@ericproulx](https://github.com/ericproulx).
+ * Your contribution here.
+ 
+ ### 2.4.0 (2025-06-18)
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac35..c20cd90 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -138,7 +138,7 @@ module Grape
+ 
+       def format_from_header
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+-        return if accept_header.blank?
++        return if accept_header.blank? || accept_header.strip == '*/*'
+ 
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type

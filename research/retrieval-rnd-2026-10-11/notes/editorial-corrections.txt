@@ -1,0 +1,1 @@
+Coordinator correction to R07: clarified that Lumen already supports optional dense semantic indexing; only the default BM25 profile lacks it. This does not change the HyDE recommendation.

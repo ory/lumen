@@ -1,0 +1,45 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index dd24c4e..afb8d2e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -14,6 +14,7 @@
+ 
+ #### Fixes
+ 
++* [#2584](https://github.com/ruby-grape/grape/pull/2584): Fix wrong content type when `Accept` header is a wildcard - [@ericproulx](https://github.com/ericproulx).
+ * Your contribution here.
+ 
+ ### 2.4.0 (2025-06-18)
+diff --git a/lib/grape/middleware/formatter.rb b/lib/grape/middleware/formatter.rb
+index f69ac35..5a61547 100644
+--- a/lib/grape/middleware/formatter.rb
++++ b/lib/grape/middleware/formatter.rb
+@@ -138,7 +138,7 @@ module Grape
+ 
+       def format_from_header
+         accept_header = env['HTTP_ACCEPT'].try(:scrub)
+-        return if accept_header.blank?
++        return if accept_header.blank? || accept_header == '*/*'
+ 
+         media_type = Rack::Utils.best_q_match(accept_header, mime_types.keys)
+         mime_types[media_type] if media_type
+diff --git a/spec/grape/middleware/formatter_spec.rb b/spec/grape/middleware/formatter_spec.rb
+index cb353aa..f20423b 100644
+--- a/spec/grape/middleware/formatter_spec.rb
++++ b/spec/grape/middleware/formatter_spec.rb
+@@ -139,6 +139,15 @@ describe Grape::Middleware::Formatter do
+       expect(subject.env[Grape::Env::API_FORMAT]).to eq(:json)
+     end
+ 
++    context 'when the accept header is a wildcard' do
++      subject { described_class.new(app, default_format: :json, content_types: { xml: 'application/xml', json: 'application/json' }) }
++
++      it 'falls back to the default format' do
++        subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => '*/*')
++        expect(subject.env[Grape::Env::API_FORMAT]).to eq(:json)
++      end
++    end
++
+     it 'handles quality rankings mixed with nothing' do
+       subject.call(Rack::PATH_INFO => '/info', 'HTTP_ACCEPT' => 'application/json,application/xml; q=1.0')
+       expect(subject.env[Grape::Env::API_FORMAT]).to eq(:xml)

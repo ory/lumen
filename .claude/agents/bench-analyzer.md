@@ -288,6 +288,13 @@ Always parse JSONL with `bench-swe extract`. These files are too large for the
 
 - Search results use XML-like tags: `<result:file filename="...">` and
   `<result:chunk line-start="N" line-end="N" symbol="..." kind="..." score="N.NN">`.
+  BM25 related context carries `related-to="..." relation="..."` instead of a
+  score. A final `truncated="true"` attribute means the output budget
+  (`max_tokens`, default 4000 estimated tokens = 16,000 bytes) shortened the
+  snippet; line ranges still describe the whole source range. A trailing
+  `Output capped at max_tokens=...` footer reports shown, truncated and omitted
+  results. Treat truncated or omitted gold code as a budget effect, not a
+  ranking miss.
 - Some tool_result entries may be permission denials (e.g., "Claude requested
   permissions to use..."). Classify these as ERROR.
 

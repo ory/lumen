@@ -1,0 +1,22 @@
+Research 01/25 — architecture audit, condensed by coordinator from explorer findings
+Read-only analysis of ory/lumen working tree, HEAD 98dfa4077930551d76c9aa127d0841471027ed86 on 2026-10-11. Existing and concurrent user changes are not part of this research.
+
+The current production path already implements weighted SQLite FTS5 BM25 over path/symbol/signature/comments/body (12/16/6/3/1), identifier preservation plus splitting, whole-query exact symbol/path boosts, AST-sized chunks, and bounded one-hop direct-call context. This is weighted FTS5 BM25, not independently length-normalized BM25F. Queries are deduplicated OR terms capped at 64. No typo correction, synonym expansion, fusion with embeddings, reranking, or adaptive query planner exists in the inspected code. Embeddings are an explicit alternate mode.
+
+Key source references:
+internal/store/lexical.go: identifierText (line130), lexicalMatch (155), SearchLexical (176).
+internal/index/lexical.go: indexing (37), SearchLexical (162), resolveLexicalReference (332).
+internal/chunker/chunker.go: chunk metadata; metadata.go:48 syntax-only metadata; languages.go:36 supported extensions.
+cmd/stdio.go:55 MCP schema, :646 retrieval choice, :834 freshness handling.
+internal/config/service.go:64 defaults (BM25,512 chunk tokens,60-second freshness TTL).
+internal/index/split.go:30 estimates four bytes per token.
+
+Search gets 3x direct-hit candidates, validates file hashes/line bounds, deduplicates ranges, then returns direct hits. Structural extras use top-three seeds, at most32 refs/seed, at most two snippets/6000 bytes shared. Resolution is conservative: direct same-file functions, named exported local JS/TS functions, selected exported local Go imports. No reverse graph, full compiler resolution or multihop. Ambiguous edges are skipped. Related results have relation/parent provenance, not invented relevance scores.
+
+The direct-hit pipeline does not enforce a final global token limit. MCP supports summary and per-snippet line truncation; related limits alone do not cap the entire serialized payload. Hash validation prevents stale lexical line ranges being returned as fresh. Semantic and lexical postprocessing are separate.
+
+Index revisions are shared across compatible worktrees via Git common-directory collection identity; mappings preserve worktree membership. SQLite WAL and separate connections support read/write concurrency. Reuse of identical path/content revisions avoids parsing. However internal/merkle/merkle.go:55 still walks and hashes eligible files (up to8 workers; excludes files>10MB), so incremental parsing is not incremental change detection. cmd/stdio.go freshness has a15-second fallback wait and background continuation. Optional vector storage supports int8 and content-addressed caching; no ANN graph or hybrid fusion found in inspected path.
+
+Document coverage: source, Markdown/MDX heading chunks and structured JSON/YAML; arbitrary PDFs/text archives are not generalized ingestion support. Extending to mixed documents requires extraction and provenance adapters.
+
+Highest-value seams: vocabulary bridge candidate generation; adaptive escalation; globally budgeted evidence selection; dirty-file events plus reconciliation; optional broader document ingestion. Bottleneck status and speedups require measurement. FTS corpus statistics span a shared collection while membership filters select worktrees; ranking impact is unmeasured.

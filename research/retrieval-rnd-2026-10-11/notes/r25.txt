@@ -1,0 +1,32 @@
+Research 25/25 — independent final design review, 2026-10-11
+
+Verdict: choose an incremental, budgeted lexical/structural architecture with optional independent semantic recall. This is the best engineering fit for Lumen's local/offline baseline, not a verified winner over a competent rg-equipped agent. I read r01–r22 and experiment artifacts before forming this conclusion; I did not read design-draft or report-body. I subsequently read r23, which confirms the coordinator-supplied equivalence figures below.
+
+Three competing architectures
+
+1. SELECT: existing exact/fielded BM25 + modest vocabulary bridging + source-aware evidence packing. Keep literal/symbol/path lookup and original-query candidates. Add bounded identifier correction and agent-supplied query variants separately, then fuse; preserve exact matches explicitly. For natural-language intent, an enabled semantic channel must retrieve its own candidates, even when BM25 looks confident. Use existing embedding machinery as the lowest-integration-cost challenger before building a second sparse engine. Expand typed source relations only for unresolved relationships. One shared serialized-output budget covers every channel, metadata and wrappers. Deterministic rules and explicit limits precede a learned controller. Advantages: existing deployment, incremental revisions, debuggability, graceful operation without models. Limitation: the no-model path still cannot promise arbitrary paraphrase recall.
+
+2. DEFER: always-on neural hybrid, combining BM25 with learned sparse or dense candidates and a cross-encoder. This is the strongest quality challenger, especially for true vocabulary mismatch. It adds model load, changed-chunk encoding, storage and update lag; reranking cannot repair absent candidates. Select one semantic representation, measure its candidate-recall gain, and only then test a reranker. Late interaction deserves a separate high-quality profile, not a default dependency. Do not build dense, SPLADE and multi-vector indexes simultaneously before comparative evidence exists.
+
+3. REJECT AS DEFAULT: generated graph/summary hierarchy with mandatory top-down routing. It targets broad synthesis but introduces generated-content errors, maintenance fanout and routing misses. Keep global leaf retrieval; deterministic containment, reverse calls and bounded two-hop traversal remain useful additions to architecture 1. Graph reachability is not bug causality.
+
+Two primary checks
+
+SPLADE-Code's controlled results distinguish semantic expansion from token weighting; its limitations explicitly leave agent-level outcomes unmeasured. Thus it justifies a semantic challenger, not replacing the baseline or promising submillisecond total query time. Its reported fast index search excludes the unestablished laptop/model-serving economics. https://arxiv.org/html/2603.22008v1
+
+LocAgent Table 6 reports function Acc@10 of 71.53 full, 66.79 with one-hop traversal and 60.22 without BM25. This supports bounded structural expansion while retaining strong seeds. The fine-tuned Python localization setting and model-dependent costs do not prove general Lumen savings. https://arxiv.org/html/2503.09089v2
+
+Ranked implementation priorities (recommendations, not production changes)
+
+1. Fix the measured SQL execution-plan bottleneck after equivalence tests. The coordinator reports current API median 1145 ms versus isolated FTS-first 0.809 ms and identical paths/lines/content/scores across all 60 requests. This is compelling local mechanism evidence. Validate selective worktree/path filters, broad/common-term queries, multiple memberships, revisions/deletions, different corpus sizes and SQLite versions before forcing one join order universally. Preserve membership filtering before LIMIT. This is not a 1000x agent speedup.
+2. Enforce final payload byte/token caps with complete source spans, deduplication and explicit expansion handles. The rejected Swift payload makes this a correctness/operability requirement. Simultaneously repair adoption logging, test exit-status handling and unbiased comparisons; current agent aggregates cannot choose an architecture.
+3. Test narrow cheap improvements independently: verified typo channel, short batched variants, deterministic ancestor metadata, bounded reverse relations. The 30-case experiment's 17/24 rg, 21/24 BM25 and 22/24 fuzzy hits are diagnostic only. Fuzzy's new 3472-byte nonsense-query result demonstrates a real harm mode; exact-known terms and ambiguity need protection.
+4. Compare one semantic recall channel against strengthened lexical retrieval on held-out repositories, including natural negatives. Measure complete evidence sets at equal delivered tokens, actual task success, total calls/time/cost, cold/index/update costs and N=1/10/100 amortization. Only then consider reranking, learned routing, or specialized indexes.
+
+Most interesting new experiment
+
+Test provenance-weighted vocabulary transport through executable evidence. Build a bipartite graph from test descriptions/assertions/error strings to covered functions, versioned by source and coverage run. Retrieve test nodes with BM25; score functions by sum of seed scores times 1/sqrt(test-degree × function-degree), cap each seed's contribution, and union with original code hits. Return the matching test plus function as a paired evidence bundle under the same token cap. This bridges symptom language without a neural model; it is a proposed synthesis, not a novelty claim.
+
+Compare ordinary code BM25, test retrieval plus unweighted coverage, weighted transport, and randomized-edge control. Use independently authored pre-fix symptom queries and charge coverage collection/update cost. Reject if weighted transport fails to beat simple test expansion or its advantage disappears across held-out repositories. Coverage correlation and incomplete tests are its central risks.
+
+Strongest next step: complete the SQL-plan correctness/scaling gate, then a small preregistered candidate-recall/payload experiment. Broader architecture investment should follow measured failure classes, not combine all literature ideas into an untestable bundle.

@@ -1,0 +1,81 @@
+{
+  "assignment": "03/25",
+  "specialty": "Classical lexical IR",
+  "recommendation": "Fielded BM25F with exact+split identifiers, lightweight positional reranking, evidence-gated feedback, and safe block-max pruning only after profiling.",
+  "papers": [
+    {
+      "title": "The Probabilistic Relevance Framework: BM25 and Beyond",
+      "authors": "Robertson and Zaragoza",
+      "year": 2009,
+      "url": "https://www.staff.city.ac.uk/~sbrp622/papers/foundations_bm25_review.pdf",
+      "verified": true,
+      "establishes": "BM25 saturation/length normalization; BM25F combines normalized weighted field evidence before saturation. Blind feedback can improve averages but fail on initially difficult queries.",
+      "limitation": "Author monograph, not local code benchmark; semantic non-overlap remains unresolved."
+    },
+    {
+      "title": "A Markov Random Field Model for Term Dependencies",
+      "authors": "Metzler and Croft",
+      "year": 2005,
+      "url": "https://ciir.cs.umass.edu/pubfiles/ir-387.pdf",
+      "verified": true,
+      "establishes": "Term, ordered phrase and unordered window features improve tested newswire/web retrieval; sequential dependency approximates full dependence with fewer features.",
+      "limitation": "Original empirical corpus differs from code; proximity positional index costs and parameter tuning required."
+    },
+    {
+      "title": "Efficient Query Evaluation using a Two-Level Retrieval Process",
+      "authors": "Broder et al.",
+      "year": 2003,
+      "url": "https://research.ibm.com/publications/efficient-query-evaluation-using-a-two-level-retrieval-process",
+      "verified": true,
+      "establishes": "WAND uses inexpensive candidate selection and exact full evaluation, reducing full evaluations by more than 90 percent in original TREC Web Track study with almost no quality loss.",
+      "limitation": "Reduction in full evaluations is not the same as wall-clock speedup; safe and approximate threshold settings must be distinguished."
+    },
+    {
+      "title": "Faster Top-k Document Retrieval Using Block-Max Indexes",
+      "authors": "Ding and Suel",
+      "year": 2011,
+      "url": "https://research.engineering.nyu.edu/~suel/papers/bmw.pdf",
+      "verified": true,
+      "establishes": "Block-wise maxima allow safe pruning preserving exhaustive top-k; tested on 25.2M GOV2 documents with in-memory index.",
+      "limitation": "Does not establish gains on small changing repos. Impact sorting may worsen compression, scoring bounds must remain valid after score/index updates."
+    }
+  ],
+  "proposed_combination": "Task-local feedback over fielded lexical candidates; derive expansion only from agent-confirmed useful passages and keep original results. This is a proposed design combination, not a verified new algorithm or a novelty claim.",
+  "ablation": {
+    "systems": [
+      "rg repeated-query workflow",
+      "bag-of-words BM25",
+      "BM25F",
+      "+ original/split identifiers",
+      "+ positional rerank",
+      "+ gated feedback",
+      "+ BMW"
+    ],
+    "metrics": [
+      "evidence Recall@10",
+      "MRR",
+      "answer-task success",
+      "tool calls",
+      "output tokens",
+      "p50/p95 latency",
+      "index build/update time",
+      "RSS"
+    ],
+    "slices": [
+      "exact identifiers",
+      "natural-language paraphrases",
+      "partial multi-term overlap",
+      "typos",
+      "multi-file evidence",
+      "fresh edits"
+    ],
+    "controls": [
+      "equal context-token budgets",
+      "cold and warm caches",
+      "held-out queries and repositories",
+      "paired confidence intervals",
+      "compare BMW with exhaustive scoring for exact result parity"
+    ]
+  },
+  "confidence": "High for theoretical mechanisms; medium for local-repo engineering prioritization; empirical benefit in target repository unverified."
+}

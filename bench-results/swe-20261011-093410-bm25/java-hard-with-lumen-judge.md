@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch only fixes the `*=` (contains) case by passing `false` to `trimQuoted`, and updates `Validate.notEmpty` to `Validate.notNull`. However, it leaves `AttributeWithValueStarting` (`^=`) and `AttributeWithValueEnding` (`$=`) still calling `super(key, value)` which defaults to `trimQuoted=true`, and does not fix the exact-match (`=`) case where `.trim()` is called in the `matches()` method. The gold patch takes a more complete approach: it removes `trimQuoted` entirely and always uses `lowerCase(value)` (no trimming) for all attribute selectors, fixing all four affected selector types at once.

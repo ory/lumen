@@ -800,34 +800,37 @@ func TestMultiChunker_Dispatch(t *testing.T) {
 func TestDefaultLanguages_AllExtensionsPresent(t *testing.T) {
 	// trivialSources maps file extensions to minimal source containing one named declaration.
 	trivialSources := map[string][]byte{
-		".go":   []byte("package main\nfunc Foo() {}"),
-		".ts":   []byte("function foo() {}"),
-		".tsx":  []byte("function foo() { return <div/>; }"),
-		".js":   []byte("function foo() {}"),
-		".jsx":  []byte("function foo() { return <div/>; }"),
-		".mjs":  []byte("function foo() {}"),
-		".py":   []byte("def foo():\n    pass"),
-		".rs":   []byte("fn foo() {}"),
-		".rb":   []byte("def foo\nend"),
-		".java": []byte("class Foo {}"),
-		".c":    []byte("void foo(void) {}"),
-		".h":    []byte("void foo(void) {}"),
-		".cpp":  []byte("void foo() {}"),
-		".cc":   []byte("void foo() {}"),
-		".cxx":  []byte("void foo() {}"),
-		".hpp":  []byte("void foo() {}"),
-		".php":  []byte("<?php\nfunction foo() {}"),
-		".cs":   []byte("class Foo {}"),
+		".go":     []byte("package main\nfunc Foo() {}"),
+		".ts":     []byte("function foo() {}"),
+		".tsx":    []byte("function foo() { return <div/>; }"),
+		".js":     []byte("function foo() {}"),
+		".jsx":    []byte("function foo() { return <div/>; }"),
+		".mjs":    []byte("function foo() {}"),
+		".cjs":    []byte("function foo() {}"),
+		".mts":    []byte("function foo(): void {}"),
+		".cts":    []byte("function foo(): void {}"),
+		".py":     []byte("def foo():\n    pass"),
+		".rs":     []byte("fn foo() {}"),
+		".rb":     []byte("def foo\nend"),
+		".java":   []byte("class Foo {}"),
+		".c":      []byte("void foo(void) {}"),
+		".h":      []byte("void foo(void) {}"),
+		".cpp":    []byte("void foo() {}"),
+		".cc":     []byte("void foo() {}"),
+		".cxx":    []byte("void foo() {}"),
+		".hpp":    []byte("void foo() {}"),
+		".php":    []byte("<?php\nfunction foo() {}"),
+		".cs":     []byte("class Foo {}"),
 		".swift":  []byte("func foo() {}"),
 		".dart":   []byte("void foo() {}"),
 		".svelte": []byte("<script lang=\"ts\">\nfunction hello(): string { return 'hi'; }\n</script>\n<p>hi</p>\n"),
-		".md":   []byte("# Introduction\nSome content here.\n"),
-		".mdx":  []byte("# Introduction\nSome content here.\n"),
-		".yaml": []byte("foo: bar\n"),
-		".yml":  []byte("foo: bar\n"),
-		".json": []byte(`{"foo": "bar"}`),
-		".toml": []byte("[package]\nname = \"mymod\"\n"),
-		".mod":  []byte("module example.com/mymod\n\ngo 1.26\n"),
+		".md":     []byte("# Introduction\nSome content here.\n"),
+		".mdx":    []byte("# Introduction\nSome content here.\n"),
+		".yaml":   []byte("foo: bar\n"),
+		".yml":    []byte("foo: bar\n"),
+		".json":   []byte(`{"foo": "bar"}`),
+		".toml":   []byte("[package]\nname = \"mymod\"\n"),
+		".mod":    []byte("module example.com/mymod\n\ngo 1.26\n"),
 	}
 
 	langs := chunker.DefaultLanguages(512)
@@ -1887,16 +1890,16 @@ func TestTreeSitterChunker_Dart_Comprehensive(t *testing.T) {
 	}
 
 	check("greet", "function")
-	check("Animal", "type")            // class_definition
-	check("Animal.speak", "method")    // method_signature in class
-	check("Swimming", "type")          // mixin_declaration
-	check("Swimming.swim", "method")   // method_signature in mixin
-	check("Color", "type")             // enum_declaration
-	check("StringHelper", "type")      // extension_declaration
+	check("Animal", "type")                 // class_definition
+	check("Animal.speak", "method")         // method_signature in class
+	check("Swimming", "type")               // mixin_declaration
+	check("Swimming.swim", "method")        // method_signature in mixin
+	check("Color", "type")                  // enum_declaration
+	check("StringHelper", "type")           // extension_declaration
 	check("StringHelper.isBlank", "method") // getter in extension
-	check("IntCallback", "type")       // type_alias
-	check("Repository", "type")        // abstract class
-	check("Animal.Animal", "function") // constructor
+	check("IntCallback", "type")            // type_alias
+	check("Repository", "type")             // abstract class
+	check("Animal.Animal", "function")      // constructor
 }
 
 // mustPyChunker creates a Python TreeSitterChunker for use in tests.

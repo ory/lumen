@@ -27,6 +27,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/ory/lumen/internal/config"
 	sqlite_vec "github.com/ory/lumen/internal/sqlitevec"
+	"github.com/ory/lumen/internal/store"
 )
 
 // gitSampleProject copies testdata/sample-project into a temp directory and
@@ -57,32 +58,19 @@ func gitSampleProject(t *testing.T) string {
 	return tmp
 }
 
-// runCLI runs the lumen binary with the given args and returns stdout, stderr, and any error.
-func runCLI(t *testing.T, args ...string) (stdout, stderr string, err error) {
-	t.Helper()
-
-	dataHome := t.TempDir()
-	return runCLIWithDataHome(t, dataHome, args...)
-}
-
-// runCLIWithDataHome runs the lumen binary using a specific XDG_DATA_HOME.
+// runCLIWithDataHome runs the lumen binary in semantic mode using a specific
+// XDG_DATA_HOME.
 func runCLIWithDataHome(t *testing.T, dataHome string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
+	requireSemantic(t)
+	return runCLIMode(t, "semantic", dataHome, args...)
+}
 
-	ollamaHost := os.Getenv("OLLAMA_HOST")
-	if ollamaHost == "" {
-		ollamaHost = "http://localhost:11434"
-	}
-
+// runCLIMode runs the lumen binary with an explicit retrieval mode.
+func runCLIMode(t *testing.T, mode, dataHome string, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
 	cmd := exec.Command(serverBinary, args...)
-	cmd.Env = []string{
-		"OLLAMA_HOST=" + ollamaHost,
-		"LUMEN_EMBED_MODEL=all-minilm",
-		"XDG_DATA_HOME=" + dataHome,
-		"XDG_CONFIG_HOME=" + filepath.Join(dataHome, "config"),
-		"HOME=" + os.Getenv("HOME"),
-		"PATH=" + os.Getenv("PATH"),
-	}
+	cmd.Env = childEnv(mode, dataHome)
 
 	var outBuf, errBuf strings.Builder
 	cmd.Stdout = &outBuf
@@ -155,12 +143,8 @@ func openIndexDB(t *testing.T, dataHome, projectPath string) *projectIndexDB {
 		t.Fatalf("open index db: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	absoluteProjectPath, err := filepath.Abs(projectPath)
-	if err != nil {
-		t.Fatalf("resolve project path: %v", err)
-	}
 	var projectID int64
-	if err := db.QueryRow("SELECT id FROM projects WHERE path = ?", filepath.Clean(absoluteProjectPath)).Scan(&projectID); err != nil {
+	if err := db.QueryRow("SELECT id FROM projects WHERE path = ?", store.CanonicalProjectPath(projectPath)).Scan(&projectID); err != nil {
 		t.Fatalf("resolve project membership: %v", err)
 	}
 	return &projectIndexDB{DB: db, projectID: projectID}
@@ -215,7 +199,7 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query files: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var filePaths []string
 	for rows.Next() {
 		var path, hash string
@@ -264,7 +248,7 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query chunks: %v", err)
 	}
-	defer chunkRows.Close()
+	defer func() { _ = chunkRows.Close() }()
 
 	kindCounts := make(map[string]int)
 	for chunkRows.Next() {
@@ -323,7 +307,7 @@ func TestE2E_CLI_SQLVerifySchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query project_meta: %v", err)
 	}
-	defer metaRows.Close()
+	defer func() { _ = metaRows.Close() }()
 	for metaRows.Next() {
 		var key, value string
 		if err := metaRows.Scan(&key, &value); err != nil {
@@ -438,7 +422,7 @@ func TestE2E_CLI_SQLVerifyKNN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("KNN query: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type knnResult struct {
 		symbol   string
@@ -532,7 +516,7 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	}
 
 	// Close DB before re-indexing (index opens its own connection).
-	db.Close()
+	_ = db.Close()
 
 	// Re-index.
 	_, _, err = runCLIWithDataHome(t, dataHome, "index", tmpDir)
@@ -608,8 +592,8 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 	}
 
 	// Delete a file.
-	db.Close()
-	os.Remove(filepath.Join(tmpDir, "database.go"))
+	_ = db.Close()
+	_ = os.Remove(filepath.Join(tmpDir, "database.go"))
 
 	_, _, err = runCLIWithDataHome(t, dataHome, "index", tmpDir)
 	if err != nil {
@@ -658,6 +642,19 @@ func TestE2E_CLI_SQLVerifyIncremental(t *testing.T) {
 // subdirectory reuses the parent's existing on-disk index via findAncestorIndex.
 func TestE2E_CLI_AncestorReuse_Index(t *testing.T) {
 	t.Parallel()
+	runCLI_AncestorReuse_Index(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIWithDataHome(t, dataHome, args...)
+	})
+}
+
+func TestE2E_BM25_CLI_AncestorReuse_Index(t *testing.T) {
+	t.Parallel()
+	runCLI_AncestorReuse_Index(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIMode(t, "bm25", dataHome, args...)
+	})
+}
+
+func runCLI_AncestorReuse_Index(t *testing.T, run func(dataHome string, args ...string) (string, string, error)) {
 	dataHome := t.TempDir()
 
 	// Copy sample-project to a plain (non-git) temp dir.
@@ -669,13 +666,13 @@ func TestE2E_CLI_AncestorReuse_Index(t *testing.T) {
 	}
 
 	// Index the parent directory.
-	_, _, err := runCLIWithDataHome(t, dataHome, "index", dir)
+	_, _, err := run(dataHome, "index", dir)
 	if err != nil {
 		t.Fatalf("first index failed: %v", err)
 	}
 
 	// Index from sub/ — should find ancestor's DB and report up-to-date.
-	stdout, _, err := runCLIWithDataHome(t, dataHome, "index", subDir)
+	stdout, _, err := run(dataHome, "index", subDir)
 	if err != nil {
 		t.Fatalf("sub index failed: %v", err)
 	}
@@ -689,6 +686,19 @@ func TestE2E_CLI_AncestorReuse_Index(t *testing.T) {
 // Uses --cwd to set the index root explicitly, while -p scopes the search.
 func TestE2E_CLI_AncestorReuse_Search(t *testing.T) {
 	t.Parallel()
+	runCLI_AncestorReuse_Search(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIWithDataHome(t, dataHome, args...)
+	})
+}
+
+func TestE2E_BM25_CLI_AncestorReuse_Search(t *testing.T) {
+	t.Parallel()
+	runCLI_AncestorReuse_Search(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIMode(t, "bm25", dataHome, args...)
+	})
+}
+
+func runCLI_AncestorReuse_Search(t *testing.T, run func(dataHome string, args ...string) (string, string, error)) {
 	dataHome := t.TempDir()
 
 	// Copy sample-project to a plain (non-git) temp dir.
@@ -700,14 +710,14 @@ func TestE2E_CLI_AncestorReuse_Search(t *testing.T) {
 	}
 
 	// Seed the parent index.
-	_, _, err := runCLIWithDataHome(t, dataHome, "index", dir)
+	_, _, err := run(dataHome, "index", dir)
 	if err != nil {
 		t.Fatalf("index failed: %v", err)
 	}
 
 	// Search with --cwd pointing at sub/ (triggers ancestor resolution for
 	// indexRoot) and -p pointing at dir (full scope, no pathPrefix filtering).
-	stdout, _, err := runCLIWithDataHome(t, dataHome, "search", "--cwd", subDir, "-p", dir, "token validation")
+	stdout, _, err := run(dataHome, "search", "--cwd", subDir, "-p", dir, "token validation")
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
@@ -723,6 +733,19 @@ func TestE2E_CLI_AncestorReuse_Search(t *testing.T) {
 // directories have indexes, the nearest one is used.
 func TestE2E_CLI_AncestorReuse_NearestWins(t *testing.T) {
 	t.Parallel()
+	runCLI_AncestorReuse_NearestWins(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIWithDataHome(t, dataHome, args...)
+	})
+}
+
+func TestE2E_BM25_CLI_AncestorReuse_NearestWins(t *testing.T) {
+	t.Parallel()
+	runCLI_AncestorReuse_NearestWins(t, func(dataHome string, args ...string) (string, string, error) {
+		return runCLIMode(t, "bm25", dataHome, args...)
+	})
+}
+
+func runCLI_AncestorReuse_NearestWins(t *testing.T, run func(dataHome string, args ...string) (string, string, error)) {
 	dataHome := t.TempDir()
 
 	// Create grandparent with canonical files.
@@ -767,17 +790,17 @@ func RunWorker() {}
 	}
 
 	// Index both levels.
-	if _, _, err := runCLIWithDataHome(t, dataHome, "index", grandparent); err != nil {
+	if _, _, err := run(dataHome, "index", grandparent); err != nil {
 		t.Fatalf("grandparent index failed: %v", err)
 	}
-	if _, _, err := runCLIWithDataHome(t, dataHome, "index", parent); err != nil {
+	if _, _, err := run(dataHome, "index", parent); err != nil {
 		t.Fatalf("parent index failed: %v", err)
 	}
 
 	// Search from child/ — nearest ancestor is parent/, which has RunWorker.
 	// Use --cwd child/ so indexRoot resolves to parent/ via ancestor walking,
 	// and -p parent/ for full scope (no pathPrefix filtering).
-	stdout, _, err := runCLIWithDataHome(t, dataHome, "search", "--cwd", childDir, "-p", parent, "run worker")
+	stdout, _, err := run(dataHome, "search", "--cwd", childDir, "-p", parent, "run worker")
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}

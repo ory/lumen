@@ -1,0 +1,138 @@
+[
+  {"id": "lang.rust.async_runtime_executor_spawn", "corpus": "fixtures/rust", "language": "rust", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "async runtime executor spawn",
+   "targets": [
+     {"file": "tokio-builder.rs", "symbol": "Builder", "contains": ["pub struct Builder {"]},
+     {"file": "tokio-builder.rs", "symbol": "build", "contains": ["Kind::CurrentThread => self.build_current_thread_runtime()"]},
+     {"file": "tokio-builder.rs", "symbol": "on_task_spawn", "contains": ["self.before_spawn = Some"]},
+     {"file": "tokio-builder.rs", "symbol": "new_multi_thread"}
+   ]},
+  {"id": "lang.rust.file_search_pattern_match", "corpus": "fixtures/rust", "language": "rust", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "file search pattern match",
+   "targets": [
+     {"file": "rg-search.rs", "symbol": "search_path", "line": 342, "contains": ["fn search_path(&mut self, path: &Path)"]},
+     {"file": "rg-search.rs", "symbol": "search_path", "line": 387, "contains": ["searcher.search_path(&matcher, path, &mut sink)?;"]},
+     {"file": "rg-search.rs", "symbol": "search", "contains": ["self.search_path(path)"]},
+     {"file": "rg-globset-lib.rs", "symbol": "is_match", "line": 342, "contains": ["self.is_match_candidate(&Candidate::new(path.as_ref()))"]},
+     {"file": "rg-globset-lib.rs", "symbol": "is_match_candidate", "contains": ["if strat.is_match(path) {"]}
+   ]},
+  {"id": "lang.rust.tcp_network_listener_accept", "corpus": "fixtures/rust", "language": "rust", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "TCP network listener accept",
+   "targets": [
+     {"file": "tokio-listener.rs", "symbol": "accept", "contains": ["async_io(Interest::READABLE, || self.io.accept())"]},
+     {"file": "tokio-listener.rs", "symbol": "poll_accept", "contains": ["match self.io.accept() {"]},
+     {"file": "tokio-listener.rs", "symbol": "TcpListener", "contains": ["pub struct TcpListener {"]}
+   ]},
+  {"id": "lang.rust.mutex_lock_concurrent_access", "corpus": "fixtures/rust", "language": "rust", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "mutex lock concurrent access",
+   "targets": [
+     {"file": "tokio-mutex.rs", "symbol": "Mutex", "contains": ["pub struct Mutex<T: ?Sized> {"]},
+     {"file": "tokio-mutex.rs", "symbol": "lock", "contains": ["pub async fn lock(&self) -> MutexGuard<'_, T> {"]},
+     {"file": "tokio-mutex.rs", "symbol": "try_lock", "contains": ["pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, TryLockError> {"]},
+     {"file": "tokio-mutex.rs", "symbol": "lock_owned", "contains": ["pub async fn lock_owned(self: Arc<Self>) -> OwnedMutexGuard<T> {"]}
+   ]},
+  {"id": "lang.rust.error_result_propagation", "corpus": "fixtures/rust", "language": "rust", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "error result propagation",
+   "targets": [
+     {"file": "rg-ignore-lib.rs", "line": 362, "contains": ["fn from(err: std::io::Error) -> Error {"]},
+     {"file": "rg-ignore-lib.rs", "symbol": "into_error_option", "contains": ["Some(Error::Partial(self.0))"]},
+     {"file": "rg-matcher-lib.rs", "symbol": "try_find_iter_at", "line": 708, "contains": ["let m = match self.find_at(haystack, last_end)? {"]},
+     {"file": "rg-matcher-lib.rs", "symbol": "try_find_iter", "line": 677, "contains": ["self.try_find_iter_at(haystack, 0, matched)"]}
+   ],
+   "note": "No declaration uses the word 'propagation'; targets are where errors are converted or forwarded through Result/? (From<io::Error>, try_* iteration)."},
+
+  {"id": "rust.matcher_borrowed_captures_at", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "impl Matcher for &M forwards captures_at to the inner matcher",
+   "targets": [{"file": "rg-matcher-lib.rs", "symbol": "captures_at", "line": 1158, "contains": ["(*self).captures_at(haystack, at, caps)"]}],
+   "distractors": [{"file": "rg-matcher-lib.rs", "symbol": "captures_at", "line": 893, "contains": ["_caps: &mut Self::Captures"]}],
+   "note": "Borrowed-matcher blanket impl versus the trait default of the same method name."},
+  {"id": "rust.matcher_default_captures_at", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "default captures_at capturing groups aren't supported always behaves as if a match were impossible",
+   "targets": [{"file": "rg-matcher-lib.rs", "symbol": "captures_at", "line": 893, "contains": ["_caps: &mut Self::Captures"]}],
+   "distractors": [{"file": "rg-matcher-lib.rs", "symbol": "captures_at", "line": 1158, "contains": ["(*self).captures_at(haystack, at, caps)"]}]},
+  {"id": "rust.listener_accept_cancel_safe", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "is TcpListener accept cancel safe in tokio::select",
+   "targets": [{"file": "tokio-listener.rs", "symbol": "accept", "contains": ["async_io(Interest::READABLE, || self.io.accept())"]}],
+   "distractors": [{"file": "tokio-listener.rs", "symbol": "poll_accept", "contains": ["match self.io.accept() {"]}],
+   "note": "The 'Cancel safety' paragraph sits 26 doc lines above the signature; it must be part of the accept span to answer this."},
+  {"id": "rust.ignore_err_macro", "corpus": "fixtures/rust", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "macro_rules! err",
+   "targets": [{"file": "rg-ignore-lib.rs", "symbol": "err", "line": 495, "contains": ["Box::<dyn std::error::Error + Send + Sync>::from(format!($($tt)*))"]}],
+   "note": "Local test-module macro inside mod tests."},
+  {"id": "rust.ignore_err_macro_task", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "test helper macro that boxes a formatted error message",
+   "targets": [{"file": "rg-ignore-lib.rs", "symbol": "err", "line": 495, "contains": ["Box::<dyn std::error::Error + Send + Sync>::from(format!($($tt)*))"]}],
+   "distractors": [{"file": "rg-ignore-lib.rs", "symbol": "new", "contains": ["err!(\"failed to create temp dir after {} tries\", TRIES)"]}]},
+  {"id": "rust.ignore_into_io_error", "corpus": "fixtures/rust", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "into_io_error", "max_rank": 1,
+   "targets": [{"file": "rg-ignore-lib.rs", "symbol": "into_io_error", "contains": ["errs.remove(0).into_io_error()"]}],
+   "distractors": [{"file": "rg-ignore-lib.rs", "symbol": "io_error", "contains": ["Error::Io(ref err) => Some(err),"]}]},
+  {"id": "rust.ignore_into_io_error_task", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "consume ignore Error to recover the original std::io::Error",
+   "targets": [{"file": "rg-ignore-lib.rs", "symbol": "into_io_error", "contains": ["errs.remove(0).into_io_error()"]}],
+   "distractors": [
+     {"file": "rg-ignore-lib.rs", "symbol": "io_error", "contains": ["Error::Io(ref err) => Some(err),"]},
+     {"file": "rg-ignore-lib.rs", "line": 362, "contains": ["fn from(err: std::io::Error) -> Error {"]}
+   ],
+   "note": "into_io_error (consumes self) versus io_error (borrows) and From<io::Error> for Error (the opposite direction)."},
+  {"id": "rust.ignore_io_error_borrowed", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "io_error borrow reference to the underlying std::io::Error",
+   "targets": [{"file": "rg-ignore-lib.rs", "symbol": "io_error", "contains": ["Error::Io(ref err) => Some(err),"]}],
+   "distractors": [{"file": "rg-ignore-lib.rs", "symbol": "into_io_error", "contains": ["errs.remove(0).into_io_error()"]}]},
+  {"id": "rust.mutex_lock_owned", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "lock mutex through Arc returning OwnedMutexGuard with 'static lifetime",
+   "targets": [{"file": "tokio-mutex.rs", "symbol": "lock_owned", "contains": ["pub async fn lock_owned(self: Arc<Self>) -> OwnedMutexGuard<T> {"]}],
+   "distractors": [
+     {"file": "tokio-mutex.rs", "symbol": "lock", "contains": ["pub async fn lock(&self) -> MutexGuard<'_, T> {"]},
+     {"file": "tokio-mutex.rs", "symbol": "try_lock_owned"}
+   ]},
+  {"id": "rust.mutex_lock_borrowed", "corpus": "fixtures/rust", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "async Mutex lock returning a borrowed MutexGuard",
+   "targets": [{"file": "tokio-mutex.rs", "symbol": "lock", "contains": ["pub async fn lock(&self) -> MutexGuard<'_, T> {"]}],
+   "distractors": [
+     {"file": "tokio-mutex.rs", "symbol": "lock_owned", "contains": ["pub async fn lock_owned(self: Arc<Self>) -> OwnedMutexGuard<T> {"]},
+     {"file": "tokio-mutex.rs", "symbol": "blocking_lock"}
+   ]},
+
+  {"id": "rust.transport_qualified_tcp_connect", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "crate::transport::tcp::connect", "max_rank": 1,
+   "targets": [{"file": "src/transport/tcp.rs", "symbol": "connect", "contains": ["TcpStream::connect_timeout(addr, timeout)?"]}],
+   "distractors": [
+     {"file": "src/storage/mod.rs", "symbol": "connect"},
+     {"file": "src/transport/tls.rs", "symbol": "connect"}
+   ],
+   "note": "Qualified Rust path: the module path lives in the file path, not the declaration."},
+  {"id": "rust.transport_path_tcp_connect", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "transport/tcp.rs connect", "max_rank": 1,
+   "targets": [{"file": "src/transport/tcp.rs", "symbol": "connect", "contains": ["TcpStream::connect_timeout(addr, timeout)?"]}],
+   "distractors": [{"file": "src/storage/mod.rs", "symbol": "connect"}]},
+  {"id": "rust.transport_qualified_storage_connect", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "storage::connect", "max_rank": 1,
+   "targets": [{"file": "src/storage/mod.rs", "symbol": "connect", "contains": ["fs::create_dir_all(path)?;"]}],
+   "distractors": [
+     {"file": "src/transport/tcp.rs", "symbol": "connect"},
+     {"file": "src/transport/tls.rs", "symbol": "connect"}
+   ]},
+  {"id": "rust.transport_path_filter_tcp", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "connect", "path": "src/transport/tcp.rs", "max_rank": 1,
+   "targets": [{"file": "src/transport/tcp.rs", "symbol": "connect", "contains": ["TcpStream::connect_timeout(addr, timeout)?"]}]},
+  {"id": "rust.transport_path_filter_storage", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "exact", "category": "supported", "origin": "brainstorm-rust", "query": "connect", "path": "src/storage", "max_rank": 1,
+   "targets": [{"file": "src/storage/mod.rs", "symbol": "connect", "contains": ["fs::create_dir_all(path)?;"]}]},
+  {"id": "rust.transport_path_filter_transport_dir", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "connect with timeout", "path": "src/transport",
+   "targets": [
+     {"file": "src/transport/tcp.rs", "symbol": "connect", "contains": ["TcpStream::connect_timeout(addr, timeout)?"]},
+     {"file": "src/transport/tls.rs", "symbol": "connect", "contains": ["tcp::connect(addr, timeout)?"]}
+   ]},
+  {"id": "rust.transport_tls_over_tcp", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "TLS handshake on top of a TCP connection",
+   "targets": [{"file": "src/transport/tls.rs", "symbol": "connect", "contains": ["ClientConnection::new(config, server_name)"]}],
+   "distractors": [{"file": "src/transport/tcp.rs", "symbol": "connect"}],
+   "note": "tls::connect layers on tcp::connect; the TLS-specific body must outrank the plain TCP connect."},
+  {"id": "rust.transport_open_receipt_store", "corpus": "retrieval/corpora/rust-transport", "language": "rust", "kind": "task", "category": "supported", "origin": "brainstorm-rust", "query": "open receipt store and create the receipts log",
+   "targets": [{"file": "src/storage/mod.rs", "symbol": "connect", "contains": ["path.join(\"receipts.log\")"]}],
+   "distractors": [{"file": "src/client.rs", "symbol": "open"}]},
+
+  {"id": "rust.chunker_my_macro", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "my_macro", "max_rank": 1,
+   "targets": [{"file": "src/macros.rs", "symbol": "my_macro", "contains": ["macro_rules! my_macro"]}]},
+  {"id": "rust.chunker_union", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "MyUnion", "max_rank": 1,
+   "targets": [{"file": "src/comprehensive.rs", "symbol": "MyUnion", "contains": ["union MyUnion {"]}]},
+  {"id": "rust.chunker_static", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "MY_STATIC", "max_rank": 1,
+   "targets": [{"file": "src/comprehensive.rs", "symbol": "MY_STATIC", "contains": ["static MY_STATIC: i32 = 10;"]}]},
+  {"id": "rust.chunker_generic_impl_method", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "generic_method", "max_rank": 1,
+   "targets": [{"file": "src/comprehensive.rs", "symbol": "generic_method"}],
+   "distractors": [{"file": "src/comprehensive.rs", "symbol": "method"}]},
+  {"id": "rust.chunker_trait", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Drawable trait draw", "max_rank": 1,
+   "targets": [{"file": "src/sample.rs", "symbol": "Drawable", "contains": ["fn draw(&self);"]}]},
+  {"id": "rust.chunker_const", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "MAX_SIZE", "max_rank": 1,
+   "targets": [{"file": "src/sample.rs", "symbol": "MAX_SIZE", "contains": ["pub const MAX_SIZE: usize = 1024;"]}]},
+  {"id": "rust.chunker_associated_type", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "impl Producer for Foo associated type Output",
+   "targets": [{"file": "src/assoc.rs", "symbol": "Foo", "contains": ["type Output = i32;"]}],
+   "distractors": [{"file": "src/assoc.rs", "symbol": "Producer", "contains": ["type Output;"]}]},
+  {"id": "rust.chunker_pub_crate_fn", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "crate_fn", "max_rank": 1,
+   "targets": [{"file": "src/attributed.rs", "symbol": "crate_fn", "contains": ["pub(crate) fn crate_fn() {}"]}]},
+  {"id": "rust.chunker_attributed_struct", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "derive Debug Attributed struct", "max_rank": 1,
+   "targets": [{"file": "src/attributed.rs", "symbol": "Attributed", "contains": ["#[derive(Debug)]", "pub struct Attributed {"]}],
+   "note": "The attribute line must be part of the struct span."},
+  {"id": "rust.chunker_nested_mod_fn", "corpus": "retrieval/corpora/rust-chunker", "language": "rust", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "inner", "max_rank": 1,
+   "targets": [{"file": "src/attributed.rs", "symbol": "inner", "contains": ["fn inner() {}"]}]}
+]

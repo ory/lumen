@@ -1,0 +1,20 @@
+# R13 — Verified approximate identifier retrieval
+Research date: 2026-10-11. Literature review; no production benchmark or speedup claim.
+
+Recommendation: retain exact retrieval, then add a small vocabulary-level, bounded-edit candidate channel with verification, plus a separate identifier-component/abbreviation channel. Return original source spans and the explicit match reason. This is a high-confidence improvement for misspellings, not a solution to conceptual paraphrases. The useful transfer is spelling/OCR correction's filter-and-verify architecture.
+
+Primary evidence
+1. Gravano et al., “Using q-grams in a DBMS for Approximate String Processing” (2001): https://ipeirotis.org/wp-content/uploads/2012/01/deb-dec2001.pdf . Positional q-grams support length, count, and position filters, followed by true edit-distance verification. For their padded representation, strings within Levenshtein distance k must share at least max(lengths)+q−1−kq gram occurrences. This is a necessary condition, not a similarity score sufficient to establish a match. Approximate substring matching needs different filters: whole-string length and absolute position restrictions no longer apply.
+
+2. Schulz & Mihov, “Fast String Correction with Levenshtein-Automata,” 2001 technical report; journal 2002: https://www.cis.uni-muenchen.de/download/cis-berichte/01-127.pdf ; publication record https://cis.uni-muenchen.de/otherpublications/conference_journal/02faststring.html . A query automaton recognizes strings within bounded edit distance; intersect it with a dictionary automaton rather than scanning every term. For fixed distance bounds, construction scales linearly with query length. This is attractive for compact, relatively static lexicons, but does not establish constant query time: dictionary traversal and number of returned matches still matter.
+
+3. Wolf Garbe, SymSpell reference implementation: https://github.com/wolfgarbe/symspell . Symmetric deletion precomputes deletion variants to avoid generating substitutions over the alphabet. Prefix indexing trades memory against candidate selectivity. Its published headline speedups are author-specific comparisons, not evidence against rg or Lumen. Treat it as an implementable alternative to benchmark, especially for a small technical vocabulary; long identifiers and wider radii expand variant storage and collision candidates.
+
+Independent critique of the q-gram experiment
+• A trigram tokenizer or exact substring index alone does not provide error-tolerant retrieval. It needs relaxed candidate generation and a defined verified distance predicate.
+• With unpadded trigrams, abcd→abxd has distance one and zero shared trigrams. A mandatory shared-gram gate therefore misses valid short-token matches; use a complete fallback when the lower bound is nonpositive.
+• Preserve repeated-gram multiplicities and consistent boundary padding. Distinct-gram sets cannot blindly use occurrence-count formulas.
+• A one-cost adjacent transposition can destroy more than q trigrams. Standard Levenshtein bounds cannot be silently reused for Damerau/OSA verification.
+• Whole-token edit distance will reject reasonable abbreviations such as cfg→config. Index snake/camel components and observed initialisms separately; label these weaker matches instead of increasing k globally.
+
+Proposed ablation, not an established optimum: exact baseline; plus verified distance-one terms; plus component matches; plus initialisms; then compare q-grams, automata, and SymSpell at equal recall. Default tiny identifiers to exact matching; tune thresholds on held-out queries. Measure candidate recall before ranking, task success, false positives, source-token precision, p50/p95 cold/warm latency, index bytes/build/update time. Include zero-overlap edits, repeated letters, transpositions, Unicode, camelcase, acronyms, and ambiguous short names. Rank exact evidence first. Preserve exhaustive grep/rg semantics for “all occurrences” tasks; ranked retrieval should optimize successful evidence per context token.

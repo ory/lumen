@@ -1,0 +1,109 @@
+[
+  {"id": "svelte.sample_server_health_toggle", "corpus": "sample-project", "language": "svelte", "kind": "language", "category": "supported", "origin": "sample-project",
+   "query": "server health check enable disable",
+   "targets": [
+     {"file": "mcp-server-card.svelte", "symbol": "setEnabled", "contains": ["toggleServer(server.id);"]},
+     {"file": "mcp-server-card.svelte", "symbol": "handleHealthCheck", "contains": ["await healthCheckServer(server);"]},
+     {"file": "mcp-server-card.svelte", "symbol": "handleDelete", "contains": ["deleteCustomServer(server.id);"]}
+   ],
+   "note": "Transferred from TestE2E_SvelteIndexing: any of the three script functions within the top 10."},
+  {"id": "svelte.invite_validate_token", "corpus": "retrieval/corpora/svelte-invite", "language": "svelte", "kind": "exact", "category": "supported", "origin": "brainstorm-docs-ui", "max_rank": 1,
+   "query": "validateInviteToken",
+   "targets": [
+     {"file": "src/lib/components/AcceptInvite.svelte", "symbol": "validateInviteToken", "contains": ["/^[A-Za-z0-9_-]{32}$/.test(value)"]}
+   ],
+   "distractors": [
+     {"file": "src/lib/components/InviteMemberForm.svelte", "symbol": "validateEmail"}
+   ]},
+  {"id": "svelte.invite_expired_template", "corpus": "retrieval/corpora/svelte-invite", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "Invite expired ask a team admin to send a new link",
+   "targets": [
+     {"file": "src/lib/components/AcceptInvite.svelte", "contains": ["Invite expired. Ask a team admin to send a new link."]}
+   ],
+   "distractors": [
+     {"file": "src/lib/components/InviteMemberForm.svelte", "contains": ["Invitation sent."]}
+   ],
+   "note": "Template-only text: needs Svelte template regions (kind template) to be indexed."},
+  {"id": "svelte.invite_error_style", "corpus": "retrieval/corpora/svelte-invite", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "invite-error red border-left style",
+   "targets": [
+     {"file": "src/lib/components/AcceptInvite.svelte", "contains": [".invite-error {", "border-left: 3px solid #f04438;"]}
+   ],
+   "distractors": [
+     {"file": "src/lib/components/InviteMemberForm.svelte", "contains": [".form-error {"]}
+   ],
+   "note": "Style-only rule: needs Svelte style regions (kind style) to be indexed."},
+  {"id": "svelte.click_outside_destroy", "corpus": "retrieval/corpora/svelte-actions", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "clickOutside action destroy removes document pointerdown listener",
+   "targets": [
+     {"file": "src/lib/actions/clickOutside.ts", "contains": ["document.removeEventListener(\"pointerdown\", onPointerDown, true);"]}
+   ],
+   "distractors": [
+     {"file": "src/lib/components/Dropdown.svelte", "contains": ["use:clickOutside={close}"]},
+     {"file": "src/lib/actions/autofocus.ts", "symbol": "autofocus"}
+   ]},
+  {"id": "svelte.click_outside_usage", "corpus": "retrieval/corpora/svelte-actions", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "dropdown use:clickOutside close menu",
+   "targets": [
+     {"file": "src/lib/components/Dropdown.svelte", "contains": ["<div class=\"dropdown\" use:clickOutside={close}>"]}
+   ],
+   "note": "The use: attachment lives in the template; needs Svelte template regions."},
+  {"id": "svelte.effect_keydown_cleanup", "corpus": "retrieval/corpora/svelte-actions", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "dropdown effect Escape keydown listener cleanup removeEventListener",
+   "targets": [
+     {"file": "src/lib/components/Dropdown.svelte", "contains": ["window.addEventListener(\"keydown\", onKeydown);", "return () => window.removeEventListener(\"keydown\", onKeydown);"]}
+   ],
+   "distractors": [
+     {"file": "src/lib/actions/clickOutside.ts", "contains": ["document.removeEventListener(\"pointerdown\", onPointerDown, true);"]}
+   ],
+   "note": "The $effect body is a top-level script statement (kind statement); the nested onKeydown arrow alone does not contain the cleanup."},
+  {"id": "svelte.audio_seek", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "seek audio to pointer position on the progress bar",
+   "targets": [
+     {"file": "audio-player.svelte", "symbol": "seek", "contains": ["time = p * duration;"]}
+   ],
+   "distractors": [
+     {"file": "audio-waveform.svelte", "symbol": "addSample"},
+     {"file": "audio-player.svelte", "symbol": "format"}
+   ]},
+  {"id": "svelte.audio_bindings", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "audio element bind currentTime duration paused",
+   "targets": [
+     {"file": "audio-player.svelte", "contains": ["bind:currentTime={time}", "bind:paused"]}
+   ],
+   "note": "The bindings live in the template; needs Svelte template regions."},
+  {"id": "svelte.markdown_stale_worker_result", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "ignore stale markdown worker result latestRequestId",
+   "targets": [
+     {"file": "markdown-renderer.svelte", "symbol": "handleBlocks", "contains": ["if (requestId !== latestRequestId) return;"]}
+   ]},
+  {"id": "svelte.markdown_request_generation", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "increment latestRequestId and post markdown content to worker",
+   "targets": [
+     {"file": "markdown-renderer.svelte", "contains": ["const requestId = ++latestRequestId;", "worker.postMessage({ type: \"process\", content, sources, requestId });"]}
+   ],
+   "distractors": [
+     {"file": "markdown-renderer.svelte", "symbol": "handleBlocks"}
+   ],
+   "note": "The request generation counter is bumped inside a top-level $effect statement (kind statement)."},
+  {"id": "svelte.nav_double_click_inline_edit", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "double click conversation link preventDefault start inline edit",
+   "targets": [
+     {"file": "nav-conversation-item.svelte", "contains": ["if (e.detail >= 2) {", "startInlineEdit();"]}
+   ],
+   "distractors": [
+     {"file": "nav-conversation-item.svelte", "symbol": "commitInlineEdit"},
+     {"file": "nav-conversation-item.svelte", "symbol": "cancelInlineEdit"}
+   ],
+   "note": "The double-click wiring is an onclick handler in the template, not in startInlineEdit itself."},
+  {"id": "svelte.voice_stop_recording_cleanup", "corpus": "fixtures/svelte", "language": "svelte", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "stop recording stop microphone tracks and close AudioContext",
+   "targets": [
+     {"file": "voice-recorder.svelte", "symbol": "stopRecording", "contains": ["mediaStream.getTracks().forEach((track) => track.stop());", "audioContext.close();"]}
+   ],
+   "distractors": [
+     {"file": "voice-recorder.svelte", "symbol": "stopVisualization"},
+     {"file": "voice-recorder.svelte", "symbol": "handleCancel"},
+     {"file": "voice-recorder.svelte", "symbol": "startRecording"}
+   ]}
+]

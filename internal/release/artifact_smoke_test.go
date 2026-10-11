@@ -15,10 +15,6 @@
 package release
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,7 +24,7 @@ import (
 
 // TestBuiltArtifactIndexesChunks runs only when CI supplies LUMEN_ARTIFACT.
 // It executes the native release-shaped binary, including Windows, against a
-// deterministic Ollama stub and catches distributions that scan files but
+// unavailable embedding endpoint (offline BM25 default) and catches distributions that scan files but
 // persist zero chunks.
 func TestBuiltArtifactIndexesChunks(t *testing.T) {
 	artifact := os.Getenv("LUMEN_ARTIFACT")
@@ -40,29 +36,6 @@ func TestBuiltArtifactIndexesChunks(t *testing.T) {
 		t.Fatalf("resolve artifact: %v", err)
 	}
 
-	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/tags":
-			_, _ = fmt.Fprint(w, `{"models":[{"name":"artifact-smoke"}]}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/embed":
-			var request struct {
-				Input []string `json:"input"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			vectors := make([][]float32, len(request.Input))
-			for i := range vectors {
-				vectors[i] = []float32{1, 0, 0, 0}
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"embeddings": vectors})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer ollama.Close()
-
 	project := t.TempDir()
 	source := `package smoke
 
@@ -73,10 +46,12 @@ func ValidateToken(token string) bool { return token != "" }
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	cmd := exec.Command(absArtifact, "search", "authentication token validation", "--path", project, "--min-score", "-1")
+	cmd := exec.Command(absArtifact, "search", "authentication token", "--path", project, "--min-score", "-1")
 	dataHome := t.TempDir()
 	cmd.Env = append(os.Environ(),
-		"OLLAMA_HOST="+ollama.URL,
+		"OLLAMA_HOST=http://127.0.0.1:1",
+		"LM_STUDIO_HOST=http://127.0.0.1:1",
+		"LUMEN_RETRIEVAL=bm25",
 		"LUMEN_BACKEND=ollama",
 		"LUMEN_EMBED_MODEL=artifact-smoke",
 		"LUMEN_EMBED_DIMS=4",

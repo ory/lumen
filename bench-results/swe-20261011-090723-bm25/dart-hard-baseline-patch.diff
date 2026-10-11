@@ -1,0 +1,18 @@
+diff --git a/pkgs/shelf_router/lib/src/router.dart b/pkgs/shelf_router/lib/src/router.dart
+index 720d3c3..bcf0b55 100644
+--- a/pkgs/shelf_router/lib/src/router.dart
++++ b/pkgs/shelf_router/lib/src/router.dart
+@@ -59,10 +59,10 @@ extension RouterParams on Request {
+ }
+ 
+ /// Middleware to remove body from request.
++///
++/// The content-length header is preserved, as per RFC 9110 section 9.3.2 it
++/// should match what a GET request would have returned.
+ final _removeBody = createMiddleware(responseHandler: (r) {
+-  if (r.headers.containsKey('content-length')) {
+-    r = r.change(headers: {'content-length': '0'});
+-  }
+   return r.change(body: <int>[]);
+ });
+ 

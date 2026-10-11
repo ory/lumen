@@ -1,0 +1,119 @@
+[
+  {"id": "lang.js.http_router_middleware", "corpus": "fixtures/js", "language": "js", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "HTTP router middleware",
+   "targets": [
+     {"file": "express-application.js", "contains": ["app.use = function use(fn) {"]},
+     {"file": "express-application.js", "contains": ["app.route = function route(path) {"]},
+     {"file": "express-application.js", "contains": ["this.router.handle(req, res, done);"]},
+     {"file": "fastify-route.js", "symbol": "buildRouting", "contains": ["const router = FindMyWay(options)"]},
+     {"file": "fastify-route.js", "contains": ["function routeHandler (req, res, params, context, query) {"]}
+   ]},
+  {"id": "lang.js.request_response_object", "corpus": "fixtures/js", "language": "js", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "request response object",
+   "targets": [
+     {"file": "express-request.js", "contains": ["var req = Object.create(http.IncomingMessage.prototype)"]},
+     {"file": "express-response.js", "contains": ["var res = Object.create(http.ServerResponse.prototype)"]},
+     {"file": "fastify-request.js", "symbol": "Request", "contains": ["this.raw = req"]},
+     {"file": "fastify-reply.js", "symbol": "Reply", "contains": ["this.raw = res"]},
+     {"file": "express-express.js", "symbol": "createApplication", "contains": ["app.response = Object.create(res, {"]},
+     {"file": "express-application.js", "contains": ["Object.setPrototypeOf(req, this.request)"]}
+   ]},
+  {"id": "lang.js.event_emitter_listener", "corpus": "fixtures/js", "language": "js", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "event emitter listener",
+   "targets": [
+     {"file": "node-events.js", "symbol": "_addListener", "line": 540},
+     {"file": "node-events.js", "contains": ["EventEmitter.prototype.addListener = function addListener(type, listener) {"]},
+     {"file": "node-events.js", "contains": ["EventEmitter.prototype.once = function once(type, listener) {"]},
+     {"file": "node-events.js", "symbol": "onceWrapper", "contains": ["this.target.removeListener(this.type, this.wrapFn);"]},
+     {"file": "node-events.js", "contains": ["EventEmitter.prototype.removeListener ="]},
+     {"file": "node-events.js", "contains": ["EventEmitter.prototype.prependListener ="]},
+     {"file": "node-events.js", "symbol": "eventTargetAgnosticAddListener", "contains": ["emitter.on(name, listener);"]},
+     {"file": "node-events.js", "symbol": "eventTargetAgnosticRemoveListener", "contains": ["emitter.removeListener(name, listener);"]}
+   ]},
+  {"id": "lang.js.error_handling_exception", "corpus": "fixtures/js", "language": "js", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "error handling exception",
+   "targets": [
+     {"file": "node-events.js", "symbol": "emitUnhandledRejectionOrErr", "contains": ["ee.emit('error', err);"]},
+     {"file": "fastify-reply.js", "symbol": "onErrorHook", "contains": ["handleError(reply, error, cb)"]},
+     {"file": "express-application.js", "symbol": "logerror", "contains": ["console.error(err.stack || err.toString());"]},
+     {"file": "express-application.js", "symbol": "tryRender", "contains": ["} catch (err) {"]},
+     {"file": "node-net.js", "contains": ["Socket.prototype._destroy = function(exception, cb) {"]},
+     {"file": "node-events.js", "symbol": "addCatch", "contains": ["that.emit('error', err);"]}
+   ]},
+  {"id": "lang.js.module_exports_function", "corpus": "fixtures/js", "language": "js", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "module exports function",
+   "targets": [
+     {"file": "express-express.js", "contains": ["exports = module.exports = createApplication;"]},
+     {"file": "fastify.js", "contains": ["module.exports = fastify"]},
+     {"file": "express-view.js", "contains": ["module.exports = View;"]},
+     {"file": "fastify-route.js", "contains": ["module.exports = { buildRouting, validateBodyLimitOption, buildRouterOptions }"]},
+     {"file": "fastify-reply.js", "contains": ["module.exports = Reply"]},
+     {"file": "fastify-request.js", "contains": ["module.exports = Request"]}
+   ],
+   "note": "Answers are top-level CommonJS export statements; they are only retrievable if non-declaration module code is indexed."},
+
+  {"id": "js.express.create_application_commonjs_export", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "module.exports createApplication express application",
+   "targets": [
+     {"file": "express-express.js", "symbol": "createApplication", "contains": ["mixin(app, proto, false);"]},
+     {"file": "express-express.js", "contains": ["exports = module.exports = createApplication;"]}
+   ],
+   "distractors": [{"file": "express-application.js", "contains": ["var app = exports = module.exports = {};"]}]},
+  {"id": "js.fastify.reply_send_error_payload", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "reply send payload Error onErrorHook",
+   "targets": [{"file": "fastify-reply.js", "contains": ["Reply.prototype.send = function (payload) {", "onErrorHook(this, payload, onSendHook)"]}],
+   "distractors": [
+     {"file": "express-response.js", "contains": ["res.send = function send(body) {"]},
+     {"file": "fastify-reply.js", "symbol": "onErrorHook"}
+   ],
+   "note": "Fastify Reply#send routes Error payloads through onErrorHook; Express res.send and the onErrorHook helper itself are not the send path."},
+  {"id": "js.fastify.route_handler_timeout_onabort", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "handler timeout AbortController abort signal on request close",
+   "targets": [{"file": "fastify-route.js", "contains": ["if (!ac.signal.aborted) {"], "line": 543}],
+   "distractors": [{"file": "fastify-route.js", "symbol": "handleTimeout"}],
+   "note": "The nested onAbort closure inside routeHandler; any returned span covering it (closure or enclosing routeHandler region) is acceptable."},
+  {"id": "js.events.once_wrapper_removes_before_call", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "once wrapper removes listener before invoking it",
+   "targets": [{"file": "node-events.js", "symbol": "onceWrapper", "contains": ["this.target.removeListener(this.type, this.wrapFn);"]}],
+   "distractors": [
+     {"file": "node-events.js", "contains": ["EventEmitter.prototype.once = function once(type, listener) {"]},
+     {"file": "node-events.js", "contains": ["async function once(emitter, name, options = kEmptyObject) {"]},
+     {"file": "node-events.js", "symbol": "_onceWrap"}
+   ]},
+  {"id": "js.express.mounted_app_restores_prototypes", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "mounted app restores req res prototypes then next err",
+   "targets": [{"file": "express-application.js", "contains": ["Object.setPrototypeOf(req, orig.request)"], "line": 233}],
+   "distractors": [
+     {"file": "express-application.js", "contains": ["Object.setPrototypeOf(req, this.request)"]},
+     {"file": "express-application.js", "contains": ["Object.setPrototypeOf(this.request, parent.request)"]}
+   ],
+   "note": "mounted_app is a named function expression inside app.use; app.handle and the mount listener in defaultConfiguration also set prototypes."},
+  {"id": "js.events.add_catch_promise_rejection", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "capture promise rejection from listener and emit error on nextTick",
+   "targets": [{"file": "node-events.js", "symbol": "addCatch", "contains": ["process.nextTick(emitUnhandledRejectionOrErr, that, err, type, args);"]}],
+   "distractors": [{"file": "node-events.js", "symbol": "emitUnhandledRejectionOrErr"}]},
+  {"id": "js.events.unhandled_rejection_infinite_loop", "corpus": "fixtures/js", "language": "js", "kind": "task", "category": "supported", "origin": "brainstorm-js", "query": "disable capture rejections to avoid infinite loop when emitting error",
+   "targets": [{"file": "node-events.js", "symbol": "emitUnhandledRejectionOrErr", "contains": ["ee[kCapture] = false;"]}],
+   "distractors": [{"file": "node-events.js", "symbol": "addCatch"}]},
+
+  {"id": "js.esm.mjs_specifier_related", "corpus": "retrieval/corpora/js-esm", "language": "js", "kind": "structural", "category": "supported", "origin": "brainstorm-js", "query": "rescheduleJob", "max_rank": 1,
+   "targets": [{"file": "jobs/runJobs.mjs", "symbol": "rescheduleJob"}],
+   "related": [{"file": "jobs/schedule.mjs", "symbol": "nextRunAt", "contains": ["intervalMinutes * 60_000"]}],
+   "note": "Explicit '.mjs' relative specifier naming a file that exists as written."},
+  {"id": "js.esm.js_imports_mjs_related", "corpus": "retrieval/corpora/js-esm", "language": "js", "kind": "structural", "category": "supported", "origin": "brainstorm-js", "query": "readyJobNames", "max_rank": 1,
+   "targets": [{"file": "jobs/notify.js", "symbol": "readyJobNames"}],
+   "related": [{"file": "jobs/schedule.mjs", "symbol": "isDue", "contains": ["now.getTime() >= nextRun.getTime()"]}]},
+
+  {"id": "js.chunker.generator_declaration", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "generatorFn", "max_rank": 1,
+   "targets": [{"file": "src/adv.js", "symbol": "generatorFn", "contains": ["function* generatorFn() { yield 1; }"]}]},
+  {"id": "js.chunker.generator_expression_const", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "gen", "max_rank": 1,
+   "targets": [{"file": "src/modern.js", "symbol": "gen", "contains": ["export const gen = function*() {"]}]},
+  {"id": "js.chunker.named_function_expression", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "namedExpr",
+   "targets": [{"file": "src/adv.js", "symbol": "funcExpr", "contains": ["function namedExpr()"]}]},
+  {"id": "js.chunker.arrow_const", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "greet", "max_rank": 1,
+   "targets": [{"file": "src/modern.js", "symbol": "greet", "contains": ["return \"hello \" + name;"]}]},
+  {"id": "js.chunker.var_and_let_function_expressions", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "mutableFn", "max_rank": 1,
+   "targets": [{"file": "src/adv.js", "symbol": "mutableFn", "contains": ["let mutableFn = function() {};"]}]},
+  {"id": "js.chunker.exported_arrow", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "exportedArrow", "max_rank": 1,
+   "targets": [{"file": "src/adv.js", "symbol": "exportedArrow"}]},
+  {"id": "js.chunker.export_default_function", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "defaultExport", "max_rank": 1,
+   "targets": [{"file": "src/adv.js", "symbol": "defaultExport", "contains": ["export default function defaultExport() {}"]}]},
+  {"id": "js.chunker.exported_class", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "ExportedClass", "max_rank": 1,
+   "targets": [{"file": "src/adv.js", "symbol": "ExportedClass"}]},
+  {"id": "js.chunker.class_method_speak", "corpus": "retrieval/corpora/js-chunker", "language": "js", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Animal speak",
+   "targets": [
+     {"file": "src/adv.js", "symbol": "speak"},
+     {"file": "src/modern.js", "symbol": "speak"},
+     {"file": "src/adv.js", "symbol": "Animal"},
+     {"file": "src/modern.js", "symbol": "Animal"}
+   ]}
+]

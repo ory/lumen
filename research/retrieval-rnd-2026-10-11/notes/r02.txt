@@ -1,0 +1,38 @@
+Assignment 02/25: Lumen evaluation audit (read-only, 2026-10-11)
+
+Critical conclusion: existing evidence is insufficient to establish superiority over rg, especially on unexact queries. The only human-readable relevance catalog contains five smoke queries on five tiny files. Current BM25 returns four at rank one; the sole vocabulary-mismatch query fails.
+
+Datasets and labels
+- testdata/retrieval/cases/smoke.json: 5 queries; four supported, one diagnostic; exact symbol, path, comment, imported-helper context, vocabulary mismatch. testdata/retrieval/corpora/smoke: 5 files. Relevance matches file/symbol/span/contained source strings and separately scores related context. internal/evalcase and internal/index/catalog_test.go implement it. The README describes a broader future catalog; those cases and TestE2E_Catalog are absent at inspection.
+- e2e_lang_test.go: 58 semantic queries across 12 languages. 254 fixture/sample-project files total. These are output snapshots rather than independently judged relevance labels: results are sorted by path before comparison; e2e_lang_snapshot_test.go accepts matching half the snapshot entries. Useful regression tests, weak retrieval-quality evidence.
+- bench-swe/tasks: 14 hand-curated real bug tasks (one per language), gold patches in bench-swe/patches. Tiny purposively difficult sample; not the official SWE-bench distribution. Selection rejects tasks with >=50% identifiers in issue text, which biases the corpus away from exact-search-friendly work. GrepScore is substring overlap with filenames and hunk identifiers, not an actual grep baseline.
+
+Executed validation
+1. go test ./internal/evalcase: PASS.
+2. go test -tags fts5 ./internal/index -run 'TestRetrievalCatalogBM25|TestRetrievalEvaluation$' -v -count=1: PASS; catalog direct hit@3=.800, MRR=.800; supported 4/4, diagnostic 0/1; related 1/1. No expansion misses the helper; expansion retrieves it with 79 extra bytes on each affected query. One-shot index 91ms, 77,824 SQLite bytes excluding WAL.
+3. go test -tags fts5 ./internal/index -run '^$' -bench '^BenchmarkRetrieval$' -benchtime=300ms -count=3: PASS on Apple M4 Max. No expansion 256–303 microseconds/op; expansion 319–347 microseconds/op; build 60.72ms; index 77,824 bytes; expansion mean 31.6 extra bytes/query. These are warm, in-process five-query/five-file microbenchmarks, not CLI/agent latency or scaling results.
+4. From bench-swe: go test ./...: PASS (mostly cached).
+5. From bench-swe: go run . validate: FAIL c-hard grep_score=50%; nine other tasks have nonzero identifier overlap, four score zero.
+
+Why INVALID in recent reports
+bench-results/swe-20261011-093410-bm25/summary-report.md marks every with-lumen task INVALID. Current report.go sets this if no recognized search-tool call occurs. Raw-log audit finds 11 of 12 extant with-lumen transcripts never call search although their MCP server reports connected. HOWEVER swift DOES call mcp__plugin_lumen_lumen__semantic_search once; its result is a 763,000-character/18,700-line payload rejected by the client token limit. The current parser recognizes that tool name, so swift's INVALID report conflicts with raw evidence and current code (likely stale generator; exact cause unproven). Two languages lack raw results. Do not quote these aggregates as an algorithm comparison. The Swift payload is direct evidence that context caps must apply to final serialized results, not just related snippets.
+
+Fairness and leakage risks
+- Baseline is a full Claude agent with Read/Edit/Bash/Grep, not literal rg. Lumen scenario also gets plugin hooks/instructions: retrieval and agent-policy effects are confounded.
+- Pre-indexing time is printed, outside Claude duration/cost. No index/storage/embedding lifecycle cost in the aggregate. Cache read/creation metrics exist; headline token totals must state their treatment.
+- run defaults to one sample, fixed scenario ordering; reports use best rating across repeats, obscuring failure rate.
+- Judge sees scenario label and gold patch; model is Sonnet 4.6 in code despite README saying Opus. Tests run afterwards, their exit status is discarded, and judge does not receive test outcomes. No explicit base-fails/gold-passes regression verification.
+- Gold-patch filenames are incomplete relevance labels: necessary evidence may be in unchanged files. Calling all non-gold retrievals noise overstates noise.
+- Public issue/fix histories may contaminate model training; changing task sets after observing output risks overfitting.
+
+Cheap next experiment
+Use existing five-case catalog only as a mechanism check. Compare (a) rg exact/regex using natural query, (b) stronger rg with identifiers, path search and agent decomposition, (c) BM25, (d) BM25+bounded relations, (e) proposed semantic fallback. Preserve identical source manifests and returned byte/token caps; separate cold build, warm query, filesystem/update cost and process startup. Measure direct recall/MRR plus complete evidence recall per 1k context tokens. Freeze additional independent paraphrases and negatives before running methods; add distractors from existing fixtures for scale, holding out languages/repositories. Do not claim statistical significance from five queries.
+
+Exact cheap commands (repository root unless noted)
+LUMEN_EVAL_REPORT=/tmp/lumen-research-20261011/catalog.md go test -tags fts5 ./internal/index -run '^TestRetrievalCatalogBM25$' -v -count=1
+LUMEN_EVAL_FILTER=smoke.vocabulary go test -tags fts5 ./internal/index -run '^TestRetrievalCatalogBM25$' -v -count=1
+go test -tags fts5 ./internal/index -run '^$' -bench '^BenchmarkRetrieval$' -benchtime=300ms -count=3
+go test ./internal/evalcase
+(cd bench-swe && go run . validate)
+
+Optional service-backed check (not run): LUMEN_BENCH_SEMANTIC=1 go test -tags fts5 ./internal/index -run '^TestRetrievalEvaluationSemantic$' -v -count=1. Requires configured embedding service; test can SKIP when unavailable. No built-in rg performance comparison exists. Paid agent runs can use make build-local; make build-bench-swe; bin/bench-swe run --language go --retrieval bm25 --runs 5 --parallel 1 --results-dir /tmp/lumen-swe-rnd, but fix evaluation/adoption checks before interpreting results.

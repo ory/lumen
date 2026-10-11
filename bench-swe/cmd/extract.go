@@ -18,7 +18,7 @@ var (
 
 var extractCmd = &cobra.Command{
 	Use:   "extract <raw-jsonl-file>",
-	Short: "Extract tool calls from a Claude CLI raw JSONL file",
+	Short: "Extract tool calls from a Claude or Codex raw JSONL file",
 	Long:  "Parses a *-raw.jsonl file and prints all tool calls in sequence, highlighting semantic_search calls with query and result preview.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runExtract,
@@ -40,7 +40,7 @@ func runExtract(_ *cobra.Command, args []string) error {
 	if extractSearchOnly {
 		var filtered []analysis.ToolCall
 		for _, c := range calls {
-			if c.Name == "mcp__lumen__semantic_search" {
+			if analysis.IsLumenSearchTool(c.Name) {
 				filtered = append(filtered, c)
 			}
 		}
@@ -56,7 +56,7 @@ func runExtract(_ *cobra.Command, args []string) error {
 func outputJSON(calls []analysis.ToolCall) error {
 	searchCount := 0
 	for _, c := range calls {
-		if c.Name == "mcp__lumen__semantic_search" {
+		if analysis.IsLumenSearchTool(c.Name) {
 			searchCount++
 		}
 	}
@@ -80,7 +80,7 @@ func outputText(calls []analysis.ToolCall) error {
 	searchCount := 0
 
 	for _, c := range calls {
-		isSearch := c.Name == "mcp__lumen__semantic_search"
+		isSearch := analysis.IsLumenSearchTool(c.Name)
 		if isSearch {
 			searchCount++
 		}

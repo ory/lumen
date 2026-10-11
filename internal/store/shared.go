@@ -90,6 +90,9 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 		}
 		if !shared {
 			_ = db.Close()
+			if vectorStorage == "lexical" {
+				return nil, fmt.Errorf("lexical index requires a separate database")
+			}
 			return openStore(dsn, dimensions)
 		}
 	}
@@ -102,6 +105,7 @@ func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, e
 		db:            db,
 		dimensions:    dimensions,
 		shared:        true,
+		lexical:       vectorStorage == "lexical",
 		vectorStorage: vectorStorage,
 		dsn:           dsn,
 	}
@@ -183,6 +187,14 @@ func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) er
 		`CREATE INDEX IF NOT EXISTS idx_chunk_defs_vector ON chunk_defs(vector_id)`,
 	}
 	for _, stmt := range stmts {
+		if vectorStorage == "lexical" {
+			if strings.Contains(stmt, "vector_keys") && !strings.Contains(stmt, "chunk_defs") || strings.Contains(stmt, "idx_chunk_defs_vector") {
+				continue
+			}
+			if strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS chunk_defs") {
+				stmt = lexicalChunkSchema
+			}
+		}
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("exec %q: %w", stmt, err)
 		}
@@ -206,6 +218,9 @@ func createCollectionSchema(db *sql.DB, dimensions int, vectorStorage string) er
 		}
 	}
 
+	if vectorStorage == "lexical" {
+		return createLexicalSchema(db)
+	}
 	elementType := "int8"
 	if vectorStorage == "float32" {
 		elementType = "float"
@@ -227,14 +242,27 @@ func (s *Store) IsShared() bool { return s.shared }
 // shared collection. Calling it repeatedly for the same path is cheap. Callers
 // must serialize membership switches against Store operations; Indexer does so
 // through its project lease.
+// CanonicalProjectPath is the project membership key: an absolute, clean path
+// with symlinks resolved when the directory exists. Symlinked spellings of one
+// directory (macOS /var -> /private/var, linked checkouts) are one project.
+func CanonicalProjectPath(projectPath string) string {
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = filepath.Clean(abs)
+	}
+	if resolved, err := filepath.EvalSymlinks(projectPath); err == nil {
+		projectPath = resolved
+	}
+	return projectPath
+}
+
 func (s *Store) UseProject(projectPath string) error {
 	if !s.shared {
 		return nil
 	}
 	if projectPath == "" {
 		projectPath = ":default"
-	} else if abs, err := filepath.Abs(projectPath); err == nil {
-		projectPath = filepath.Clean(abs)
+	} else {
+		projectPath = CanonicalProjectPath(projectPath)
 	}
 	if s.projectID != 0 && s.projectPath == projectPath {
 		s.stampSharedAccess()
@@ -361,7 +389,7 @@ func (s *Store) AttachExistingFileRevision(relativePath, contentHash string) (bo
 	if err != nil {
 		return false, err
 	}
-	if err := gcRevisionsTx(tx, displaced); err != nil {
+	if err := s.gcRevisionsTx(tx, displaced); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
@@ -370,6 +398,9 @@ func (s *Store) AttachExistingFileRevision(relativePath, contentHash string) (bo
 // MissingChunkInputs returns the chunk positions whose exact embedding inputs
 // are absent from the collection. Callers only need to embed these positions.
 func (s *Store) MissingChunkInputs(chunks []chunker.Chunk) ([]int, error) {
+	if s.lexical {
+		return nil, nil
+	}
 	const queryBatchSize = 256
 	hashes := make([][sha256.Size]byte, len(chunks))
 	present := make(map[[sha256.Size]byte]struct{}, len(chunks))
@@ -417,6 +448,9 @@ func (s *Store) MissingChunkInputs(chunks []chunker.Chunk) ([]int, error) {
 // selected project's membership. vectors is keyed by chunk position and only
 // needs entries returned by MissingChunkInputs; concurrent winners are reused.
 func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chunker.Chunk, vectors map[int][]float32) (bool, error) {
+	if s.lexical {
+		return s.storeLexicalRevision(relativePath, contentHash, chunks)
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return false, err
@@ -516,7 +550,7 @@ func (s *Store) StoreFileRevision(relativePath, contentHash string, chunks []chu
 	if err != nil {
 		return false, err
 	}
-	if err := gcRevisionsTx(tx, displaced); err != nil {
+	if err := s.gcRevisionsTx(tx, displaced); err != nil {
 		return false, err
 	}
 	return inserted > 0, tx.Commit()
@@ -592,14 +626,14 @@ func (s *Store) upsertSharedFile(path, hash string) error {
 	if err != nil {
 		return err
 	}
-	if err := gcRevisionsTx(tx, displaced); err != nil {
+	if err := s.gcRevisionsTx(tx, displaced); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
 func (s *Store) insertSharedChunks(chunks []chunker.Chunk, vectors [][]float32) error {
-	if len(chunks) != len(vectors) {
+	if !s.lexical && len(chunks) != len(vectors) {
 		return fmt.Errorf("chunks and vectors length mismatch: %d vs %d", len(chunks), len(vectors))
 	}
 	byFile := make(map[string][]int)
@@ -619,7 +653,9 @@ func (s *Store) insertSharedChunks(chunks []chunker.Chunk, vectors [][]float32) 
 		fileVectors := make(map[int][]float32, len(positions))
 		for i, pos := range positions {
 			fileChunks[i] = chunks[pos]
-			fileVectors[i] = vectors[pos]
+			if !s.lexical {
+				fileVectors[i] = vectors[pos]
+			}
 		}
 		if _, err := s.StoreFileRevision(path, hex.EncodeToString(hash), fileChunks, fileVectors); err != nil {
 			return err
@@ -642,13 +678,13 @@ func (s *Store) removeProjectFile(path string) error {
 	if _, err := tx.Exec(`DELETE FROM project_files WHERE project_id = ? AND relative_path = ?`, s.projectID, path); err != nil {
 		return err
 	}
-	if err := gcRevisionsTx(tx, displaced); err != nil {
+	if err := s.gcRevisionsTx(tx, displaced); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
+func (s *Store) gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
 	seen := make(map[int64]struct{}, len(revisionIDs))
 	for _, revisionID := range revisionIDs {
 		if revisionID == 0 {
@@ -663,6 +699,12 @@ func gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
 			return err
 		}
 		if referenced {
+			continue
+		}
+		if s.lexical {
+			if _, err := tx.Exec(`DELETE FROM file_revisions WHERE id = ?`, revisionID); err != nil {
+				return err
+			}
 			continue
 		}
 		rows, err := tx.Query(`SELECT DISTINCT vector_id FROM chunk_defs WHERE file_revision_id = ?`, revisionID)
@@ -703,10 +745,13 @@ func gcRevisionsTx(tx *sql.Tx, revisionIDs ...int64) error {
 	return nil
 }
 
-func gcAllUnreferencedTx(tx *sql.Tx) error {
+func (s *Store) gcAllUnreferencedTx(tx *sql.Tx) error {
 	if _, err := tx.Exec(`DELETE FROM file_revisions WHERE NOT EXISTS (
 		SELECT 1 FROM project_files WHERE file_revision_id = file_revisions.id)`); err != nil {
 		return err
+	}
+	if s.lexical {
+		return nil
 	}
 	rows, err := tx.Query(`SELECT id FROM vector_keys WHERE NOT EXISTS (
 		SELECT 1 FROM chunk_defs WHERE vector_id = vector_keys.id)`)
@@ -854,10 +899,14 @@ func (s *Store) sharedStats() (StoreStats, error) {
 // CollectionStats returns project-local counts and physical collection usage.
 func (s *Store) CollectionStats() (CollectionStats, error) {
 	var stats CollectionStats
+	uniqueTable := "vector_keys"
+	if s.lexical {
+		uniqueTable = "chunk_defs"
+	}
 	err := s.reader().QueryRow(`SELECT
 		(SELECT count(*) FROM project_files WHERE project_id = ?),
 		(SELECT count(*) FROM chunk_defs cd JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id WHERE pf.project_id = ?),
-		(SELECT count(*) FROM vector_keys),
+		(SELECT count(*) FROM `+uniqueTable+`),
 		(SELECT count(*) FROM chunk_defs cd JOIN project_files pf ON pf.file_revision_id = cd.file_revision_id)`, s.projectID, s.projectID).Scan(
 		&stats.ProjectFiles, &stats.ProjectChunks, &stats.UniqueVectors, &stats.ChunkReferences)
 	if err != nil {
@@ -955,7 +1004,7 @@ func (s *Store) CleanupStaleProjects(cutoff time.Time) (CleanupStats, error) {
 			return CleanupStats{}, err
 		}
 	}
-	if err := gcAllUnreferencedTx(tx); err != nil {
+	if err := s.gcAllUnreferencedTx(tx); err != nil {
 		return CleanupStats{}, err
 	}
 	if err := tx.Commit(); err != nil {

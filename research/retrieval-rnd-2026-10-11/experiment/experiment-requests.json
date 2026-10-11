@@ -1,0 +1,302 @@
+[
+  {
+    "id": "mechanism.exact.1",
+    "method": "bm25",
+    "query": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.exact.1",
+    "method": "bm25_fuzzy",
+    "query": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.exact.2",
+    "method": "bm25",
+    "query": "processPayment"
+  },
+  {
+    "id": "mechanism.exact.2",
+    "method": "bm25_fuzzy",
+    "query": "processPayment"
+  },
+  {
+    "id": "mechanism.typo.1",
+    "method": "bm25",
+    "query": "refeshAccessToken"
+  },
+  {
+    "id": "mechanism.typo.1",
+    "method": "bm25_fuzzy",
+    "query": "refeshAccessToken refreshaccesstoken"
+  },
+  {
+    "id": "mechanism.typo.2",
+    "method": "bm25",
+    "query": "proccessPayment"
+  },
+  {
+    "id": "mechanism.typo.2",
+    "method": "bm25_fuzzy",
+    "query": "proccessPayment processpayment"
+  },
+  {
+    "id": "mechanism.decomposition.1",
+    "method": "bm25",
+    "query": "refresh access token"
+  },
+  {
+    "id": "mechanism.decomposition.1",
+    "method": "bm25_fuzzy",
+    "query": "refresh access token"
+  },
+  {
+    "id": "mechanism.decomposition.2",
+    "method": "bm25",
+    "query": "reserve slot"
+  },
+  {
+    "id": "mechanism.decomposition.2",
+    "method": "bm25_fuzzy",
+    "query": "reserve slot"
+  },
+  {
+    "id": "mechanism.paraphrase.1",
+    "method": "bm25",
+    "query": "stop repeated invoice charges"
+  },
+  {
+    "id": "mechanism.paraphrase.1",
+    "method": "bm25_fuzzy",
+    "query": "stop repeated invoice charges changes charge"
+  },
+  {
+    "id": "mechanism.paraphrase.2",
+    "method": "bm25",
+    "query": "renew expired credentials"
+  },
+  {
+    "id": "mechanism.paraphrase.2",
+    "method": "bm25_fuzzy",
+    "query": "renew expired credentials"
+  },
+  {
+    "id": "mechanism.no_answer.1",
+    "method": "bm25",
+    "query": "quantum annealing qubit stabilizer"
+  },
+  {
+    "id": "mechanism.no_answer.1",
+    "method": "bm25_fuzzy",
+    "query": "quantum annealing qubit stabilizer stabilized stabilizes"
+  },
+  {
+    "id": "mechanism.no_answer.2",
+    "method": "bm25",
+    "query": "refreshAccessToken validates hardware attestation"
+  },
+  {
+    "id": "mechanism.no_answer.2",
+    "method": "bm25_fuzzy",
+    "query": "refreshAccessToken validates hardware attestation"
+  },
+  {
+    "id": "prospective_synthetic.exact.1",
+    "method": "bm25",
+    "query": "ValidateToken"
+  },
+  {
+    "id": "prospective_synthetic.exact.1",
+    "method": "bm25_fuzzy",
+    "query": "ValidateToken"
+  },
+  {
+    "id": "prospective_synthetic.exact.2",
+    "method": "bm25",
+    "query": "GetEnvWithDefault"
+  },
+  {
+    "id": "prospective_synthetic.exact.2",
+    "method": "bm25_fuzzy",
+    "query": "GetEnvWithDefault"
+  },
+  {
+    "id": "prospective_synthetic.exact.3",
+    "method": "bm25",
+    "query": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.exact.3",
+    "method": "bm25_fuzzy",
+    "query": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.exact.4",
+    "method": "bm25",
+    "query": "HandleCreateUser"
+  },
+  {
+    "id": "prospective_synthetic.exact.4",
+    "method": "bm25_fuzzy",
+    "query": "HandleCreateUser"
+  },
+  {
+    "id": "prospective_synthetic.typo.1",
+    "method": "bm25",
+    "query": "ValidteToken"
+  },
+  {
+    "id": "prospective_synthetic.typo.1",
+    "method": "bm25_fuzzy",
+    "query": "ValidteToken validatetoken"
+  },
+  {
+    "id": "prospective_synthetic.typo.2",
+    "method": "bm25",
+    "query": "GetEnvWithDefalt"
+  },
+  {
+    "id": "prospective_synthetic.typo.2",
+    "method": "bm25_fuzzy",
+    "query": "GetEnvWithDefalt getenvwithdefault"
+  },
+  {
+    "id": "prospective_synthetic.typo.3",
+    "method": "bm25",
+    "query": "BeginTransacton"
+  },
+  {
+    "id": "prospective_synthetic.typo.3",
+    "method": "bm25_fuzzy",
+    "query": "BeginTransacton begantransaction begintransaction"
+  },
+  {
+    "id": "prospective_synthetic.typo.4",
+    "method": "bm25",
+    "query": "HandleCreatUser"
+  },
+  {
+    "id": "prospective_synthetic.typo.4",
+    "method": "bm25_fuzzy",
+    "query": "HandleCreatUser handlecreateuser"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.1",
+    "method": "bm25",
+    "query": "validate token"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.1",
+    "method": "bm25_fuzzy",
+    "query": "validate token"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.2",
+    "method": "bm25",
+    "query": "get env with default"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.2",
+    "method": "bm25_fuzzy",
+    "query": "get env with default"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.3",
+    "method": "bm25",
+    "query": "begin transaction"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.3",
+    "method": "bm25_fuzzy",
+    "query": "begin transaction"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.4",
+    "method": "bm25",
+    "query": "handle create user"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.4",
+    "method": "bm25_fuzzy",
+    "query": "handle create user"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.1",
+    "method": "bm25",
+    "query": "invalidate a login credential"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.1",
+    "method": "bm25_fuzzy",
+    "query": "invalidate a login credential"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.2",
+    "method": "bm25",
+    "query": "read configuration from environment variables"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.2",
+    "method": "bm25_fuzzy",
+    "query": "read configuration from environment variables"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.3",
+    "method": "bm25",
+    "query": "start a database transaction"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.3",
+    "method": "bm25_fuzzy",
+    "query": "start a database transaction"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.4",
+    "method": "bm25",
+    "query": "add a new user record"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.4",
+    "method": "bm25_fuzzy",
+    "query": "add a new user record"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.1",
+    "method": "bm25",
+    "query": "GetEnvWithDefaulter"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.1",
+    "method": "bm25_fuzzy",
+    "query": "GetEnvWithDefaulter getenvwithdefault"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.2",
+    "method": "bm25",
+    "query": "ValidateToken rejects revoked signing certificates"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.2",
+    "method": "bm25_fuzzy",
+    "query": "ValidateToken rejects revoked signing certificates"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.3",
+    "method": "bm25",
+    "query": "photosynthesis chloroplast carbon fixation"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.3",
+    "method": "bm25_fuzzy",
+    "query": "photosynthesis chloroplast carbon fixation"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.4",
+    "method": "bm25",
+    "query": "PostQuantumKeyExchangeNeverExists"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.4",
+    "method": "bm25_fuzzy",
+    "query": "PostQuantumKeyExchangeNeverExists"
+  }
+]
