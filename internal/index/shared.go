@@ -27,8 +27,9 @@ import (
 // indexSharedWithTree indexes one project membership in a repository-scoped
 // content-addressed collection. Existing path+content revisions and exact
 // embedding inputs are reused without calling the embedding backend.
-func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
-	stats := Stats{TotalFiles: len(curTree.Files)}
+func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ string, force bool, curTree *merkle.Tree, progress ProgressFunc) (stats Stats, retErr error) {
+	stats = Stats{TotalFiles: len(curTree.Files), FilesHashed: curTree.FilesHashed, FilesReused: curTree.FilesReused}
+	defer func() { idx.logIndexPass(projectDir, force, curTree.RootHash, stats, retErr) }()
 	oldHashes, err := idx.store.GetFileHashes()
 	if err != nil {
 		return stats, fmt.Errorf("get project file hashes: %w", err)
@@ -200,6 +201,7 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 			}
 			if attached {
 				stats.IndexedFiles++
+				stats.RevisionsAttached++
 				continue
 			}
 		}
@@ -222,6 +224,7 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 			continue
 		}
 
+		stats.FilesParsed++
 		chunks, err := idx.chunker.Chunk(relativePath, content)
 		if err != nil {
 			if idx.logger != nil {

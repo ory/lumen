@@ -501,7 +501,15 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 	// use preferredRoot if it already has an index — otherwise fall back to
 	// findEffectiveRoot to avoid adopting the outer monorepo root.
 	var effectiveRoot string
-	if preferredRoot != "" && !git.IsWorktree(projectPath) {
+	if root, err := git.RepoRoot(projectPath); err == nil && !pathCrossesSkipDir(root, projectPath) {
+		// Git projects are indexed at their worktree top level, exactly as
+		// `lumen index` and SessionStart do. The repository-scoped collection
+		// exists for every directory in the repository, so its presence cannot
+		// select a root: adopting a subdirectory (or an enclosing checkout)
+		// would create a separate membership with different relative paths and
+		// re-parse and re-embed content the worktree already has.
+		effectiveRoot = root
+	} else if preferredRoot != "" && !git.IsWorktree(projectPath) {
 		clean := filepath.Clean(preferredRoot)
 		// Only adopt the preferred root if an index already exists there.
 		// Creating a brand-new index at cwd when path is a small subdirectory

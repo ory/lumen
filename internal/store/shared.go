@@ -49,10 +49,11 @@ type CollectionStats struct {
 
 // CleanupStats reports a shared collection garbage-collection pass.
 type CleanupStats struct {
-	ProjectsRemoved int
-	VectorsRemoved  int
-	BytesReclaimed  int64
-	ProjectsLeft    int
+	ProjectsRemoved   int
+	VectorsRemoved    int
+	BytesReclaimed    int64
+	ProjectsLeft      int
+	ScanCachesRemoved int
 }
 
 func openCollection(dsn string, dimensions int, vectorStorage string) (*Store, error) {
@@ -1029,5 +1030,30 @@ func CleanupCollectionAt(dbPath string, cutoff time.Time) (CleanupStats, bool, e
 	}
 	defer func() { _ = s.Close() }()
 	stats, err := s.CleanupStaleProjects(cutoff)
-	return stats, true, err
+	if err != nil {
+		return stats, true, err
+	}
+	// Sweeping after every pass also retries sidecars orphaned by an earlier
+	// partial failure.
+	rows, err := s.reader().Query(`SELECT path FROM projects`)
+	if err != nil {
+		return stats, true, err
+	}
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			_ = rows.Close()
+			return stats, true, err
+		}
+		paths = append(paths, path)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return stats, true, err
+	}
+	stats.ScanCachesRemoved, err = removeOrphanScanCaches(dbPath, paths)
+	if err != nil {
+		return stats, true, fmt.Errorf("remove orphan scan caches: %w", err)
+	}
+	return stats, true, nil
 }

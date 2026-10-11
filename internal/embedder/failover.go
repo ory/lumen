@@ -116,7 +116,29 @@ func (f *FailoverEmbedder) ModelName() string {
 // Embed generates embeddings for the given texts. On first call it probes
 // all servers for health and selects the first healthy one. On transient
 // errors (5xx, network) it fails over to the next healthy server.
+//
+// Texts are submitted in provider-sized requests, and the shared compute
+// budget is admitted separately for each one. A query that announces intent
+// while a background request is running is therefore served before the next
+// background request instead of after the whole call.
 func (f *FailoverEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	if len(texts) <= embedBatchSize {
+		return f.embedRequest(ctx, texts)
+	}
+	vectors := make([][]float32, 0, len(texts))
+	for start := 0; start < len(texts); start += embedBatchSize {
+		batch, err := f.embedRequest(ctx, texts[start:min(start+embedBatchSize, len(texts))])
+		if err != nil {
+			return nil, fmt.Errorf("embedding batch starting at %d: %w", start, err)
+		}
+		vectors = append(vectors, batch...)
+	}
+	return vectors, nil
+}
+
+// embedRequest embeds at most embedBatchSize texts, which each provider sends
+// as a single HTTP request, while holding one compute budget admission.
+func (f *FailoverEmbedder) embedRequest(ctx context.Context, texts []string) ([][]float32, error) {
 	release, err := acquireBudget(ctx, f.budgetDir)
 	if err != nil {
 		return nil, err

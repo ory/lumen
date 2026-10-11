@@ -1,0 +1,146 @@
+[
+  {
+    "id": "wrong-collection-identity",
+    "description": "Key the collection by worktree path instead of the shared Git common directory",
+    "file": "internal/config/config.go",
+    "find": "\tif commonDir, err := git.CommonDir(projectPath); err == nil {\n\t\tidentity = commonDir\n",
+    "replace": "\tif _, err := git.CommonDir(projectPath); err == nil {\n",
+    "test": "TestIdenticalWorktreesShareOneCollection",
+    "marker": "A:sibling-zero-parse"
+  },
+  {
+    "id": "wrong-parent-root",
+    "description": "Let MCP adopt the cwd or a collection-file ancestor instead of the worktree root",
+    "file": "cmd/stdio.go",
+    "find": "\tif root, err := git.RepoRoot(projectPath); err == nil && !pathCrossesSkipDir(root, projectPath) {\n",
+    "replace": "\tif root, err := git.RepoRoot(projectPath); false && err == nil && !pathCrossesSkipDir(root, projectPath) {\n",
+    "test": "TestTopologiesKeepWorktreesIsolated",
+    "marker": "A:subdir-reuses-root"
+  },
+  {
+    "id": "forced-full-hashing",
+    "description": "Never reuse metadata-validated hashes; read every file on every scan",
+    "file": "internal/merkle/cache.go",
+    "find": "\t\tif reusable {\n",
+    "replace": "\t\tif false && reusable {\n",
+    "test": "TestWarmSearchesAndRestartsReuseWork",
+    "marker": "A:warm-reuse-hashes"
+  },
+  {
+    "id": "bypass-revision-attachment",
+    "description": "Skip AttachExistingFileRevision so siblings re-parse identical revisions",
+    "file": "internal/index/shared.go",
+    "find": "\t\tif !force {\n\t\t\tattached, err := idx.store.AttachExistingFileRevision(relativePath, contentHash)\n",
+    "replace": "\t\tif false {\n\t\t\tattached, err := idx.store.AttachExistingFileRevision(relativePath, contentHash)\n",
+    "test": "TestIdenticalWorktreesShareOneCollection",
+    "marker": "A:sibling-zero-parse"
+  },
+  {
+    "id": "unchanged-files-as-changed",
+    "description": "Diff against an empty tree so every unchanged file is revisited",
+    "file": "internal/index/shared.go",
+    "find": "\t\tadded, removed, modified := merkle.Diff(&merkle.Tree{Files: oldHashes}, curTree)\n",
+    "replace": "\t\tadded, removed, modified := merkle.Diff(&merkle.Tree{Files: map[string]string{}}, curTree)\n",
+    "test": "TestEditsAndBranchSwitchesDoMinimalWork",
+    "marker": "A:edit-no-unchanged-work"
+  },
+  {
+    "id": "disable-durable-vector-reuse",
+    "description": "Report every chunk input as missing from the durable vector table",
+    "file": "internal/store/shared.go",
+    "find": "\t\tif _, ok := present[hash]; !ok {\n",
+    "replace": "\t\tif _, ok := present[hash]; true || !ok {\n",
+    "test": "TestEditsAndBranchSwitchesDoMinimalWork",
+    "marker": "A:edit-embed-only-missing"
+  },
+  {
+    "id": "bypass-embed-shared-claims",
+    "description": "Embed directly instead of claiming exact inputs through EmbedShared",
+    "file": "internal/index/shared.go",
+    "find": "\t\t\tembedded, err = idx.store.EmbedShared(ctx, batchTexts, idx.emb.Embed)\n",
+    "replace": "\t\t\tembedded, err = idx.emb.Embed(ctx, batchTexts)\n",
+    "test": "TestConcurrentProcessesComputeOnce",
+    "marker": "A:concurrent-cold-once"
+  },
+  {
+    "id": "drop-search-membership-predicate",
+    "description": "Score chunks from every membership in the collection",
+    "file": "internal/store/shared.go",
+    "find": "\twhere := \"pf.project_id = ?\"\n",
+    "replace": "\twhere := \"(pf.project_id = ? OR 1)\"\n",
+    "test": "TestTopologiesKeepWorktreesIsolated",
+    "marker": "A:no-sibling-leak"
+  },
+  {
+    "id": "disable-retention-prune",
+    "description": "Never evict retained revisions by TTL or byte budget",
+    "file": "internal/store/retention.go",
+    "find": "\t\tif ttl == 0 || now-unused >= ttl || unused > now || size > budget-retained {\n",
+    "replace": "\t\tif false && (ttl == 0 || now-unused >= ttl || unused > now || size > budget-retained) {\n",
+    "test": "TestRetentionAndCleanupBoundStorage",
+    "marker": "A:retention-budget"
+  },
+  {
+    "id": "omit-orphan-vector-cleanup",
+    "description": "Keep vectors after the last revision referencing them is deleted",
+    "file": "internal/store/shared.go",
+    "find": "\t\t\tif used {\n",
+    "replace": "\t\t\tif used || true {\n",
+    "test": "TestRetentionAndCleanupBoundStorage",
+    "marker": "A:retention-gc"
+  },
+  {
+    "id": "omit-scan-cache-cleanup",
+    "description": "Skip removal of scan sidecars whose membership was cleaned up",
+    "file": "internal/store/shared.go",
+    "find": "\tstats.ScanCachesRemoved, err = removeOrphanScanCaches(dbPath, paths)\n",
+    "replace": "\tstats.ScanCachesRemoved, err = len(paths)*0, nil\n",
+    "test": "TestRetentionAndCleanupBoundStorage",
+    "marker": "A:no-orphan-scan"
+  },
+  {
+    "id": "disable-compute-coordination",
+    "description": "Admit every embedding request without the shared compute budget",
+    "file": "internal/embedder/budget.go",
+    "find": "\tif dir == \"\" {\n",
+    "replace": "\tif true || dir == \"\" {\n",
+    "test": "TestComputeSchedulingAcrossProcesses",
+    "marker": "A:single-flight"
+  },
+  {
+    "id": "no-yield-between-http-batches",
+    "description": "Hold one budget admission across all provider requests of a call",
+    "file": "internal/embedder/failover.go",
+    "find": "\tif len(texts) <= embedBatchSize {\n",
+    "replace": "\tif true || len(texts) <= embedBatchSize {\n",
+    "test": "TestComputeSchedulingAcrossProcesses",
+    "marker": "A:query-before-next-batch"
+  },
+  {
+    "id": "hook-no-spawn-when-no-index",
+    "description": "SessionStart does not spawn the background indexer for a project without an index",
+    "file": "cmd/hook.go",
+    "find": "\t\tbgIndexer(cwd)\n\t\tif donorPath := findDonor(cwd, modelName); donorPath != \"\" {\n",
+    "replace": "\t\t_ = bgIndexer\n\t\tif donorPath := findDonor(cwd, modelName); donorPath != \"\" {\n",
+    "test": "TestSessionStartWarmsThroughSpawnedIndexer",
+    "marker": "A:hook-warms"
+  },
+  {
+    "id": "retention-bytes-omit-vectors",
+    "description": "Charge retained revisions only for metadata, not vector bytes",
+    "file": "internal/store/retention.go",
+    "find": "CASE (SELECT value FROM collection_meta WHERE key='vector_storage') WHEN 'float32' THEN 4 ELSE 1 END)",
+    "replace": "0)",
+    "test": "TestRetentionAndCleanupBoundStorage",
+    "marker": "A:retention-accounting"
+  },
+  {
+    "id": "sweep-deletes-project-locks",
+    "description": "Orphan scan sweep also unlinks per-project flock files",
+    "file": "internal/store/scan.go",
+    "find": "\tfor _, entry := range entries {\n\t\tname := entry.Name()\n",
+    "replace": "\tfor _, entry := range entries {\n\t\tname := entry.Name()\n\t\tif strings.HasPrefix(name, filepath.Base(dbPath)+\".project-\") && strings.HasSuffix(name, \".lock\") {\n\t\t\t_ = os.Remove(filepath.Join(filepath.Dir(dbPath), name))\n\t\t}\n",
+    "test": "TestRetentionAndCleanupBoundStorage",
+    "marker": "A:locks-preserved"
+  }
+]

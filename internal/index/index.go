@@ -62,6 +62,14 @@ type Stats struct {
 	FilesModified int
 	FilesRemoved  int
 
+	// Work actually performed. FilesHashed and FilesReused come from the
+	// freshness scan; FilesParsed counts chunker invocations; RevisionsAttached
+	// counts files linked to an existing complete revision without parsing.
+	FilesHashed       int
+	FilesReused       int
+	FilesParsed       int
+	RevisionsAttached int
+
 	// Reason explains why reindexing was triggered.
 	Reason string
 
@@ -350,6 +358,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	}
 
 	stats.TotalFiles = len(curTree.Files)
+	stats.FilesHashed, stats.FilesReused = curTree.FilesHashed, curTree.FilesReused
 
 	// Load stored hashes once — used for extension purge in both paths,
 	// and for deletion diff in both paths.
@@ -512,6 +521,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 			return stats, fmt.Errorf("upsert file placeholder %s: %w", relPath, err)
 		}
 
+		stats.FilesParsed++
 		chunks, err := idx.chunker.Chunk(relPath, content)
 		if err != nil {
 			if idx.logger != nil {

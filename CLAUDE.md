@@ -96,6 +96,8 @@ make build        # Cross-compile via Docker/xgoreleaser
 make build-local  # Build binary to bin/ (CGO_ENABLED=1)
 make test         # Run unit + integration tests
 make e2e          # Run E2E tests (requires Ollama/LM Studio)
+make e2e-worktrees            # Offline worktree efficiency suite (real binaries + Git)
+make test-worktree-mutations  # Curated production mutation gate for that suite
 make lint         # Run golangci-lint
 make vet          # Run go vet
 make format       # Format code & markdown
@@ -168,6 +170,7 @@ their repo-root counterparts. Install-specific entrypoints live in `.codex/`,
 │   ├── chunker/        # Go AST parsing → chunks
 │   ├── embedder/       # Ollama/LM Studio HTTP client
 │   └── merkle/         # Change detection (SHA-256 tree)
+├── e2e/worktrees/      # Offline worktree integration suite + mutation gate
 └── testdata/           # Fixtures for E2E tests
 ```
 

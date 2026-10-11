@@ -60,8 +60,10 @@ interval before all file revisions have been committed. Expired or excess result
 are pruned when new results are published. Force-index bypasses this cache.
 
 Backend requests share one compute slot per user data directory, across
-repositories and processes. Queries announce priority using OS locks; background
-indexing yields before its next request. Running requests are not preempted.
+repositories and processes. The slot is admitted separately for every provider
+HTTP request (at most 32 inputs), not for a whole indexing batch. Queries
+announce priority using OS locks; background indexing yields before its next
+HTTP request. Running requests are not preempted.
 This coordination requires no standalone daemon. Separate `XDG_DATA_HOME`
 settings intentionally have separate budgets.
 
@@ -201,6 +203,12 @@ retention overhead in its denominator.
 
 ## Cleanup and disk reclamation
 
+Cleanup also deletes the disposable scan sidecars
+(`index.db.scan-<sha256>.json`) of memberships that no longer exist, while it
+holds the exclusive collection guard. In-progress temporary files, unknown
+files, and per-project lock files are never removed: unlinking a lock file
+could split flock protection across two inodes.
+
 Run cleanup manually with:
 
 ```bash
@@ -226,6 +234,37 @@ every 24 hours. The throttle stamp is stored at
 `reclaimable_bytes` is a point-in-time estimate from SQLite's freelist. It may
 be nonzero until incremental vacuum can truncate pages, and it does not include
 WAL or filesystem allocation details.
+
+## Storage policy in summary
+
+- Active memberships, revisions, and vectors are kept as long as any project
+  references them.
+- Recently unused revisions: 256 MiB logical bytes and seven days per
+  collection by default.
+- Serialized embedding-result rendezvous cache: 64 MiB and ten minutes.
+- SQLite page, WAL, and scan-sidecar overhead are additional. There is no
+  absolute disk cap; the policies above bound logical retention only.
+
+## Verifying worktree efficiency
+
+Lumen writes structured diagnostics to `debug.log` in the data directory. Every
+line carries the writing process's `pid`.
+
+- `scan completed`: `project`, `forced`, `files_total`, `files_hashed`, and
+  `files_reused` from the actual freshness scan, including unchanged scans.
+- `index pass completed` (or `index pass failed`): `files_changed`,
+  `files_parsed` (chunker invocations), `revisions_attached` (files linked to an
+  existing revision without parsing), and `chunks_created`.
+
+`make e2e-worktrees` runs an offline suite that drives real Lumen binaries
+(CLI, the SessionStart hook and its detached indexer, and the MCP stdio server)
+against real Git worktrees sharing one data directory. A deterministic HTTP
+server stands in for the embedding provider and records every input. The suite
+asserts parsing, hashing, and embedding work; query priority; recovery; search
+isolation; retention; cleanup; and physical size.
+`make test-worktree-mutations` applies curated production-code mutants in a
+disposable source copy. Each must fail its designated assertion, and the
+restored source must pass again.
 
 ## Reindexing versus wiping
 

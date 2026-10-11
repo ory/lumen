@@ -6,11 +6,10 @@
 package index
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"path/filepath"
 
 	"github.com/ory/lumen/internal/merkle"
+	"github.com/ory/lumen/internal/store"
 )
 
 func (idx *Indexer) buildTree(projectDir string, force bool) (*merkle.Tree, error) {
@@ -21,7 +20,42 @@ func (idx *Indexer) buildTree(projectDir string, force bool) (*merkle.Tree, erro
 	value, _ := idx.scanCaches.LoadOrStore(root, &merkle.Cache{})
 	cachePath := ""
 	if idx.dsn != "" && idx.dsn != ":memory:" {
-		cachePath = fmt.Sprintf("%s.scan-%x.json", idx.dsn, sha256.Sum256([]byte(root)))
+		cachePath = store.ScanCachePath(idx.dsn, root)
 	}
-	return value.(*merkle.Cache).Build(root, makeSkip(root), cachePath, force)
+	tree, err := value.(*merkle.Cache).Build(root, makeSkip(root), cachePath, force)
+	if err == nil && idx.logger != nil {
+		idx.logger.Info("scan completed",
+			"project", root,
+			"forced", force,
+			"files_total", len(tree.Files),
+			"files_hashed", tree.FilesHashed,
+			"files_reused", tree.FilesReused,
+			"root_hash", tree.RootHash,
+		)
+	}
+	return tree, err
+}
+
+// logIndexPass records the work one indexing pass actually performed. It is
+// emitted for failed passes too, so interrupted work remains observable.
+func (idx *Indexer) logIndexPass(projectDir string, force bool, rootHash string, stats Stats, err error) {
+	if idx.logger == nil {
+		return
+	}
+	args := []any{
+		"project", projectDir,
+		"forced", force,
+		"files_total", stats.TotalFiles,
+		"files_changed", stats.FilesChanged,
+		"files_removed", stats.FilesRemoved,
+		"files_parsed", stats.FilesParsed,
+		"revisions_attached", stats.RevisionsAttached,
+		"chunks_created", stats.ChunksCreated,
+		"root_hash", rootHash,
+	}
+	if err != nil {
+		idx.logger.Warn("index pass failed", append(args, "error", err.Error())...)
+		return
+	}
+	idx.logger.Info("index pass completed", args...)
 }
