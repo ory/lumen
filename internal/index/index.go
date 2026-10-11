@@ -62,6 +62,14 @@ type Stats struct {
 	FilesModified int
 	FilesRemoved  int
 
+	// Work actually performed. FilesHashed and FilesReused come from the
+	// freshness scan; FilesParsed counts chunker invocations; RevisionsAttached
+	// counts files linked to an existing complete revision without parsing.
+	FilesHashed       int
+	FilesReused       int
+	FilesParsed       int
+	RevisionsAttached int
+
 	// Reason explains why reindexing was triggered.
 	Reason string
 
@@ -88,6 +96,7 @@ type StatusInfo struct {
 
 // Indexer orchestrates chunking, embedding, and storage for a code index.
 type Indexer struct {
+	scanCaches     sync.Map // absolute worktree root -> metadata/hash cache
 	mu             sync.Mutex
 	projectMu      sync.RWMutex
 	store          *store.Store
@@ -165,6 +174,7 @@ func (idx *Indexer) rebuildStore(projectPath string) error {
 
 // Close closes the underlying store.
 func (idx *Indexer) Close() error {
+	idx.scanCaches.Range(func(_, value any) bool { _ = value.(*merkle.Cache).Close(); return true })
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	idx.projectMu.Lock()
@@ -189,8 +199,8 @@ func makeSkip(projectDir string) merkle.SkipFunc {
 // Index indexes the project at projectDir. If force is true, all files are
 // re-indexed regardless of whether they have changed.
 func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, progress ProgressFunc) (Stats, error) {
-	// Build tree outside the lock: it is read-only and can be slow for large projects.
-	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
+	// Scan outside the index lock; the cache serializes per-worktree checks.
+	curTree, err := idx.buildTree(projectDir, force)
 	if err != nil {
 		return Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
@@ -265,8 +275,8 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 // EnsureFresh checks if the index is stale and re-indexes if needed.
 // Returns whether a re-index occurred, the stats, and any error.
 func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress ProgressFunc) (bool, Stats, error) {
-	// Build tree outside the lock: it is read-only and can be slow for large projects.
-	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
+	// Scan outside the index lock; the cache serializes per-worktree checks.
+	curTree, err := idx.buildTree(projectDir, false)
 	if err != nil {
 		return false, Stats{}, fmt.Errorf("build merkle tree: %w", err)
 	}
@@ -335,6 +345,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 // merkle tree, so callers that already have one (e.g. EnsureFresh) do not need
 // to build it again.
 func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash string, force bool, curTree *merkle.Tree, progress ProgressFunc) (stats Stats, retErr error) {
+	ctx = embedder.BackgroundContext(ctx)
 	defer func() {
 		if retErr != nil {
 			_ = idx.store.SetMeta(store.MetaLastIndexError, retErr.Error())
@@ -347,6 +358,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 	}
 
 	stats.TotalFiles = len(curTree.Files)
+	stats.FilesHashed, stats.FilesReused = curTree.FilesHashed, curTree.FilesReused
 
 	// Load stored hashes once — used for extension purge in both paths,
 	// and for deletion diff in both paths.
@@ -509,6 +521,7 @@ func (idx *Indexer) indexWithTree(ctx context.Context, projectDir, oldRootHash s
 			return stats, fmt.Errorf("upsert file placeholder %s: %w", relPath, err)
 		}
 
+		stats.FilesParsed++
 		chunks, err := idx.chunker.Chunk(relPath, content)
 		if err != nil {
 			if idx.logger != nil {
@@ -610,7 +623,7 @@ func (idx *Indexer) LastIndexedAt(projectDir string) (time.Time, bool) {
 // IsFresh does not acquire the indexer mutex; it reads through the store's
 // read-only connection (SQLite WAL isolation).
 func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
-	curTree, err := merkle.BuildTree(projectDir, makeSkip(projectDir))
+	curTree, err := idx.buildTree(projectDir, false)
 	if err != nil {
 		return false, fmt.Errorf("build merkle tree: %w", err)
 	}

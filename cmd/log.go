@@ -39,9 +39,10 @@ func newDebugLogger() (*slog.Logger, io.Closer) {
 		return slog.New(slog.NewJSONHandler(os.Stderr, nil)), nil
 	}
 
+	// Several Lumen processes append to one log; pid attributes each line.
 	logger := slog.New(slog.NewJSONHandler(f, &slog.HandlerOptions{
 		Level: parseLogLevel(os.Getenv("LUMEN_LOG_LEVEL")),
-	}))
+	})).With("pid", os.Getpid())
 	return logger, f
 }
 

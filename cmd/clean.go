@@ -213,7 +213,7 @@ func cleanIndex(reporter cleanReporter, name, hashDir string, days int, cutoff t
 			return false, store.CleanupStats{}, fmt.Errorf("clean shared collection %s: %w", name, sharedErr)
 		}
 		if sharedStats.ProjectsLeft > 0 {
-			reporter.Info(fmt.Sprintf("Cleaned %s: removed %d projects and %d vectors.", name, sharedStats.ProjectsRemoved, sharedStats.VectorsRemoved))
+			reporter.Info(fmt.Sprintf("Cleaned %s: removed %d projects, %d vectors, and %d orphan scan caches.", name, sharedStats.ProjectsRemoved, sharedStats.VectorsRemoved, sharedStats.ScanCachesRemoved))
 			return false, sharedStats, nil
 		}
 		// Empty collections have no future owner and can be removed as a

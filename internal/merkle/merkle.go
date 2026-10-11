@@ -28,8 +28,10 @@ import (
 
 // Tree holds the Merkle tree state for a project directory.
 type Tree struct {
-	RootHash string            // SHA-256 of the root directory
-	Files    map[string]string // relative path -> content SHA-256 hash
+	FilesHashed int               // files read during this scan
+	FilesReused int               // hashes reused after metadata validation
+	RootHash    string            // SHA-256 of the root directory
+	Files       map[string]string // relative path -> content SHA-256 hash
 }
 
 // SkipFunc returns true for paths that should be skipped during tree building.
@@ -44,7 +46,6 @@ func DefaultSkip(relPath string, isDir bool) bool {
 	return !strings.HasSuffix(base, ".go")
 }
 
-
 const merkleWorkers = 8
 
 const maxFileSize = 10 * 1024 * 1024 // 10 MB
@@ -57,7 +58,7 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		skip = DefaultSkip
 	}
 
-	relPaths, err := collectFilePaths(rootDir, skip)
+	relPaths, err := collectFilePaths(rootDir, skip, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +68,12 @@ func BuildTree(rootDir string, skip SkipFunc) (*Tree, error) {
 		return nil, err
 	}
 
+	tree.FilesHashed = len(tree.Files)
 	tree.RootHash = buildDirHash(tree.Files)
 	return tree, nil
 }
 
-func collectFilePaths(rootDir string, skip SkipFunc) ([]string, error) {
+func collectFilePaths(rootDir string, skip SkipFunc, visitDir func(string)) ([]string, error) {
 	var relPaths []string
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -85,11 +87,17 @@ func collectFilePaths(rootDir string, skip SkipFunc) ([]string, error) {
 		}
 		rel, _ := filepath.Rel(rootDir, path)
 		if rel == "." {
+			if visitDir != nil {
+				visitDir(path)
+			}
 			return nil
 		}
 		if d.IsDir() {
 			if skip(rel, true) {
 				return filepath.SkipDir
+			}
+			if visitDir != nil {
+				visitDir(path)
 			}
 			return nil
 		}

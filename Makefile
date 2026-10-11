@@ -4,7 +4,7 @@ GOFLAGS  := -tags=$(GOTAGS)
 
 XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
-.PHONY: build build-local build-bench-swe test e2e e2e-lang lint vet tidy clean format plugin-dev
+.PHONY: build build-local build-bench-swe test e2e e2e-lang e2e-worktrees test-worktree-mutations lint vet tidy clean format plugin-dev
 
 build:
 	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
@@ -25,6 +25,15 @@ e2e:
 
 e2e-lang:
 	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 -run 'TestLang_' ./...
+
+# Offline: real Lumen binaries, Git worktrees, and MCP stdio against a
+# deterministic embedding server. Requires git; no Ollama or LM Studio.
+e2e-worktrees:
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),worktree_e2e -timeout=20m -v -count=1 ./e2e/worktrees/
+
+# Curated production mutants must each fail their designated assertion.
+test-worktree-mutations:
+	CGO_ENABLED=1 $(GO) run ./e2e/worktrees/mutate $(if $(MUTATIONS_OUT),-out $(MUTATIONS_OUT))
 
 lint:
 	golangci-lint run

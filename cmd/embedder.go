@@ -17,9 +17,12 @@ package cmd
 import (
 	"github.com/ory/lumen/internal/config"
 	"github.com/ory/lumen/internal/embedder"
+	"path/filepath"
 )
 
 // newEmbedder creates a FailoverEmbedder from the given ConfigService.
 func newEmbedder(cfg *config.ConfigService) *embedder.FailoverEmbedder {
-	return embedder.NewFailoverEmbedder(cfg)
+	emb := embedder.NewFailoverEmbedder(cfg)
+	emb.SetComputeBudget(filepath.Join(config.XDGDataDir(), "lumen", "compute"))
+	return emb
 }

@@ -140,6 +140,10 @@ func TestSharedIndexRetriesWhenPreviouslySharedVectorVanishes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = idx.Close() }()
+	if err := idx.store.SetRevisionCachePolicy(0, 0); err != nil {
+		t.Fatal(err)
+	}
+
 	idx.chunker = fixedChunker{chunks: []chunker.Chunk{chunkA, chunkB}}
 	if _, err := idx.store.StoreFileRevision("main.go", "old", []chunker.Chunk{chunkA}, map[int][]float32{0: {1, 0, 0, 0}}); err != nil {
 		t.Fatal(err)

@@ -251,21 +251,76 @@ jobs:
       - name: Spawn-semantics regression guard
         run: node scripts/test_run_spawn.js
 
+  worktree_e2e:
+    name: Worktree efficiency (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # Offline: real Lumen binaries, Git worktrees, SessionStart children,
+      # and MCP stdio against a deterministic embedding server.
+      - name: Worktree integration suite
+        run: make e2e-worktrees
+
+  worktree_mutations:
+    name: Worktree mutation gate
+    runs-on: ubuntu-latest
+    if: github.actor != 'release-please[bot]'
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Curated production mutants
+        run: make test-worktree-mutations MUTATIONS_OUT="$RUNNER_TEMP/worktree-mutations"
+
+      - name: Upload mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worktree-mutations
+          path: ${{ runner.temp }}/worktree-mutations
+          if-no-files-found: ignore
+
   # The repository ruleset requires the "E2E" check. This aggregator keeps
   # that stable context while making semantic tests, fresh host installs,
-  # native artifacts, and every launcher platform transitively merge-gating.
+  # native artifacts, every launcher platform, the offline worktree suite, and
+  # its production mutation gate transitively merge-gating.
   e2e:
     name: E2E
     runs-on: ubuntu-latest
     if: ${{ always() && github.actor != 'release-please[bot]' }}
-    needs: [semantic_e2e, build, scripts]
+    needs: [semantic_e2e, build, scripts, worktree_e2e, worktree_mutations]
     steps:
       - name: Require every distribution and runtime check
         env:
           SEMANTIC_E2E_RESULT: ${{ needs.semantic_e2e.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           SCRIPTS_RESULT: ${{ needs.scripts.result }}
+          WORKTREE_E2E_RESULT: ${{ needs.worktree_e2e.result }}
+          WORKTREE_MUTATIONS_RESULT: ${{ needs.worktree_mutations.result }}
         run: |
           test "$SEMANTIC_E2E_RESULT" = success
           test "$BUILD_RESULT" = success
           test "$SCRIPTS_RESULT" = success
+          test "$WORKTREE_E2E_RESULT" = success
+          test "$WORKTREE_MUTATIONS_RESULT" = success
