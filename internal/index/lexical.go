@@ -114,7 +114,11 @@ func (idx *Indexer) indexLexicalWithTree(ctx context.Context, projectDir string,
 			}
 			continue
 		}
-		// Keep symbol-sized lexical documents; no embedding context window is required.
+		// Keep symbol-sized lexical documents, but split oversized declarations
+		// (generated files, giant literals) so one BM25 hit cannot exceed the
+		// agent's tool output budget. No merging: lexical documents stay
+		// symbol-scoped so symbol boosts keep working.
+		chunks = splitOversizedChunks(chunks, idx.maxChunkTokens)
 		created, err := idx.store.StoreFileRevision(path, hash, chunks, nil)
 		if err != nil {
 			return stats, err

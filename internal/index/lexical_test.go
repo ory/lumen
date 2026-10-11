@@ -243,3 +243,28 @@ func TestGoModulePathReadsOnce(t *testing.T) {
 		t.Fatalf("missing go.mod module = %q", got)
 	}
 }
+
+func TestLexicalSplitsOversizedChunks(t *testing.T) {
+	// A single generated declaration thousands of lines long must not become
+	// one BM25 document: the MCP search result would exceed the agent's tool
+	// output budget (observed: 9,411-line chunk, 763k-char response).
+	var body strings.Builder
+	body.WriteString("package fixture\n\nvar generated = `\n")
+	for i := 0; i < 3000; i++ {
+		body.WriteString("// generated line with some stable filler text here\n")
+	}
+	body.WriteString("`\n")
+	idx, _ := lexicalFixture(t, map[string]string{"gen.go": body.String()})
+	chunks, err := idx.store.ListProjectChunks("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("expected the oversized declaration to be split, got %d chunk(s)", len(chunks))
+	}
+	for _, c := range chunks {
+		if span := c.EndLine - c.StartLine + 1; span > 100 {
+			t.Errorf("chunk %s:%d-%d spans %d lines; want <= 100 (maxChunkTokens=512)", c.FilePath, c.StartLine, c.EndLine, span)
+		}
+	}
+}

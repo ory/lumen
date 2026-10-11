@@ -32,4 +32,7 @@ package config
 //	4 — repository-scoped content-addressed collections with int8 vectors
 //	5 — leading comments of exported JS/TS declarations now start the chunk
 //	    (including the export keyword); BM25 metadata added to chunks
-const IndexVersion = "5"
+//	6 — BM25 indexing splits oversized chunks at LUMEN_MAX_CHUNK_TOKENS like
+//	    the semantic path; existing lexical indexes hold multi-thousand-line
+//	    documents that overflow MCP tool output
+const IndexVersion = "6"
