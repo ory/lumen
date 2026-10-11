@@ -36,6 +36,7 @@ import (
 	"github.com/ory/lumen/internal/index"
 	"github.com/ory/lumen/internal/indexlock"
 	"github.com/ory/lumen/internal/merkle"
+	"github.com/ory/lumen/internal/models"
 	"github.com/spf13/cobra"
 )
 
@@ -182,7 +183,7 @@ func (ic *indexerCache) dbPath(projectPath, model string) string {
 	if ic.cfg == nil {
 		return config.DBPathForProject(projectPath, model)
 	}
-	return configuredDBPath(ic.cfg, projectPath, model)
+	return configuredDBPath(ic.cfg, ic.embedder, projectPath, model)
 }
 
 func (ic *indexerCache) cacheGet(projectPath, model string) (cacheEntry, bool) {
@@ -563,7 +564,7 @@ func (ic *indexerCache) getOrCreate(projectPath string, preferredRoot string, mo
 		seed:      ic.seedFunc,
 	})
 
-	idx, err := index.NewIndexerForProject(dbPath, ic.embedder, ic.maxChunkTokens(), ic.vectorStorage(), effectiveRoot)
+	idx, err := index.NewIndexerForProject(dbPath, embedder.Pin(ic.embedder, modelName), ic.maxChunkTokens(), ic.vectorStorage(), effectiveRoot)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("create indexer: %w", err)
 	}
@@ -639,7 +640,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		embedTimeout = ic.getStaleEmbedTimeout()
 	}
 	embedCtx, embedCancel := context.WithTimeout(ctx, embedTimeout)
-	queryVec, err := ic.embedQuery(embedCtx, input.Query)
+	queryVec, err := ic.embedQuery(embedCtx, modelName, input.Query)
 	embedCancel()
 	if err != nil {
 		if out.StaleWarning != "" && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
@@ -1038,15 +1039,13 @@ func (ic *indexerCache) touchChecked(projectDir string, model ...string) {
 	}
 }
 
-func (ic *indexerCache) embedQuery(ctx context.Context, query string) ([]float32, error) {
-	vecs, err := ic.embedder.Embed(ctx, []string{query})
+// embedQuery embeds query for the collection of model.
+func (ic *indexerCache) embedQuery(ctx context.Context, model, query string) ([]float32, error) {
+	vec, err := embedder.EmbedQuery(ctx, embedder.Pin(ic.embedder, model), query)
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
 	}
-	if len(vecs) == 0 {
-		return nil, fmt.Errorf("embedder returned no vectors")
-	}
-	return vecs[0], nil
+	return vec, nil
 }
 
 // computeMaxDistance converts a user-facing min_score into the cosine distance
@@ -1055,7 +1054,7 @@ func (ic *indexerCache) embedQuery(ctx context.Context, query string) ([]float32
 // dimensionality via DimensionAwareMinScore.
 func computeMaxDistance(minScore *float64, model string, dims int) float64 {
 	if minScore == nil {
-		if spec, ok := embedder.KnownModels[model]; ok && spec.MinScore > 0 {
+		if spec, ok := embedder.KnownModels[models.BaseName(model)]; ok && spec.MinScore > 0 {
 			return 1.0 - spec.MinScore
 		}
 		if dims > 0 {
@@ -1131,6 +1130,15 @@ func (ic *indexerCache) handleHealthCheck(ctx context.Context, _ *mcp.CallToolRe
 	backend := srv.Backend
 	host := srv.Host
 	model := srv.Model
+
+	if backend == config.BackendLocal {
+		// In-process inference: report local readiness, never probe HTTP.
+		message, err := embedder.LocalReadiness(srv)
+		if err != nil {
+			return healthResult(backend, "in-process", model, false, err.Error()), nil, nil
+		}
+		return healthResult(backend, "in-process", model, true, message), nil, nil
+	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -1478,6 +1486,9 @@ func runStdio(_ *cobra.Command, _ []string) error {
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
 	}
+	// Registered before indexers.Close so the model is released only after
+	// background indexing has stopped.
+	defer func() { _ = emb.Close() }()
 
 	logger.Info("lumen config",
 		"model", emb.ModelName(),

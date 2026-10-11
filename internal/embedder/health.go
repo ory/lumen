@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/llama"
 )
 
 // ProbeServer verifies that an embedding service is reachable and that the
@@ -29,6 +30,10 @@ import (
 // without the requested model cannot serve embeddings and must not be selected
 // as a healthy failover target.
 func ProbeServer(ctx context.Context, srv config.ServerConfig) error {
+	if srv.Backend == config.BackendLocal {
+		_, err := LocalReadiness(srv)
+		return err
+	}
 	endpoint := strings.TrimRight(srv.Host, "/") + "/api/tags"
 	if srv.Backend == config.BackendLMStudio {
 		endpoint = strings.TrimRight(srv.Host, "/") + "/v1/models"
@@ -85,4 +90,32 @@ func ProbeServer(ctx context.Context, srv config.ServerConfig) error {
 		}
 	}
 	return fmt.Errorf("configured model %q is not loaded", srv.Model)
+}
+
+// LocalReadiness describes whether a local-backend server can embed without
+// contacting any server. It never downloads or loads the model: a managed
+// model that is not cached yet is reported as ready because it is downloaded
+// on first index or search. Errors mean embedding cannot work as configured.
+func LocalReadiness(srv config.ServerConfig) (string, error) {
+	if err := llama.Supported(); err != nil {
+		return "", err
+	}
+	info, err := LocalModel(srv)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case info.Managed && info.Present:
+		return fmt.Sprintf("managed model cached at %s; it is loaded in-process on first use", info.Path), nil
+	case info.Managed:
+		return fmt.Sprintf("managed model not downloaded yet; %.2f GiB will be downloaded to %s on first index or search",
+			float64(info.Size)/(1<<30), info.Path), nil
+	case !info.Present:
+		return "", fmt.Errorf("model_path %s does not exist or is not a regular file", info.Path)
+	}
+	if err := checkGGUF(info.Path); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("model file %s (%.2f GiB) is present; it is loaded in-process on first use",
+		info.Path, float64(info.Size)/(1<<30)), nil
 }

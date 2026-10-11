@@ -181,7 +181,10 @@ jobs:
           # amalgamation header as sqlite3-binding.h. Unix runners find a
           # system header; clean Windows runners need this explicit include.
           $compilerIncludeDir = $includeDir.Replace('\', '/')
-          "CGO_CFLAGS=-I$compilerIncludeDir" >> $env:GITHUB_ENV
+          # GCC does not realign the Win64 stack for 32-byte AVX spills (GCC
+          # bug 54412); the bundled llama.cpp AVX2 kernels need unaligned moves.
+          "CGO_CFLAGS=-O2 -g -I$compilerIncludeDir -Wa,-muse-unaligned-vector-move" >> $env:GITHUB_ENV
+          "CGO_CXXFLAGS=-O2 -g -Wa,-muse-unaligned-vector-move" >> $env:GITHUB_ENV
 
       - name: Build
         shell: bash
@@ -205,9 +208,35 @@ jobs:
 
       - name: Execute artifact indexing and search smoke
         shell: bash
-        run: go test -tags=fts5 ./internal/release -run TestBuiltArtifactIndexesChunks -count=1 -v
+        run: go test -tags=fts5 ./internal/release -run 'TestBuiltArtifactIndexesChunks|TestBuiltArtifactShipsLlamaCppNotice' -count=1 -v
         env:
           LUMEN_ARTIFACT: ${{ github.workspace }}/bin/lumen${{ runner.os == 'Windows' && '.exe' || '' }}
+
+      # Runs real in-process llama.cpp inference on a tiny generated GGUF so
+      # every native platform executes the bundled kernels, not just links them.
+      - name: In-process embedding runtime
+        shell: bash
+        run: go test -tags=fts5 ./internal/llama/... ./internal/embedder -run 'Tiny|Embed|Close|LoadModel|Supported|Local' -count=1 -v
+
+  release_build:
+    name: Release toolchain build
+    runs-on: ubuntu-latest
+    if: github.actor != 'release-please[bot]'
+    timeout-minutes: 60
+    container:
+      image: oryd/xgoreleaser:1.26.0-2.14.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Cross-compiles every release target, including the bundled llama.cpp,
+      # with the exact toolchains used by the release workflow.
+      - name: Build all release targets
+        run: goreleaser build --snapshot --clean
 
   scripts:
     name: Script tests (${{ matrix.os }})
@@ -258,14 +287,16 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     if: ${{ always() && github.actor != 'release-please[bot]' }}
-    needs: [semantic_e2e, build, scripts]
+    needs: [semantic_e2e, build, scripts, release_build]
     steps:
       - name: Require every distribution and runtime check
         env:
           SEMANTIC_E2E_RESULT: ${{ needs.semantic_e2e.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           SCRIPTS_RESULT: ${{ needs.scripts.result }}
+          RELEASE_BUILD_RESULT: ${{ needs.release_build.result }}
         run: |
           test "$SEMANTIC_E2E_RESULT" = success
           test "$BUILD_RESULT" = success
           test "$SCRIPTS_RESULT" = success
+          test "$RELEASE_BUILD_RESULT" = success

@@ -394,6 +394,9 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 	if err != nil {
 		t.Fatalf("getOrCreate(model-a): %v", err)
 	}
+	// The stub only reports its current profile, so resolve model-a's
+	// collection path before switching.
+	dbPathA := ic.dbPath(rootA, "model-a")
 
 	// Simulate model change due to failover/hot-reload.
 	emb.model = "model-b"
@@ -410,7 +413,7 @@ func TestIndexerCache_GetOrCreate_ModelChangeCreatesSeparateIndexer(t *testing.T
 		t.Fatalf("expected same effective root, got %q vs %q", rootA, rootB)
 	}
 
-	if _, err := os.Stat(ic.dbPath(rootA, "model-a")); err != nil {
+	if _, err := os.Stat(dbPathA); err != nil {
 		t.Fatalf("expected model-a DB to exist: %v", err)
 	}
 	if _, err := os.Stat(ic.dbPath(rootB, "model-b")); err != nil {
@@ -1279,8 +1282,9 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 
 	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	cfg := newTestConfigService(t, 512)
+	emb := &stubEmbedder{}
 	// Build a real DB at the expected path and stamp it with a recent timestamp.
-	dbPath := configuredDBPath(cfg, projectDir, "stub")
+	dbPath := configuredDBPath(cfg, emb, projectDir, emb.ModelName())
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1289,7 +1293,7 @@ func TestGetOrCreate_PrePopulatesTTLFromRecentIndex(t *testing.T) {
 	}
 
 	ic := &indexerCache{
-		embedder: &stubEmbedder{},
+		embedder: emb,
 		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")
@@ -1313,7 +1317,8 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 
 	t.Setenv("LUMEN_FRESHNESS_TTL", "30s")
 	cfg := newTestConfigService(t, 512)
-	dbPath := configuredDBPath(cfg, projectDir, "stub")
+	emb := &stubEmbedder{}
+	dbPath := configuredDBPath(cfg, emb, projectDir, emb.ModelName())
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1323,7 +1328,7 @@ func TestGetOrCreate_DoesNotPrePopulateTTLFromOldIndex(t *testing.T) {
 	}
 
 	ic := &indexerCache{
-		embedder: &stubEmbedder{},
+		embedder: emb,
 		cfg:      cfg,
 	}
 	idx, _, _, err := ic.getOrCreate(projectDir, "")

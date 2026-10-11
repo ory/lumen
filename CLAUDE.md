@@ -128,7 +128,8 @@ their repo-root counterparts. Install-specific entrypoints live in `.codex/`,
 
 | Variable                 | Default                  | Description                                |
 | ------------------------ | ------------------------ | ------------------------------------------ |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`) |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama`, `lmstudio`, or `local`) |
+| `LUMEN_MODEL_PATH`       | managed download         | GGUF file for the in-process `local` backend |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model (must be in registry)      |
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                          |
 | `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                       |
@@ -166,7 +167,8 @@ their repo-root counterparts. Install-specific entrypoints live in `.codex/`,
 │   ├── store/          # Shared SQLite collection + sqlite-vec operations
 │   ├── sqlitevec/      # Vendored sqlite-vec v0.1.9 wrapper and sources
 │   ├── chunker/        # Go AST parsing → chunks
-│   ├── embedder/       # Ollama/LM Studio HTTP client
+│   ├── embedder/       # Ollama/LM Studio HTTP clients + in-process local backend
+│   ├── llama/          # cgo bridge to vendored llama.cpp (csrc/, update-llama.sh)
 │   └── merkle/         # Change detection (SHA-256 tree)
 └── testdata/           # Fixtures for E2E tests
 ```
@@ -210,6 +212,12 @@ because slog writes to the log file while tui writes to the process stderr.
 - **256-batch embedding**: Only exact embedding inputs missing from the shared
   vector table are sent to the backend
 - **Cosine distance KNN**: Normalized for semantic similarity
+- **In-process local backend**: `backend: local` runs nomic-embed-code via
+  the vendored llama.cpp in `internal/llama` (regenerate with
+  `internal/llama/update-llama.sh`, never edit `csrc/` or generated wrappers by
+  hand). Its model name is qualified with the artifact fingerprint and
+  preprocessing profile (`LocalModelIdentity`); bump `localProfileVersion` when
+  tokenization, pooling, query instruction, normalization, or truncation change
 - **Vendored sqlite-vec**: v0.1.9 is compiled behind `internal/sqlitevec` so
   collection deletion and vector behavior do not drift with system packages
 - **Plugin system**: Declarative Claude and Cursor packaging at the repo root,

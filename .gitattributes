@@ -11,3 +11,8 @@ internal/sqlitevec/sqlite-vec.[ch] -text -whitespace linguist-vendored
 # core.autocrlf setting.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# Vendored llama.cpp sources stay byte-for-byte identical to the pinned
+# upstream revision; regenerate them with internal/llama/update-llama.sh.
+internal/llama/csrc/** -text -whitespace linguist-vendored
+internal/llama/internal/** -text -whitespace linguist-generated

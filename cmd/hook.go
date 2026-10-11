@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ory/lumen/internal/config"
+	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/git"
 	"github.com/ory/lumen/internal/store"
 )
@@ -143,8 +144,9 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		return directive + " No index yet — auto-created on first call."
 	}
 	emb := newEmbedder(cfg)
+	defer func() { _ = emb.Close() }()
 	modelName := emb.ModelName()
-	dims := cfg.ServerDims(0)
+	dims := embedder.ModelDimensions(emb, modelName)
 
 	// Normalize cwd to the git repository root so the DB path matches what
 	// `lumen index` and the MCP handler use. For non-git directories, walk
@@ -155,7 +157,7 @@ func generateSessionContextInternalWithDirective(directive, cwd string, findDono
 		cwd = ancestor
 	}
 
-	dbPath := configuredDBPath(cfg, cwd, modelName)
+	dbPath := configuredDBPath(cfg, emb, cwd, modelName)
 	if _, err := os.Stat(dbPath); err != nil {
 		// No index yet — kick off background pre-warming so the first search
 		// in this session doesn't pay the full seed + embed cost synchronously.

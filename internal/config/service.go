@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,38 @@ type ServerConfig struct {
 	Dims      int     `koanf:"dims"`
 	CtxLength int     `koanf:"ctx_length"`
 	MinScore  float64 `koanf:"min_score"`
+	// ModelPath is a user-supplied GGUF file for the local backend. When
+	// empty, the local backend uses its managed, checksum-pinned download.
+	ModelPath string `koanf:"model_path"`
+}
+
+// serverMaps converts servers into the koanf map form used to reload them.
+func serverMaps(servers []ServerConfig) []map[string]any {
+	out := make([]map[string]any, len(servers))
+	for i, s := range servers {
+		out[i] = map[string]any{
+			"backend": s.Backend, "host": s.Host, "model": s.Model,
+			"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
+			"model_path": s.ModelPath,
+		}
+	}
+	return out
+}
+
+// unmarshalServers reads the server list and expands a leading "~" in
+// model_path to the user's home directory.
+func unmarshalServers(k *koanf.Koanf) []ServerConfig {
+	var servers []ServerConfig
+	_ = k.Unmarshal("servers", &servers)
+	for i := range servers {
+		p := servers[i].ModelPath
+		if p == "~" || strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+			if home, err := os.UserHomeDir(); err == nil {
+				servers[i].ModelPath = filepath.Join(home, p[1:])
+			}
+		}
+	}
+	return servers
 }
 
 // ConfigService wraps koanf and provides typed config access.
@@ -49,6 +82,11 @@ func defaultServerForBackend(backend string) ServerConfig {
 			Backend: BackendLMStudio,
 			Host:    "http://localhost:1234",
 			Model:   models.DefaultLMStudioModel,
+		}
+	case BackendLocal:
+		return ServerConfig{
+			Backend: BackendLocal,
+			Model:   models.DefaultLocalModel,
 		}
 	default:
 		return ServerConfig{
@@ -131,14 +169,7 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 		_ = k.Unmarshal("servers", &servers)
 		if len(servers) > 0 {
 			servers[0].Model = svc.modelOverride
-			serverMaps := make([]map[string]any, len(servers))
-			for i, s := range servers {
-				serverMaps[i] = map[string]any{
-					"backend": s.Backend, "host": s.Host, "model": s.Model,
-					"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
-				}
-			}
-			_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+			_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps(servers)}, "."), nil)
 		}
 	}
 
@@ -156,14 +187,7 @@ func NewConfigService(configPath string, opts ...Option) (*ConfigService, error)
 		// Drop the existing list first — koanf merge would otherwise keep
 		// stale entries beyond the filtered length.
 		k.Delete("servers")
-		serverMaps := make([]map[string]any, len(filtered))
-		for i, s := range filtered {
-			serverMaps[i] = map[string]any{
-				"backend": s.Backend, "host": s.Host, "model": s.Model,
-				"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
-			}
-		}
-		_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+		_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps(filtered)}, "."), nil)
 	}
 
 	if err := svc.validate(); err != nil {
@@ -235,9 +259,10 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	ctx := os.Getenv("LUMEN_EMBED_CTX")
 	ollamaHost := os.Getenv("OLLAMA_HOST")
 	lmStudioHost := os.Getenv("LM_STUDIO_HOST")
+	modelPath := os.Getenv("LUMEN_MODEL_PATH")
 
 	// Only apply if at least one server env var is explicitly set
-	hasOverride := backendEnv != "" || model != "" || dims != "" || ctx != "" || ollamaHost != "" || lmStudioHost != ""
+	hasOverride := backendEnv != "" || model != "" || dims != "" || ctx != "" || ollamaHost != "" || lmStudioHost != "" || modelPath != ""
 	if !hasOverride {
 		return
 	}
@@ -272,6 +297,10 @@ func applyEnvOverrides(k *koanf.Koanf) {
 		if lmStudioHost != "" {
 			srv.Host = lmStudioHost
 		}
+	case BackendLocal:
+		if modelPath != "" {
+			srv.ModelPath = modelPath
+		}
 	default:
 		if ollamaHost != "" {
 			srv.Host = ollamaHost
@@ -291,14 +320,7 @@ func applyEnvOverrides(k *koanf.Koanf) {
 	servers[0] = srv
 
 	// Re-marshal servers back into koanf
-	serverMaps := make([]map[string]any, len(servers))
-	for i, s := range servers {
-		serverMaps[i] = map[string]any{
-			"backend": s.Backend, "host": s.Host, "model": s.Model,
-			"dims": s.Dims, "ctx_length": s.CtxLength, "min_score": s.MinScore,
-		}
-	}
-	_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps}, "."), nil)
+	_ = k.Load(confmap.Provider(map[string]any{"servers": serverMaps(servers)}, "."), nil)
 }
 
 func (s *ConfigService) MaxChunkTokens() int {
@@ -338,17 +360,14 @@ func (s *ConfigService) LogLevel() string {
 func (s *ConfigService) Servers() []ServerConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	var servers []ServerConfig
-	_ = s.k.Unmarshal("servers", &servers)
-	return servers
+	return unmarshalServers(s.k)
 }
 
 // serverAt returns the ServerConfig for index i without acquiring s.mu.
 // Callers must either hold s.mu before calling this, or call it on a struct
 // that has not yet been shared with other goroutines.
 func (s *ConfigService) serverAt(i int) (ServerConfig, bool) {
-	var servers []ServerConfig
-	_ = s.k.Unmarshal("servers", &servers)
+	servers := unmarshalServers(s.k)
 	if i < 0 || i >= len(servers) {
 		return ServerConfig{}, false
 	}
@@ -370,12 +389,28 @@ func (s *ConfigService) serverDims(i int) int {
 	if !ok {
 		return 0
 	}
+	return srv.ResolvedDims()
+}
+
+// ResolvedDims returns the configured dims, or the model's known dims.
+func (srv ServerConfig) ResolvedDims() int {
 	if srv.Dims != 0 {
 		return srv.Dims
 	}
-	canonical := resolveModel(srv.Model)
-	if spec, ok := models.KnownModels[canonical]; ok {
+	if spec, ok := models.KnownModels[resolveModel(srv.Model)]; ok {
 		return spec.Dims
+	}
+	return 0
+}
+
+// ResolvedCtxLength returns the configured context length, or the model's
+// known context length.
+func (srv ServerConfig) ResolvedCtxLength() int {
+	if srv.CtxLength != 0 {
+		return srv.CtxLength
+	}
+	if spec, ok := models.KnownModels[resolveModel(srv.Model)]; ok {
+		return spec.CtxLength
 	}
 	return 0
 }
@@ -393,14 +428,7 @@ func (s *ConfigService) ServerCtxLength(i int) int {
 	if !ok {
 		return 0
 	}
-	if srv.CtxLength != 0 {
-		return srv.CtxLength
-	}
-	canonical := resolveModel(srv.Model)
-	if spec, ok := models.KnownModels[canonical]; ok {
-		return spec.CtxLength
-	}
-	return 0
+	return srv.ResolvedCtxLength()
 }
 
 // ServerMinScore returns min score for server i. Uses unlocked serverDims
@@ -453,11 +481,20 @@ func (s *ConfigService) validate() error {
 		if srv.Backend == "" {
 			return fmt.Errorf("config: servers[%d]: backend is required", i)
 		}
-		if srv.Backend != BackendOllama && srv.Backend != BackendLMStudio {
+		if srv.Backend != BackendOllama && srv.Backend != BackendLMStudio && srv.Backend != BackendLocal {
 			return fmt.Errorf("config: servers[%d]: unknown backend %q", i, srv.Backend)
 		}
 		if srv.Model == "" {
 			return fmt.Errorf("config: servers[%d]: model is required", i)
+		}
+		if srv.Backend == BackendLocal {
+			if err := validateLocalServer(srv); err != nil {
+				return fmt.Errorf("config: servers[%d]: %w", i, err)
+			}
+			continue
+		}
+		if srv.ModelPath != "" {
+			return fmt.Errorf("config: servers[%d]: model_path is only supported by the local backend", i)
 		}
 		if srv.Host == "" {
 			return fmt.Errorf("config: servers[%d]: host is required", i)
@@ -469,6 +506,27 @@ func (s *ConfigService) validate() error {
 		if s.serverDims(i) == 0 {
 			return fmt.Errorf("config: servers[%d]: cannot resolve dims for model %q — set dims explicitly", i, srv.Model)
 		}
+	}
+	return nil
+}
+
+// validateLocalServer checks a local-backend server entry. The model file
+// itself is not touched: it may be downloaded or created after startup.
+func validateLocalServer(srv ServerConfig) error {
+	if _, ok := models.LocalModels[resolveModel(srv.Model)]; !ok {
+		supported := make([]string, 0, len(models.LocalModels))
+		for name := range models.LocalModels {
+			supported = append(supported, name)
+		}
+		slices.Sort(supported)
+		return fmt.Errorf("model %q is not supported by the local backend (supported: %s)",
+			srv.Model, strings.Join(supported, ", "))
+	}
+	if srv.ModelPath != "" && !filepath.IsAbs(srv.ModelPath) {
+		return fmt.Errorf("model_path %q must be an absolute path", srv.ModelPath)
+	}
+	if spec, ok := models.KnownModels[resolveModel(srv.Model)]; ok && srv.Dims != 0 && srv.Dims != spec.Dims {
+		return fmt.Errorf("dims %d does not match the %d dimensions produced by %q", srv.Dims, spec.Dims, srv.Model)
 	}
 	return nil
 }

@@ -457,7 +457,7 @@ func writeThreeServerYAML(t *testing.T) string {
 
 func clearServerEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX"} {
+	for _, k := range []string{"LUMEN_BACKEND", "LUMEN_EMBED_MODEL", "OLLAMA_HOST", "LM_STUDIO_HOST", "LUMEN_EMBED_DIMS", "LUMEN_EMBED_CTX", "LUMEN_MODEL_PATH"} {
 		t.Setenv(k, "")
 	}
 }
