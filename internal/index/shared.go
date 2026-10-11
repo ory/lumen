@@ -29,6 +29,7 @@ import (
 // embedding inputs are reused without calling the embedding backend.
 func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ string, force bool, curTree *merkle.Tree, progress ProgressFunc) (Stats, error) {
 	stats := Stats{TotalFiles: len(curTree.Files)}
+	retry := false
 	oldHashes, err := idx.store.GetFileHashes()
 	if err != nil {
 		return stats, fmt.Errorf("get project file hashes: %w", err)
@@ -199,12 +200,27 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 		}
 
 		content, err := os.ReadFile(filepath.Join(projectDir, relativePath))
-		if err != nil {
-			if os.IsPermission(err) {
-				stats.FilesSkipped++
-				continue
+		switch {
+		case os.IsNotExist(err):
+			// Deleted after the scan: drop it now; the retry pass confirms.
+			if err := idx.store.DeleteFileChunks(relativePath); err != nil {
+				return stats, fmt.Errorf("remove vanished file %s: %w", relativePath, err)
 			}
+			retry = true
+			continue
+		case os.IsPermission(err):
+			stats.FilesSkipped++
+			retry = true
+			continue
+		case err != nil:
 			return stats, fmt.Errorf("read file %s: %w", relativePath, err)
+		}
+		// The scan and read may race an editor. Never store content under the
+		// hash of a different revision; leave the file for the retry pass.
+		if fmt.Sprintf("%x", sha256.Sum256(content)) != contentHash {
+			stats.FilesSkipped++
+			retry = true
+			continue
 		}
 		if isBinaryContent(content) {
 			if err := idx.store.DeleteFileChunks(relativePath); err != nil {
@@ -300,13 +316,18 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 			return stats, fmt.Errorf("store %s metadata: %w", item.key, err)
 		}
 	}
+	if progress != nil && len(filesToIndex) > 0 {
+		progress(len(filesToIndex), len(filesToIndex), fmt.Sprintf("Indexing complete: %d files, %d new chunks", len(filesToIndex), stats.ChunksCreated))
+	}
+	// A pass that skipped files changed, vanished or unreadable after the scan
+	// is not a commit of this tree: leave it unstamped so the next pass retries.
+	if retry {
+		return stats, nil
+	}
 	// root_hash is the commit marker and must be written after every other
 	// durable file, vector, and metadata update.
 	if err := idx.store.SetMeta("root_hash", curTree.RootHash); err != nil {
 		return stats, fmt.Errorf("store root_hash metadata: %w", err)
-	}
-	if progress != nil && len(filesToIndex) > 0 {
-		progress(len(filesToIndex), len(filesToIndex), fmt.Sprintf("Indexing complete: %d files, %d new chunks", len(filesToIndex), stats.ChunksCreated))
 	}
 	idx.finishLegacyMigration(curTree)
 	return stats, nil

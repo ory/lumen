@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate correctly fixes both bugs: it detects NaN with standard `isnan()` (functionally equivalent to `jvp_number_is_nan()`) and frees the key, and it ensures `j` always advances at least once by initializing it to `i+1` rather than converting to a `do...while` loop. Both approaches are logically equivalent — starting `j = i+1` before the `while` produces the same iteration sequence as `j = i` with a `do...while`. The difference from the gold patch is stylistic: using the standard C library `isnan()` instead of the internal `jvp_number_is_nan()` helper and a different loop restructuring that achieves the same invariant.

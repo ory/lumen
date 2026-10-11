@@ -179,7 +179,10 @@ or refreshes the index automatically.
 - **Code-aware BM25** — weighted paths, symbols, signatures, comments and bodies;
   complete identifiers are preserved and also split into words
 - **Bounded related context** — at most two extra local snippets from one-hop
-  direct calls, within 6000 bytes, starting from the top three direct matches
+  direct calls, within 6000 bytes, starting from the top three direct matches.
+  Calls resolve only through syntax: same-file functions, Go module imports,
+  and relative JS/TS imports of named, `export { … }` or default exports
+  (`./x.js` resolves to `x.ts`; ambiguous modules are skipped)
 - **Incremental indexing** — Merkle hashes identify changed files
 - **12 language families** — Go, Python, TypeScript, JavaScript, Svelte, Rust,
   Ruby, Java, PHP, C/C++, C#, Dart
@@ -256,8 +259,8 @@ Supports **12 language families** with semantic chunking (10 benchmarked):
 | ---------------- | ----------- | ----------------------------------------- | --------------------------------------------- |
 | Go               | Native AST  | `.go`                                     | Benchmarked: -12% cost, Good quality          |
 | Python           | tree-sitter | `.py`                                     | Benchmarked: Perfect quality, -36% tokens     |
-| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`                             | Benchmarked: -64% tokens, -33% time           |
-| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`                     | Benchmarked: -66% tokens, -53% time           |
+| TypeScript / TSX | tree-sitter | `.ts`, `.tsx`, `.mts`, `.cts`             | Benchmarked: -64% tokens, -33% time           |
+| JavaScript / JSX | tree-sitter | `.js`, `.jsx`, `.mjs`, `.cjs`             | Benchmarked: -66% tokens, -53% time           |
 | Dart             | tree-sitter | `.dart`                                   | Benchmarked: -76% cost, -82% tokens, -79% time |
 | Rust             | tree-sitter | `.rs`                                     | Benchmarked: -39% cost, -34% time             |
 | Ruby             | tree-sitter | `.rb`                                     | Benchmarked: -24% cost, -11% time             |
@@ -268,7 +271,12 @@ Supports **12 language families** with semantic chunking (10 benchmarked):
 | C#               | tree-sitter | `.cs`                                     | Supported                                     |
 
 Go uses the native Go AST parser for the most precise chunks. All other
-languages use tree-sitter grammars. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
+languages use tree-sitter grammars. Svelte components contribute script
+declarations and statements plus template and style regions. Markdown/MDX
+files are split into fence-aware H1–H6 sections, and YAML/JSON into key-path
+chunks with source-accurate line ranges. Retrieval quality is tracked by a
+shared, source-judged case catalog — see
+[testdata/retrieval/README.md](testdata/retrieval/README.md). See [docs/BENCHMARKS.md](docs/BENCHMARKS.md)
 for all 10 per-language benchmark deep dives.
 
 ## Configuration

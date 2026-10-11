@@ -1,0 +1,9 @@
+package main
+import("context";"encoding/json";"fmt";"os";"sort";"time";"github.com/ory/lumen/internal/index")
+type Request struct{ID string `json:"id"`;Method string `json:"method"`;Query string `json:"query"`}
+type Hit struct{File string `json:"file"`;Content string `json:"content"`;Line int `json:"line"`;Score float64 `json:"score"`}
+type Result struct{ID string `json:"id"`;Method string `json:"method"`;Hits []Hit `json:"hits"`;Median float64 `json:"median_ms"`;P95 float64 `json:"p95_ms"`}
+func must(e error){if e!=nil{panic(e)}}
+func main(){root,db,qs:=os.Args[1],os.Args[2],os.Args[3];b,e:=os.ReadFile(qs);must(e);var reqs []Request;must(json.Unmarshal(b,&reqs));start:=time.Now();idx,e:=index.NewLexicalIndexer(db,512,root);must(e);defer idx.Close();_,e=idx.Index(context.Background(),root,false,nil);must(e);build:=float64(time.Since(start).Microseconds())/1000;var results []Result
+cache:=map[string]Result{};for _,r:=range reqs{if cached,ok:=cache[r.Query];ok{cached.ID=r.ID;cached.Method=r.Method;results=append(results,cached);continue};fmt.Fprintln(os.Stderr,"query",r.ID,r.Method);out:=Result{ID:r.ID,Method:r.Method};var timings []float64;for j:=0;j<2;j++{st:=time.Now();hits,e:=idx.SearchLexical(context.Background(),root,r.Query,3,"",false);must(e);d:=float64(time.Since(st).Nanoseconds())/1e6;if j>0{timings=append(timings,d)};if j==0{for _,h:=range hits{out.Hits=append(out.Hits,Hit{h.FilePath,h.Content,h.StartLine,float64(h.Distance)})}}};sort.Float64s(timings);out.Median=timings[len(timings)/2];out.P95=timings[len(timings)-1];results=append(results,out);cache[r.Query]=out;partial,_:=json.Marshal(results);os.WriteFile("/tmp/lumen-research-20261011/experiment-bm25-partial.json",partial,0600)}
+var size int64;for _,p:=range []string{db,db+"-wal",db+"-shm"}{if f,e:=os.Stat(p);e==nil{size+=f.Size()}};encoded,e:=json.Marshal(map[string]interface{}{"build_ms":build,"index_bytes":size,"results":results});must(e);fmt.Println(string(encoded))}

@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch only partially addresses the issue: it changes `AttributeWithValueContaining` to pass `trimQuoted=false` (preserving whitespace for quoted values only), but leaves `AttributeWithValueStarting`, `AttributeWithValueEnding`, and the `AttributeWithValue.matches()` `.trim()` call untouched. The gold patch takes a more complete approach by removing the entire trimming logic from `AttributeKeyPair` and always using `lowerCase()`, while the candidate still trims unquoted values and doesn't fix the exact-match (`=`) selector's runtime `.trim()` call. The candidate also adds no tests, whereas the gold patch includes comprehensive regression coverage.

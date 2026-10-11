@@ -1,0 +1,15 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..0808eab 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,10 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		if typ.Kind() == reflect.Struct && defaultVal.IsValid() && defaultVal.Type() == typ {
++			// keep default values of a struct when the node is null
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)

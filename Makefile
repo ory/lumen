@@ -4,7 +4,7 @@ GOFLAGS  := -tags=$(GOTAGS)
 
 XGORELEASER_IMAGE := oryd/xgoreleaser:1.26.0-2.14.1
 
-.PHONY: build build-local build-bench-swe test e2e e2e-lang lint vet tidy clean format plugin-dev
+.PHONY: build build-local build-bench-swe test eval e2e e2e-bm25 e2e-semantic e2e-lang lint vet tidy clean format plugin-dev
 
 build:
 	docker run --platform linux/amd64 --mount type=bind,source="$$(pwd)",target=/project \
@@ -20,11 +20,26 @@ build-bench-swe:
 test:
 	CGO_ENABLED=1 $(GO) test $(GOFLAGS) ./...
 
+# Offline retrieval catalog report (BM25, no embedding service).
+eval:
+	CGO_ENABLED=1 LUMEN_EVAL_REPORT=$${LUMEN_EVAL_REPORT:-$(CURDIR)/bin/retrieval-bm25.md} \
+		$(GO) test $(GOFLAGS) -count=1 -run 'TestRetrievalCatalogBM25' ./internal/index
+
+# All E2E suites. Semantic suites skip without Ollama + all-minilm.
 e2e:
-	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=10m -v -count=1 -run 'TestE2E_' ./...
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=15m -v -count=1 -run 'TestE2E_' ./...
+
+# BM25 executable suites; must pass with no embedding service.
+e2e-bm25:
+	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=15m -v -count=1 \
+		-run 'TestE2E_BM25|TestE2E_Catalog_BM25|TestLang_BM25SnapshotDiagnostics' .
+
+# Semantic executable suites; a missing embedding service is a failure.
+e2e-semantic:
+	LUMEN_E2E_SEMANTIC=require CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=20m -v -count=1 -run 'TestE2E_' ./...
 
 e2e-lang:
-	CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 -run 'TestLang_' ./...
+	LUMEN_E2E_SEMANTIC=require CGO_ENABLED=1 $(GO) test -tags=$(GOTAGS),e2e -timeout=30m -v -count=1 -run 'TestLang_' ./...
 
 lint:
 	golangci-lint run

@@ -104,6 +104,14 @@ func TestRetrievalEvaluation(t *testing.T) {
 				t.Fatalf("context budget exceeded: %d bytes, %d snippets", extraBytes, relatedCount)
 			}
 			extras += extraBytes
+			// The vocabulary-mismatch probe documents a known BM25 limit; every
+			// other case must hit, and expansion must surface its context.
+			if q.name != "vocabulary_mismatch" && (targetRank == 0 || targetRank > 3) {
+				t.Errorf("expand=%t case=%s: target %s not in top 3", expand, q.name, q.target)
+			}
+			if expand && q.contextTarget != "" && !foundContext {
+				t.Errorf("case=%s: context target %s not surfaced", q.name, q.contextTarget)
+			}
 			t.Logf("expand=%t case=%s direct_rank=%d context_target_found=%t extra_bytes=%d", expand, q.name, targetRank, foundContext, extraBytes)
 		}
 		t.Logf("expand=%t direct_hit@3=%.3f direct_MRR@3=%.3f context_target_recall=%.3f mean_query=%s extra_bytes=%d", expand, float64(hits)/float64(len(retrievalQueries)), rr/float64(len(retrievalQueries)), float64(contextHits), queryTime/time.Duration(len(retrievalQueries)), extras)

@@ -1289,7 +1289,7 @@ func TestAdversarial_Dart(t *testing.T) {
 	cs.mustHave("BaseClass.method", "method")
 	cs.mustHave("BaseClass.staticMethod", "method")
 	cs.mustHave("BaseClass.label", "method")       // getter
-	cs.mustHave("BaseClass.BaseClass", "function")  // constructor
+	cs.mustHave("BaseClass.BaseClass", "function") // constructor
 	cs.mustHave("AbstractBase", "type")
 	cs.mustHave("AbstractBase.abstractMethod", "method")
 	cs.mustHave("Child", "type")

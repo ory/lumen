@@ -206,7 +206,7 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	releaseProject, err := idx.lockProject(projectDir)
+	releaseProject, err := idx.lockProjectContext(ctx, projectDir)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -244,7 +244,7 @@ func (idx *Indexer) Index(ctx context.Context, projectDir string, force bool, pr
 		if rebuildErr := idx.rebuildStore(projectDir); rebuildErr != nil {
 			return Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
 		}
-		releaseProject, err = idx.lockProject(projectDir)
+		releaseProject, err = idx.lockProjectContext(ctx, projectDir)
 		if err != nil {
 			return Stats{}, err
 		}
@@ -282,7 +282,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	releaseProject, err := idx.lockProject(projectDir)
+	releaseProject, err := idx.lockProjectContext(ctx, projectDir)
 	if err != nil {
 		return false, Stats{}, err
 	}
@@ -322,7 +322,7 @@ func (idx *Indexer) EnsureFresh(ctx context.Context, projectDir string, progress
 		if rebuildErr := idx.rebuildStore(projectDir); rebuildErr != nil {
 			return false, Stats{}, fmt.Errorf("rebuild corrupted db: %w", rebuildErr)
 		}
-		releaseProject, err = idx.lockProject(projectDir)
+		releaseProject, err = idx.lockProjectContext(ctx, projectDir)
 		if err != nil {
 			return false, Stats{}, err
 		}
@@ -650,7 +650,7 @@ func (idx *Indexer) IsFresh(projectDir string) (bool, error) {
 // acquire the indexer mutex, relying on SQLite WAL mode for isolation.
 
 func (idx *Indexer) Search(ctx context.Context, projectDir string, queryVec []float32, limit int, maxDistance float64, pathPrefix string) ([]store.SearchResult, error) {
-	releaseProject, err := idx.lockProject(projectDir)
+	releaseProject, err := idx.lockProjectContext(ctx, projectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -706,6 +706,74 @@ func (idx *Indexer) Status(projectDir string) (StatusInfo, error) {
 // finish. The loop closes the gap between switching and reacquiring the shared
 // lease if another waiter changes the membership first.
 func (idx *Indexer) lockProject(projectDir string) (func(), error) {
+	return idx.lockProjectContext(context.Background(), projectDir)
+}
+
+// lockProjectContext is lockProject with a cancellable wait. Switching the
+// shared collection to another worktree must wait for in-flight work on the
+// current one; callers with a context stop waiting when it is done.
+func (idx *Indexer) lockProjectContext(ctx context.Context, projectDir string) (func(), error) {
+	if ctx.Done() == nil {
+		return idx.lockProjectBlocking(projectDir)
+	}
+	backoff := time.Millisecond
+	wait := func() error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+			backoff = min(2*backoff, 50*time.Millisecond)
+			return nil
+		}
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !idx.projectMu.TryRLock() {
+			if err := wait(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		selectedPath := projectDir
+		if selectedPath == "" {
+			selectedPath = idx.projectPath
+		}
+		if idx.projectPath == selectedPath {
+			return idx.projectMu.RUnlock, nil
+		}
+		idx.projectMu.RUnlock()
+		if !idx.projectMu.TryLock() {
+			if err := wait(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err := idx.selectProjectLocked(projectDir); err != nil {
+			idx.projectMu.Unlock()
+			return nil, err
+		}
+		idx.projectMu.Unlock()
+	}
+}
+
+// selectProjectLocked switches the store to projectDir; projectMu is held.
+func (idx *Indexer) selectProjectLocked(projectDir string) error {
+	selectedPath := projectDir
+	if selectedPath == "" {
+		selectedPath = idx.projectPath
+	}
+	if idx.projectPath != selectedPath {
+		if err := idx.store.UseProject(selectedPath); err != nil {
+			return fmt.Errorf("select project: %w", err)
+		}
+		idx.projectPath = selectedPath
+	}
+	return nil
+}
+
+func (idx *Indexer) lockProjectBlocking(projectDir string) (func(), error) {
 	for {
 		idx.projectMu.RLock()
 		selectedPath := projectDir
@@ -718,16 +786,9 @@ func (idx *Indexer) lockProject(projectDir string) (func(), error) {
 		idx.projectMu.RUnlock()
 
 		idx.projectMu.Lock()
-		selectedPath = projectDir
-		if selectedPath == "" {
-			selectedPath = idx.projectPath
-		}
-		if idx.projectPath != selectedPath {
-			if err := idx.store.UseProject(selectedPath); err != nil {
-				idx.projectMu.Unlock()
-				return nil, fmt.Errorf("select project: %w", err)
-			}
-			idx.projectPath = selectedPath
+		if err := idx.selectProjectLocked(projectDir); err != nil {
+			idx.projectMu.Unlock()
+			return nil, err
 		}
 		idx.projectMu.Unlock()
 	}

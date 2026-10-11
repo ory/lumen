@@ -1,0 +1,3 @@
+## Rating: Perfect
+
+The candidate applies the identical core fix — early-returning from `format_from_header` when the Accept header equals `'*/*'` — which is logically equivalent to the gold patch's use of the `ALL_MEDIA_TYPES` constant. The only structural difference is that the candidate inlines the string literal rather than extracting a named constant, which is a minor style choice that does not affect correctness. The candidate's test placement and assertion differ slightly (different context, checks for `:txt` default instead of `:json`), but both tests correctly verify the wildcard bypass behavior.

@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch only fixes the `*=` (contains) selector by passing `false` to `trimQuoted`, and changes `Validate.notEmpty` to `Validate.notNull` for empty values. However, it fails to fix the `=` (exact match) case: the gold patch also removes `.trim()` from `AttributeWithValue.matches()` (line 275 in Evaluator.java), which the candidate leaves untouched, so `div[class=value ]` still incorrectly matches elements with `class="value"` (no trailing space). The candidate also doesn't address the architectural cleanup — the gold patch removes the `trimQuoted` distinction entirely by making all attribute comparisons use `lowerCase(value)` only, making the fix comprehensive and consistent across all selector types.

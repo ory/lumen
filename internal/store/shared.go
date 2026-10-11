@@ -242,14 +242,27 @@ func (s *Store) IsShared() bool { return s.shared }
 // shared collection. Calling it repeatedly for the same path is cheap. Callers
 // must serialize membership switches against Store operations; Indexer does so
 // through its project lease.
+// CanonicalProjectPath is the project membership key: an absolute, clean path
+// with symlinks resolved when the directory exists. Symlinked spellings of one
+// directory (macOS /var -> /private/var, linked checkouts) are one project.
+func CanonicalProjectPath(projectPath string) string {
+	if abs, err := filepath.Abs(projectPath); err == nil {
+		projectPath = filepath.Clean(abs)
+	}
+	if resolved, err := filepath.EvalSymlinks(projectPath); err == nil {
+		projectPath = resolved
+	}
+	return projectPath
+}
+
 func (s *Store) UseProject(projectPath string) error {
 	if !s.shared {
 		return nil
 	}
 	if projectPath == "" {
 		projectPath = ":default"
-	} else if abs, err := filepath.Abs(projectPath); err == nil {
-		projectPath = filepath.Clean(abs)
+	} else {
+		projectPath = CanonicalProjectPath(projectPath)
 	}
 	if s.projectID != 0 && s.projectPath == projectPath {
 		s.stampSharedAccess()

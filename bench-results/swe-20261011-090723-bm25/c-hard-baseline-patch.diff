@@ -1,0 +1,43 @@
+diff --git a/src/jv_aux.c b/src/jv_aux.c
+index 47a622e..e8c5be1 100644
+--- a/src/jv_aux.c
++++ b/src/jv_aux.c
+@@ -276,7 +276,10 @@ static jv jv_dels(jv t, jv keys) {
+     jv starts = jv_array(), ends = jv_array();
+     jv_array_foreach(keys, i, key) {
+       if (jv_get_kind(key) == JV_KIND_NUMBER) {
+-        if (jv_number_value(key) < 0) {
++        if (isnan(jv_number_value(key))) {
++          // NaN is not a valid index, nothing to delete
++          jv_free(key);
++        } else if (jv_number_value(key) < 0) {
+           neg_keys = jv_array_append(neg_keys, key);
+         } else {
+           nonneg_keys = jv_array_append(nonneg_keys, key);
+@@ -444,7 +447,8 @@ static jv delpaths_sorted(jv object, jv paths, int start) {
+     int delkey = jv_array_length(jv_array_get(jv_copy(paths), i)) == start + 1;
+     jv key = jv_array_get(jv_array_get(jv_copy(paths), i), start);
+     while (j < jv_array_length(jv_copy(paths)) &&
+-           jv_equal(jv_copy(key), jv_array_get(jv_array_get(jv_copy(paths), j), start)))
++           (j == i || // always advance, as jv_equal(nan, nan) is false
++            jv_equal(jv_copy(key), jv_array_get(jv_array_get(jv_copy(paths), j), start))))
+       j++;
+     // if i <= entry < j, then entry starts with key
+     if (delkey) {
+diff --git a/tests/jq.test b/tests/jq.test
+index 3729cc4..8f3e927 100644
+--- a/tests/jq.test
++++ b/tests/jq.test
+@@ -2542,3 +2542,12 @@ true
+ reduce range(10001) as $_ ([];[.]) | tojson | contains("<skipped: too deep>")
+ null
+ true
++
++# Deleting with nan as an array index is a no-op
++del(.[nan])
++[1,2,3]
++[1,2,3]
++
++del(.[nan,nan])
++[1,2,3]
++[1,2,3]

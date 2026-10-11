@@ -1,0 +1,126 @@
+[
+  {"id": "lang.md.installation_setup_guide", "corpus": "fixtures/md", "language": "markdown", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "installation setup guide",
+   "targets": [
+     {"file": "ch01-01-installation.md", "contains": ["## Installation"], "line": 1},
+     {"file": "ch01-01-installation.md", "contains": ["### Installing `rustup` on Linux or macOS"]},
+     {"file": "ch01-01-installation.md", "contains": ["### Installing `rustup` on Windows"]},
+     {"file": "01-installation.mdx", "contains": ["## Quick start"]},
+     {"file": "01-installation.mdx", "contains": ["## Manual installation"]},
+     {"file": "01-installation.mdx", "contains": ["## Create with the CLI"]}
+   ]},
+  {"id": "lang.md.ownership_borrowing_memory", "corpus": "fixtures/md", "language": "markdown", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "ownership borrowing memory",
+   "targets": [
+     {"file": "ch04-01-what-is-ownership.md", "contains": ["## What Is Ownership?"]},
+     {"file": "ch04-01-what-is-ownership.md", "contains": ["### Ownership Rules"]},
+     {"file": "ch04-01-what-is-ownership.md", "contains": ["### Memory and Allocation"]},
+     {"file": "ch04-02-references-and-borrowing.md", "contains": ["## References and Borrowing"]},
+     {"file": "ch04-02-references-and-borrowing.md", "contains": ["### Mutable References"]},
+     {"file": "ch04-02-references-and-borrowing.md", "contains": ["### The Rules of References"]}
+   ]},
+  {"id": "lang.md.error_handling_panic_recover", "corpus": "fixtures/md", "language": "markdown", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "error handling panic recover",
+   "targets": [
+     {"file": "ch09-01-unrecoverable-errors-with-panic.md", "contains": ["## Unrecoverable Errors with `panic!`"]},
+     {"file": "ch09-01-unrecoverable-errors-with-panic.md", "contains": ["how to recover from an error using `Result`"]},
+     {"file": "ch09-01-unrecoverable-errors-with-panic.md", "contains": ["Unwinding the Stack or Aborting in Response to a Panic"]},
+     {"file": "ch02-00-guessing-game-tutorial.md", "contains": ["### Handling Potential Failure with `Result`"]}
+   ]},
+  {"id": "lang.md.async_concurrent_threads", "corpus": "fixtures/md", "language": "markdown", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "async concurrent threads",
+   "targets": [
+     {"file": "ch16-01-threads.md", "contains": ["## Using Threads to Run Code Simultaneously"]},
+     {"file": "ch16-01-threads.md", "contains": ["provides another approach to concurrency as well"]},
+     {"file": "ch16-01-threads.md", "contains": ["### Creating a New Thread with `spawn`"]},
+     {"file": "ch16-01-threads.md", "contains": ["### Waiting for All Threads to Finish"]},
+     {"file": "ch16-01-threads.md", "contains": ["### Using `move` Closures with Threads"]}
+   ]},
+  {"id": "md.absolute_imports_path_aliases", "corpus": "fixtures/md", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "configure absolute imports and module path aliases with baseUrl and paths",
+   "targets": [
+     {"file": "01-installation.mdx", "contains": ["## Set up Absolute Imports and Module Path Aliases", "\"baseUrl\": \"src/\""]},
+     {"file": "01-installation.mdx", "contains": ["\"@/components/*\": [\"components/*\"]"]}
+   ],
+   "distractors": [
+     {"file": "01-installation.mdx", "contains": ["## Set up TypeScript"]},
+     {"file": "02-project-structure.mdx", "contains": ["### `src` folder"]}
+   ]},
+  {"id": "md.generated_apple_icon", "corpus": "fixtures/md", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "generated apple-icon from code file convention",
+   "targets": [
+     {"file": "02-project-structure.mdx", "contains": ["Generated Apple App Icon"], "line": 144}
+   ],
+   "distractors": [
+     {"file": "02-project-structure.mdx", "contains": ["Generated Open Graph image"]},
+     {"file": "02-project-structure.mdx", "contains": ["Generated Robots file"]}
+   ],
+   "note": "The App icons table is an H4 section; with H4 sectioning it separates from the social image (Open Graph/Twitter) metadata."},
+  {"id": "md.fenced_shell_comment_not_heading", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "install widget production profile",
+   "targets": [
+     {"file": "docs/widget-cli.md", "contains": ["## Installation", "npm install --global @acme/widget --omit=dev"]}
+   ],
+   "distractors": [
+     {"file": "docs/widget-cli.md", "contains": ["## Uninstalling"]}
+   ],
+   "note": "The '# install widget production' line is a shell comment inside a ``` fence and must stay inside the Installation section (fence-aware headings)."},
+  {"id": "md.refresh_access_token_code_path", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "exact", "category": "supported", "origin": "brainstorm-docs-ui", "max_rank": 1,
+   "query": "refreshAccessToken", "path": "src",
+   "targets": [
+     {"file": "src/auth/refresh.ts", "symbol": "refreshAccessToken", "contains": ["export async function refreshAccessToken("]}
+   ],
+   "distractors": [
+     {"file": "docs/auth.md", "contains": ["await refreshAccessToken(store, { force: true });"]}
+   ]},
+  {"id": "md.refresh_access_token_vs_doc_fence", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "exact", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "refreshAccessToken",
+   "targets": [
+     {"file": "src/auth/refresh.ts", "symbol": "refreshAccessToken", "contains": ["export async function refreshAccessToken("]}
+   ],
+   "distractors": [
+     {"file": "docs/auth.md", "contains": ["await refreshAccessToken(store, { force: true });"]}
+   ],
+   "note": "Without a path filter the executable definition should still outrank the documentation fence example."},
+  {"id": "md.next_config_row", "corpus": "fixtures/md", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "next.config.js configuration file",
+   "targets": [
+     {"file": "02-project-structure.mdx", "contains": ["[`next.config.js`](/docs/app/api-reference/config/next-config-js)", "Configuration file for Next.js"]}
+   ]},
+  {"id": "md.dynamic_routes_app_router", "corpus": "fixtures/md", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "dynamic routes app/blog/[slug] params",
+   "targets": [
+     {"file": "02-project-structure.mdx", "contains": ["`app/blog/[slug]/page.tsx`"], "line": 99}
+   ],
+   "distractors": [
+     {"file": "02-project-structure.mdx", "contains": ["Optional catch-all route segment"], "line": 196}
+   ],
+   "note": "Two '### Dynamic routes' headings: App Router (params, app/blog/[slug]) versus Pages Router file conventions."},
+  {"id": "md.dynamic_routes_pages_router", "corpus": "fixtures/md", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "pages router dynamic route [folder]/index catch-all segment",
+   "targets": [
+     {"file": "02-project-structure.mdx", "contains": ["Catch-all route segment"], "line": 195}
+   ],
+   "distractors": [
+     {"file": "02-project-structure.mdx", "contains": ["`app/shop/[...slug]/page.tsx`"], "line": 100}
+   ]},
+  {"id": "md.h4_request_timeout", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "request timeout timeoutMs",
+   "targets": [
+     {"file": "docs/configuration.md", "contains": ["#### Request timeout", "`timeoutMs` bounds a single HTTP request"]}
+   ],
+   "distractors": [
+     {"file": "docs/configuration.md", "contains": ["## Logging"]}
+   ],
+   "note": "H4 section; the H4-H6 chunker change makes it its own section (today it is folded into '### Requests')."},
+  {"id": "md.h5_backoff", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "retry backoff multiplier delay",
+   "targets": [
+     {"file": "docs/configuration.md", "contains": ["##### Backoff", "baseDelayMs * backoffMultiplier ^ n"]}
+   ]},
+  {"id": "md.h6_jitter", "corpus": "retrieval/corpora/md-docs", "language": "markdown", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "jitter ratio randomise retry delay",
+   "targets": [
+     {"file": "docs/configuration.md", "contains": ["###### Jitter", "jitterRatio"]}
+   ]}
+]

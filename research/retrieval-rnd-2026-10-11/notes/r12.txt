@@ -1,0 +1,25 @@
+R12 — Reranking and fusion; literature verified 2026-10-11
+
+Recommendation: use inexpensive fusion as the default, evaluate a small local cross-encoder on a bounded shortlist, and reserve agent/LLM reranking for ambiguous queries. This is an engineering hypothesis, not a demonstrated Lumen result. Reranking cannot recover a relevant document absent from its input; improve candidate recall before buying a stronger reranker.
+
+Primary evidence
+
+1. Cormack, Clarke, Büttcher, “Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods,” SIGIR, July 2009.
+https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
+Rank-only RRF combines heterogeneous retrievers without score calibration or training labels: sum 1/(k+rank), originally k=60. Original TREC experiments reported average improvements around 4–5% over alternatives; this is old ad-hoc IR evidence, not code retrieval or a universal guarantee. Useful initial baseline when lexical, symbol, graph, and semantic scores have unrelated scales.
+
+2. Bruch, Gai, Ingber, “An Analysis of Fusion Functions for Hybrid Retrieval,” first submitted October 21, 2022; ACM TOIS 2023.
+https://arxiv.org/abs/2210.11934
+The authors directly challenge RRF’s parameter robustness: normalized lexical/semantic score convex combination beats RRF in their in-domain and out-of-domain evaluations, and a single learned mixing weight is sample efficient. This supports testing tuned score fusion once labels exist, not declaring RRF optimal. Verified primary abstract; PDF retrieval failed, so no granular benchmark numbers claimed. Their two-retriever findings do not establish how to weight AST/graph channels or enforce logical constraints.
+
+3. MacAvaney et al., “Efficient Document Re-Ranking for Transformers by Precomputing Term Representations,” SIGIR 2020, arXiv April 29, 2020.
+https://arxiv.org/pdf/2004.14255
+PreTTR shifts early document transformer layers to indexing, leaving query/document interaction to later layers. Table 5 reports 100-document reranking falling from 1.941 s to 46 ms (42.2x) on WebTrack with 11 precomputed layers. Important qualification: GTX 1080 Ti, representations already in RAM, and speedup versus unmodified BERT rather than grep. P@20 was comparable there, but ERR@20 worsened; the same split severely harmed Robust04. This is evidence for computation reuse, not a safe universal architecture or a laptop latency promise. Storage and reindexing costs also grow.
+
+Proposed bounded cascade (parameters to validate)
+
+• Keep explicit path, language, revision, quoted literal, and symbol constraints as machine-checked predicates; do not let a semantic score override them. Negation in natural language requires scope interpretation, not simply filtering every document containing the excluded word. Preserve original query alongside expansions and create contrastive negation tests.
+• Retrieve top 100 lexical candidates plus up to 100 complementary semantic/structural candidates; deduplicate spans, fuse, rerank at most 40 chunks with a small local cross-encoder. Feed the final 8–12 diverse, source-addressable chunks within a token budget. Exact symbol/path hits can bypass neural reranking.
+• If confidence is low, broaden candidate generation before optional LLM reranking of 10–20 candidates. LLM selection should emit existing IDs, retain provenance, and have a strict deadline. This escalation recommendation is not directly tested by the three papers.
+
+Decisive ablation: fixed candidate union, compare no rerank/RRF/tuned normalized fusion/local cross-encoder/LLM; separately vary candidate counts 20/40/100 and retrieval channels. Report candidate recall ceiling, nDCG@10, evidence sufficiency per 2k/4k tokens, task success, p50/p95 latency, warm/cold cost, RAM/index size, update time, and exact/negation regressions. Split by repository and hold out query paraphrases to avoid tuning leakage. Only adopt neural reranking if its task-success gains justify total cost over stronger candidate generation.

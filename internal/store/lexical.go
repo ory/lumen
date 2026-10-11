@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -41,6 +42,8 @@ func createLexicalSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_chunk_defs_symbol ON chunk_defs(symbol)`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS lexical_chunks USING fts5(path, symbol, signature, comments, body, content='', contentless_delete=1, detail=full, columnsize=1, tokenize="unicode61 tokenchars '_'")`,
 		`CREATE TRIGGER IF NOT EXISTS lexical_chunk_delete AFTER DELETE ON chunk_defs BEGIN DELETE FROM lexical_chunks WHERE rowid=old.id; END`,
+		// Per-term document frequencies for IDF-weighted query coverage.
+		`CREATE VIRTUAL TABLE IF NOT EXISTS lexical_vocab USING fts5vocab(lexical_chunks, row)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("create lexical index: %w", err)
@@ -99,7 +102,7 @@ func (s *Store) storeLexicalRevision(path, hash string, chunks []chunker.Chunk) 
 			if err != nil {
 				return false, err
 			}
-			row, err := tx.Exec(`INSERT INTO chunk_defs(file_revision_id, ordinal, chunk_key, symbol, kind, start_line, end_line, references_json, imports_json, exported) VALUES (?,?,?,?,?,?,?,?,?,?)`, revisionID, i, c.ID, c.Symbol, c.Kind, c.StartLine, c.EndLine, string(refs), string(imports), c.Exported)
+			row, err := tx.Exec(`INSERT INTO chunk_defs(file_revision_id, ordinal, chunk_key, symbol, kind, start_line, end_line, references_json, imports_json, exported) VALUES (?,?,?,?,?,?,?,?,?,?)`, revisionID, i, c.ID, c.Symbol, c.Kind, c.StartLine, c.EndLine, string(refs), string(imports), exportedColumn(c))
 			if err != nil {
 				return false, err
 			}
@@ -123,6 +126,23 @@ func (s *Store) storeLexicalRevision(path, hash string, chunks []chunker.Chunk) 
 		return false, err
 	}
 	return inserted > 0, tx.Commit()
+}
+
+// chunk_defs.exported values.
+const (
+	exportedNone    = 0
+	exportedNamed   = 1
+	exportedDefault = 2
+)
+
+func exportedColumn(c chunker.Chunk) int {
+	switch {
+	case c.Exported:
+		return exportedNamed
+	case c.DefaultExport:
+		return exportedDefault
+	}
+	return exportedNone
 }
 
 // identifierText preserves complete identifiers and adds camelCase, acronym,
@@ -152,18 +172,37 @@ func identifierText(text string) string {
 	return strings.Join(tokens, " ")
 }
 
-func lexicalMatch(query string) string {
+// LexicalTerms returns the normalized, deduplicated terms (at most 64) that a
+// lexical query matches, in query order.
+func LexicalTerms(query string) []string {
 	words := strings.Fields(strings.ToLower(identifierText(query)))
 	seen := make(map[string]bool, len(words))
 	terms := make([]string, 0, len(words))
 	for _, word := range words {
 		if !seen[word] {
-			terms = append(terms, `"`+word+`"`)
+			terms = append(terms, word)
 			seen[word] = true
 		}
 		if len(terms) == 64 {
 			break
 		}
+	}
+	return terms
+}
+
+// LexicalTokens returns the normalized token set indexed for text.
+func LexicalTokens(text string) map[string]bool {
+	tokens := map[string]bool{}
+	for _, word := range strings.Fields(strings.ToLower(identifierText(text))) {
+		tokens[word] = true
+	}
+	return tokens
+}
+
+func lexicalMatch(query string) string {
+	terms := LexicalTerms(query)
+	for i, term := range terms {
+		terms[i] = `"` + term + `"`
 	}
 	return strings.Join(terms, " OR ")
 }
@@ -226,9 +265,11 @@ func scanLexicalResults(rows *sql.Rows) ([]SearchResult, error) {
 		var result SearchResult
 		var hash []byte
 		var refs, imports string
-		if err := rows.Scan(&result.FilePath, &result.Symbol, &result.Kind, &result.StartLine, &result.EndLine, &hash, &refs, &imports, &result.Exported, &result.Distance); err != nil {
+		var exported int
+		if err := rows.Scan(&result.FilePath, &result.Symbol, &result.Kind, &result.StartLine, &result.EndLine, &hash, &refs, &imports, &exported, &result.Distance); err != nil {
 			return nil, err
 		}
+		result.Exported, result.DefaultExport = exported == exportedNamed, exported == exportedDefault
 		result.ContentHash = hex.EncodeToString(hash)
 		if err := json.Unmarshal([]byte(refs), &result.References); err != nil {
 			return nil, err
@@ -267,4 +308,56 @@ func (s *Store) LookupLexicalSymbols(ctx context.Context, symbols []string, path
 		return nil, err
 	}
 	return scanLexicalResults(rows)
+}
+
+// LookupLexicalDefaultExports returns the default-exported declarations of one
+// file in the active worktree. A module has at most one default export; more
+// than one row means the file cannot be resolved unambiguously.
+func (s *Store) LookupLexicalDefaultExports(ctx context.Context, path string) ([]SearchResult, error) {
+	if !s.lexical {
+		return nil, fmt.Errorf("LookupLexicalDefaultExports requires a lexical collection")
+	}
+	rows, err := s.reader().QueryContext(ctx, `SELECT `+lexicalResultColumns+`, 0 FROM project_files pf `+lexicalResultJoins+` WHERE pf.project_id=? AND pf.relative_path=? AND cd.exported=? ORDER BY cd.start_line, cd.id LIMIT 2`, s.projectID, path, exportedDefault)
+	if err != nil {
+		return nil, err
+	}
+	return scanLexicalResults(rows)
+}
+
+// LexicalTermWeights returns an inverse document frequency for each term over
+// the collection's lexical documents. Rare terms weigh more; a term occurring
+// nowhere gets the maximum weight.
+func (s *Store) LexicalTermWeights(ctx context.Context, terms []string) (map[string]float64, error) {
+	if !s.lexical {
+		return nil, fmt.Errorf("LexicalTermWeights requires a lexical collection")
+	}
+	weights := make(map[string]float64, len(terms))
+	if len(terms) == 0 {
+		return weights, nil
+	}
+	var total float64
+	if err := s.reader().QueryRowContext(ctx, `SELECT count(*) FROM chunk_defs`).Scan(&total); err != nil {
+		return nil, err
+	}
+	marks := make([]string, len(terms))
+	args := make([]any, len(terms))
+	for i, term := range terms {
+		marks[i] = "?"
+		args[i] = term
+		weights[term] = math.Log(1 + (total+0.5)/0.5)
+	}
+	rows, err := s.reader().QueryContext(ctx, `SELECT term, doc FROM lexical_vocab WHERE term IN (`+strings.Join(marks, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var term string
+		var docs float64
+		if err := rows.Scan(&term, &docs); err != nil {
+			return nil, err
+		}
+		weights[term] = math.Log(1 + (total-docs+0.5)/(docs+0.5))
+	}
+	return weights, rows.Err()
 }

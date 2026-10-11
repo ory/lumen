@@ -1,0 +1,31 @@
+Research 24/25 — Independent skeptical review, 2026-10-11
+
+Verdict: useful engineering proposal; no established full-system winner over an rg-equipped agent. Preserve the existing novelty/generalization disclaimers. Lead the verified recommendation with final-payload control and investigation of the measured SQLite plan; label adaptive hybrid retrieval and dependency-aware packing as hypotheses to test.
+
+1. Primary-source checks
+SPLADE-Code supports learned sparse expansion as a serious candidate, not a universal improvement. Appendix C explicitly excludes query encoding; its second-stage latency is estimated from sparse dot products. Section 4.3 compares Seismic and FAISS on one CPU and a particular CodeSearchNet workload. Section 6 acknowledges missing realistic developer-query and end-to-end agent evaluation. Therefore “sub-millisecond search” must always mean index lookup here, never complete local semantic search. The proposed FTS expansion baseline is correctly distinguished from learned sparse dot-product scoring. Source: https://arxiv.org/html/2603.22008v1#A3
+
+Adaptive-RAG establishes routing among no-retrieval, single-step and iterative retrieval for open-domain QA, using a learned query-complexity classifier. It does not establish the proposed lexical/vector/graph scheduler, tool-token savings, code correctness, or its training-data requirements. Retain “motivates” and explicitly label transfer to code-agent work an inference. Source: https://aclanthology.org/2024.naacl-long.389.pdf
+
+Neither source establishes novelty for this combination. “Research contribution” should mean proposed future investigation, not a result of this report. Twenty-five AI assignments provide coverage, not independent empirical replications or institutional endorsement.
+
+2. Recorded payload failure independently verified
+I parsed all 12 with-Lumen raw transcripts: 11 never invoke retrieval. Swift line 15 invokes semantic_search with limit 10; line 16 records client rejection; line 17 switches to grep. I also read the actual saved payload: 763,000 characters, 763,036 UTF-8 bytes, 18,700 lines; SHA256 c2fbb3582ad54bdf77cd0bb24ce8f2673c6ccc8f020a96d34d772c11b9edd60e. It identifies retrieval=bm25. Two generated Swift variable chunks contribute 742,194 characters (97.3%), spanning lines 2–8789 and 2–9412. Useful parsing snippets are already first.
+
+This is packaging failure evidence, not evidence of poor target recall. Add oversized-symbol subspans/splitting and generated-code-aware packing to the final cap recommendation. Do not silently discard all generated code: some tasks require it. Preserve expansion handles and truncation indicators.
+
+Provenance remains limited: initialization names lumen@inline, this workspace path, metadata version 0.0.42; that does not identify the executable hash or prove the frozen checkout reproduces this payload. Say “recorded run.” Current architectural absence of a final cap is separate evidence.
+
+An additional concrete benchmark confound: Swift raw line 7 injects claude-mem observation 101122, “Located SwiftSyntax generic argument parsing files in SourceryFramework,” recorded earlier that morning. Future paired runs need isolated homes/memory and controlled hooks, with identical task-independent context. This is direct cross-run contamination risk, beyond theoretical public-training leakage.
+
+3. Local mechanism experiment independently checked
+Recomputed experiment-results.json: answerable hits are 17/24 rg, 21/24 BM25, 22/24 fuzzy. Nonempty negative outputs are 5/6, 5/6, 6/6. Compared raw pre/post Hits arrays: all 60 request labels match exactly, but caching means only 39 distinct query strings. Captured fields are file, content, start line and score; this does not verify end lines, hashes, relation provenance or worktree identity.
+
+Source-aware synthetic cases demonstrate mechanisms, not held-out efficacy. The extra fuzzy hit is one task. Do not call sparse target-label precision retrieval precision. Nonempty output for an unsupported assertion can be valid counterevidence; measure judged irrelevance and downstream false assertion separately. The quantum-query expansion is a concrete irrelevant-context example.
+
+The rg comparator includes process launch, Python window ranking and normalization; Lumen timing is in-process and excludes final normalization. Keep those scopes adjacent to any numbers. The roughly 60-query build-amortization estimate is illustrative workflow arithmetic, not a deployment break-even: it excludes refresh, initialization and differing query distributions.
+
+4. Query-plan adoption gate
+The three-repeat SQL probe and matching API outputs support a severe plan bottleneck on this 12,292-chunk corpus. They do not establish FTS-first as universally optimal. Before shipping, compare the original planner after ANALYZE/appropriate statistics refresh against explicit order. Cross rare/common terms with absent/broad/selective path filters and small/large active worktrees inside a shared collection. Include many nonmember/stale revisions, duplicate content mappings, changed/deleted files and zero-result cases.
+
+Require filters before LIMIT, identical score boosts and deterministic tie order, no duplicate mappings, correct current-worktree hashes, and equivalent complete metadata. Measure supported SQLite builds, cold/warm p50/p95 and concurrent update behavior; avoid an unconditional forced plan if filter-first wins selective cases. No ANN/WAND replacement is justified while this execution-plan defect dominates.

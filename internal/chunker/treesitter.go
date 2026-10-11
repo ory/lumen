@@ -17,15 +17,24 @@ package chunker
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // QueryDef defines a tree-sitter query pattern and the chunk kind it produces.
 // Pattern must have captures: @decl (full declaration) and @name (identifier).
+// Patterns may use #eq? predicates.
 type QueryDef struct {
 	Pattern string
 	Kind    string
+	// SymbolFormat, when set, is a fmt format with one %s verb applied to the
+	// @name text, for declarations whose name is not an identifier (operators,
+	// indexers, finalizers).
+	SymbolFormat string
+	// OutsideFunctions drops matches nested in a function or method: local
+	// assignments and declarations are not part of a file's declaration surface.
+	OutsideFunctions bool
 }
 
 // LanguageDef bundles a tree-sitter language with its query patterns.
@@ -35,8 +44,10 @@ type LanguageDef struct {
 }
 
 type compiledRule struct {
-	query *sitter.Query
-	kind  string
+	query            *sitter.Query
+	kind             string
+	symbolFormat     string
+	outsideFunctions bool
 }
 
 // TreeSitterChunker implements Chunker using tree-sitter.
@@ -54,8 +65,10 @@ func NewTreeSitterChunker(def LanguageDef) (*TreeSitterChunker, error) {
 			return nil, fmt.Errorf("compile query for kind %q: %w", qd.Kind, err)
 		}
 		rules = append(rules, compiledRule{
-			query: q,
-			kind:  qd.Kind,
+			query:            q,
+			kind:             qd.Kind,
+			symbolFormat:     qd.SymbolFormat,
+			outsideFunctions: qd.OutsideFunctions,
 		})
 	}
 	return &TreeSitterChunker{language: def.Language, rules: rules}, nil
@@ -91,6 +104,7 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 			if !ok {
 				break
 			}
+			m = qc.FilterPredicates(m, content)
 
 			var declNode, nameNode *sitter.Node
 			for _, cap := range m.Captures {
@@ -105,8 +119,15 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 			if declNode == nil || nameNode == nil {
 				continue
 			}
+			if rule.outsideFunctions && insideFunction(declNode) {
+				continue
+			}
 
-			symbol := nameNode.Content(content)
+			declNode = declarationNode(declNode)
+			symbol := declarationName(nameNode, content)
+			if rule.symbolFormat != "" {
+				symbol = fmt.Sprintf(rule.symbolFormat, symbol)
+			}
 			if parent := findEnclosingSymbol(declNode, content); parent != "" {
 				symbol = parent + "." + symbol
 			}
@@ -116,12 +137,13 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 			if p := declNode.Parent(); p != nil && p.Type() == "export_statement" {
 				leadingNode = p
 			}
-			if comment := findLeadingComments(leadingNode); comment != nil {
+			if comment := leadingBlock(leadingNode, content); comment != nil {
 				startLine = int(comment.StartPoint().Row) + 1
 				startByte = comment.StartByte()
 			}
-			endLine := int(declNode.EndPoint().Row) + 1
-			snippet := string(content[startByte:declNode.EndByte()])
+			endNode := declarationEnd(declNode)
+			endLine := int(endNode.EndPoint().Row) + 1
+			snippet := string(content[startByte:endNode.EndByte()])
 
 			chunk := makeChunk(filePath, symbol, rule.kind, startLine, endLine, snippet)
 			populateTreeMetadata(&chunk, declNode, content, startByte)
@@ -143,23 +165,59 @@ func (c *TreeSitterChunker) Chunk(filePath string, content []byte) ([]Chunk, err
 
 // isCommentNode reports whether t is any comment node type.
 // Tree-sitter grammars use "comment" (Python, TS, C, Ruby, PHP, C#),
-// "line_comment" (Rust, Java), or "block_comment" (Rust, Java) depending
-// on the grammar.
+// "line_comment" (Rust, Java), "block_comment" (Rust, Java) or
+// "documentation_comment" (Dart) depending on the grammar.
 func isCommentNode(t string) bool {
-	return t == "comment" || t == "line_comment" || t == "block_comment"
+	return t == "comment" || t == "line_comment" || t == "block_comment" || t == "documentation_comment"
 }
 
+// isAttributeNode reports whether t is an attribute or annotation that grammars
+// emit as a sibling preceding the declaration it applies to.
+func isAttributeNode(t string) bool {
+	return t == "attribute_item" || t == "annotation"
+}
+
+// isDocComment reports whether comment documents the declaration that follows
+// it: Rust outer doc comments, Dart documentation comments, and /// or /**
+// comments in C-family languages.
+func isDocComment(comment *sitter.Node, content []byte) bool {
+	if comment.Type() == "documentation_comment" || comment.ChildByFieldName("outer") != nil {
+		return true
+	}
+	if content == nil {
+		return false
+	}
+	text := comment.Content(content)
+	return (strings.HasPrefix(text, "///") && !strings.HasPrefix(text, "////")) ||
+		(strings.HasPrefix(text, "/**") && !strings.HasPrefix(text, "/***") && text != "/**/")
+}
+
+// maxLeadingCommentLines caps how many lines of plain (non-doc) comments attach
+// to a declaration, so a license header written directly above the first
+// declaration is not absorbed into it. Doc comments and attributes are bounded
+// only by contiguity; oversized chunks are split downstream by token budget.
 const maxLeadingCommentLines = 10
 
-// findLeadingComments returns the earliest comment node immediately preceding
-// node with no blank line between them, or nil if none exist.
-// At most maxLeadingCommentLines lines of comments are captured.
+// findLeadingComments is leadingBlock without source text: only doc comments
+// recognizable by node type escape the plain-comment cap.
 func findLeadingComments(node *sitter.Node) *sitter.Node {
+	return leadingBlock(node, nil)
+}
+
+// leadingBlock returns the earliest node of the comment and attribute block
+// immediately preceding node with no blank line in between, or nil if there is
+// none. Inner doc comments (Rust //!) document the enclosing module and end the
+// block. content is the source used to recognize doc comments by their text.
+func leadingBlock(node *sitter.Node, content []byte) *sitter.Node {
 	var earliest *sitter.Node
 	nextRow := node.StartPoint().Row
-	commentLines := 0
+	plainLines := 0
 	for sibling := node.PrevNamedSibling(); sibling != nil; sibling = sibling.PrevNamedSibling() {
-		if !isCommentNode(sibling.Type()) {
+		comment := isCommentNode(sibling.Type())
+		if !comment && !isAttributeNode(sibling.Type()) {
+			break
+		}
+		if sibling.ChildByFieldName("inner") != nil {
 			break
 		}
 		// Adjacency check: the comment must immediately precede nextRow with no
@@ -180,15 +238,81 @@ func findLeadingComments(node *sitter.Node) *sitter.Node {
 		if !adjacent {
 			break
 		}
-		siblingLines := int(sibling.EndPoint().Row-sibling.StartPoint().Row) + 1
-		if commentLines+siblingLines > maxLeadingCommentLines {
-			break
+		if comment && !isDocComment(sibling, content) {
+			lines := int(endRow - sibling.StartPoint().Row)
+			if endCol != 0 {
+				lines++
+			}
+			if plainLines+lines > maxLeadingCommentLines {
+				break
+			}
+			plainLines += lines
 		}
-		commentLines += siblingLines
 		earliest = sibling
 		nextRow = sibling.StartPoint().Row
 	}
 	return earliest
+}
+
+// insideFunction reports whether node is nested in a function, method or
+// lambda body.
+func insideFunction(node *sitter.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch p.Type() {
+		case "function_definition", "function_declaration", "function_expression",
+			"generator_function", "generator_function_declaration", "arrow_function",
+			"method_definition", "lambda", "function_item", "method", "singleton_method":
+			return true
+		}
+	}
+	return false
+}
+
+// declarationNode widens a matched node to the syntax node that owns the whole
+// declaration: Python decorators, C++ template headers, and the Dart
+// method_signature or declaration wrapping a signature.
+func declarationNode(node *sitter.Node) *sitter.Node {
+	p := node.Parent()
+	if p == nil {
+		return node
+	}
+	switch p.Type() {
+	case "decorated_definition", "template_declaration":
+		return p
+	case "method_signature", "declaration":
+		switch node.Type() {
+		case "function_signature", "getter_signature", "setter_signature", "constructor_signature":
+			return p
+		}
+	}
+	return node
+}
+
+// declarationEnd returns the node where the declaration ends. Dart grammars
+// emit a function's body as a function_body sibling following its signature.
+func declarationEnd(node *sitter.Node) *sitter.Node {
+	if next := node.NextNamedSibling(); next != nil && next.Type() == "function_body" {
+		return next
+	}
+	return node
+}
+
+// declarationName returns the symbol text for a @name capture. C++ qualified
+// names keep the existing convention of naming only the final component
+// (Vec2::operator== -> operator==); member expressions drop layout whitespace.
+func declarationName(name *sitter.Node, content []byte) string {
+	for name.Type() == "qualified_identifier" {
+		next := name.ChildByFieldName("name")
+		if next == nil {
+			break
+		}
+		name = next
+	}
+	text := name.Content(content)
+	if name.Type() == "member_expression" {
+		text = strings.Join(strings.Fields(text), "")
+	}
+	return text
 }
 
 // deduplicateByExactRange removes chunks with identical (StartLine, EndLine) ranges.
@@ -242,6 +366,16 @@ func findEnclosingSymbol(node *sitter.Node, content []byte) string {
 		case "method", "singleton_method", "class", "module":
 			if n := current.ChildByFieldName("name"); n != nil {
 				return n.Content(content)
+			}
+		case "field_declaration_list":
+			// C++: members declared inside a class, struct or union body.
+			if p := current.Parent(); p != nil {
+				switch p.Type() {
+				case "class_specifier", "struct_specifier", "union_specifier":
+					if n := p.ChildByFieldName("name"); n != nil {
+						return n.Content(content)
+					}
+				}
 			}
 		case "class_body", "extension_body":
 			// Dart: the body node sits between the method and the enclosing type.

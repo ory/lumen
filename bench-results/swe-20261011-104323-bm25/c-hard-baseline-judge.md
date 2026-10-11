@@ -1,0 +1,3 @@
+## Rating: Good
+
+Both patches fix the same two root causes, but use different mechanisms. For `jv_dels`, the candidate extracts the double and calls `isnan()` (standard C library) while the gold uses the internal `jvp_number_is_nan()` — functionally equivalent assuming `jv_number_value()` returns a proper IEEE 754 double. For `delpaths_sorted`, the candidate modifies the `while` condition to `(j == i || jv_equal(...))` so the first iteration always fires, while the gold restructures to a `do...while` — both guarantee `j` advances past `i` at least once, eliminating the infinite loop. The candidate omits the new test cases from `tests/jq.test`, but the runtime fix itself is correct and complete.

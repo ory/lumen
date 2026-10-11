@@ -1,0 +1,96 @@
+diff --git a/crates/toml/src/de/parser/document.rs b/crates/toml/src/de/parser/document.rs
+index 7f174b1..ca30c4b 100644
+--- a/crates/toml/src/de/parser/document.rs
++++ b/crates/toml/src/de/parser/document.rs
+@@ -430,6 +430,10 @@ fn descend_path<'t, 'i>(
+                             );
+                             return None;
+                         }
++                        if dotted && sweet_child_of_mine.is_implicit() {
++                            // Implicitly created by a nested header; now being extended with dotted keys
++                            sweet_child_of_mine.set_dotted(true);
++                        }
+                         sweet_child_of_mine
+                     }
+                     existing => {
+diff --git a/crates/toml/tests/compliance/parse.rs b/crates/toml/tests/compliance/parse.rs
+index 515eed7..9b73113 100644
+--- a/crates/toml/tests/compliance/parse.rs
++++ b/crates/toml/tests/compliance/parse.rs
+@@ -210,6 +210,28 @@ msrv = "1.65.0"
+     assert_data_eq!(actual, expected.raw());
+ }
+ 
++#[test]
++fn dotted_keys_extend_implicit_table_from_nested_header() {
++    let input = r#"
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++    let document = input.parse::<crate::RustDocument>().unwrap();
++    assert_eq!(document["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(
++        document["fruit"]["apple"]["taste"]["sweet"].as_bool(),
++        Some(true)
++    );
++    assert_eq!(
++        document["fruit"]["apple"]["texture"]["smooth"].as_bool(),
++        Some(true)
++    );
++}
++
+ #[test]
+ fn fruit() {
+     let table = r#"
+diff --git a/crates/toml_edit/src/parser/document.rs b/crates/toml_edit/src/parser/document.rs
+index 14f17fb..2603fa1 100644
+--- a/crates/toml_edit/src/parser/document.rs
++++ b/crates/toml_edit/src/parser/document.rs
+@@ -485,6 +485,10 @@ fn descend_path<'t>(
+                             );
+                             return None;
+                         }
++                        if dotted && sweet_child_of_mine.is_implicit() {
++                            // Implicitly created by a nested header; now being extended with dotted keys
++                            sweet_child_of_mine.set_dotted(true);
++                        }
+                         sweet_child_of_mine
+                     }
+                     Item::Value(ref existing) => {
+diff --git a/crates/toml_edit/tests/compliance/parse.rs b/crates/toml_edit/tests/compliance/parse.rs
+index 6ab6cae..a87d01b 100644
+--- a/crates/toml_edit/tests/compliance/parse.rs
++++ b/crates/toml_edit/tests/compliance/parse.rs
+@@ -212,6 +212,28 @@ metadata.msrv = "1.65.0"
+     assert_data_eq!(actual, expected.raw());
+ }
+ 
++#[test]
++fn dotted_keys_extend_implicit_table_from_nested_header() {
++    let input = r#"
++[fruit.apple.texture]
++smooth = true
++
++[fruit]
++apple.color = "red"
++apple.taste.sweet = true
++"#;
++    let document = input.parse::<crate::RustDocument>().unwrap();
++    assert_eq!(document["fruit"]["apple"]["color"].as_str(), Some("red"));
++    assert_eq!(
++        document["fruit"]["apple"]["taste"]["sweet"].as_bool(),
++        Some(true)
++    );
++    assert_eq!(
++        document["fruit"]["apple"]["texture"]["smooth"].as_bool(),
++        Some(true)
++    );
++}
++
+ #[test]
+ fn fruit() {
+     let table = r#"

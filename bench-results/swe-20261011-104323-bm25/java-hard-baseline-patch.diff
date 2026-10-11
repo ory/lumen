@@ -1,0 +1,96 @@
+diff --git a/src/main/java/org/jsoup/select/Evaluator.java b/src/main/java/org/jsoup/select/Evaluator.java
+index 8c93fba..37326ec 100644
+--- a/src/main/java/org/jsoup/select/Evaluator.java
++++ b/src/main/java/org/jsoup/select/Evaluator.java
+@@ -272,7 +272,9 @@ public abstract class Evaluator {
+ 
+         @Override
+         public boolean matches(Element root, Element element) {
+-            return element.hasAttr(key) && value.equalsIgnoreCase(element.attr(key).trim());
++            if (!element.hasAttr(key)) return false;
++            String attr = element.attr(key);
++            return value.equalsIgnoreCase(attr) || value.equalsIgnoreCase(attr.trim());
+         }
+ 
+         @Override protected int cost() {
+@@ -315,7 +317,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueStarting extends AttributeKeyPair {
+         public AttributeWithValueStarting(String key, String value) {
+-            super(key, value, false);
++            super(key, value);
+         }
+ 
+         @Override
+@@ -338,7 +340,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueEnding extends AttributeKeyPair {
+         public AttributeWithValueEnding(String key, String value) {
+-            super(key, value, false);
++            super(key, value);
+         }
+ 
+         @Override
+@@ -416,25 +418,17 @@ public abstract class Evaluator {
+         final String value;
+ 
+         public AttributeKeyPair(String key, String value) {
+-            this(key, value, true);
+-        }
+-
+-        public AttributeKeyPair(String key, String value, boolean trimQuoted) {
+             Validate.notEmpty(key);
+-            Validate.notEmpty(value);
++            Validate.notNull(value); // OK to be empty
+ 
+             this.key = normalize(key);
+-            boolean quoted = value.startsWith("'") && value.endsWith("'")
+-                || value.startsWith("\"") && value.endsWith("\"");
++            boolean quoted = value.length() >= 2 &&
++                (value.startsWith("'") && value.endsWith("'")
++                || value.startsWith("\"") && value.endsWith("\""));
+             if (quoted)
+-                value = value.substring(1, value.length() - 1);
+-
+-            // normalize value based on whether it was quoted and trimQuoted flag
+-            // keeps whitespace for attribute val starting or ending, when quoted
+-            if (trimQuoted || !quoted)
+-                this.value = normalize(value); // lowercase and trims
++                this.value = lowerCase(value.substring(1, value.length() - 1)); // keeps whitespace when quoted
+             else
+-                this.value = lowerCase(value); // only lowercase
++                this.value = normalize(value); // lowercase and trims
+         }
+     }
+ 
+diff --git a/src/test/java/org/jsoup/select/SelectorTest.java b/src/test/java/org/jsoup/select/SelectorTest.java
+index 6207a6c..1bda901 100644
+--- a/src/test/java/org/jsoup/select/SelectorTest.java
++++ b/src/test/java/org/jsoup/select/SelectorTest.java
+@@ -900,15 +900,22 @@ public class SelectorTest {
+         assertEquals("class without space", found.get(0).text());
+         assertEquals("class with space", found.get(1).text());
+ 
+-        found = doc.select("div[class=\"value \"]");
+-        assertEquals(2, found.size());
+-        assertEquals("class without space", found.get(0).text());
+-        assertEquals("class with space", found.get(1).text());
++        found = doc.select("div[class=\"value \"]"); // quoted whitespace is preserved
++        assertEquals(1, found.size());
++        assertEquals("class with space", found.get(0).text());
+ 
+         found = doc.select("div[class=\"value\\ \"]");
+         assertEquals(0, found.size());
+     }
+ 
++    @Test public void containsDoesNotTrimQuotedArg() {
++        Document doc = Jsoup.parse("<article xxx=xpaywalled></article><div data='' id=d>");
++        assertEquals(1, doc.select("article[xxx*=\"paywalled\"]").size());
++        assertEquals(0, doc.select("article[xxx*=\" paywalled \"]").size());
++        assertEquals(1, doc.select("div[data='']").size());
++        assertEquals(1, doc.select("div[data^='']").size());
++    }
++
+     @Test public void selectSameElements() {
+         final String html = "<div>one</div><div>one</div>";
+ 

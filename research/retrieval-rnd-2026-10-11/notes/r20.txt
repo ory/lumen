@@ -1,0 +1,27 @@
+Research 20/25 — Cross-domain transfers, verified 2026-10-11
+
+Recommendation: prototype a coverage-derived symptom index as an optional retrieval channel. This is a falsifiable new application proposal, not a claimed novel invention or an established retrieval improvement. It complements the general retriever, especially for debugging queries with little vocabulary overlap.
+
+1. Software diagnosis → symptom-to-implementation retrieval
+
+Original source: Abreu, Zoeteweij, van Gemund, “On the Accuracy of Spectrum-based Fault Localization,” TAIC PART, September 2007, pp. 89–98. Author-institution record and abstract: https://researchportal.ulisboa.pt/en/publications/on-the-accuracy-of-spectrum-based-fault-localization/ . Bibliographic cross-check: https://research.tudelft.nl/en/publications/on-the-accuracy-of-spectrum-based-fault-localization/ . The institutional record gives DOI 10.1109/TAICPART.2007.4344104; secondary aggregators disagree, so cite the institutional URL.
+
+Established mechanism: rank program components from their execution patterns across passing/failing tests. The paper evaluates diagnostic accuracy on the Siemens benchmark; this is evidence for fault localization, not evidence for conversational retrieval. Correlated execution does not establish causation.
+
+Transfer: index human-readable test names, comments, assertions and error strings. Record test→covered-function associations, and project the test vocabulary into a separate function field, downweighting functions covered by nearly every test. An imprecise query such as “cancellation leaves a lock behind” can match behavior descriptions and lead to code whose identifiers differ. Return the matching test and coverage provenance beside the function. When actual failing/passing test results exist, add a spectrum-based suspicion score; do not fabricate pass/fail labels from text similarity.
+
+2. Bioinformatics → approximate structural motif retrieval
+
+Original source: Heng Li, “Minimap2: pairwise alignment for nucleotide sequences,” Bioinformatics 34(18), 2018, 3094–3100. Primary full text: https://arxiv.org/html/1708.01492v3 ; journal metadata: https://pubmed.ncbi.nlm.nih.gov/29750242/ .
+
+Established mechanism: index sampled sequence seeds (minimizers), find matching anchors, chain compatible anchors, then extend selected candidates with dynamic programming. Transfer to normalized code-token or AST-event sequences: retain control flow/call categories, normalize local variable names, use minimizers to propose regions, and verify only candidate regions by alignment. This targets recalled snippets and “similar implementation elsewhere” despite renames/insertion. It does not solve free-form paraphrase. Failure modes include short queries lacking a seed, common boilerplate flooding candidates, and control-flow changes breaking collinearity. Seed guarantees apply only under explicitly chosen sequence normalization and window lengths.
+
+3. Linear algebra → cheap vocabulary bridges
+
+Original source: Deerwester et al., “Indexing by latent semantic analysis,” JASIS 41(6), September 1990, 391–407. Publisher: https://asistdl.onlinelibrary.wiley.com/doi/10.1002/%28SICI%291097-4571%28199009%2941%3A6%3C391%3A%3AAID-ASI1%3E3.0.CO%3B2-9 .
+
+Established mechanism: truncated SVD of term-document associations represents queries/documents in a shared low-rank space. Proposed Lumen use: build a small offline model from documentation, tests and code comments; export only high-confidence term-neighbor expansions with supporting documents. No large model or online model inference required. This is mature IR, not novel; the proposed contribution is provenance-bounded vocabulary bridging across repository artifacts. Small corpora, polysemy and stale terminology can make it worse than lexical search.
+
+Best experiment: coverage vocabulary projection
+
+Collect per-test coverage once, build sparse weighted function vocabulary, and evaluate independently authored symptom queries against pre-fix repository snapshots. Compare tuned BM25, BM25 over tests followed by unweighted coverage, and weighted projected vocabulary. Include the unweighted baseline to isolate actual algorithmic value. Split by repository/time, exclude patch descriptions, and blind relevance judging. Measure relevant-function recall within a fixed returned-token budget, MRR, p95 latency, index bytes, and incremental update time. Proposed acceptance gate: ≥10% relative recall gain at equal token budget, with ≤10% latency increase on covered repositories. Reject if gains vanish after leakage controls, equal simple test expansion, or require disproportionate coverage maintenance. For repositories without representative tests, do not enable it.

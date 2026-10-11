@@ -1,0 +1,41 @@
+diff --git a/src/jv_aux.c b/src/jv_aux.c
+index 47a622e..3cd359d 100644
+--- a/src/jv_aux.c
++++ b/src/jv_aux.c
+@@ -276,7 +276,11 @@ static jv jv_dels(jv t, jv keys) {
+     jv starts = jv_array(), ends = jv_array();
+     jv_array_foreach(keys, i, key) {
+       if (jv_get_kind(key) == JV_KIND_NUMBER) {
+-        if (jv_number_value(key) < 0) {
++        double didx = jv_number_value(key);
++        if (isnan(didx)) {
++          // NaN is not a valid index, nothing to delete
++          jv_free(key);
++        } else if (didx < 0) {
+           neg_keys = jv_array_append(neg_keys, key);
+         } else {
+           nonneg_keys = jv_array_append(nonneg_keys, key);
+@@ -446,6 +450,8 @@ static jv delpaths_sorted(jv object, jv paths, int start) {
+     while (j < jv_array_length(jv_copy(paths)) &&
+            jv_equal(jv_copy(key), jv_array_get(jv_array_get(jv_copy(paths), j), start)))
+       j++;
++    // jv_equal(nan, nan) is false, make sure we always make progress
++    if (j == i) j++;
+     // if i <= entry < j, then entry starts with key
+     if (delkey) {
+       // deleting this entire key, we don't care about any more specific deletions
+diff --git a/tests/jq.test b/tests/jq.test
+index 3729cc4..67fe2a7 100644
+--- a/tests/jq.test
++++ b/tests/jq.test
+@@ -1176,6 +1176,10 @@ del(.[1], .[-6], .[2], .[-3:9])
+ [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+ [0, 3, 5, 6, 9]
+ 
++del(.[nan], .[nan])
++[1,2,3]
++[1,2,3]
++
+ # negative index
+ setpath([-1]; 1)
+ [0]

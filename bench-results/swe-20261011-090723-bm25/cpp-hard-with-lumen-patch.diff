@@ -1,0 +1,418 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 53afc51..7e53746 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -299,10 +299,10 @@ endfunction()
+ 
+ # Define the fmt library, its includes and the needed defines.
+ set(FMT_HEADERS)
+-add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h format.h
+-                        format-inl.h os.h ostream.h printf.h ranges.h std.h
+-                        xchar.h)
+-set(FMT_SOURCES src/format.cc)
++add_headers(FMT_HEADERS args.h base.h chrono.h color.h compile.h core.h fmt-c.h
++                        format.h format-inl.h os.h ostream.h printf.h ranges.h
++                        std.h xchar.h)
++set(FMT_SOURCES src/format.cc src/fmt-c.cc)
+ 
+ add_module_library(fmt src/fmt.cc FALLBACK
+                    ${FMT_SOURCES} ${FMT_HEADERS} README.md ChangeLog.md
+diff --git a/include/fmt/fmt-c.h b/include/fmt/fmt-c.h
+new file mode 100644
+index 0000000..6a7f1c2
+--- /dev/null
++++ b/include/fmt/fmt-c.h
+@@ -0,0 +1,240 @@
++/*
++ * Formatting library for C - the C API
++ *
++ * Copyright (c) 2012 - present, Victor Zverovich
++ * All rights reserved.
++ *
++ * For the license information refer to format.h.
++ */
++
++#ifndef FMT_FMT_C_H_
++#define FMT_FMT_C_H_
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdio.h>
++
++#if defined(FMT_SHARED) && defined(_WIN32)
++#  define FMT_C_API __declspec(dllimport)
++#elif defined(FMT_LIB_EXPORT) && defined(_WIN32)
++#  define FMT_C_API __declspec(dllexport)
++#elif defined(FMT_LIB_EXPORT) && defined(__GNUC__)
++#  define FMT_C_API __attribute__((visibility("default")))
++#else
++#  define FMT_C_API
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* The type of a formatting argument. */
++typedef enum {
++  fmt_type_int,
++  fmt_type_uint,
++  fmt_type_bool,
++  fmt_type_char,
++  fmt_type_double,
++  fmt_type_long_double,
++  fmt_type_cstring,
++  fmt_type_pointer
++} fmt_type;
++
++/*
++ * A formatting argument. Use `fmt_from_*` functions or `fmt_make_arg` to
++ * create it. Strings and pointers are not copied, so the referenced data must
++ * outlive the formatting call.
++ */
++typedef struct {
++  fmt_type type;
++  union {
++    long long int_value;
++    unsigned long long uint_value;
++    bool bool_value;
++    char char_value;
++    double double_value;
++    long double long_double_value;
++    const char* cstring_value;
++    const void* pointer_value;
++  } value;
++} fmt_arg;
++
++static inline fmt_arg fmt_from_int(long long x) {
++  fmt_arg a;
++  a.type = fmt_type_int;
++  a.value.int_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_uint(unsigned long long x) {
++  fmt_arg a;
++  a.type = fmt_type_uint;
++  a.value.uint_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_bool(bool x) {
++  fmt_arg a;
++  a.type = fmt_type_bool;
++  a.value.bool_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_char(char x) {
++  fmt_arg a;
++  a.type = fmt_type_char;
++  a.value.char_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_double(double x) {
++  fmt_arg a;
++  a.type = fmt_type_double;
++  a.value.double_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_long_double(long double x) {
++  fmt_arg a;
++  a.type = fmt_type_long_double;
++  a.value.long_double_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_cstring(const char* x) {
++  fmt_arg a;
++  a.type = fmt_type_cstring;
++  a.value.cstring_value = x;
++  return a;
++}
++static inline fmt_arg fmt_from_pointer(const void* x) {
++  fmt_arg a;
++  a.type = fmt_type_pointer;
++  a.value.pointer_value = x;
++  return a;
++}
++
++/*
++ * Formats `args` according to the format string `fmt` and writes the output to
++ * `buffer`, writing at most `size` bytes including the terminating null
++ * character (nothing is written if `size` is zero). Returns the number of
++ * characters that would have been written if the buffer was large enough,
++ * excluding the terminating null character, or a negative value on error
++ * (e.g. an invalid format string).
++ */
++FMT_C_API int fmt_vformat(char* buffer, size_t size, const char* fmt,
++                          const fmt_arg* args, size_t num_args);
++
++/*
++ * Formats `args` according to `fmt` and writes the output to the stream `f`.
++ * Returns the number of characters written or a negative value on error.
++ */
++FMT_C_API int fmt_vfprint(FILE* f, const char* fmt, const fmt_arg* args,
++                          size_t num_args);
++
++#ifndef __cplusplus
++
++/* Creates a `fmt_arg` from a value of a supported type (requires C11). */
++#define fmt_make_arg(x)            \
++  _Generic((x),                    \
++      bool: fmt_from_bool,         \
++      char: fmt_from_char,         \
++      signed char: fmt_from_int,   \
++      short: fmt_from_int,         \
++      int: fmt_from_int,           \
++      long: fmt_from_int,          \
++      long long: fmt_from_int,     \
++      unsigned char: fmt_from_uint,       \
++      unsigned short: fmt_from_uint,      \
++      unsigned: fmt_from_uint,            \
++      unsigned long: fmt_from_uint,       \
++      unsigned long long: fmt_from_uint,  \
++      float: fmt_from_double,             \
++      double: fmt_from_double,            \
++      long double: fmt_from_long_double,  \
++      char*: fmt_from_cstring,            \
++      const char*: fmt_from_cstring,      \
++      void*: fmt_from_pointer,            \
++      const void*: fmt_from_pointer)(x)
++
++#define FMT_C_CAT_(a, b) a##b
++#define FMT_C_CAT(a, b) FMT_C_CAT_(a, b)
++
++/* Argument counting and mapping, supports up to 16 formatting arguments. */
++#define FMT_C_NARGS_(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, n, ...) n
++#define FMT_C_NARGS(...) FMT_C_NARGS_(__VA_ARGS__, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
++
++#define FMT_C_MAP_1(f, a) f(a)
++#define FMT_C_MAP_2(f, a, ...) f(a), FMT_C_MAP_1(f, __VA_ARGS__)
++#define FMT_C_MAP_3(f, a, ...) f(a), FMT_C_MAP_2(f, __VA_ARGS__)
++#define FMT_C_MAP_4(f, a, ...) f(a), FMT_C_MAP_3(f, __VA_ARGS__)
++#define FMT_C_MAP_5(f, a, ...) f(a), FMT_C_MAP_4(f, __VA_ARGS__)
++#define FMT_C_MAP_6(f, a, ...) f(a), FMT_C_MAP_5(f, __VA_ARGS__)
++#define FMT_C_MAP_7(f, a, ...) f(a), FMT_C_MAP_6(f, __VA_ARGS__)
++#define FMT_C_MAP_8(f, a, ...) f(a), FMT_C_MAP_7(f, __VA_ARGS__)
++#define FMT_C_MAP_9(f, a, ...) f(a), FMT_C_MAP_8(f, __VA_ARGS__)
++#define FMT_C_MAP_10(f, a, ...) f(a), FMT_C_MAP_9(f, __VA_ARGS__)
++#define FMT_C_MAP_11(f, a, ...) f(a), FMT_C_MAP_10(f, __VA_ARGS__)
++#define FMT_C_MAP_12(f, a, ...) f(a), FMT_C_MAP_11(f, __VA_ARGS__)
++#define FMT_C_MAP_13(f, a, ...) f(a), FMT_C_MAP_12(f, __VA_ARGS__)
++#define FMT_C_MAP_14(f, a, ...) f(a), FMT_C_MAP_13(f, __VA_ARGS__)
++#define FMT_C_MAP_15(f, a, ...) f(a), FMT_C_MAP_14(f, __VA_ARGS__)
++#define FMT_C_MAP_16(f, a, ...) f(a), FMT_C_MAP_15(f, __VA_ARGS__)
++#define FMT_C_MAP(f, ...) \
++  FMT_C_CAT(FMT_C_MAP_, FMT_C_NARGS(__VA_ARGS__))(f, __VA_ARGS__)
++
++#define FMT_C_ARGS_1(fmt) fmt, NULL, 0
++#define FMT_C_ARGS_2(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 1
++#define FMT_C_ARGS_3(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 2
++#define FMT_C_ARGS_4(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 3
++#define FMT_C_ARGS_5(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 4
++#define FMT_C_ARGS_6(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 5
++#define FMT_C_ARGS_7(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 6
++#define FMT_C_ARGS_8(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 7
++#define FMT_C_ARGS_9(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 8
++#define FMT_C_ARGS_10(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 9
++#define FMT_C_ARGS_11(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 10
++#define FMT_C_ARGS_12(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 11
++#define FMT_C_ARGS_13(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 12
++#define FMT_C_ARGS_14(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 13
++#define FMT_C_ARGS_15(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 14
++#define FMT_C_ARGS_16(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 15
++#define FMT_C_ARGS_17(fmt, ...) \
++  fmt, (fmt_arg[]){FMT_C_MAP(fmt_make_arg, __VA_ARGS__)}, 16
++#define FMT_C_ARGS(...) \
++  FMT_C_CAT(FMT_C_ARGS_, FMT_C_NARGS(__VA_ARGS__))(__VA_ARGS__)
++
++/*
++ * Formats the arguments according to the format string and writes the output
++ * to `buffer`, writing at most `size` bytes. Returns the number of characters
++ * that would have been written if the buffer was large enough or a negative
++ * value on error.
++ *
++ *   char buf[100];
++ *   fmt_format(buf, sizeof(buf), "The answer is {}.", 42);
++ */
++#define fmt_format(buffer, size, ...) \
++  fmt_vformat(buffer, size, FMT_C_ARGS(__VA_ARGS__))
++
++/* Formats the arguments and writes the output to the stream `f`. */
++#define fmt_fprint(f, ...) fmt_vfprint(f, FMT_C_ARGS(__VA_ARGS__))
++
++/* Formats the arguments and writes the output to `stdout`. */
++#define fmt_print(...) fmt_fprint(stdout, __VA_ARGS__)
++
++#endif /* __cplusplus */
++
++#ifdef __cplusplus
++} /* extern "C" */
++#endif
++
++#endif /* FMT_FMT_C_H_ */
+diff --git a/src/fmt-c.cc b/src/fmt-c.cc
+new file mode 100644
+index 0000000..604e28a
+--- /dev/null
++++ b/src/fmt-c.cc
+@@ -0,0 +1,73 @@
++// Formatting library for C++ - the C API
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/fmt-c.h"
++
++#include <cstdio>
++#include <vector>
++
++#include "fmt/format.h"
++
++namespace {
++
++using format_arg = fmt::format_args::format_arg;
++
++auto make_arg(const fmt_arg& arg) -> format_arg {
++  switch (arg.type) {
++  case fmt_type_int:         return format_arg(arg.value.int_value);
++  case fmt_type_uint:        return format_arg(arg.value.uint_value);
++  case fmt_type_bool:        return format_arg(arg.value.bool_value);
++  case fmt_type_char:        return format_arg(arg.value.char_value);
++  case fmt_type_double:      return format_arg(arg.value.double_value);
++  case fmt_type_long_double:
++    return format_arg(arg.value.long_double_value);
++  case fmt_type_cstring:     return format_arg(arg.value.cstring_value);
++  case fmt_type_pointer:     return format_arg(arg.value.pointer_value);
++  }
++  FMT_THROW(fmt::format_error("invalid argument type"));
++}
++
++auto make_args(const fmt_arg* args, size_t num_args)
++    -> std::vector<format_arg> {
++  std::vector<format_arg> result;
++  result.reserve(num_args);
++  for (size_t i = 0; i < num_args; ++i) result.push_back(make_arg(args[i]));
++  return result;
++}
++
++}  // namespace
++
++extern "C" {
++
++int fmt_vformat(char* buffer, size_t size, const char* fmt,
++                const fmt_arg* args, size_t num_args) {
++  try {
++    auto fmt_args = make_args(args, num_args);
++    auto result = fmt::vformat_to_n(
++        buffer, size, fmt,
++        fmt::format_args(fmt_args.data(), static_cast<int>(num_args)));
++    if (size != 0) buffer[result.size < size ? result.size : size - 1] = '\0';
++    return static_cast<int>(result.size);
++  } catch (...) {
++    return -1;
++  }
++}
++
++int fmt_vfprint(FILE* f, const char* fmt, const fmt_arg* args,
++                size_t num_args) {
++  try {
++    auto fmt_args = make_args(args, num_args);
++    auto s = fmt::vformat(
++        fmt, fmt::format_args(fmt_args.data(), static_cast<int>(num_args)));
++    if (std::fwrite(s.data(), 1, s.size(), f) != s.size()) return -1;
++    return static_cast<int>(s.size());
++  } catch (...) {
++    return -1;
++  }
++}
++
++}  // extern "C"
+diff --git a/test/CMakeLists.txt b/test/CMakeLists.txt
+index 3f7d24a..f566c59 100644
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -51,6 +51,7 @@ add_fmt_test(assert-test)
+ add_fmt_test(chrono-test)
+ add_fmt_test(color-test)
+ add_fmt_test(gtest-extra-test)
++add_fmt_test(fmt-c-test)
+ add_fmt_test(format-test mock-allocator.h)
+ if (MSVC)
+   target_compile_options(format-test PRIVATE /bigobj)
+diff --git a/test/fmt-c-test.cc b/test/fmt-c-test.cc
+new file mode 100644
+index 0000000..ec38185
+--- /dev/null
++++ b/test/fmt-c-test.cc
+@@ -0,0 +1,56 @@
++// Formatting library for C++ - tests of the C API
++//
++// Copyright (c) 2012 - present, Victor Zverovich
++// All rights reserved.
++//
++// For the license information refer to format.h.
++
++#include "fmt/fmt-c.h"
++
++#include <string.h>
++
++#include "gtest/gtest.h"
++
++TEST(c_api_test, vformat) {
++  char buf[100];
++  fmt_arg args[] = {fmt_from_int(-42), fmt_from_uint(42u),
++                    fmt_from_cstring("foo"), fmt_from_bool(true),
++                    fmt_from_char('x'), fmt_from_double(1.5)};
++  EXPECT_EQ(fmt_vformat(buf, sizeof(buf), "{} {} {} {} {} {}", args, 6), 21);
++  EXPECT_STREQ(buf, "-42 42 foo true x 1.5");
++}
++
++TEST(c_api_test, vformat_pointer) {
++  char buf[100];
++  fmt_arg args[] = {fmt_from_pointer(nullptr)};
++  EXPECT_EQ(fmt_vformat(buf, sizeof(buf), "{}", args, 1), 3);
++  EXPECT_STREQ(buf, "0x0");
++}
++
++TEST(c_api_test, vformat_truncation) {
++  char buf[4];
++  fmt_arg args[] = {fmt_from_cstring("abcdef")};
++  EXPECT_EQ(fmt_vformat(buf, sizeof(buf), "{}", args, 1), 6);
++  EXPECT_STREQ(buf, "abc");
++  EXPECT_EQ(fmt_vformat(nullptr, 0, "{}", args, 1), 6);
++}
++
++TEST(c_api_test, vformat_error) {
++  char buf[10];
++  EXPECT_LT(fmt_vformat(buf, sizeof(buf), "{", nullptr, 0), 0);
++  EXPECT_LT(fmt_vformat(buf, sizeof(buf), "{}", nullptr, 0), 0);
++  fmt_arg args[] = {fmt_from_cstring(nullptr)};
++  EXPECT_LT(fmt_vformat(buf, sizeof(buf), "{}", args, 1), 0);
++}
++
++TEST(c_api_test, vfprint) {
++  FILE* f = tmpfile();
++  ASSERT_TRUE(f != nullptr);
++  fmt_arg args[] = {fmt_from_int(42)};
++  EXPECT_EQ(fmt_vfprint(f, "n={}", args, 1), 4);
++  rewind(f);
++  char buf[10] = {};
++  EXPECT_EQ(fread(buf, 1, sizeof(buf), f), 4u);
++  EXPECT_STREQ(buf, "n=42");
++  fclose(f);
++}

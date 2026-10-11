@@ -1,0 +1,47 @@
+diff --git a/decode.go b/decode.go
+index 72af5e2..df97062 100644
+--- a/decode.go
++++ b/decode.go
+@@ -990,6 +990,10 @@ func (d *Decoder) createDecodedNewValue(
+ 		}
+ 	}
+ 	if node.Type() == ast.NullType {
++		if typ.Kind() == reflect.Struct && defaultVal.IsValid() && defaultVal.Type().AssignableTo(typ) {
++			// keep the default value of the struct
++			return defaultVal, nil
++		}
+ 		return reflect.Zero(typ), nil
+ 	}
+ 	newValue := d.createDecodableValue(typ)
+diff --git a/nulldef_test.go b/nulldef_test.go
+new file mode 100644
+index 0000000..4bb5bab
+--- /dev/null
++++ b/nulldef_test.go
+@@ -0,0 +1,26 @@
++package yaml_test
++
++import (
++	"strings"
++	"testing"
++
++	"github.com/goccy/go-yaml"
++)
++
++func TestNullKeepsDefault(t *testing.T) {
++	type Default struct {
++		Key string `yaml:"key"`
++	}
++	type Test struct {
++		First    string  `yaml:"first"`
++		Defaults Default `yaml:"second"`
++	}
++	yml := "first: \"Test\"\nsecond:\n  # c\n#  key: x\n"
++	test := Test{Defaults: Default{Key: "My default Value"}}
++	if err := yaml.NewDecoder(strings.NewReader(yml)).Decode(&test); err != nil {
++		t.Fatal(err)
++	}
++	if test.Defaults.Key != "My default Value" {
++		t.Fatalf("got %q", test.Defaults.Key)
++	}
++}

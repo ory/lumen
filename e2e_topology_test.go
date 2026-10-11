@@ -21,6 +21,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type pathTopologyCase struct {
@@ -119,11 +121,22 @@ func HandleLogin() {}
 // to verify that search scoping, worktree isolation, and symlink resolution
 // all work correctly across varied filesystem layouts.
 func TestE2E_PathTopologies(t *testing.T) {
+	t.Run("semantic", func(t *testing.T) { runPathTopologies(t, startServer(t)) })
+}
+
+func TestE2E_BM25_PathTopologies(t *testing.T) {
+	t.Run("bm25", func(t *testing.T) {
+		session, trap, _ := startBM25Server(t)
+		runPathTopologies(t, session)
+		trap.assertUnused(t)
+	})
+}
+
+func runPathTopologies(t *testing.T, session *mcp.ClientSession) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
 	t.Parallel()
-	session := startServer(t)
 
 	cases := []pathTopologyCase{
 		{
@@ -316,7 +329,7 @@ func AuthenticateUser() {}
 			args := map[string]any{
 				"query":     tc.query,
 				"path":      setup.searchPath,
-				"limit": 10,
+				"limit":     10,
 				"min_score": -1,
 			}
 			if setup.cwd != "" {
@@ -364,7 +377,7 @@ func AuthenticateUser() {}
 				secondArgs := map[string]any{
 					"query":     tc.second.query,
 					"path":      secondPath,
-					"limit": 10,
+					"limit":     10,
 					"min_score": -1,
 				}
 
@@ -394,8 +407,19 @@ func AuthenticateUser() {}
 // subdirectory reuses the parent directory's cached index instead of creating
 // a new one.
 func TestE2E_AncestorReuse_MCP(t *testing.T) {
+	t.Run("semantic", func(t *testing.T) { runAncestorReuse_MCP(t, startServer(t)) })
+}
+
+func TestE2E_BM25_AncestorReuse_MCP(t *testing.T) {
+	t.Run("bm25", func(t *testing.T) {
+		session, trap, _ := startBM25Server(t)
+		runAncestorReuse_MCP(t, session)
+		trap.assertUnused(t)
+	})
+}
+
+func runAncestorReuse_MCP(t *testing.T, session *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
 
 	dir := makeCanonicalDir(t)
 	subDir := filepath.Join(dir, "sub")
@@ -415,7 +439,7 @@ func SubHelper() {}
 	out1 := callSearch(t, session, map[string]any{
 		"query":     "start server",
 		"path":      dir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if !out1.Reindexed {
@@ -432,7 +456,7 @@ func SubHelper() {}
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "sub helper",
 		"path":      subDir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if out2.Reindexed {
@@ -447,8 +471,19 @@ func SubHelper() {}
 // skip directories (node_modules, testdata, etc.). A search from inside
 // node_modules/ must create its own index, not reuse the parent's.
 func TestE2E_AncestorReuse_SkipDir(t *testing.T) {
+	t.Run("semantic", func(t *testing.T) { runAncestorReuse_SkipDir(t, startServer(t)) })
+}
+
+func TestE2E_BM25_AncestorReuse_SkipDir(t *testing.T) {
+	t.Run("bm25", func(t *testing.T) {
+		session, trap, _ := startBM25Server(t)
+		runAncestorReuse_SkipDir(t, session)
+		trap.assertUnused(t)
+	})
+}
+
+func runAncestorReuse_SkipDir(t *testing.T, session *mcp.ClientSession) {
 	t.Parallel()
-	session := startServer(t)
 
 	dir := makeCanonicalDir(t)
 
@@ -469,7 +504,7 @@ func NpmHelper() {}
 	out1 := callSearch(t, session, map[string]any{
 		"query":     "start server",
 		"path":      dir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if !out1.Reindexed {
@@ -480,7 +515,7 @@ func NpmHelper() {}
 	out2 := callSearch(t, session, map[string]any{
 		"query":     "npm helper",
 		"path":      nmDir,
-		"limit": 10,
+		"limit":     10,
 		"min_score": -1,
 	})
 	if !out2.Reindexed {

@@ -55,8 +55,10 @@ func formatLexicalResults(projectPath string, out SemanticSearchOutput) string {
 	if out.Reindexed {
 		fmt.Fprintf(&b, " (indexed %d files)", out.IndexedFiles)
 	}
-	if out.StaleWarning != "" {
-		fmt.Fprintf(&b, "\nWarning: %s", out.StaleWarning)
+	for _, warning := range []string{out.SeedWarning, out.StaleWarning} {
+		if warning != "" {
+			fmt.Fprintf(&b, "\nWarning: %s", warning)
+		}
 	}
 	b.WriteString(":\n")
 	for _, r := range out.Results {

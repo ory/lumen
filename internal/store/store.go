@@ -72,16 +72,18 @@ func deleteDBFiles(path string) {
 
 // SearchResult represents a single result from a vector search.
 type SearchResult struct {
-	Exported    bool
-	ContentHash string
-	References  []string
-	Imports     []string
-	FilePath    string
-	Symbol      string
-	Kind        string
-	StartLine   int
-	EndLine     int
-	Distance    float64
+	Exported bool
+	// DefaultExport marks a lexical JS/TS module default export.
+	DefaultExport bool
+	ContentHash   string
+	References    []string
+	Imports       []string
+	FilePath      string
+	Symbol        string
+	Kind          string
+	StartLine     int
+	EndLine       int
+	Distance      float64
 }
 
 // StoreStats holds aggregate statistics about the store contents.

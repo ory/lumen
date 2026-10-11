@@ -1,0 +1,134 @@
+[
+  {"id": "lang.java.pet_owner_repository_database", "corpus": "fixtures/java", "language": "java", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "pet owner repository database",
+   "targets": [
+     {"file": "OwnerRepository.java", "contains": ["public interface OwnerRepository extends JpaRepository<Owner, Integer>"]},
+     {"file": "OwnerRepository.java", "contains": ["findByLastNameStartingWith(String lastName, Pageable pageable)"]},
+     {"file": "OwnerRepository.java", "contains": ["Optional<Owner> findById(Integer id);"]}
+   ]},
+  {"id": "lang.java.rest_controller_request_mapping", "corpus": "fixtures/java", "language": "java", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "REST controller request mapping",
+   "targets": [
+     {"file": "PetController.java", "contains": ["@RequestMapping(\"/owners/{ownerId}\")"]},
+     {"file": "PetController.java", "contains": ["Mapping(\"/pets/"]},
+     {"file": "OwnerController.java", "contains": ["Mapping(\"/owners"]},
+     {"file": "VisitController.java", "contains": ["Mapping(\"/owners/{ownerId}/pets/{petId}/visits/new\")"]},
+     {"file": "VetController.java", "contains": ["@GetMapping"]}
+   ],
+   "note": "Spring MVC controllers and their @RequestMapping/@GetMapping/@PostMapping handlers."},
+  {"id": "lang.java.jpa_entity_model_fields", "corpus": "fixtures/java", "language": "java", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "JPA entity model fields",
+   "targets": [
+     {"file": "Owner.java", "contains": ["@Column"]},
+     {"file": "Owner.java", "contains": ["@Entity"]},
+     {"file": "Pet.java", "contains": ["@Column"]},
+     {"file": "Pet.java", "contains": ["@Entity"]},
+     {"file": "Visit.java", "contains": ["@Column"]},
+     {"file": "Vet.java", "contains": ["@ManyToMany"]}
+   ]},
+  {"id": "lang.java.spring_service_dependency_injection", "corpus": "fixtures/java", "language": "java", "kind": "language", "category": "diagnostic", "origin": "lang-suite", "query": "Spring service dependency injection",
+   "targets": [
+     {"file": "PetController.java", "contains": ["public PetController(OwnerRepository owners, PetTypeRepository types)"]},
+     {"file": "OwnerController.java", "contains": ["public OwnerController(OwnerRepository owners)"]},
+     {"file": "VisitController.java", "contains": ["public VisitController(OwnerRepository owners)"]},
+     {"file": "VetController.java", "contains": ["public VetController(VetRepository vetRepository)"]}
+   ],
+   "note": "Source audit: petclinic has no @Service class and no @Autowired; dependencies arrive through controller constructors, which share no term with 'service', 'dependency' or 'injection' ('Spring' only appears in package/import names)."},
+  {"id": "lang.java.form_input_validation", "corpus": "fixtures/java", "language": "java", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "form input validation",
+   "targets": [
+     {"file": "PetController.java", "contains": ["result.rejectValue(\"birthDate\", \"typeMismatch.birthDate\");"]},
+     {"file": "PetController.java", "contains": ["dataBinder.setValidator(new PetValidator());"]},
+     {"file": "OwnerController.java", "contains": ["@Valid Owner owner, BindingResult result"]},
+     {"file": "VisitController.java", "contains": ["@Valid Visit visit"]}
+   ]},
+
+  {"id": "java.petclinic.post_new_visit", "corpus": "fixtures/java", "language": "java", "kind": "exact", "category": "supported", "origin": "brainstorm-java", "query": "POST /owners/{ownerId}/pets/{petId}/visits/new",
+   "targets": [{"file": "VisitController.java", "symbol": "processNewVisitForm", "contains": ["@PostMapping(\"/owners/{ownerId}/pets/{petId}/visits/new\")"]}],
+   "distractors": [{"file": "VisitController.java", "symbol": "initNewVisitForm"}],
+   "note": "The POST handler, with its mapping annotation in the returned span, not the GET form initializer on the same path."},
+  {"id": "java.petclinic.pet_controller_constructor", "corpus": "fixtures/java", "language": "java", "kind": "exact", "category": "supported", "origin": "brainstorm-java", "query": "PetController constructor OwnerRepository PetTypeRepository",
+   "targets": [{"file": "PetController.java", "contains": ["public PetController(OwnerRepository owners, PetTypeRepository types)"]}],
+   "distractors": [
+     {"file": "VisitController.java", "contains": ["public VisitController(OwnerRepository owners)"]},
+     {"file": "OwnerController.java", "contains": ["public OwnerController(OwnerRepository owners)"]}
+   ]},
+  {"id": "java.petclinic.pet_entity", "corpus": "fixtures/java", "language": "java", "kind": "task", "category": "supported", "origin": "brainstorm-java", "query": "Pet entity extends NamedEntity birthDate visits",
+   "targets": [{"file": "Pet.java", "contains": ["public class Pet extends NamedEntity"]}],
+   "distractors": [
+     {"file": "PetType.java", "contains": ["public class PetType extends NamedEntity"]},
+     {"file": "Specialty.java", "contains": ["public class Specialty extends NamedEntity"]}
+   ]},
+  {"id": "java.petclinic.create_pet_validation", "corpus": "fixtures/java", "language": "java", "kind": "task", "category": "supported", "origin": "brainstorm-java", "query": "processCreationForm duplicate pet name future birthDate validation",
+   "targets": [{"file": "PetController.java", "symbol": "processCreationForm", "contains": ["owner.getPet(pet.getName(), true) != null"]}],
+   "distractors": [
+     {"file": "PetController.java", "symbol": "processUpdateForm"},
+     {"file": "OwnerController.java", "symbol": "processCreationForm"}
+   ],
+   "note": "Pet creation (not update, not owner creation) rejects duplicate names and future birth dates."},
+  {"id": "java.petclinic.get_pet_ignore_new", "corpus": "fixtures/java", "language": "java", "kind": "exact", "category": "supported", "origin": "brainstorm-java", "query": "Owner getPet String name boolean ignoreNew",
+   "targets": [{"file": "Owner.java", "contains": ["public Pet getPet(String name, boolean ignoreNew)"], "line": 140}],
+   "distractors": [
+     {"file": "Owner.java", "contains": ["public Pet getPet(String name) {"]},
+     {"file": "Owner.java", "contains": ["public Pet getPet(Integer id)"]}
+   ],
+   "note": "Overload resolution: the two-argument getPet, not the String-only delegate or the Integer overload."},
+
+  {"id": "java.payments.stripe_charge", "corpus": "retrieval/corpora/java-payments", "language": "java", "kind": "task", "category": "supported", "origin": "brainstorm-java", "query": "PaymentGateway implementation that sends the charge to Stripe with an idempotency key",
+   "targets": [{"file": "src/main/java/com/example/shop/payments/StripePaymentGateway.java", "symbol": "charge", "contains": [".header(\"Idempotency-Key\", idempotencyKey)"]}],
+   "distractors": [
+     {"file": "src/test/java/com/example/shop/payments/FakePaymentGateway.java", "symbol": "charge"},
+     {"file": "src/main/java/com/example/shop/payments/PaymentGateway.java", "contains": ["ChargeResult charge(String customerId"]}
+   ]},
+  {"id": "java.payments.fake_gateway_decline", "corpus": "retrieval/corpora/java-payments", "language": "java", "kind": "task", "category": "supported", "origin": "brainstorm-java", "query": "fake payment gateway decline customer in tests",
+   "targets": [
+     {"file": "src/test/java/com/example/shop/payments/FakePaymentGateway.java", "symbol": "declineCustomer"},
+     {"file": "src/test/java/com/example/shop/payments/FakePaymentGateway.java", "contains": ["public class FakePaymentGateway implements PaymentGateway"]},
+     {"file": "src/test/java/com/example/shop/payments/FakePaymentGateway.java", "symbol": "charge", "contains": ["declinedCustomers.get(customerId)"]}
+   ],
+   "distractors": [{"file": "src/main/java/com/example/shop/payments/StripePaymentGateway.java", "symbol": "charge"}]},
+  {"id": "java.payments.checkout_place_order", "corpus": "retrieval/corpora/java-payments", "language": "java", "kind": "task", "category": "supported", "origin": "brainstorm-java", "query": "checkout place order charge payment and mark order declined",
+   "targets": [{"file": "src/main/java/com/example/shop/checkout/CheckoutService.java", "symbol": "placeOrder", "contains": ["order.declined(result.declineCode())"]}],
+   "distractors": [{"file": "src/main/java/com/example/shop/payments/ChargeResult.java", "symbol": "declined"}]},
+
+  {"id": "java.chunker.inner_class_method", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "innerMethod", "max_rank": 1,
+   "targets": [{"file": "adv.java", "symbol": "innerMethod", "contains": ["void innerMethod() {}"]}]},
+  {"id": "java.chunker.nested_type", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "InnerClass",
+   "targets": [{"file": "adv.java", "symbol": "InnerClass", "contains": ["class InnerClass {"]}]},
+  {"id": "java.chunker.constructor", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Calculator constructor", 
+   "targets": [{"file": "adv.java", "symbol": "Calculator", "contains": ["public Calculator() {}"]}],
+   "note": "Constructor chunk (or the enclosing class chunk) named Calculator."},
+  {"id": "java.chunker.field_constant", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "MAX",
+   "targets": [{"file": "adv.java", "symbol": "MAX", "contains": ["public static final int MAX = 100;"]}]},
+  {"id": "java.chunker.interface_method", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Computable compute",
+   "targets": [
+     {"file": "adv.java", "symbol": "Computable", "contains": ["interface Computable {"]},
+     {"file": "adv.java", "symbol": "compute", "contains": ["int compute();"]}
+   ]},
+  {"id": "java.chunker.enum_method", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Status label toLowerCase",
+   "targets": [
+     {"file": "adv.java", "symbol": "label", "contains": ["return name().toLowerCase();"]},
+     {"file": "adv.java", "symbol": "Status", "contains": ["ACTIVE, INACTIVE;"]}
+   ]},
+  {"id": "java.chunker.annotation_type", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "MyAnnotation", "max_rank": 1,
+   "targets": [{"file": "adv.java", "symbol": "MyAnnotation", "contains": ["@interface MyAnnotation {"]}]},
+  {"id": "java.chunker.record_method", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "Point distance sqrt",
+   "targets": [
+     {"file": "adv.java", "symbol": "distance", "contains": ["Math.sqrt(x * x + y * y)"]},
+     {"file": "adv.java", "symbol": "Point", "contains": ["record Point(int x, int y)"]}
+   ]},
+  {"id": "java.chunker.commented_out_class", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "diagnostic", "origin": "chunker-fixture", "query": "CommentedClass", "expect": "none",
+   "note": "TestAdversarial_Java: '// class CommentedClass {}' must not be extracted as a declaration. Diagnostic because a trailing comment may legitimately surface as plain text inside a neighbouring span."},
+  {"id": "java.chunker.comment_not_declaration", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "query": "real fake alsoFake",
+   "targets": [
+     {"file": "test.java", "symbol": "real"},
+     {"file": "test.java", "symbol": "Real"}
+   ],
+   "distractors": [
+     {"file": "test.java", "symbol": "fake"},
+     {"file": "test.java", "symbol": "alsoFake"}
+   ],
+   "note": "TestAdversarial_NoFalsePositivesFromComments: declarations inside // and /* */ comments must never become symbols."},
+  {"id": "java.chunker.line_comment_captured", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "control", "category": "supported", "origin": "chunker-fixture", "query": "computes sum",
+   "targets": [{"file": "Foo.java", "symbol": "add", "contains": ["// computes sum"]}],
+   "note": "Adjacent // comment belongs to the method's span."},
+  {"id": "java.chunker.javadoc_captured", "corpus": "retrieval/corpora/java-chunker", "language": "java", "kind": "control", "category": "supported", "origin": "chunker-fixture", "query": "return product",
+   "targets": [{"file": "Bar.java", "symbol": "mul", "contains": ["/** @return product */"]}],
+   "note": "Adjacent Javadoc belongs to the method's span."}
+]

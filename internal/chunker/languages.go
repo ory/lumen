@@ -34,8 +34,8 @@ import (
 // supportedExtensions is the canonical list of file extensions handled by DefaultLanguages.
 var supportedExtensions = []string{
 	".go",
-	".ts", ".tsx",
-	".js", ".jsx", ".mjs",
+	".ts", ".tsx", ".mts", ".cts",
+	".js", ".jsx", ".mjs", ".cjs",
 	".py",
 	".rs",
 	".rb",
@@ -65,7 +65,8 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(class_definition name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(decorated_definition definition: (function_definition name: (identifier) @name)) @decl`, Kind: "function"},
 			{Pattern: `(decorated_definition definition: (class_definition name: (identifier) @name)) @decl`, Kind: "type"},
-			{Pattern: `(assignment left: (identifier) @name) @decl`, Kind: "var"},
+			// Module- and class-level assignments only; locals are not declarations.
+			{Pattern: `(assignment left: (identifier) @name) @decl`, Kind: "var", OutsideFunctions: true},
 		},
 	})
 
@@ -80,6 +81,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			// CommonJS exports and functions assigned to properties at top level
+			// (app.use = function use() {}, Reply.prototype.send = function () {}),
+			// named by the assignment target.
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name (#eq? @name "module.exports"))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression right: (assignment_expression left: (member_expression) @name (#eq? @name "module.exports")))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: [(function_expression) (arrow_function) (generator_function)])) @decl`, Kind: "function", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: (class))) @decl`, Kind: "type", OutsideFunctions: true},
 			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(abstract_class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(interface_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
@@ -103,6 +111,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			// CommonJS exports and functions assigned to properties at top level
+			// (app.use = function use() {}, Reply.prototype.send = function () {}),
+			// named by the assignment target.
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name (#eq? @name "module.exports"))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression right: (assignment_expression left: (member_expression) @name (#eq? @name "module.exports")))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: [(function_expression) (arrow_function) (generator_function)])) @decl`, Kind: "function", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: (class))) @decl`, Kind: "type", OutsideFunctions: true},
 			{Pattern: `(class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(abstract_class_declaration name: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(interface_declaration name: (type_identifier) @name) @decl`, Kind: "interface"},
@@ -126,6 +141,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(generator_function_declaration name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(lexical_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
 			{Pattern: `(variable_declaration (variable_declarator name: (identifier) @name value: [(arrow_function) (function_expression) (generator_function)])) @decl`, Kind: "function"},
+			// CommonJS exports and functions assigned to properties at top level
+			// (app.use = function use() {}, Reply.prototype.send = function () {}),
+			// named by the assignment target.
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name (#eq? @name "module.exports"))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression right: (assignment_expression left: (member_expression) @name (#eq? @name "module.exports")))) @decl`, Kind: "var", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: [(function_expression) (arrow_function) (generator_function)])) @decl`, Kind: "function", OutsideFunctions: true},
+			{Pattern: `(expression_statement (assignment_expression left: (member_expression) @name right: (class))) @decl`, Kind: "type", OutsideFunctions: true},
 			{Pattern: `(class_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(method_definition name: (property_identifier) @name) @decl`, Kind: "method"},
 		},
@@ -156,6 +178,10 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 		Queries: []QueryDef{
 			{Pattern: `(method name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(singleton_method name: (identifier) @name) @decl`, Kind: "function"},
+			// Setters (name=) and operators (==, [], <=>) are methods named by
+			// their full spelling.
+			{Pattern: `(method name: [(setter) (operator)] @name) @decl`, Kind: "function"},
+			{Pattern: `(singleton_method name: [(setter) (operator)] @name) @decl`, Kind: "function"},
 			{Pattern: `(class name: (constant) @name) @decl`, Kind: "type"},
 			{Pattern: `(module name: (constant) @name) @decl`, Kind: "type"},
 			{Pattern: `(alias name: (identifier) @name) @decl`, Kind: "function"},
@@ -188,8 +214,22 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(type_definition declarator: (type_identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(preproc_function_def name: (identifier) @name) @decl`, Kind: "function"},
 			{Pattern: `(preproc_def name: (identifier) @name) @decl`, Kind: "const"},
+			// Prototypes at file scope, including inside include guards.
+			{Pattern: `(declaration declarator: [(function_declarator declarator: (identifier) @name) (pointer_declarator declarator: (function_declarator declarator: (identifier) @name))]) @decl`, Kind: "function", OutsideFunctions: true},
+			// Function and pointer typedefs: typedef int (*CompareFn)(...); typedef struct s *s_t;
+			{Pattern: `(type_definition declarator: (function_declarator declarator: (parenthesized_declarator (pointer_declarator declarator: (type_identifier) @name)))) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (function_declarator declarator: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (pointer_declarator declarator: (type_identifier) @name)) @decl`, Kind: "type"},
 		},
 	})
+
+	// cppFunc matches a function declarator named by name, directly or behind a
+	// pointer or reference return type.
+	cppFunc := func(name string) string {
+		return "[(function_declarator declarator: " + name + ")" +
+			" (pointer_declarator declarator: (function_declarator declarator: " + name + "))" +
+			" (reference_declarator (function_declarator declarator: " + name + "))]"
+	}
 
 	cpp := mustTreeSitterChunker(LanguageDef{
 		Language: sitter_cpp.GetLanguage(),
@@ -214,6 +254,22 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(template_declaration (class_specifier name: (type_identifier) @name)) @decl`, Kind: "type"},
 			{Pattern: `(template_declaration (struct_specifier name: (type_identifier) @name)) @decl`, Kind: "type"},
 			{Pattern: `(template_declaration (alias_declaration name: (type_identifier) @name)) @decl`, Kind: "type"},
+			// Free operators and functions returning references.
+			{Pattern: `(function_definition declarator: ` + cppFunc(`(operator_name) @name`) + `) @decl`, Kind: "function"},
+			{Pattern: `(function_definition declarator: (reference_declarator (function_declarator declarator: (identifier) @name))) @decl`, Kind: "function"},
+			// Out-of-line member definitions, including operators, destructors and
+			// nested scopes (codec::hex::decode); named by their final component.
+			{Pattern: `(function_definition declarator: ` + cppFunc(`(qualified_identifier) @name`) + `) @decl`, Kind: "method"},
+			// Prototypes at file or namespace scope, including inside include guards.
+			{Pattern: `(declaration declarator: ` + cppFunc(`[(identifier) (qualified_identifier) (operator_name)] @name`) + `) @decl`, Kind: "function", OutsideFunctions: true},
+			// Function and pointer typedefs: typedef int (*CompareFn)(...); typedef struct s *s_t;
+			{Pattern: `(type_definition declarator: (function_declarator declarator: (parenthesized_declarator (pointer_declarator declarator: (type_identifier) @name)))) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (function_declarator declarator: (type_identifier) @name)) @decl`, Kind: "type"},
+			{Pattern: `(type_definition declarator: (pointer_declarator declarator: (type_identifier) @name)) @decl`, Kind: "type"},
+			// Members declared or defined inside a class, struct or union body.
+			{Pattern: `(field_declaration_list (function_definition declarator: ` + cppFunc(`[(field_identifier) (identifier) (operator_name) (destructor_name)] @name`) + `) @decl)`, Kind: "method"},
+			{Pattern: `(field_declaration_list (field_declaration declarator: ` + cppFunc(`[(field_identifier) (operator_name) (destructor_name)] @name`) + `) @decl)`, Kind: "method"},
+			{Pattern: `(field_declaration_list (declaration declarator: ` + cppFunc(`[(identifier) (operator_name) (destructor_name)] @name`) + `) @decl)`, Kind: "method"},
 		},
 	})
 
@@ -242,7 +298,10 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 			{Pattern: `(enum_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(property_declaration name: (identifier) @name) @decl`, Kind: "method"},
 			{Pattern: `(constructor_declaration name: (identifier) @name) @decl`, Kind: "function"},
-			{Pattern: `(destructor_declaration name: (identifier) @name) @decl`, Kind: "function"},
+			{Pattern: `(destructor_declaration name: (identifier) @name) @decl`, Kind: "function", SymbolFormat: "~%s"},
+			{Pattern: `(operator_declaration operator: _ @name) @decl`, Kind: "method", SymbolFormat: "operator %s"},
+			{Pattern: `(conversion_operator_declaration type: (_) @name) @decl`, Kind: "method", SymbolFormat: "operator %s"},
+			{Pattern: `(indexer_declaration "this" @name) @decl`, Kind: "method", SymbolFormat: "%s[]"},
 			{Pattern: `(delegate_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(record_declaration name: (identifier) @name) @decl`, Kind: "type"},
 			{Pattern: `(event_field_declaration (variable_declaration (variable_declarator (identifier) @name))) @decl`, Kind: "var"},
@@ -331,10 +390,13 @@ func DefaultLanguages(maxChunkTokens int) map[string]Chunker {
 	return map[string]Chunker{
 		".go":     goChunker,
 		".ts":     ts,
+		".mts":    ts,
+		".cts":    ts,
 		".tsx":    tsx,
 		".js":     js,
 		".jsx":    js,
 		".mjs":    js,
+		".cjs":    js,
 		".py":     py,
 		".rs":     rs,
 		".rb":     rb,

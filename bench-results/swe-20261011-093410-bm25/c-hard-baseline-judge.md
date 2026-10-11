@@ -1,0 +1,3 @@
+## Rating: Perfect
+
+Both patches apply the identical NaN guard in `jv_dels` (check `jvp_number_is_nan` before `< 0`, then `jv_free` the key). For `delpaths_sorted`, the candidate converts the `while` loop to a `do…while` via the same `do j++; while(...)` transform as the gold patch, ensuring `j` always advances past `i` regardless of NaN's IEEE 754 non-reflexive equality. The only cosmetic differences are that the gold patch also moves the `int j = i;` declaration after the `jv key =` line (no behavioral effect since `j` is only used in the loop), and the test uses `nan, nan` with a space vs `nan,nan` — both are valid jq expressions.

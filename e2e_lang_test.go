@@ -40,21 +40,18 @@ func fixturesPath(lang string) string {
 	return p
 }
 
-// startLangServer starts the MCP server with a reduced max chunk token size
-// suitable for all-minilm's 512-token context window.
+// startLangServer starts the historical semantic snapshot server with a
+// reduced max chunk token size suitable for all-minilm's 512-token context
+// window. The retrieval mode is explicit: these snapshots record semantic
+// chunk identities and are meaningless under BM25 (see TestE2E_Catalog for
+// the mode-neutral, source-judged relevance suite).
 func startLangServer(t *testing.T) *mcp.ClientSession {
 	t.Helper()
-	dataHome := t.TempDir()
-	ollamaHost := "http://localhost:11434"
-	if h := os.Getenv("OLLAMA_HOST"); h != "" {
-		ollamaHost = h
-	}
+	requireSemantic(t)
 
 	cmd := exec.Command(serverBinary, "stdio")
-	cmd.Env = []string{
-		"OLLAMA_HOST=" + ollamaHost,
+	cmd.Env = append(childEnv("semantic", t.TempDir()),
 		"LUMEN_BACKEND=ollama",
-		"LUMEN_EMBED_MODEL=all-minilm",
 		// all-minilm uses BERT WordPiece tokenisation which is ~4x denser than
 		// our 4-chars-per-token estimate, so cap chunks at 100 "tokens" (400
 		// chars) to stay within the model's 512-token context window.
@@ -63,10 +60,7 @@ func startLangServer(t *testing.T) *mcp.ClientSession {
 		// CPU embedding can still exceed the default 15s timeout on slower CI
 		// runners, so allow up to 10m to avoid partially-built index results.
 		"LUMEN_REINDEX_TIMEOUT=10m",
-		"XDG_DATA_HOME=" + dataHome,
-		"HOME=" + os.Getenv("HOME"),
-		"PATH=" + os.Getenv("PATH"),
-	}
+	)
 
 	transport := &mcp.CommandTransport{Command: cmd}
 	client := mcp.NewClient(&mcp.Implementation{
@@ -153,120 +147,157 @@ func runLangTest(t *testing.T, lang string, queries []string) {
 	}
 }
 
-func TestLang_Go(t *testing.T) {
-	runLangTest(t, "go", []string{
+// langSuites are the original language-suite queries. Their source-judged
+// relevance targets live in testdata/retrieval/cases as lang.<language>.* cases.
+var langSuites = []struct {
+	name, dir string
+	queries   []string
+}{
+	{"Go", "go", []string{
 		"HTTP request handler",
 		"authentication token validation",
 		"database connection pool",
 		"time series storage and retrieval",
 		"error handling and logging",
 		"configuration loading from file",
-	})
-}
-
-func TestLang_Java(t *testing.T) {
-	runLangTest(t, "java", []string{
+	}},
+	{"Java", "java", []string{
 		"pet owner repository database",
 		"REST controller request mapping",
 		"JPA entity model fields",
 		"Spring service dependency injection",
 		"form input validation",
-	})
-}
-
-func TestLang_Dart(t *testing.T) {
-	runLangTest(t, "dart", []string{
+	}},
+	{"Dart", "dart", []string{
 		"HTTP request handler middleware",
 		"server pipeline shelf handler",
 		"response body status code",
 		"cascade route matching",
 		"logging middleware interceptor",
-	})
-}
-
-func TestLang_PHP(t *testing.T) {
-	runLangTest(t, "php", []string{
+	}},
+	{"PHP", "php", []string{
 		"HTTP request handling middleware",
 		"database query builder",
 		"authentication guard session",
 		"collection helper methods",
 		"model relationships",
-	})
-}
-
-func TestLang_JavaScript(t *testing.T) {
-	runLangTest(t, "js", []string{
+	}},
+	{"JavaScript", "js", []string{
 		"HTTP router middleware",
 		"request response object",
 		"event emitter listener",
 		"error handling exception",
 		"module exports function",
-	})
-}
-
-func TestLang_TypeScript(t *testing.T) {
-	runLangTest(t, "ts", []string{
+	}},
+	{"TypeScript", "ts", []string{
 		"event listener registration",
 		"async operation with cancellation",
 		"URI path manipulation",
 		"lifecycle disposable resource",
 		"platform detection operating system",
-	})
-}
-
-func TestLang_Ruby(t *testing.T) {
-	runLangTest(t, "ruby", []string{
+	}},
+	{"Ruby", "ruby", []string{
 		"route matching URL",
 		"controller action rendering",
 		"database record query scope",
 		"authentication callback filter",
 		"module include concern",
-	})
-}
-
-func TestLang_Python(t *testing.T) {
-	runLangTest(t, "python", []string{
+	}},
+	{"Python", "python", []string{
 		"HTTP route handler decorator",
 		"database model query filter",
 		"authentication login view",
 		"request context middleware",
 		"exception error handling",
-	})
-}
-
-func TestLang_Rust(t *testing.T) {
-	runLangTest(t, "rust", []string{
+	}},
+	{"Rust", "rust", []string{
 		"async runtime executor spawn",
 		"file search pattern match",
 		"TCP network listener accept",
 		"mutex lock concurrent access",
 		"error result propagation",
-	})
-}
-
-func TestLang_YAML(t *testing.T) {
-	runLangTest(t, "yaml", []string{
+	}},
+	{"YAML", "yaml", []string{
 		"Kubernetes deployment replicas",
 		"CI pipeline build steps",
 		"service port configuration",
 		"environment variables secrets",
-	})
-}
-
-func TestLang_Markdown(t *testing.T) {
-	runLangTest(t, "md", []string{
+	}},
+	{"Markdown", "md", []string{
 		"installation setup guide",
 		"ownership borrowing memory",
 		"error handling panic recover",
 		"async concurrent threads",
-	})
-}
-
-func TestLang_JSON(t *testing.T) {
-	runLangTest(t, "json", []string{
+	}},
+	{"JSON", "json", []string{
 		"build scripts commands",
 		"TypeScript compiler options",
 		"package dependencies versions",
 		"API paths endpoints",
-	})
+	}},
+}
+
+func TestLang_Go(t *testing.T)         { runLangSuite(t, "Go") }
+func TestLang_Java(t *testing.T)       { runLangSuite(t, "Java") }
+func TestLang_Dart(t *testing.T)       { runLangSuite(t, "Dart") }
+func TestLang_PHP(t *testing.T)        { runLangSuite(t, "PHP") }
+func TestLang_JavaScript(t *testing.T) { runLangSuite(t, "JavaScript") }
+func TestLang_TypeScript(t *testing.T) { runLangSuite(t, "TypeScript") }
+func TestLang_Ruby(t *testing.T)       { runLangSuite(t, "Ruby") }
+func TestLang_Python(t *testing.T)     { runLangSuite(t, "Python") }
+func TestLang_Rust(t *testing.T)       { runLangSuite(t, "Rust") }
+func TestLang_YAML(t *testing.T)       { runLangSuite(t, "YAML") }
+func TestLang_Markdown(t *testing.T)   { runLangSuite(t, "Markdown") }
+func TestLang_JSON(t *testing.T)       { runLangSuite(t, "JSON") }
+
+func runLangSuite(t *testing.T, name string) {
+	t.Helper()
+	for _, suite := range langSuites {
+		if suite.name == name {
+			runLangTest(t, suite.dir, suite.queries)
+			return
+		}
+	}
+	t.Fatalf("unknown language suite %s", name)
+}
+
+// TestLang_BM25SnapshotDiagnostics replays the unchanged historical semantic
+// snapshots against BM25 output. Semantic snapshots record semantic chunk
+// identities (merged/split names and spans), so mismatches are expected and
+// are not relevance failures; this reports the compatibility gap and never
+// fails. Relevance is judged by TestE2E_Catalog_BM25.
+func TestLang_BM25SnapshotDiagnostics(t *testing.T) {
+	session, trap, _ := startBM25Server(t)
+	matched, total := 0, 0
+	for _, suite := range langSuites {
+		for _, q := range suite.queries {
+			name := "TestLang_" + suite.name + "-" + strings.ReplaceAll(q, " ", "_")
+			expected, err := os.ReadFile(filepath.Join(langSnapshotDirectory, name))
+			if err != nil {
+				t.Errorf("snapshot %s: %v", name, err)
+				continue
+			}
+			total++
+			results := langSearch(t, session, suite.dir, q)
+			if err := compareLangSnapshot(string(expected), directSnapshotResults(results)); err != nil {
+				t.Logf("%s/%s: snapshot mismatch (diagnostic): %v", suite.name, q, strings.SplitN(err.Error(), "\n", 2)[0])
+				continue
+			}
+			matched++
+		}
+	}
+	t.Logf("BM25 matched %d/%d historical semantic snapshots", matched, total)
+	trap.assertUnused(t)
+}
+
+// directSnapshotResults drops BM25 related context, which semantic snapshots
+// never contained.
+func directSnapshotResults(results []searchResultItem) []searchResultItem {
+	var direct []searchResultItem
+	for _, r := range results {
+		if r.RelatedTo == "" {
+			direct = append(direct, r)
+		}
+	}
+	return direct
 }

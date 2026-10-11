@@ -35,4 +35,9 @@ package config
 //	6 — BM25 indexing splits oversized chunks at LUMEN_MAX_CHUNK_TOKENS like
 //	    the semantic path; existing lexical indexes hold multi-thousand-line
 //	    documents that overflow MCP tool output
-const IndexVersion = "6"
+//	7 — extraction parity: Svelte template/style/statement regions, fence-aware
+//	    Markdown H1-H6, source-accurate YAML/JSON spans, Dart/Rust/Python/Ruby/
+//	    JS/C/C++/C# declaration fixes, JS/TS export-clause and default-export
+//	    metadata, initializer call references, .mts/.cts/.cjs files, and the
+//	    lexical_vocab table for IDF-weighted BM25 coverage
+const IndexVersion = "7"

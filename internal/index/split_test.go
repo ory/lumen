@@ -604,3 +604,30 @@ func TestFindSplitPoint_ExactBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// Structured chunks carry a synthetic "# path:" first line that is not in the
+// source. Splitting must map sub-chunk lines to source lines, not shift them.
+func TestSplitOversizedChunksIgnoresSyntheticPrefix(t *testing.T) {
+	var src strings.Builder
+	for i := range 300 {
+		fmt.Fprintf(&src, "  dep%03d: \"1.0.%d\"\n", i, i)
+	}
+	c := chunker.Chunk{ID: "x", FilePath: "values.yaml", Symbol: "dependencies", Kind: "type", StartLine: 10, EndLine: 309, Content: "# path: dependencies\n" + src.String()}
+	parts := splitOversizedChunks([]chunker.Chunk{c}, 128)
+	if len(parts) < 2 {
+		t.Fatalf("expected a split, got %d chunk(s)", len(parts))
+	}
+	sourceLine := func(n int) string { return fmt.Sprintf("  dep%03d: \"1.0.%d\"", n-10, n-10) }
+	for _, p := range parts {
+		if p.StartLine < c.StartLine || p.EndLine > c.EndLine || p.EndLine < p.StartLine {
+			t.Fatalf("sub-chunk %d-%d outside source span %d-%d", p.StartLine, p.EndLine, c.StartLine, c.EndLine)
+		}
+		lines := strings.Split(strings.TrimSuffix(p.Content, "\n"), "\n")
+		if last := lines[len(lines)-1]; last != sourceLine(p.EndLine) {
+			t.Fatalf("sub-chunk ending at line %d ends with %q, want %q", p.EndLine, last, sourceLine(p.EndLine))
+		}
+	}
+	if last := parts[len(parts)-1]; last.EndLine != c.EndLine {
+		t.Fatalf("last sub-chunk ends at %d, want %d", last.EndLine, c.EndLine)
+	}
+}

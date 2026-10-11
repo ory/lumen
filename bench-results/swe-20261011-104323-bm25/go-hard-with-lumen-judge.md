@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the described issue: for null YAML nodes where the destination type is a struct with a valid default, it returns the default value rather than zeroing it out. The fix is narrower than the gold patch — it only handles `reflect.Struct` kinds explicitly, while the gold patch generalizes to all types by skipping `decodeValue` for null nodes (while still applying defaults). The candidate also omits the regression test that the gold patch adds. The core bug is fixed, but the approach is less complete and slightly risks returning a shared `defaultVal` reference rather than a fresh copy initialized from the default.

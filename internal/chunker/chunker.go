@@ -17,18 +17,21 @@ package chunker
 
 // Chunk represents a semantically meaningful piece of source code.
 type Chunk struct {
-	Exported   bool   // proven direct named export (JS/TS), or exported Go declaration
-	ID         string // deterministic: sha256(filePath + symbol + startLine)[:16]
-	FilePath   string // relative to project root
-	Symbol     string // "FuncName", "TypeName.MethodName"
-	Kind       string // "function", "method", "type", "interface", "const", "var", "package"
-	StartLine  int
-	EndLine    int
-	Content    string   // raw source text
-	Signature  string   // declaration header without its body
-	Comments   string   // syntax comments and documentation
-	References []string // conservative direct-call name candidates, not resolved edges
-	Imports    []string // source import hints, not resolved paths
+	Exported bool // proven direct named export (JS/TS), or exported Go declaration
+	// DefaultExport marks a top-level JS/TS declaration exported as the module
+	// default, directly or through `export default name`.
+	DefaultExport bool
+	ID            string // deterministic: sha256(filePath + symbol + startLine)[:16]
+	FilePath      string // relative to project root
+	Symbol        string // "FuncName", "TypeName.MethodName"
+	Kind          string // "function", "method", "type", "interface", "const", "var", "package"
+	StartLine     int
+	EndLine       int
+	Content       string   // raw source text
+	Signature     string   // declaration header without its body
+	Comments      string   // syntax comments and documentation
+	References    []string // conservative direct-call name candidates, not resolved edges
+	Imports       []string // source import hints, not resolved paths
 }
 
 // Chunker splits source files into semantically meaningful chunks.

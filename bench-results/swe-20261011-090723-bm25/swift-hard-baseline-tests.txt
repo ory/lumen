@@ -1,0 +1,621 @@
+warning: 'repo': found 7 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/artifactbundle.info.json.template
+warning: 'repo': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Stub/Source_Linux/TestProject/TestProject/Info.plist
+warning: 'repo': found 6 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoCases.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoEquatable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoHashable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoLenses.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/AutoMockable.swift
+    /private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Templates/Tests/Context_Linux/LinuxMain.swift
+Building for debugging...
+[Computing dependencies]
+[Provisioning 4 / 131]
+[Pre-planning 1 / 2958]
+[Planning 2819 / 2958]
+[Planning deferred tasks]
+[Constructing 1326 / 7262]
+[Starting]
+[473 / 1885] Sourcery_SourceryJS
+[481 / 1885] Sourcery_SourceryLibTests
+[500 / 1860] _CertificateInternals
+[506 / 1872] _CertificateInternals
+[508 / 1872] InternalCollectionsUtilities
+[513 / 1906]
+[519 / 1936] Crypto
+[520 / 1936] TSCLibc
+[522 / 1953] TSCLibc
+[530 / 1953] InternalCollectionsUtilities
+[539 / 1981]
+[542 / 2024] llbuildSwift
+[546 / 2027]
+[551 / 2027] PackageCollectionsModel
+[569 / 2029] llvmSupport
+[572 / 2029] CryptoBoringWrapper
+[580 / 2037]
+[583 / 2037] CwlCatchException
+[585 / 2037] llvmSupport
+[588 / 2037] CwlCatchException
+[597 / 2037] llvmSupport
+[600 / 2037] Commander
+[603 / 2037] Commander
+[611 / 2054] CryptoBoringWrapper
+[620 / 2080] AEXML
+[623 / 2147]
+[624 / 2147] CodableContext
+[635 / 2147] AEXML
+[643 / 2147]
+[645 / 2147]
+[647 / 2147]
+[651 / 2147]
+[656 / 2147]
+[663 / 2147] Yams
+[669 / 2147] llvmSupport
+[674 / 2147] Crypto
+[681 / 2147] SystemPackage
+[690 / 2147]
+[692 / 2147] llvmSupport
+[694 / 2147] llvmSupport
+[695 / 2147]
+[696 / 2147] llvmSupport
+[707 / 2147] llvmSupport
+[708 / 2147] llvmSupport
+[709 / 2147] llvmSupport
+[711 / 2147] llvmSupport
+[716 / 2147] llbuildNinja
+[719 / 2147] llbuildCore
+[720 / 2147] llbuildCore
+[723 / 2147] llbuildCore
+[725 / 2147] llbuildBuildSystem
+[727 / 2147]
+[730 / 2147] llbuildBuildSystem
+[733 / 2147] llvmDemangle
+[735 / 2147] llbuildBuildSystem
+[736 / 2147]
+[738 / 2147] llbuildBuildSystem
+[742 / 2147] llbuildBasic
+[743 / 2147] llbuildBasic
+[743 / 2147] llbuildBuildSystem
+[745 / 2147] llbuildBasic
+[746 / 2147] Quick
+[748 / 2147] llbuildBasic
+[749 / 2147] llbuildBasic
+[753 / 2147] libllbuild
+[753 / 2147] Quick
+[754 / 2147] llbuildBuildSystem
+[763 / 2147] libllbuild
+[766 / 2147] TSCclibc
+[770 / 2147] TSCclibc
+[772 / 2147] CCryptoBoringSSL
+[776 / 2147] CCryptoBoringSSL
+[781 / 2147] CCryptoBoringSSL
+[786 / 2147] CCryptoBoringSSL
+[794 / 2147] CCryptoBoringSSL
+[806 / 2147] CCryptoBoringSSL
+[816 / 2147] CCryptoBoringSSL
+[838 / 2147] CCryptoBoringSSL
+[855 / 2147] CCryptoBoringSSL
+[875 / 2147] CCryptoBoringSSL
+[898 / 2147]
+[917 / 2147]
+[923 / 2147]
+[926 / 2147]
+[928 / 2147]
+[933 / 2147] Yams
+[940 / 2147] Yams-product
+[941 / 2147] Yams-product
+[950 / 2147] TSCLibc
+[960 / 2147] SystemPackage
+[966 / 2147]
+[974 / 2147]
+[979 / 2147]
+[983 / 2147] _AsyncFileSystem
+[990 / 2147] SystemPackage
+[996 / 2147]
+[1003 / 2147] SwiftASN1-product
+[1010 / 2147]
+[1013 / 2147] SwiftASN1
+[1022 / 2147]
+[1023 / 2147] Quick
+[1025 / 2147] Quick
+[1030 / 2147] Quick
+[1037 / 2147]
+[1044 / 2147] Quick-product
+[1048 / 2147] Quick
+[1050 / 2147]
+[1055 / 2147]
+[1061 / 2147] TryCatch
+[1063 / 2147] InternalCollectionsUtilities
+[1067 / 2147] TryCatch
+[1071 / 2147] InternalCollectionsUtilities
+[1076 / 2147] CwlCatchException
+[1081 / 2147] SwiftASN1
+[1083 / 2147] Crypto
+[1085 / 2147] _CryptoExtras
+[1091 / 2147] Crypto
+[1094 / 2147] Crypto
+[1098 / 2147] Crypto
+[1103 / 2147] Quick
+[1113 / 2147]
+[1125 / 2147] CSystem
+[1135 / 2147] CSwiftScan
+[1150 / 2150] CCryptoBoringSSL
+[1169 / 2150] CCryptoBoringSSL
+[1182 / 2150] CCryptoBoringSSL
+[1202 / 2150] CCryptoBoringSSL
+[1214 / 2150] CCryptoBoringSSL
+[1232 / 2150] CodableContext
+[1245 / 2150] CCryptoBoringSSL
+[1269 / 2150] CCryptoBoringSSL
+[1287 / 2150] CCryptoBoringSSL
+[1313 / 2150] CCryptoBoringSSL
+[1339 / 2150] CCryptoBoringSSL
+[1374 / 2150] CCryptoBoringSSL
+[1400 / 2150] CCryptoBoringSSL
+[1413 / 2150] CCryptoBoringSSL
+[1435 / 2150] CCryptoBoringSSL
+[1464 / 2150] CCryptoBoringSSL
+[1486 / 2150] CCryptoBoringSSL
+[1514 / 2151] CCryptoBoringSSL
+[1539 / 2151] CCryptoBoringSSL
+[1565 / 2151] CCryptoBoringSSL
+[1588 / 2151] CCryptoBoringSSL
+[1619 / 2151] CCryptoBoringSSL
+[1655 / 2151] CCryptoBoringSSL
+[1684 / 2151] CCryptoBoringSSL
+[1717 / 2151] CCryptoBoringSSL
+[1735 / 2151] CCryptoBoringSSL
+[1745 / 2151]
+[1756 / 2154] Crypto
+[1758 / 2155] TSCBasic
+[1773 / 2163] llbuildCore
+[1779 / 2163] Yams
+[1783 / 2163] CryptoBoringWrapper
+[1784 / 2163] llbuildSwift
+[1784 / 2163] SwiftBasicFormat
+[1790 / 2170] SwiftBasicFormat
+[1794 / 2187] SwiftBasicFormat
+[1804 / 2198] SwiftDiagnostics
+[1809 / 2198] SwiftDiagnostics
+[1826 / 2219] _AsyncFileSystem
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/SourceryStencil/Sources/StencilTemplate.swift:7:53: [1;33mwarning: [1;39m'StencilSwiftTemplate' is deprecated: No longer needed with Stencil whitespace control features[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+  [0;36m5 |[0;0m import SourceryRuntime
+  [0;36m6 |[0;0m 
+  [0;36m7 |[0;0m public final class StencilTemplate: StencilSwiftKit.StencilSwiftTemplate {
+    [0;36m|[0;0m                                                     `- [1;33mwarning: [1;39m'StencilSwiftTemplate' is deprecated: No longer needed with Stencil whitespace control features[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+  [0;36m8 |[0;0m     private(set) public var sourcePath: Path = ""
+  [0;36m9 |[0;0m     
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[1850 / 2219] SwiftParserDiagnostics
+[1871 / 2219] SwiftDiagnostics
+[1879 / 2219] DequeModule-product
+[1885 / 2219] DequeModule
+[1893 / 2227] _CryptoExtras
+[1902 / 2241] CwlPreconditionTesting
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/SourceryStencil/Sources/StencilTemplate.swift:7:53: [1;33mwarning: [1;39m'StencilSwiftTemplate' is deprecated: No longer needed with Stencil whitespace control features[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+  [0;36m5 |[0;0m import SourceryRuntime
+  [0;36m6 |[0;0m 
+  [0;36m7 |[0;0m public final class StencilTemplate: StencilSwiftKit.StencilSwiftTemplate {
+    [0;36m|[0;0m                                                     `- [1;33mwarning: [1;39m'StencilSwiftTemplate' is deprecated: No longer needed with Stencil whitespace control features[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+  [0;36m8 |[0;0m     private(set) public var sourcePath: Path = ""
+  [0;36m9 |[0;0m     
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[1912 / 2316] SwiftParserDiagnostics
+[1916 / 2316] XcodeProj
+[1926 / 2316] SwiftIDEUtils
+[1937 / 2316] _CryptoExtras
+[1939 / 2316] _CryptoExtras
+[1945 / 2316] _CryptoExtras-product
+[1955 / 2316] XcodeProj
+[1959 / 2316] TSCBasic
+[1967 / 2316] TSCBasic
+[1970 / 2316] OrderedCollections
+[1984 / 2316] TSCBasic
+[1986 / 2316] TSCBasic
+[1990 / 2316] TSCBasic
+[1993 / 2316] SwiftParserDiagnostics
+[1996 / 2316] SwiftSyntaxBuilder
+[2003 / 2316] SwiftParserDiagnostics
+[2006 / 2316] SwiftIDEUtils
+[2008 / 2316] SwiftIDEUtils-product
+[2016 / 2316] SourceryStencil
+[2019 / 2316] OrderedCollections
+[2026 / 2316] SwiftIDEUtils
+[2034 / 2316] DequeModule
+[2038 / 2316] CwlPreconditionTesting-product
+[2044 / 2317]
+[2045 / 2318]
+[2050 / 2320]
+[2056 / 2320]
+[2056 / 2320] SwiftSyntaxBuilder
+[2071 / 2362] X509
+[2074 / 2379] X509
+[2075 / 2379]
+[2076 / 2396] Nimble
+[2078 / 2396]
+[2089 / 2396] Nimble
+[2100 / 2396]
+[2103 / 2396]
+[2104 / 2396] TSCUtility
+[2108 / 2396] TSCUtility
+[2112 / 2396] TSCUtility
+[2113 / 2396] SwiftToolsSupport-auto-product
+[2116 / 2396] SwiftToolsSupport-auto-product
+[2120 / 2396] SwiftSyntaxBuilder
+[2123 / 2396] SwiftSyntaxBuilder
+[2125 / 2396] SwiftSyntaxBuilder
+[2128 / 2396] SwiftSyntaxBuilder
+[2137 / 2396] SwiftSyntaxBuilder-product
+[2140 / 2396] Nimble
+[2144 / 2396] TemplatesTests-product
+[2148 / 2396] SwiftSyntaxBuilder
+[2151 / 2396]
+[2168 / 2398] Nimble
+[2170 / 2398] Nimble
+[2177 / 2400] SwiftOptions
+[2185 / 2408] SwiftOptions
+[2186 / 2427] SwiftOptions
+[2187 / 2427]
+[2200 / 2427] Basics
+[2201 / 2437] SwiftOptions
+[2207 / 2437] SwiftOptions
+[2213 / 2437] SwiftDriver
+[2214 / 2438]
+[2220 / 2438] CodableContextTests-product
+[2237 / 2439]
+[2243 / 2442] CodableContextTests-product
+[2244 / 2442] CodableContextTests-product
+[2255 / 2460] SwiftDriver
+[2257 / 2469] LLBuildManifest
+[2260 / 2494] PackageModel
+[2262 / 2494] LLBuildManifest
+[2275 / 2494] SwiftOptions
+[2277 / 2494] SwiftDriver
+[2280 / 2494] PackageCollectionsSigning
+[2286 / 2494] SwiftDriver
+[2287 / 2494] SwiftDriver
+[2294 / 2494] SwiftDriver
+[2302 / 2494] SwiftDriver-product
+[2306 / 2494] SourceControl
+[2311 / 2494] PackageModel
+[2313 / 2494] PackageModel
+[2316 / 2494] PackageModel
+[2317 / 2494] PackageModel
+[2320 / 2494] PackageCollectionsSigning
+[2323 / 2494] PackageCollectionsSigning
+[2327 / 2494] LLBuildManifest
+[2328 / 2494] LLBuildManifest
+[2331 / 2494] PackageModel
+[2340 / 2498]
+[2345 / 2498] SPMLLBuild
+[2347 / 2498] LLBuildManifest
+[2348 / 2498] SwiftDriver
+[2354 / 2503]
+[2371 / 2520] PackageSigning
+[2393 / 2520] PackageSigning
+[2397 / 2522]
+[2397 / 2522] DriverSupport
+[2403 / 2522] PackageSigning
+[2407 / 2522] PackageFingerprint
+[2409 / 2522] PackageLoading
+[2426 / 2555] PackageCollections
+[2427 / 2555] PackageCollections
+[2431 / 2555] PackageCollections
+[2433 / 2555] PackageCollections
+[2436 / 2555] PackageCollections
+[2440 / 2555] PackageLoading
+[2457 / 2558] PackageGraph
+[2457 / 2558]
+[2457 / 2558] PackageCollections
+[2470 / 2578] PackageModelSyntax
+[2471 / 2578] PackageModelSyntax
+[2477 / 2595] PackageModelSyntax
+[2491 / 2595] PackageModelSyntax
+[2501 / 2595] PackageGraph
+[2505 / 2595] PackageGraph
+[2510 / 2595] PackageGraph
+[2517 / 2597]
+[2518 / 2597] PackageGraph
+[2520 / 2597] PackageCollections
+[2520 / 2597] PackageGraph
+[2533 / 2616] SPMBuildCore
+[2534 / 2616] SPMBuildCore
+[2545 / 2616] SPMBuildCore
+[2546 / 2616] PackageMetadata
+[2546 / 2616] SPMBuildCore
+[2555 / 2616] SPMBuildCore
+[2559 / 2618] SPMBuildCore
+[2559 / 2618] Workspace
+[2575 / 2652] Build
+[2577 / 2652] Workspace
+[2580 / 2652] Build
+[2581 / 2652] Build
+[2586 / 2652] Build
+[2596 / 2652] SPMBuildCore
+[2598 / 2652] SourceKitLSPAPI
+[2602 / 2653]
+[2608 / 2653] Workspace
+[2608 / 2653] SourceKitLSPAPI
+[2611 / 2656] SourceKitLSPAPI
+[2618 / 2657] Build
+[2619 / 2657] Build
+[2622 / 2657] SourceryLib
+[2635 / 2670] SourceryLib
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Sourcery/Generating/Templates/Swift/SwiftTemplate.swift:14:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'SwiftTemplate' to imported protocol 'Template'; this will not behave correctly if the owners of 'SourcerySwift' introduce this conformance in the future[0;0m
+[0;36m12 |[0;0m import SourcerySwift
+[0;36m13 |[0;0m 
+[0;36m14 |[0;0m extension SwiftTemplate: Template {
+   [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'SwiftTemplate' to imported protocol 'Template'; this will not behave correctly if the owners of 'SourcerySwift' introduce this conformance in the future[0;0m
+   [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m15 |[0;0m 
+[0;36m16 |[0;0m     public func render(_ context: TemplateContext) throws -> String {
+[2637 / 2670] SourceryLib
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Sourcery/Generating/Templates/Swift/SwiftTemplate.swift:14:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'SwiftTemplate' to imported protocol 'Template'; this will not behave correctly if the owners of 'SourcerySwift' introduce this conformance in the future[0;0m
+[0;36m12 |[0;0m import SourcerySwift
+[0;36m13 |[0;0m 
+[0;36m14 |[0;0m extension SwiftTemplate: Template {
+   [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'SwiftTemplate' to imported protocol 'Template'; this will not behave correctly if the owners of 'SourcerySwift' introduce this conformance in the future[0;0m
+   [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m15 |[0;0m 
+[0;36m16 |[0;0m     public func render(_ context: TemplateContext) throws -> String {
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Sourcery/Utils/FolderWatcher.swift:99:13: [1;33mwarning: [1;39m'FSEventStreamScheduleWithRunLoop' was deprecated in macOS 13.0: Use FSEventStreamSetDispatchQueue instead.[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m97 |[0;0m             stream = FSEventStreamCreate(nil, handler, &context, [path] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), latency, flags)
+ [0;36m98 |[0;0m 
+ [0;36m99 |[0;0m             FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+    [0;36m|[0;0m             `- [1;33mwarning: [1;39m'FSEventStreamScheduleWithRunLoop' was deprecated in macOS 13.0: Use FSEventStreamSetDispatchQueue instead.[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+[0;36m100 |[0;0m             FSEventStreamStart(stream)
+[0;36m101 |[0;0m         }
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[2648 / 2671] SourceryLib
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Sourcery/Sourcery.swift:433:54: [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+[0;36m431 |[0;0m         if requiresFileParserCopy {
+[0;36m432 |[0;0m             let data = try NSKeyedArchiver.archivedData(withRootObject: parserResult, requiringSecureCoding: false)
+[0;36m433 |[0;0m             parserResultCopy = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? FileParserResult
+    [0;36m|[0;0m                                                      `- [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+[0;36m434 |[0;0m         }
+[0;36m435 |[0;0m 
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Sourcery/Sourcery.swift:493:51: [1;33mwarning: [1;39m'unarchiveObject(withFile:)' was deprecated in macOS 10.14: Use +unarchivedObjectOfClass:fromData:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+[0;36m491 |[0;0m         SwiftTryCatch.try({
+[0;36m492 |[0;0m             // this deprecation can't be removed atm, new API is 10x slower
+[0;36m493 |[0;0m             if let unarchived = NSKeyedUnarchiver.unarchiveObject(withFile: artifacts) as? FileParserResult {
+    [0;36m|[0;0m                                                   `- [1;33mwarning: [1;39m'unarchiveObject(withFile:)' was deprecated in macOS 10.14: Use +unarchivedObjectOfClass:fromData:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+[0;36m494 |[0;0m                 if unarchived.sourceryVersion == Sourcery.version, unarchived.modifiedDate == modifiedDate {
+[0;36m495 |[0;0m                     unarchivedResult = unarchived
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[2658 / 2674] SourceryLib-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/SourceryExecutable/main.swift:18:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Path' to imported protocol 'ArgumentConvertible'; this will not behave correctly if the owners of 'PathKit' introduce this conformance in the future[0;0m
+ [0;36m16 |[0;0m import SourceryLib
+ [0;36m17 |[0;0m 
+ [0;36m18 |[0;0m extension Path: ArgumentConvertible {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Path' to imported protocol 'ArgumentConvertible'; this will not behave correctly if the owners of 'PathKit' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+ [0;36m19 |[0;0m     /// :nodoc:
+ [0;36m20 |[0;0m     public init(parser: ArgumentParser) throws {
+[2659 / 2674] SourceryLibTests-product
+[2675 / 2691] SourceryLibTests-product
+[2676 / 2691] SourceryLibTests-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/SourceryExecutable/main.swift:18:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Path' to imported protocol 'ArgumentConvertible'; this will not behave correctly if the owners of 'PathKit' introduce this conformance in the future[0;0m
+ [0;36m16 |[0;0m import SourceryLib
+ [0;36m17 |[0;0m 
+ [0;36m18 |[0;0m extension Path: ArgumentConvertible {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Path' to imported protocol 'ArgumentConvertible'; this will not behave correctly if the owners of 'PathKit' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+ [0;36m19 |[0;0m     /// :nodoc:
+ [0;36m20 |[0;0m     public init(parser: ArgumentParser) throws {
+[2677 / 2691] sourcery-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:313:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m311 |[0;0m }
+[0;36m312 |[0;0m 
+[0;36m313 |[0;0m extension Source: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m314 |[0;0m     public static func == (lhs: Source, rhs: Source) -> Bool {
+[0;36m315 |[0;0m         switch (lhs, rhs) {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:326:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m324 |[0;0m }
+[0;36m325 |[0;0m 
+[0;36m326 |[0;0m extension Project: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m327 |[0;0m     public static func == (lhs: Project, rhs: Project) -> Bool {
+[0;36m328 |[0;0m         return lhs.root == rhs.root
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:332:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m330 |[0;0m }
+[0;36m331 |[0;0m 
+[0;36m332 |[0;0m extension Paths: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m333 |[0;0m     public static func == (lhs: Paths, rhs: Paths) -> Bool {
+[0;36m334 |[0;0m         return lhs.include == rhs.include
+[2683 / 2691] SourceryLibTests-product
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:313:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m311 |[0;0m }
+[0;36m312 |[0;0m 
+[0;36m313 |[0;0m extension Source: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Source' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m314 |[0;0m     public static func == (lhs: Source, rhs: Source) -> Bool {
+[0;36m315 |[0;0m         switch (lhs, rhs) {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:326:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m324 |[0;0m }
+[0;36m325 |[0;0m 
+[0;36m326 |[0;0m extension Project: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Project' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m327 |[0;0m     public static func == (lhs: Project, rhs: Project) -> Bool {
+[0;36m328 |[0;0m         return lhs.root == rhs.root
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/ConfigurationSpec.swift:332:1: [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+[0;36m330 |[0;0m }
+[0;36m331 |[0;0m 
+[0;36m332 |[0;0m extension Paths: Equatable {
+    [0;36m|[0;0m |- [1;33mwarning: [1;39mextension declares a conformance of imported type 'Paths' to imported protocol 'Equatable'; this will not behave correctly if the owners of 'SourceryLib' introduce this conformance in the future[0;0m
+    [0;36m|[0;0m `- [1;39mnote: [1;39madd '@retroactive' to silence this warning[0;0m
+[0;36m333 |[0;0m     public static func == (lhs: Paths, rhs: Paths) -> Bool {
+[0;36m334 |[0;0m         return lhs.include == rhs.include
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:90:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m88 |[0;0m                 expect {
+ [0;36m89 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+ [0;36m90 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<% invalid %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m91 |[0;0m                     }
+ [0;36m92 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:100:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m98 |[0;0m                 expect {
+ [0;36m99 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+[0;36m100 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<%_ for (type of types.implementing.Some) { -%><% } %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m101 |[0;0m                     }
+[0;36m102 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:110:35: [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m108 |[0;0m                 expect {
+[0;36m109 |[0;0m                     expect(EJSTemplate.ejsPath).toNot(beNil())
+[0;36m110 |[0;0m                     try Generator.generate(nil, types: Types(types: []), functions: [], template: JavaScriptTemplate(templateString: "<%_ for (type of types.implements.Some) { -%><% } %>", ejsPath: EJSTemplate.ejsPath!))
+    [0;36m|[0;0m                                   `- [1;33mwarning: [1;39mresult of call to 'generate(_:types:functions:template:arguments:)' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m111 |[0;0m                     }
+[0;36m112 |[0;0m                     .to(throwError(closure: { (error) in
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:41:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m39 |[0;0m 
+ [0;36m40 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m41 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m42 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m43 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:41:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m39 |[0;0m 
+ [0;36m40 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m41 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m42 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m43 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:52:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m50 |[0;0m 
+ [0;36m51 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m52 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m53 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m54 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:52:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m50 |[0;0m 
+ [0;36m51 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m52 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m53 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m54 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:63:37: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m61 |[0;0m 
+ [0;36m62 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m63 |[0;0m                 print("expected:\n\([4;39mexpectedResult[0;0m)\n\ngot:\n\(result)")
+    [0;36m|[0;0m                                     |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                     |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                     `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m64 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m65 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/JavaScriptTemplateSpecs.swift:63:64: [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+ [0;36m61 |[0;0m 
+ [0;36m62 |[0;0m                 let result = (try? (outputDir + Sourcery().generatedPath(for: templatePath)).read(.utf8))
+ [0;36m63 |[0;0m                 print("expected:\n\(expectedResult)\n\ngot:\n\([4;39mresult[0;0m)")
+    [0;36m|[0;0m                                                                |- [1;33mwarning: [1;39mstring interpolation produces a debug description for an optional value; did you mean to make this explicit?[0;0m
+    [0;36m|[0;0m                                                                |- [1;39mnote: [1;39mprovide a default value to avoid this warning[0;0m
+    [0;36m|[0;0m                                                                `- [1;39mnote: [1;39muse 'String(describing:)' to silence this warning[0;0m
+ [0;36m64 |[0;0m                 expect(result).to(equal(expectedResult))
+ [0;36m65 |[0;0m             }
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:240:25: [1;33mwarning: [1;39munstructured throwing task created by 'init(name:priority:operation:)' is not used, which may accidentally ignore errors thrown inside the task[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task\NoUseUnstructuredThrowingTask]8;;\]
+[0;36m238 |[0;0m                         }
+[0;36m239 |[0;0m                         let semaphore = DispatchSemaphore(value: 0)
+[0;36m240 |[0;0m                         Task {
+    [0;36m|[0;0m                         |- [1;33mwarning: [1;39munstructured throwing task created by 'init(name:priority:operation:)' is not used, which may accidentally ignore errors thrown inside the task[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task\NoUseUnstructuredThrowingTask]8;;\]
+    [0;36m|[0;0m                         `- [1;39mnote: [1;39mto silence this warning, handle the error inside the task, or store/discard the task value explicitly[0;0m
+[0;36m241 |[0;0m                             _ = try await withThrowingTaskGroup(of: Int.self) { taskGroup in
+[0;36m242 |[0;0m                                 for _ in 0 ..< iterations {
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:37:48: [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m35 |[0;0m                 func templateContextData(_ code: String) -> TemplateContext? {
+ [0;36m36 |[0;0m                     guard let parserResult = try? makeParser(for: code).parse() else { fail(); return nil }
+ [0;36m37 |[0;0m                     let data = NSKeyedArchiver.archivedData(withRootObject: parserResult)
+    [0;36m|[0;0m                                                `- [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m38 |[0;0m 
+ [0;36m39 |[0;0m                     let result = Composer.uniqueTypesAndFunctions(parserResult)
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:40:81: [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m38 |[0;0m 
+ [0;36m39 |[0;0m                     let result = Composer.uniqueTypesAndFunctions(parserResult)
+ [0;36m40 |[0;0m                     return TemplateContext(parserResult: try? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? FileParserResult, types: .init(types: result.types, typealiases: result.typealiases), functions: result.functions, arguments: [:])
+    [0;36m|[0;0m                                                                                 `- [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m41 |[0;0m                 }
+ [0;36m42 |[0;0m 
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:58:44: [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m56 |[0;0m                 }
+ [0;36m57 |[0;0m 
+ [0;36m58 |[0;0m                 let data = NSKeyedArchiver.archivedData(withRootObject: context)
+    [0;36m|[0;0m                                            `- [1;33mwarning: [1;39m'archivedData(withRootObject:)' was deprecated in macOS 10.14: Use +archivedDataWithRootObject:requiringSecureCoding:error: instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m59 |[0;0m                 let unarchived = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? TemplateContext
+ [0;36m60 |[0;0m 
+
+/private/var/folders/3g/qls22cy50f14fz2tbcpbwy7h0000gp/T/bench-swe-1716359692/repo/Tests/SourceryLibTests/Generating/SwiftTemplateSpecs.swift:59:56: [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m57 |[0;0m 
+ [0;36m58 |[0;0m                 let data = NSKeyedArchiver.archivedData(withRootObject: context)
+ [0;36m59 |[0;0m                 let unarchived = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? TemplateContext
+    [0;36m|[0;0m                                                        `- [1;33mwarning: [1;39m'unarchiveTopLevelObjectWithData' was deprecated in macOS 10.14: Use unarchivedObject(ofClass:from:) instead[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m60 |[0;0m 
+ [0;36m61 |[0;0m                 expect(context.types).to(equal(unarchived?.types))
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[#NoUseUnstructuredThrowingTask]: <https://docs.swift.org/compiler/documentation/diagnostics/no-use-throwing-unstructured-task>
+[2684 / 2691] sourcery-product
+[2685 / 2691] SourceryLibTests-product
+[2687 / 2691] SourceryLibTests-product
+[2689 / 2691] SourceryLibTests-product
+Build complete! (54,67 sec)
+Test Suite 'Selected tests' started at 2026-10-11 09:26:12.128.
+Test Suite 'TemplatesTests.xctest' started at 2026-10-11 09:26:12.135.
+Test Suite 'TemplatesTests.xctest' passed at 2026-10-11 09:26:12.135.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:26:12.135.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.007) seconds
+Test Suite 'Selected tests' started at 2026-10-11 09:26:12.262.
+Test Suite 'SourceryLibTests.xctest' started at 2026-10-11 09:26:12.268.
+Test Suite 'SourceryLibTests.xctest' passed at 2026-10-11 09:26:12.268.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:26:12.268.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.005) seconds
+Test Suite 'Selected tests' started at 2026-10-11 09:26:12.363.
+Test Suite 'CodableContextTests.xctest' started at 2026-10-11 09:26:12.369.
+Test Suite 'CodableContextTests.xctest' passed at 2026-10-11 09:26:12.369.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2026-10-11 09:26:12.369.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.006) seconds

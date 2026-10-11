@@ -1,0 +1,35 @@
+Research 23/25 — Reproducible retrieval mechanism experiment
+
+Conclusion: the strongest verified immediate opportunity is fixing the current SQLite join plan. Bounded corpus-only typo expansion gives a small useful mechanism gain but also adds false context; it does not solve semantic vocabulary mismatch.
+
+Protocol and limitations
+The frozen source archive and SHA256 manifests, standalone Go/Python sources, 30 frozen queries, raw results and exact reproduction instructions are experiment-* in this directory. Queries SHA256: da208a26f79ece6dc7dd9db8d8120e78686da5c9c60b299a3797bbcfe5b3d659. Production files were untouched.
+
+Corpus: 5 smoke files plus all 254 existing sample/realistic fixture files,259 files / 4,826,766 UTF-8 bytes, yielding 12,292 Lumen chunks.10 queries reuse smoke identities;20 prospective source-aware synthetic queries use other sample files. Exact, typo, identifier decomposition, paraphrase and no-answer cases were declared before evaluation. These are NOT independent held-out efficacy evidence; no confidence intervals or generalization claims are warranted. The initial 12-repetition run was stopped for runtime. The completed unchanged experiment executes 2 calls per unique query, records the second as warm timing and reuses identical queries across method labels. Reported medians aggregate cases. Another agent workload and short diagnostic processes were active.
+
+Methods: actual Lumen SearchLexical(maxChunkTokens=512, limit=3, expand=false); strong rg fixed-substring OR over whole identifiers plus camel/snake components, fixed stopwords and distinct-term-IDF window ranking; actual BM25 plus corpus-only typo expansion. rg includes process launch, scan, parsing/ranking and normalization. BM25 is in-process with final normalization excluded. This compares implemented workflows, not pure algorithm speed.
+
+Expansion builds 20,295 corpus code-shaped tokens, including comments. Unknown query words >= 5 characters use OR character-trigram postings, top 128 overlap/frequency candidates, Levenshtein <= 1 (length 5–11) or <= 2 (length >= 12), max 3 verified expansions. Original query text remains. No query-specific synonyms. Lexicon build 196 ms; expansion median 0.005 ms / p95 2.70 ms across all repeated queries. Not recall-complete: abcde→abxde is edit 1 yet shares zero trigrams, and words < 5 are excluded. It treats transpositions as 2 edits and has finite candidate caps.
+
+All outputs have max 3 results, max 1024 content characters each and 4096 UTF-8 bytes final JSON. Scoring requires target file plus symbol string within returned evidence. Labels are sparse, so “precision” below means target-label precision, not exhaustive relevance judgment.
+
+Results (answerable cases only)
+                              rg      BM25    BM25+fuzzy
+Smoke mechanism hit@3         6/8     7/8     7/8
+Prospective synthetic hit@3  11/16   14/16   15/16
+Combined hit@3               17/24   21/24   22/24
+Combined MRR                  .576    .854    .917
+Prospective target precision  .229    .313    .354
+
+ValidteToken is the additional recovered target; ordinary BM25 returned token-related distractors, while expansion restored ValidateToken at rank 1. Fuzzy also improves rank on some already-hit typos. All methods miss “stop repeated invoice charges” and “invalidate a login credential”: approximate spelling cannot supply a missing conceptual bridge.
+
+No-answer output diagnostic: rg/BM25 return nonempty context on 5/6 cases; fuzzy on 6/6. Expanding “quantum annealing qubit stabilizer” changes empty output to 3472 bytes of irrelevant evidence. Unsupported assertions containing real identifiers also retrieve evidence. These counts are not answer-level false-positive estimates: retrieved evidence can refute a false premise. The quantum-query expansion is specifically irrelevant context. Unconditional natural-word expansion is therefore not supported.
+
+Current median warm query across 30 cases: rg 59.8 ms, BM25 1145 ms, BM25+fuzzy 1316 ms. Mean output bytes: 1302, 1165, 1279 respectively. Fresh index build 3.408 s with warm OS pages; active DB+WAL+SHM 19,579,912 bytes. These larger-corpus findings sharply differ from five-file microbenchmarks.
+
+Verified query-plan diagnosis
+The same bundled Go SQLite 3.51.2, same DB/parameters/scoring/order/limit/reader PRAGMAs: original plan begins project_files→chunk_defs→FTS rowid+MATCH probes; ValidateToken SQL takes 1035–1199 ms in 3 repetitions. A read-only diagnostic using FTS-first CROSS JOIN begins with FTS MATCH and follows primary-key/index lookups; it takes 0.965–1.168 ms. See experiment-sqlprobe.go/.log.
+
+An isolated actual Lumen API binary with only this join-order change returned IDENTICAL captured ordered paths, start lines, contents AND scores for all 60 request labels (30 queries × 2 variants; 39 unique query strings). Full SearchLexical median becomes 0.809 ms (max 4.252 ms), and fuzzy including measured Python expansion 2.206 ms. All current retrieval quality numbers therefore remain unchanged. See experiment-plan-comparison.json. This is an observed ~1000× query-plan bottleneck, NOT a 1000× agent speed claim. At these implemented timings, 3.4 s index build amortizes after roughly 60 queries versus this rg workflow, excluding refresh/startup/other lifecycle costs.
+
+Recommendation: first investigate/repair this production query plan with regression coverage for filters, worktrees, ties and SQLite versions. Then evaluate identifier-gated typo repair as a low-cost optional lane, preserving exact candidates and exposing corrections. Keep a semantic fallback for true vocabulary mismatch, but its benefit remains untested here. Select that fallback through independent held-out repositories and task evidence labels; this experiment does not establish a full-system winner.

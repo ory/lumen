@@ -139,3 +139,14 @@ func TestDefaultBM25CLIAndAncestorProfile(t *testing.T) {
 		t.Fatalf("custom profile ancestor: %s", got)
 	}
 }
+
+// Warnings computed before the BM25 branch must reach the agent, as they do
+// in semantic output.
+func TestFormatLexicalResultsKeepsWarnings(t *testing.T) {
+	text := formatSearchResults("/p", SemanticSearchOutput{Retrieval: "bm25", SeedWarning: "seeded from sibling worktree", StaleWarning: "index is refreshing"})
+	for _, want := range []string{"Warning: seeded from sibling worktree", "Warning: index is refreshing"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("BM25 output lacks %q:\n%s", want, text)
+		}
+	}
+}

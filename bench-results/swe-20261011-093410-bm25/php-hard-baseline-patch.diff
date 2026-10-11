@@ -1,0 +1,18 @@
+diff --git a/src/Monolog/Formatter/JsonFormatter.php b/src/Monolog/Formatter/JsonFormatter.php
+index b59639e..0c62baf 100644
+--- a/src/Monolog/Formatter/JsonFormatter.php
++++ b/src/Monolog/Formatter/JsonFormatter.php
+@@ -195,7 +195,12 @@ class JsonFormatter extends NormalizerFormatter
+             }
+ 
+             if ($data instanceof Stringable) {
+-                return $data->__toString();
++                try {
++                    return $data->__toString();
++                } catch (\Throwable) {
++                    // if the toString method is failing, use the class name as fallback
++                    return \get_class($data);
++                }
+             }
+ 
+             if (\get_class($data) === '__PHP_Incomplete_Class') {

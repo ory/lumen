@@ -1,0 +1,92 @@
+# Local stack for the billing platform. Workers share one set of defaults so
+# that resource limits and logging stay consistent between queues.
+
+x-worker-defaults: &worker-defaults
+  image: ghcr.io/acme/billing-worker:2.14.0
+  restart: unless-stopped
+  env_file:
+    - .env.worker
+  environment:
+    QUEUE_BACKEND: redis://queue:6379/0
+    DATABASE_URL: postgres://billing:billing@db:5432/billing
+    LOG_FORMAT: json
+  depends_on:
+    - queue
+    - db
+  deploy:
+    resources:
+      limits:
+        cpus: '0.50'
+        memory: 512M
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  api:
+    image: ghcr.io/acme/billing-api:2.14.0
+    command: ['gunicorn', 'billing.wsgi:application', '--bind', '0.0.0.0:8000', '--workers', '4']
+    ports:
+      - '8000:8000'
+    environment:
+      DATABASE_URL: postgres://billing:billing@db:5432/billing
+      SESSION_COOKIE_SECURE: 'false'
+      ALLOWED_HOSTS: localhost,127.0.0.1
+    depends_on:
+      - db
+      - queue
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  invoice-worker:
+    <<: *worker-defaults
+    command: ['billing-worker', '--queue', 'invoices', '--concurrency', '8']
+
+  email-worker:
+    <<: *worker-defaults
+    command: ['billing-worker', '--queue', 'emails', '--concurrency', '2']
+    environment:
+      QUEUE_BACKEND: redis://queue:6379/0
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
+
+  scheduler:
+    image: ghcr.io/acme/billing-worker:2.14.0
+    command: ['billing-scheduler', '--tick', '60s']
+    restart: unless-stopped
+    depends_on:
+      - queue
+
+  queue:
+    image: redis:7.2-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - queue_data:/data
+    ports:
+      - '6379:6379'
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing
+      POSTGRES_DB: billing
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  queue_data:
+  db_data:

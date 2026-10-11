@@ -1,0 +1,19 @@
+sqlite 3.51.2
+FROM project_files pf JOIN chunk_defs cd ON cd.file_revision_id=pf.file_revision_id JOIN file_revisions fr ON fr.id=pf.file_revision_id JOIN lexical_chunks ON lexical_chunks.rowid=cd.id
+9 0 SEARCH pf USING PRIMARY KEY (project_id=?)
+15 0 SEARCH fr USING INTEGER PRIMARY KEY (rowid=?)
+21 0 SEARCH cd USING INDEX idx_chunk_defs_revision (file_revision_id=?)
+30 0 SCAN lexical_chunks VIRTUAL TABLE INDEX 0:=M5
+76 0 USE TEMP B-TREE FOR ORDER BY
+query_ms 1198.973208 rows 9
+query_ms 1034.778791 rows 9
+query_ms 1044.695625 rows 9
+FROM lexical_chunks CROSS JOIN chunk_defs cd ON lexical_chunks.rowid=cd.id CROSS JOIN project_files pf ON cd.file_revision_id=pf.file_revision_id CROSS JOIN file_revisions fr ON fr.id=pf.file_revision_id
+8 0 SCAN lexical_chunks VIRTUAL TABLE INDEX 0:M5
+13 0 SEARCH cd USING INTEGER PRIMARY KEY (rowid=?)
+16 0 SEARCH pf USING COVERING INDEX idx_project_files_revision (file_revision_id=? AND project_id=?)
+23 0 SEARCH fr USING INTEGER PRIMARY KEY (rowid=?)
+68 0 USE TEMP B-TREE FOR ORDER BY
+query_ms 1.1675 rows 9
+query_ms 0.998542 rows 9
+query_ms 0.965375 rows 9

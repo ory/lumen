@@ -54,9 +54,12 @@ func populateTreeMetadata(chunk *Chunk, decl *sitter.Node, content []byte, start
 			for i := 0; i < int(parent.ChildCount()); i++ {
 				if parent.Child(i).Type() == "default" {
 					chunk.Exported = false
+					chunk.DefaultExport = true
 				}
 			}
 		}
+	} else {
+		markExportClauses(chunk, decl, content)
 	}
 	signatureEnd := decl.EndByte()
 	var comments, refs []string
@@ -102,6 +105,12 @@ func populateTreeMetadata(chunk *Chunk, decl *sitter.Node, content []byte, start
 			})
 		case "variable_declarator", "let_declaration", "assignment", "for_in_statement", "for_statement", "for_each_statement", "for_in_clause", "for_clause":
 			for _, field := range []string{"name", "pattern", "left", "value", "key"} {
+				// A declarator's value is its initializer: calls there are
+				// references, not bindings. Loop clauses use value/key for
+				// the iteration variables.
+				if field == "value" && (n.Type() == "variable_declarator" || n.Type() == "let_declaration") {
+					continue
+				}
 				if name := n.ChildByFieldName(field); name != nil {
 					walkSyntax(name, func(binding *sitter.Node) bool {
 						if binding.Type() == "identifier" || binding.Type() == "shorthand_property_identifier_pattern" {
@@ -147,6 +156,42 @@ func populateTreeMetadata(chunk *Chunk, decl *sitter.Node, content []byte, start
 				chunk.References = append(chunk.References, ref)
 			}
 		}
+	}
+}
+
+// markExportClauses attributes later top-level `export { name }` and
+// `export default name;` statements to a top-level declaration. Renamed
+// specifiers and re-exports from another module are not attributed: an
+// importer would name a different symbol or a different file.
+func markExportClauses(chunk *Chunk, decl *sitter.Node, content []byte) {
+	program := decl.Parent()
+	if program != nil && (program.Type() == "lexical_declaration" || program.Type() == "variable_declaration") {
+		program = program.Parent()
+	}
+	name := decl.ChildByFieldName("name")
+	if program == nil || program.Type() != "program" || name == nil || name.Type() != "identifier" {
+		return
+	}
+	local := name.Content(content)
+	for i := 0; i < int(program.NamedChildCount()); i++ {
+		stmt := program.NamedChild(i)
+		if stmt.Type() != "export_statement" || stmt.HasError() || stmt.ChildByFieldName("source") != nil {
+			continue
+		}
+		if value := stmt.ChildByFieldName("value"); value != nil && value.Type() == "identifier" && value.Content(content) == local {
+			chunk.DefaultExport = true
+		}
+		walkSyntax(stmt, func(n *sitter.Node) bool {
+			if n.Type() != "export_specifier" {
+				return true
+			}
+			exported := n.ChildByFieldName("name")
+			alias := n.ChildByFieldName("alias")
+			if exported != nil && exported.Content(content) == local && (alias == nil || alias.Content(content) == local) {
+				chunk.Exported = true
+			}
+			return false
+		})
 	}
 }
 

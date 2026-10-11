@@ -1,0 +1,3 @@
+## Rating: Good
+
+Both patches correctly fix the two root causes, but use different mechanisms. For `jv_dels`, the candidate uses standard C `isnan()` instead of the internal `jvp_number_is_nan()` helper — functionally equivalent. For `delpaths_sorted`, the gold patch converts the `while` to a `do...while` (guaranteeing `j` advances before the condition is checked), while the candidate keeps the original `while` loop and adds a post-loop `if (j == i) j++` guard — also correct but slightly less idiomatic. The candidate's test coverage is slightly narrower (one combined test case vs. two separate ones in gold), but it still exercises the infinite-loop scenario.

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/aeneasr/lumen/bench-swe/internal/agent"
 )
 
 type Scenario string
@@ -41,11 +43,7 @@ type mcpConfig struct {
 	MCPServers map[string]mcpServer `json:"mcpServers"`
 }
 
-type mcpServer struct {
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Env     map[string]string `json:"env,omitempty"`
-}
+type mcpServer = agent.Server
 
 // ValidRetrieval reports whether mode is a retrieval mode lumen accepts.
 func ValidRetrieval(mode string) bool {
@@ -55,31 +53,9 @@ func ValidRetrieval(mode string) bool {
 // WriteMCPConfig writes a temp MCP config JSON file.
 // Returns path to the temp file and a cleanup function.
 func WriteMCPConfig(s Scenario, lumenBinary, retrieval, backend, model string) (string, func(), error) {
-	var cfg mcpConfig
-
-	if !ValidRetrieval(retrieval) {
-		return "", nil, fmt.Errorf("unknown retrieval mode %q (valid: bm25, semantic)", retrieval)
-	}
-
-	switch s {
-	case Baseline:
-		cfg = mcpConfig{MCPServers: map[string]mcpServer{}}
-	case WithLumen:
-		cfg = mcpConfig{
-			MCPServers: map[string]mcpServer{
-				MCPServerName: {
-					Command: lumenBinary,
-					Args:    []string{"stdio"},
-					Env: map[string]string{
-						"LUMEN_RETRIEVAL":   retrieval,
-						"LUMEN_BACKEND":     backend,
-						"LUMEN_EMBED_MODEL": model,
-					},
-				},
-			},
-		}
-	default:
-		return "", nil, fmt.Errorf("unknown scenario: %s", s)
+	cfg, err := scenarioConfig(s, lumenBinary, retrieval, backend, model)
+	if err != nil {
+		return "", nil, err
 	}
 
 	data, err := json.Marshal(cfg)
@@ -111,4 +87,35 @@ func ClaudeArgs(s Scenario, repoRoot string) []string {
 	default:
 		return nil
 	}
+}
+
+func scenarioConfig(s Scenario, lumenBinary, retrieval, backend, model string) (mcpConfig, error) {
+	var cfg mcpConfig
+
+	if !ValidRetrieval(retrieval) {
+		return mcpConfig{}, fmt.Errorf("unknown retrieval mode %q (valid: bm25, semantic)", retrieval)
+	}
+
+	switch s {
+	case Baseline:
+		cfg = mcpConfig{MCPServers: map[string]mcpServer{}}
+	case WithLumen:
+		cfg = mcpConfig{
+			MCPServers: map[string]mcpServer{
+				MCPServerName: {
+					Command: lumenBinary,
+					Args:    []string{"stdio"},
+					Env: map[string]string{
+						"LUMEN_RETRIEVAL":   retrieval,
+						"LUMEN_BACKEND":     backend,
+						"LUMEN_EMBED_MODEL": model,
+					},
+				},
+			},
+		}
+	default:
+		return mcpConfig{}, fmt.Errorf("unknown scenario: %s", s)
+	}
+
+	return cfg, nil
 }

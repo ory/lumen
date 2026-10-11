@@ -188,3 +188,43 @@ func TestIsLumenSearchTool(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexToolEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "raw.jsonl")
+	data := `{"type":"item.started","item":{"id":"m1","type":"mcp_tool_call","server":"plugin_lumen_lumen","tool":"semantic_search","status":"in_progress"}}
+{"type":"item.updated","item":{"id":"m1","type":"mcp_tool_call","server":"plugin_lumen_lumen","tool":"semantic_search","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"m1","type":"mcp_tool_call","server":"plugin_lumen_lumen","tool":"semantic_search","arguments":{"query":"retry","path":"/repo"},"status":"completed","result":{"content":[{"type":"text","text":"budget.go"}]},"error":null}}
+{"type":"item.completed","item":{"id":"c1","type":"command_execution","command":"go test ./...","aggregated_output":"ok","status":"completed"}}
+`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	calls, err := ExtractToolCalls(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0].Result != "budget.go" || calls[0].SearchPath() != "/repo" || calls[1].Name != "Bash" {
+		t.Fatalf("calls: %+v", calls)
+	}
+	if ok, err := HasLumenSearch(path); err != nil || !ok {
+		t.Fatalf("missing successful call: %v", err)
+	}
+}
+
+func TestSearchRequiresSuccessfulToolResult(t *testing.T) {
+	for _, data := range []string{
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"mcp__plugin_lumen_lumen__semantic_search"}]}}`,
+		`{"type":"tool_use","id":"x","name":"mcp__lumen__semantic_search","input":{}}`,
+		`{"type":"tool_use","id":"x","name":"mcp__lumen__semantic_search","input":{}}
+{"type":"tool_result","tool_use_id":"x","content":"failed","is_error":true}`,
+		`{"type":"item.completed","item":{"id":"x","type":"mcp_tool_call","server":"lumen","tool":"semantic_search","status":"failed","error":{"message":"broken"}}}`,
+	} {
+		path := filepath.Join(t.TempDir(), "raw.jsonl")
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := HasLumenSearch(path); err != nil || ok {
+			t.Fatalf("false positive search: %s (%v)", data, err)
+		}
+	}
+}

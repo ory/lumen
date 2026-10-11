@@ -1,0 +1,242 @@
+[
+  {
+    "id": "mechanism.exact.1",
+    "group": "mechanism",
+    "kind": "exact",
+    "query": "refreshAccessToken",
+    "path": "smoke/session/refresh.go",
+    "needle": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.exact.2",
+    "group": "mechanism",
+    "kind": "exact",
+    "query": "processPayment",
+    "path": "smoke/billing/payment.ts",
+    "needle": "processPayment"
+  },
+  {
+    "id": "mechanism.typo.1",
+    "group": "mechanism",
+    "kind": "typo",
+    "query": "refeshAccessToken",
+    "path": "smoke/session/refresh.go",
+    "needle": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.typo.2",
+    "group": "mechanism",
+    "kind": "typo",
+    "query": "proccessPayment",
+    "path": "smoke/billing/payment.ts",
+    "needle": "processPayment"
+  },
+  {
+    "id": "mechanism.decomposition.1",
+    "group": "mechanism",
+    "kind": "decomposition",
+    "query": "refresh access token",
+    "path": "smoke/session/refresh.go",
+    "needle": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.decomposition.2",
+    "group": "mechanism",
+    "kind": "decomposition",
+    "query": "reserve slot",
+    "path": "smoke/billing/reservation.ts",
+    "needle": "reserveSlot"
+  },
+  {
+    "id": "mechanism.paraphrase.1",
+    "group": "mechanism",
+    "kind": "paraphrase",
+    "query": "stop repeated invoice charges",
+    "path": "smoke/billing/payment.ts",
+    "needle": "processPayment"
+  },
+  {
+    "id": "mechanism.paraphrase.2",
+    "group": "mechanism",
+    "kind": "paraphrase",
+    "query": "renew expired credentials",
+    "path": "smoke/session/refresh.go",
+    "needle": "refreshAccessToken"
+  },
+  {
+    "id": "mechanism.no_answer.1",
+    "group": "mechanism",
+    "kind": "no_answer",
+    "query": "quantum annealing qubit stabilizer",
+    "path": null,
+    "needle": null
+  },
+  {
+    "id": "mechanism.no_answer.2",
+    "group": "mechanism",
+    "kind": "no_answer",
+    "query": "refreshAccessToken validates hardware attestation",
+    "path": null,
+    "needle": null
+  },
+  {
+    "id": "prospective_synthetic.exact.1",
+    "group": "prospective_synthetic",
+    "kind": "exact",
+    "query": "ValidateToken",
+    "path": "sample/auth.go",
+    "needle": "ValidateToken"
+  },
+  {
+    "id": "prospective_synthetic.exact.2",
+    "group": "prospective_synthetic",
+    "kind": "exact",
+    "query": "GetEnvWithDefault",
+    "path": "sample/config.go",
+    "needle": "GetEnvWithDefault"
+  },
+  {
+    "id": "prospective_synthetic.exact.3",
+    "group": "prospective_synthetic",
+    "kind": "exact",
+    "query": "BeginTransaction",
+    "path": "sample/database.go",
+    "needle": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.exact.4",
+    "group": "prospective_synthetic",
+    "kind": "exact",
+    "query": "HandleCreateUser",
+    "path": "sample/handler.go",
+    "needle": "HandleCreateUser"
+  },
+  {
+    "id": "prospective_synthetic.typo.1",
+    "group": "prospective_synthetic",
+    "kind": "typo",
+    "query": "ValidteToken",
+    "path": "sample/auth.go",
+    "needle": "ValidateToken"
+  },
+  {
+    "id": "prospective_synthetic.typo.2",
+    "group": "prospective_synthetic",
+    "kind": "typo",
+    "query": "GetEnvWithDefalt",
+    "path": "sample/config.go",
+    "needle": "GetEnvWithDefault"
+  },
+  {
+    "id": "prospective_synthetic.typo.3",
+    "group": "prospective_synthetic",
+    "kind": "typo",
+    "query": "BeginTransacton",
+    "path": "sample/database.go",
+    "needle": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.typo.4",
+    "group": "prospective_synthetic",
+    "kind": "typo",
+    "query": "HandleCreatUser",
+    "path": "sample/handler.go",
+    "needle": "HandleCreateUser"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.1",
+    "group": "prospective_synthetic",
+    "kind": "decomposition",
+    "query": "validate token",
+    "path": "sample/auth.go",
+    "needle": "ValidateToken"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.2",
+    "group": "prospective_synthetic",
+    "kind": "decomposition",
+    "query": "get env with default",
+    "path": "sample/config.go",
+    "needle": "GetEnvWithDefault"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.3",
+    "group": "prospective_synthetic",
+    "kind": "decomposition",
+    "query": "begin transaction",
+    "path": "sample/database.go",
+    "needle": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.decomposition.4",
+    "group": "prospective_synthetic",
+    "kind": "decomposition",
+    "query": "handle create user",
+    "path": "sample/handler.go",
+    "needle": "HandleCreateUser"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.1",
+    "group": "prospective_synthetic",
+    "kind": "paraphrase",
+    "query": "invalidate a login credential",
+    "path": "sample/auth.go",
+    "needle": "RevokeSession"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.2",
+    "group": "prospective_synthetic",
+    "kind": "paraphrase",
+    "query": "read configuration from environment variables",
+    "path": "sample/config.go",
+    "needle": "LoadConfig"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.3",
+    "group": "prospective_synthetic",
+    "kind": "paraphrase",
+    "query": "start a database transaction",
+    "path": "sample/database.go",
+    "needle": "BeginTransaction"
+  },
+  {
+    "id": "prospective_synthetic.paraphrase.4",
+    "group": "prospective_synthetic",
+    "kind": "paraphrase",
+    "query": "add a new user record",
+    "path": "sample/database.go",
+    "needle": "InsertUser"
+  },
+  {
+    "id": "prospective_synthetic.no_answer.1",
+    "group": "prospective_synthetic",
+    "kind": "no_answer",
+    "query": "GetEnvWithDefaulter",
+    "path": null,
+    "needle": null
+  },
+  {
+    "id": "prospective_synthetic.no_answer.2",
+    "group": "prospective_synthetic",
+    "kind": "no_answer",
+    "query": "ValidateToken rejects revoked signing certificates",
+    "path": null,
+    "needle": null
+  },
+  {
+    "id": "prospective_synthetic.no_answer.3",
+    "group": "prospective_synthetic",
+    "kind": "no_answer",
+    "query": "photosynthesis chloroplast carbon fixation",
+    "path": null,
+    "needle": null
+  },
+  {
+    "id": "prospective_synthetic.no_answer.4",
+    "group": "prospective_synthetic",
+    "kind": "no_answer",
+    "query": "PostQuantumKeyExchangeNeverExists",
+    "path": null,
+    "needle": null
+  }
+]

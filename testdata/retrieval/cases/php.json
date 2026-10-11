@@ -1,0 +1,114 @@
+[
+  {"id": "lang.php.http_request_handling_middleware", "corpus": "fixtures/php", "language": "php", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "HTTP request handling middleware",
+   "targets": [
+     {"file": "Router.php", "symbol": "runRouteWithinStack"},
+     {"file": "Router.php", "symbol": "gatherRouteMiddleware"},
+     {"file": "Router.php", "symbol": "resolveMiddleware"},
+     {"file": "Pipeline.php", "symbol": "then", "contains": ["array_reverse($this->pipes())"]},
+     {"file": "Route.php", "symbol": "gatherMiddleware"},
+     {"file": "Route.php", "symbol": "middleware", "line": 1066}
+   ]},
+  {"id": "lang.php.database_query_builder", "corpus": "fixtures/php", "language": "php", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "database query builder",
+   "targets": [
+     {"file": "Connection.php", "symbol": "query", "contains": ["new QueryBuilder("]},
+     {"file": "Connection.php", "symbol": "table", "contains": ["$this->query()->from($table, $as)"]},
+     {"file": "Builder.php", "symbol": "Builder"},
+     {"file": "Builder.php", "symbol": "where", "line": 324}
+   ]},
+  {"id": "lang.php.authentication_guard_session", "corpus": "fixtures/php", "language": "php", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "authentication guard session",
+   "targets": [
+     {"file": "AuthManager.php", "symbol": "createSessionDriver"},
+     {"file": "AuthManager.php", "symbol": "guard", "contains": ["$this->guards[$name] = $this->resolve($name)"]},
+     {"file": "AuthManager.php", "symbol": "resolve", "contains": ["Auth guard [{$name}] is not defined."]}
+   ]},
+  {"id": "lang.php.collection_helper_methods", "corpus": "fixtures/php", "language": "php", "kind": "language", "category": "diagnostic", "origin": "lang-suite", "query": "collection helper methods",
+   "targets": [
+     {"file": "Router.php", "symbol": "sortMiddleware"},
+     {"file": "BelongsTo.php", "symbol": "match", "contains": ["EloquentCollection $results"]},
+     {"file": "HasMany.php", "symbol": "match", "contains": ["EloquentCollection $results"]}
+   ],
+   "note": "No Collection class or collection helper (collect(), Arr) is vendored; only methods taking a Collection parameter are partial answers. Str.php is string helpers, not collection helpers."},
+  {"id": "lang.php.model_relationships", "corpus": "fixtures/php", "language": "php", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "model relationships",
+   "targets": [
+     {"file": "Model.php", "symbol": "preventLazyLoading"},
+     {"file": "Model.php", "symbol": "load", "contains": ["eagerLoadRelations([$this])"]},
+     {"file": "Model.php", "symbol": "with", "contains": ["static::query()->with("]},
+     {"file": "BelongsTo.php", "symbol": "BelongsTo"},
+     {"file": "BelongsTo.php", "symbol": "associate"},
+     {"file": "HasMany.php", "symbol": "HasMany"},
+     {"file": "HasMany.php", "symbol": "one"}
+   ]},
+
+  {"id": "php.eloquent_builder_where", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "eloquent builder where clause nested query",
+   "targets": [{"file": "Builder.php", "symbol": "where", "contains": ["addNestedWhereQuery($query->getQuery(), $boolean)"]}],
+   "distractors": [{"file": "Route.php", "symbol": "where"}],
+   "note": "Eloquent Builder::where (query clause), not Route::where (route parameter regex)."},
+  {"id": "php.model_boot_initialize_traits", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "boot and initialize model traits",
+   "targets": [
+     {"file": "Model.php", "symbol": "bootTraits", "contains": ["class_uses_recursive($class)"]},
+     {"file": "Model.php", "symbol": "initializeTraits"}
+   ]},
+  {"id": "php.auth_create_session_driver", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "create session guard driver cookie jar request",
+   "targets": [{"file": "AuthManager.php", "symbol": "createSessionDriver", "contains": ["$guard = new SessionGuard("]}],
+   "distractors": [{"file": "AuthManager.php", "symbol": "guard"}],
+   "note": "createSessionDriver wires the SessionGuard (provider, session store, cookie jar, dispatcher, request); guard() only caches a resolved guard."},
+  {"id": "php.belongs_to_associate", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "associate child model set foreign key from owner key",
+   "targets": [{"file": "BelongsTo.php", "symbol": "associate", "contains": ["$this->child->setAttribute($this->foreignKey, $ownerKey)"]}],
+   "distractors": [{"file": "BelongsTo.php", "symbol": "dissociate"}]},
+  {"id": "php.container_resolve_primitive", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "resolve primitive dependency contextual concrete default value",
+   "targets": [
+     {"file": "Container.php", "symbol": "resolvePrimitive", "contains": ["getContextualConcrete('$'.$parameter->getName())"]},
+     {"file": "Container.php", "symbol": "resolveDependencies", "contains": ["$this->resolvePrimitive($dependency)"]}
+   ],
+   "distractors": [
+     {"file": "CacheManager.php", "symbol": "resolve"},
+     {"file": "QueueManager.php", "symbol": "resolve"},
+     {"file": "AuthManager.php", "symbol": "resolve"}
+   ],
+   "note": "Container's contextual-binding fallback for primitive parameters, not the managers' resolve($name) driver factories."},
+  {"id": "php.worker_handle_job_exception", "corpus": "fixtures/php", "language": "php", "kind": "task", "category": "supported", "origin": "brainstorm-php", "query": "job exception release backoff max attempts",
+   "targets": [{"file": "Worker.php", "symbol": "handleJobException", "contains": ["$job->release($this->calculateBackoff($job, $options))"]}],
+   "note": "handleJobException marks the job failed if it will exceed max attempts, otherwise releases it with the computed backoff."},
+  {"id": "php.worker_calculate_backoff", "corpus": "fixtures/php", "language": "php", "kind": "exact", "category": "supported", "origin": "brainstorm-php", "query": "calculateBackoff",
+   "targets": [{"file": "Worker.php", "symbol": "calculateBackoff", "contains": ["$backoff[$job->attempts() - 1] ?? last($backoff)"]}],
+   "distractors": [{"file": "Worker.php", "symbol": "handleJobException"}]},
+
+  {"id": "php.chunker.enum", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Currency enum cases",
+   "targets": [{"file": "src/Billing/Currency.php", "symbol": "Currency", "contains": ["case Yen = 'JPY';"]}]},
+  {"id": "php.chunker.enum_method", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "minorUnits",
+   "targets": [{"file": "src/Billing/Currency.php", "symbol": "minorUnits", "contains": ["self::Yen => 0"]}]},
+  {"id": "php.chunker.trait", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "HasLedgerEntries", "max_rank": 1,
+   "targets": [{"file": "src/Billing/HasLedgerEntries.php", "symbol": "HasLedgerEntries"}],
+   "distractors": [{"file": "src/Billing/Invoice.php", "symbol": "Invoice"}]},
+  {"id": "php.chunker.trait_method", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "recordLedgerEntry",
+   "targets": [{"file": "src/Billing/HasLedgerEntries.php", "symbol": "recordLedgerEntry"}],
+   "distractors": [{"file": "src/Billing/Invoice.php", "symbol": "void"}]},
+  {"id": "php.chunker.interface", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "InvoiceRepository interface", "max_rank": 1,
+   "targets": [{"file": "src/Billing/InvoiceRepository.php", "symbol": "InvoiceRepository"}],
+   "distractors": [{"file": "src/Billing/DatabaseInvoiceRepository.php", "symbol": "DatabaseInvoiceRepository"}],
+   "note": "Interface declaration, not the implementing class."},
+  {"id": "php.chunker.interface_method", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "findOverdue",
+   "targets": [
+     {"file": "src/Billing/InvoiceRepository.php", "symbol": "findOverdue"},
+     {"file": "src/Billing/DatabaseInvoiceRepository.php", "symbol": "findOverdue"}
+   ],
+   "note": "Abstract interface method and its implementation are both acceptable."},
+  {"id": "php.chunker.class_constant", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "STATUS_VOID",
+   "targets": [
+     {"file": "src/Billing/Invoice.php", "symbol": "STATUS_VOID"},
+     {"file": "src/Billing/Invoice.php", "symbol": "Invoice", "contains": ["const STATUS_VOID = 'void';"]}
+   ]},
+  {"id": "php.chunker.property", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "lineItems",
+   "targets": [{"file": "src/Billing/Invoice.php", "symbol": "lineItems", "contains": ["protected array $lineItems = [];"]}],
+   "note": "Property declaration extracted as its own var declaration."},
+  {"id": "php.chunker.namespace", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "App\\Billing\\Gateways namespace",
+   "targets": [
+     {"file": "src/Billing/Gateways/StripeGateway.php", "symbol": "App\\Billing\\Gateways"},
+     {"file": "src/Billing/Gateways/StripeGateway.php", "symbol": "StripeGateway"}
+   ],
+   "note": "Only one file declares the Gateways namespace."},
+  {"id": "php.chunker.commented_out_function", "corpus": "retrieval/corpora/php-chunker", "language": "php", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "round_minor", "max_rank": 1,
+   "targets": [{"file": "src/Billing/helpers.php", "symbol": "round_minor", "contains": ["PHP_ROUND_HALF_EVEN"]}],
+   "distractors": [{"file": "src/Billing/helpers.php", "symbol": "legacy_round_minor"}],
+   "note": "Namespaced top-level function; the commented-out legacy_round_minor must not become a declaration."}
+]

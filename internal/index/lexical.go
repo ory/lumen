@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,9 +53,9 @@ func (idx *Indexer) indexLexicalWithTree(ctx context.Context, projectDir string,
 	slices.Sort(paths)
 	slices.Sort(removed)
 	stats.FilesChanged = len(paths) + len(removed)
-	// Files that could not be read are not stored. Leaving the tree unstamped
-	// makes the next pass retry them; unchunkable content is deterministic and
-	// is stored as an empty revision instead.
+	// Files that could not be read, or changed or vanished after the scan, are
+	// not stored. Leaving the tree unstamped makes the next pass retry them;
+	// unchunkable content is deterministic and is stored as an empty revision.
 	retry := false
 	for _, path := range removed {
 		if err := idx.store.DeleteFileChunks(path); err != nil {
@@ -79,6 +80,14 @@ func (idx *Indexer) indexLexicalWithTree(ctx context.Context, projectDir string,
 			}
 		}
 		data, err := os.ReadFile(filepath.Join(projectDir, path))
+		if os.IsNotExist(err) {
+			// Deleted after the scan: drop it now; the retry pass confirms.
+			if err := idx.store.DeleteFileChunks(path); err != nil {
+				return stats, err
+			}
+			retry = true
+			continue
+		}
 		if err != nil {
 			if os.IsPermission(err) {
 				stats.FilesSkipped++
@@ -93,7 +102,12 @@ func (idx *Indexer) indexLexicalWithTree(ctx context.Context, projectDir string,
 		// The scan and read may race an editor. Never attach chunks to the wrong revision.
 		hash := fmt.Sprintf("%x", sha256.Sum256(data))
 		if hash != tree.Files[path] {
-			return stats, fmt.Errorf("file changed while indexing: %s; retry indexing", path)
+			stats.FilesSkipped++
+			retry = true
+			if idx.logger != nil {
+				idx.logger.Info("file changed while indexing; retrying next pass", "path", path)
+			}
+			continue
 		}
 		if isBinaryContent(data) {
 			if err := idx.store.DeleteFileChunks(path); err != nil {
@@ -158,7 +172,7 @@ type LexicalResult struct {
 // snippets. The related context budget is hard-capped at 6000 UTF-8 bytes
 // (1500 estimated tokens at four bytes/token), without truncating symbols.
 func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string, limit int, pathPrefix string, expand bool) ([]LexicalResult, error) {
-	release, err := idx.lockProject(projectDir)
+	release, err := idx.lockProjectContext(ctx, projectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +180,7 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 	if limit <= 0 {
 		return nil, nil
 	}
-	hits, err := idx.store.SearchLexical(ctx, query, limit*3, pathPrefix)
+	hits, err := idx.store.SearchLexical(ctx, query, max(limit*3, 30), pathPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +229,12 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 	key := func(r store.SearchResult) string { return fmt.Sprintf("%s:%d:%d", r.FilePath, r.StartLine, r.EndLine) }
 	seen := map[string]bool{}
 	var out []LexicalResult
+	var scores []float64
+	terms := store.LexicalTerms(query)
+	weights, err := idx.store.LexicalTermWeights(ctx, terms)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range hits {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -228,9 +248,31 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 		}
 		seen[key(r)] = true
 		out = append(out, LexicalResult{SearchResult: r, Content: content})
-		if len(out) == limit {
-			break
+		cov := queryCoverage(terms, weights, r.FilePath+" "+r.Symbol+" "+content)
+		if os.Getenv("LUMEN_TMP_UNWEIGHTED") == "1" {
+			cov = queryCoverage(terms, nil, r.FilePath+" "+r.Symbol+" "+content)
 		}
+		alpha, _ := strconv.ParseFloat(os.Getenv("LUMEN_TMP_ALPHA"), 64)
+		scores = append(scores, -r.Distance*(1-alpha+alpha*cov))
+	}
+	// BM25 sums per-term weights, so a tiny chunk matching one query term can
+	// outrank the declaration that matches most of the query. Scale each
+	// candidate by the IDF-weighted share of query terms it contains.
+	order := make([]int, len(out))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return scores[order[a]] > scores[order[b]] })
+	ranked := make([]LexicalResult, 0, min(limit, len(out)))
+	for _, i := range order[:min(limit, len(order))] {
+		r := out[i]
+		r.Distance = -scores[i]
+		ranked = append(ranked, r)
+	}
+	out = ranked
+	seen = map[string]bool{}
+	for _, r := range out {
+		seen[key(r.SearchResult)] = true
 	}
 	if !expand || len(out) == 0 {
 		return out, nil
@@ -279,7 +321,9 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 	extras := 0
 	for _, parent := range direct[:min(3, len(direct))] {
 		for _, ref := range parent.References[:min(32, len(parent.References))] {
-			candidates := resolveLexicalReference(projectDir, goModule, parent, ref, bySymbol)
+			candidates := resolveLexicalReference(projectDir, goModule, parent, ref, bySymbol, func(path string) ([]store.SearchResult, error) {
+				return idx.store.LookupLexicalDefaultExports(ctx, path)
+			})
 
 			if len(candidates) != 1 {
 				continue
@@ -304,9 +348,40 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 	return out, nil
 }
 
+// sourceExtensions maps an emitted JavaScript module extension to the source
+// extensions TypeScript resolves it from, keeping the literal file as a
+// candidate so a checked-in JavaScript sibling makes the import ambiguous.
+var sourceExtensions = map[string][]string{
+	".js":  {".ts", ".tsx"},
+	".jsx": {".tsx"},
+	".mjs": {".mts"},
+	".cjs": {".cts"},
+}
+
+// queryCoverage is the IDF-weighted fraction of distinct query terms present
+// in text, so missing function words cost little and missing rare terms a lot.
+func queryCoverage(terms []string, weights map[string]float64, text string) float64 {
+	tokens := store.LexicalTokens(text)
+	var matched, total float64
+	for _, term := range terms {
+		w := 1.0
+		if weights != nil {
+			w = weights[term]
+		}
+		total += w
+		if tokens[term] {
+			matched += w
+		}
+	}
+	if total == 0 {
+		return 1
+	}
+	return matched / total
+}
+
 // Resolve only direct, syntax-bound local targets. Module aliases, reexports,
 // implicit receiver dispatch and nonlocal dependencies are deliberately skipped.
-func resolveLexicalReference(root string, goModule func() string, parent LexicalResult, ref string, bySymbol map[string][]store.SearchResult) []store.SearchResult {
+func resolveLexicalReference(root string, goModule func() string, parent LexicalResult, ref string, bySymbol map[string][]store.SearchResult, lookupDefault func(path string) ([]store.SearchResult, error)) []store.SearchResult {
 	var candidates []store.SearchResult
 	for _, r := range bySymbol[ref] {
 		if r.FilePath == parent.FilePath && r.Kind == "function" {
@@ -322,7 +397,7 @@ func resolveLexicalReference(root string, goModule func() string, parent Lexical
 			continue
 		}
 		if spec, symbol, js := strings.Cut(target, "#"); js {
-			if local != ref || symbol == "default" || (!strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../")) {
+			if local != ref || (!strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../")) {
 				continue
 			}
 			base := filepath.Clean(filepath.Join(filepath.Dir(parent.FilePath), filepath.FromSlash(spec)))
@@ -331,9 +406,17 @@ func resolveLexicalReference(root string, goModule func() string, parent Lexical
 			}
 			// Require exactly one physical candidate among conventional module paths.
 			paths := []string{base}
-			if filepath.Ext(base) == "" {
-				for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts"} {
+			switch ext := filepath.Ext(base); ext {
+			case "":
+				for _, ext := range []string{".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"} {
 					paths = append(paths, base+ext, filepath.Join(base, "index"+ext))
+				}
+			default:
+				// TypeScript ESM imports name the emitted file ('./x.js') while
+				// the repository holds its source ('./x.ts').
+				stem := strings.TrimSuffix(base, ext)
+				for _, source := range sourceExtensions[ext] {
+					paths = append(paths, stem+source)
 				}
 			}
 			existing := ""
@@ -349,6 +432,13 @@ func resolveLexicalReference(root string, goModule func() string, parent Lexical
 				}
 			}
 			if ambiguous || existing == "" {
+				continue
+			}
+			if symbol == "default" {
+				defaults, err := lookupDefault(existing)
+				if err == nil && len(defaults) == 1 && defaults[0].Kind == "function" {
+					candidates = append(candidates, defaults[0])
+				}
 				continue
 			}
 			for _, r := range bySymbol[symbol] {

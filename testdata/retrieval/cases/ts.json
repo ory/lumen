@@ -1,0 +1,141 @@
+[
+  {"id": "lang.ts.event_listener_registration", "corpus": "fixtures/ts", "language": "ts", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "event listener registration",
+   "targets": [
+     {"file": "event.ts", "contains": ["get event(): Event<T> {"], "line": 1174},
+     {"file": "event.ts", "symbol": "Event", "contains": ["(listener: (e: T) => unknown, thisArgs?: any"]},
+     {"file": "event.ts", "contains": ["add(event: Event<T>): IDisposable {"]},
+     {"file": "cancellation.ts", "contains": ["get onCancellationRequested(): Event<void> {"]}
+   ]},
+  {"id": "lang.ts.async_operation_with_cancellation", "corpus": "fixtures/ts", "language": "ts", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "async operation with cancellation",
+   "targets": [
+     {"file": "async.ts", "symbol": "createCancelablePromise", "contains": ["const source = new CancellationTokenSource();"]},
+     {"file": "async.ts", "symbol": "raceCancellation", "contains": ["resolve(defaultValue);"]},
+     {"file": "async.ts", "symbol": "raceCancellationError", "contains": ["reject(new CancellationError());"]},
+     {"file": "async.ts", "symbol": "timeout", "line": 540},
+     {"file": "cancellation.ts", "symbol": "CancellationTokenSource", "line": 97}
+   ]},
+  {"id": "lang.ts.uri_path_manipulation", "corpus": "fixtures/ts", "language": "ts", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "URI path manipulation",
+   "targets": [
+     {"file": "uri.ts", "contains": ["static joinPath(uri: URI, ...pathFragment: string[]): URI {"]},
+     {"file": "uri.ts", "contains": ["with(change: { scheme?: string; authority?: string | null; path?: string | null;"]},
+     {"file": "resources.ts", "contains": ["joinPath(resource: URI, ...pathFragment: string[]): URI {"]},
+     {"file": "resources.ts", "contains": ["dirname = paths.posix.dirname(resource.path);"]},
+     {"file": "resources.ts", "contains": ["normalizePath(resource: URI): URI {"], "line": 220},
+     {"file": "uri.ts", "symbol": "uriToFsPath"}
+   ]},
+  {"id": "lang.ts.lifecycle_disposable_resource", "corpus": "fixtures/ts", "language": "ts", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "lifecycle disposable resource",
+   "targets": [
+     {"file": "lifecycle.ts", "symbol": "IDisposable", "contains": ["dispose(): void;"]},
+     {"file": "lifecycle.ts", "symbol": "Disposable", "line": 526},
+     {"file": "lifecycle.ts", "symbol": "DisposableStore", "line": 416},
+     {"file": "lifecycle.ts", "symbol": "toDisposable", "contains": ["return new FunctionDisposable(fn);"]},
+     {"file": "lifecycle.ts", "symbol": "MutableDisposable", "line": 565},
+     {"file": "lifecycle.ts", "symbol": "DisposableResourceMap", "line": 970}
+   ]},
+  {"id": "lang.ts.platform_detection_operating_system", "corpus": "fixtures/ts", "language": "ts", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "platform detection operating system",
+   "targets": [
+     {"file": "platform.ts", "symbol": "OperatingSystem", "contains": ["Macintosh = 2"]},
+     {"file": "platform.ts", "symbol": "OS", "contains": ["OperatingSystem.Macintosh"]},
+     {"file": "platform.ts", "symbol": "Platform", "line": 117},
+     {"file": "platform.ts", "symbol": "PlatformToString", "contains": ["case Platform.Windows: return 'Windows';"]}
+   ]},
+
+  {"id": "ts.async.cancelable_promise_disposable_cleanup", "corpus": "fixtures/ts", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "promise cancellation disposable result cleanup",
+   "targets": [{"file": "async.ts", "symbol": "createCancelablePromise", "contains": ["} else if (isDisposable(value)) {"]}],
+   "distractors": [
+     {"file": "async.ts", "symbol": "notCancellablePromise"},
+     {"file": "lifecycle.ts", "symbol": "isDisposable"}
+   ],
+   "note": "The answer disposes a disposable result that resolves after cancel; isDisposable itself and notCancellablePromise only share vocabulary."},
+  {"id": "ts.async.race_cancellation_default_value", "corpus": "fixtures/ts", "language": "ts", "kind": "exact", "category": "supported", "origin": "brainstorm-ts", "query": "raceCancellation defaultValue",
+   "targets": [{"file": "async.ts", "symbol": "raceCancellation", "contains": ["resolve(defaultValue);"]}],
+   "distractors": [{"file": "async.ts", "symbol": "raceCancellationError", "contains": ["reject(new CancellationError());"]}],
+   "note": "Must return the implementation overload body that resolves defaultValue, not the error-rejecting sibling."},
+  {"id": "ts.async.race_cancellation_error", "corpus": "fixtures/ts", "language": "ts", "kind": "exact", "category": "supported", "origin": "brainstorm-ts", "query": "raceCancellationError CancellationError",
+   "targets": [{"file": "async.ts", "symbol": "raceCancellationError", "contains": ["reject(new CancellationError());"]}],
+   "distractors": [
+     {"file": "async.ts", "symbol": "raceCancellation", "contains": ["resolve(defaultValue);"]},
+     {"file": "errors.ts", "symbol": "CancellationError"}
+   ]},
+  {"id": "ts.types.deep_immutable", "corpus": "fixtures/ts", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "type that makes nested properties readonly recursively",
+   "targets": [{"file": "types.ts", "symbol": "DeepImmutable", "contains": ["readonly [K in keyof T]: DeepImmutable<T[K]>;"]}],
+   "distractors": [
+     {"file": "types.ts", "symbol": "Mutable"},
+     {"file": "types.ts", "symbol": "DeepPartial"},
+     {"file": "types.ts", "symbol": "DeepRequiredNonNullable"}
+   ]},
+  {"id": "ts.async.cancelable_promise_interface", "corpus": "fixtures/ts", "language": "ts", "kind": "exact", "category": "supported", "origin": "brainstorm-ts", "query": "CancelablePromise interface cancel",
+   "targets": [{"file": "async.ts", "symbol": "CancelablePromise", "contains": ["export interface CancelablePromise<T> extends Promise<T> {"]}],
+   "distractors": [
+     {"file": "async.ts", "symbol": "createCancelablePromise"},
+     {"file": "async.ts", "symbol": "notCancellablePromise"}
+   ]},
+
+  {"id": "ts.app.search_results_abort_hook", "corpus": "retrieval/corpora/ts-app", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "search results hook AbortController cleanup",
+   "targets": [{"file": "src/hooks/useSearchResults.ts", "symbol": "useSearchResults", "contains": ["return () => controller.abort();"]}],
+   "distractors": [
+     {"file": "src/api/searchClient.ts", "symbol": "fetchSearchResults"},
+     {"file": "src/hooks/useDebouncedValue.ts", "symbol": "useDebouncedValue"},
+     {"file": "src/components/SearchPanel.tsx", "symbol": "SearchPanel"}
+   ],
+   "note": "Function-declaration form of a React effect hook that aborts its fetch on cleanup."},
+  {"id": "ts.app.suggestions_abort_hook_arrow", "corpus": "retrieval/corpora/ts-app", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "suggestions hook abort controller on cleanup",
+   "targets": [{"file": "src/hooks/useSearchSuggestions.ts", "symbol": "useSearchSuggestions", "contains": ["controller.abort();"]}],
+   "distractors": [
+     {"file": "src/api/searchClient.ts", "symbol": "fetchSuggestions"},
+     {"file": "src/hooks/usePolling.ts", "symbol": "usePolling"}
+   ],
+   "note": "Arrow-function const form of the same hook shape; the declaration must be extracted as a function chunk."},
+  {"id": "ts.app.retry_button_aria_label", "corpus": "retrieval/corpora/ts-app", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "aria-label retry failed request",
+   "targets": [{"file": "src/components/RetryButton.tsx", "symbol": "RetryButton", "contains": ["aria-label=\"Retry failed request\""]}],
+   "distractors": [
+     {"file": "src/components/ErrorBanner.tsx", "symbol": "ErrorBanner"},
+     {"file": "src/components/CloseButton.tsx", "symbol": "CloseButton"}
+   ],
+   "note": "JSX attribute text must be indexed; ErrorBanner renders the RetryButton next to a 'request failed' message."},
+  {"id": "ts.app.user_service_constructor_injection", "corpus": "retrieval/corpora/ts-app", "language": "ts", "kind": "task", "category": "supported", "origin": "brainstorm-ts", "query": "UserService constructor injected UserRepository",
+   "targets": [{"file": "src/users/UserService.ts", "contains": ["private readonly users: UserRepository,"]}],
+   "distractors": [
+     {"file": "test/users/MockUserRepository.ts", "symbol": "MockUserRepository"},
+     {"file": "test/users/UserService.test.ts", "contains": ["new UserService("]},
+     {"file": "src/users/PostgresUserRepository.ts", "symbol": "PostgresUserRepository"},
+     {"file": "src/users/UserRepository.ts", "symbol": "UserRepository"}
+   ],
+   "note": "The production class constructor (class or constructor chunk) is the answer; the mock repository and the test that constructs the service are not."},
+
+  {"id": "ts.esm.js_specifier_related", "corpus": "retrieval/corpora/ts-esm", "language": "ts", "kind": "structural", "category": "supported", "origin": "brainstorm-ts", "query": "processPayment", "max_rank": 1,
+   "targets": [{"file": "src/billing/payment.ts", "symbol": "processPayment"}],
+   "related": [{"file": "src/billing/reservation.ts", "symbol": "reserveSlot", "contains": ["ledger.insertIfAbsent("]}],
+   "note": "TS ESM imports './reservation.js' while the source on disk is reservation.ts; needs .js -> .ts source-extension substitution."},
+  {"id": "ts.esm.extensionless_export_clause_related", "corpus": "retrieval/corpora/ts-esm", "language": "ts", "kind": "structural", "category": "supported", "origin": "brainstorm-ts", "query": "refundPayment", "max_rank": 1,
+   "targets": [{"file": "src/billing/refund.ts", "symbol": "refundPayment"}],
+   "related": [{"file": "src/billing/ledger.ts", "symbol": "releaseHold", "contains": ["ledger.remove("]}],
+   "note": "Extensionless relative import; the callee is a local function exported through a static `export { releaseHold, holdCount }` clause."},
+  {"id": "ts.esm.default_export_related", "corpus": "retrieval/corpora/ts-esm", "language": "ts", "kind": "structural", "category": "supported", "origin": "brainstorm-ts", "query": "issueInvoice", "max_rank": 1,
+   "targets": [{"file": "src/billing/invoice.ts", "symbol": "issueInvoice"}],
+   "related": [{"file": "src/billing/templates/statement.ts", "symbol": "formatStatement", "contains": ["Statement for ${customer}"]}],
+   "note": "Default import of the single `export default function formatStatement` through a './templates/statement.js' specifier: static and unambiguous."},
+  {"id": "ts.esm.mts_mjs_specifier_related", "corpus": "retrieval/corpora/ts-esm", "language": "ts", "kind": "structural", "category": "diagnostic", "origin": "brainstorm-ts", "query": "flushPendingJobs", "max_rank": 1,
+   "targets": [{"file": "src/workers/flush.mts", "symbol": "flushPendingJobs"}],
+   "related": [{"file": "src/workers/queue.mts", "symbol": "drainQueue", "contains": ["pending.splice(0, pending.length)"]}],
+   "note": ".mts is not a registered chunker extension, so neither file is indexed; would also need './queue.mjs' -> queue.mts substitution."},
+
+  {"id": "ts.chunker.tsx_interface_props", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Props", "max_rank": 1,
+   "targets": [{"file": "ui/adv.tsx", "symbol": "Props", "contains": ["name: string;"]}]},
+  {"id": "ts.chunker.tsx_type_alias_theme", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Theme", "max_rank": 1,
+   "targets": [{"file": "ui/adv.tsx", "symbol": "Theme", "contains": ["\"light\" | \"dark\""]}]},
+  {"id": "ts.chunker.tsx_function_component_button", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Button",
+   "targets": [{"file": "ui/adv.tsx", "symbol": "Button", "contains": ["return <button>Click</button>;"]}],
+   "distractors": [{"file": "ui/adv.tsx", "symbol": "render"}]},
+  {"id": "ts.chunker.tsx_arrow_component_card", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Card",
+   "targets": [{"file": "ui/adv.tsx", "symbol": "Card", "contains": ["return <div>{title}</div>;"]}],
+   "distractors": [{"file": "ui/adv.tsx", "symbol": "render"}]},
+  {"id": "ts.chunker.tsx_nested_component_inner", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "Inner",
+   "targets": [{"file": "ui/adv.tsx", "symbol": "Wrapper.Inner", "contains": ["return <span>inner</span>;"]}],
+   "note": "Nested function declaration is extracted as Wrapper.Inner; the enclosing Wrapper chunk also contains it but is not the declaration."},
+  {"id": "ts.chunker.tsx_class_render_method", "corpus": "retrieval/corpora/ts-chunker", "language": "ts", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "App render",
+   "targets": [
+     {"file": "ui/adv.tsx", "symbol": "render", "contains": ["<Card title=\"test\" />"]},
+     {"file": "ui/adv.tsx", "symbol": "App", "contains": ["export class App extends React.Component {"]}
+   ]}
+]

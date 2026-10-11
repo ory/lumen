@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 
 	"github.com/ory/lumen/internal/indexlock"
+	"github.com/ory/lumen/internal/store"
 
 	_ "github.com/mattn/go-sqlite3" // register sqlite3 driver
 )
@@ -188,9 +189,7 @@ func setSeedProjectPath(ctx context.Context, dbPath, projectPath string) (err er
 // to the repository-scoped schema. The completed donor project retains all of
 // its project_meta and project_files rows; only its canonical path changes.
 func setSharedSeedProjectPath(ctx context.Context, db *sql.DB, projectPath string) error {
-	if abs, err := filepath.Abs(projectPath); err == nil {
-		projectPath = filepath.Clean(abs)
-	}
+	projectPath = store.CanonicalProjectPath(projectPath)
 
 	var donorID int64
 	err := db.QueryRowContext(ctx, `

@@ -231,3 +231,68 @@ func TestExportedDeclarationLeadingComment(t *testing.T) {
 		}
 	}
 }
+
+// A call in a declaration's initializer is a call, not a binding: only the
+// declared name is bound.
+func TestInitializerCallsAreReferences(t *testing.T) {
+	languages := DefaultLanguages(500)
+	for _, tt := range []struct{ ext, source, symbol, ref, notRef string }{
+		{".ts", "import { chargeDeposit } from './payments';\nexport async function confirmBooking(id: string) {\n  const depositId = await chargeDeposit(id);\n  return depositId;\n}\n", "confirmBooking", "chargeDeposit", "depositId"},
+		{".js", "import { convertCurrency } from './fx.js';\nexport function quote(n) { const converted = convertCurrency(n); return converted; }\n", "quote", "convertCurrency", "converted"},
+		{".rs", "fn pay(id: &str) { let receipt = reserve(id); receipt.done(); }\n", "pay", "reserve", "receipt"},
+	} {
+		t.Run(tt.ext, func(t *testing.T) {
+			chunks, err := languages[tt.ext].Chunk("sample"+tt.ext, []byte(tt.source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range chunks {
+				if c.Symbol != tt.symbol {
+					continue
+				}
+				if !slices.Contains(c.References, tt.ref) || slices.Contains(c.References, tt.notRef) {
+					t.Fatalf("references = %v, want %s and not %s", c.References, tt.ref, tt.notRef)
+				}
+				return
+			}
+			t.Fatalf("missing %s: %#v", tt.symbol, chunks)
+		})
+	}
+}
+
+// Direct top-level export forms are statically provable; aliases and
+// re-exports are not attributed to a local declaration.
+func TestExportClauseAndDefaultExports(t *testing.T) {
+	source := `function releaseHold(id: string) { return id; }
+function holdCount() { return 1; }
+function renamed() { return 2; }
+function internalOnly() { return 3; }
+function plainDefault() { return 4; }
+export { releaseHold, holdCount as holdCount, renamed as other };
+export { internalOnly } from './elsewhere';
+export default plainDefault;
+`
+	for _, tt := range []struct {
+		ext, source string
+		want        map[string][2]bool // symbol -> {Exported, DefaultExport}
+	}{
+		{".ts", source, map[string][2]bool{"releaseHold": {true, false}, "holdCount": {true, false}, "renamed": {false, false}, "internalOnly": {false, false}, "plainDefault": {false, true}}},
+		{".js", "export default function issueInvoice(id) { return id; }\nexport function sendInvoice() {}\n", map[string][2]bool{"issueInvoice": {false, true}, "sendInvoice": {true, false}}},
+	} {
+		t.Run(tt.ext, func(t *testing.T) {
+			chunks, err := DefaultLanguages(500)[tt.ext].Chunk("m"+tt.ext, []byte(tt.source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[string][2]bool{}
+			for _, c := range chunks {
+				got[c.Symbol] = [2]bool{c.Exported, c.DefaultExport}
+			}
+			for symbol, want := range tt.want {
+				if g, ok := got[symbol]; !ok || g != want {
+					t.Errorf("%s {Exported, DefaultExport} = %v (present=%v), want %v", symbol, g, ok, want)
+				}
+			}
+		})
+	}
+}

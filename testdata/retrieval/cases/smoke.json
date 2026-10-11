@@ -1,0 +1,14 @@
+[
+  {"id": "smoke.exact_symbol", "corpus": "retrieval/corpora/smoke", "language": "go", "kind": "exact", "category": "supported", "origin": "retrieval_benchmark_test", "query": "refreshAccessToken", "max_rank": 1,
+   "targets": [{"file": "session/refresh.go", "symbol": "refreshAccessToken"}]},
+  {"id": "smoke.path", "corpus": "retrieval/corpora/smoke", "language": "go", "kind": "exact", "category": "supported", "origin": "retrieval_benchmark_test", "query": "session/refresh.go", "max_rank": 1,
+   "targets": [{"file": "session/refresh.go", "symbol": "refreshAccessToken"}]},
+  {"id": "smoke.comment", "corpus": "retrieval/corpora/smoke", "language": "ts", "kind": "control", "category": "supported", "origin": "retrieval_benchmark_test", "query": "prevent duplicate payment processing",
+   "targets": [{"file": "billing/payment.ts", "symbol": "processPayment"}]},
+  {"id": "smoke.imported_helper", "corpus": "retrieval/corpora/smoke", "language": "ts", "kind": "structural", "category": "supported", "origin": "retrieval_benchmark_test", "query": "processPayment", "max_rank": 1,
+   "targets": [{"file": "billing/payment.ts", "symbol": "processPayment"}],
+   "related": [{"file": "billing/reservation.ts", "symbol": "reserveSlot", "contains": ["insertIfAbsent"]}]},
+  {"id": "smoke.vocabulary_mismatch", "corpus": "retrieval/corpora/smoke", "language": "ts", "kind": "vocabulary", "category": "diagnostic", "origin": "retrieval_benchmark_test", "query": "stop repeated invoice charges",
+   "targets": [{"file": "billing/payment.ts", "symbol": "processPayment"}],
+   "note": "No shared term between query and source; BM25 cannot bridge this without synonyms."}
+]

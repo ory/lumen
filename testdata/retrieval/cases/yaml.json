@@ -1,0 +1,138 @@
+[
+  {"id": "lang.yaml.kubernetes_deployment_replicas", "corpus": "fixtures/yaml", "language": "yaml", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "Kubernetes deployment replicas",
+   "targets": [
+     {"file": "k8s-deployment.yaml", "contains": ["kind: Deployment", "replicas: 3"]},
+     {"file": "k8s-load-balancer.yaml", "contains": ["kind: Deployment", "replicas: 5"]},
+     {"file": "k8s-statefulset.yaml", "contains": ["replicas: 1"]},
+     {"file": "k8s-zookeeper-statefulset.yaml", "symbol": "spec.replicas"}
+   ]},
+  {"id": "lang.yaml.ci_pipeline_build_steps", "corpus": "fixtures/yaml", "language": "yaml", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "CI pipeline build steps",
+   "targets": [
+     {"file": "prometheus-ci.yml", "symbol": "jobs.build", "contains": ["Build Prometheus for common architectures"]},
+     {"file": "prometheus-ci.yml", "symbol": "jobs.build_all", "contains": ["build_all"]},
+     {"file": "express-ci.yml", "symbol": "jobs.test", "contains": ["npm run test-ci"]},
+     {"file": "express-ci.yml", "symbol": "jobs.lint", "contains": ["npm run lint"]},
+     {"file": "django-ci.yml", "contains": ["python -Wall tests/runtests.py -v2"]},
+     {"file": "flask-tests.yml", "contains": ["steps:"]},
+     {"file": "rust-lang-ci.yml", "contains": ["cargo build"]},
+     {"file": "ripgrep-ci.yml", "contains": ["build --verbose --workspace"]}
+   ],
+   "note": "Broad query: any CI job definition with build/test steps is acceptable."},
+  {"id": "lang.yaml.service_port_configuration", "corpus": "fixtures/yaml", "language": "yaml", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "service port configuration",
+   "targets": [
+     {"file": "k8s-service.yaml", "contains": ["kind: Service", "targetPort: 80"]},
+     {"file": "k8s-configmap.yaml", "contains": ["port: 8080"]},
+     {"file": "compose-nginx-flask-mongo.yaml", "contains": ["FLASK_SERVER_PORT=9091"]},
+     {"file": "compose-flask-redis.yaml", "contains": ["'8000:8000'"]},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "alertmanager.service"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "alertmanager.servicePerReplica"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "prometheus.service"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "prometheus.servicePerReplica"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "grafana.service"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "prometheusOperator.service"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "thanosRuler.service"}
+   ]},
+  {"id": "lang.yaml.environment_variables_secrets", "corpus": "fixtures/yaml", "language": "yaml", "kind": "language", "category": "supported", "origin": "lang-suite",
+   "query": "environment variables secrets",
+   "targets": [
+     {"file": "k8s-statefulset.yaml", "contains": ["secretKeyRef:", "name: postgres-secret"]},
+     {"file": "rust-lang-ci.yml", "symbol": "env", "contains": ["TOOLSTATE_REPO_ACCESS_TOKEN"]},
+     {"file": "rust-lang-ci.yml", "contains": ["AWS_SECRET_ACCESS_KEY: ${{ secrets.CACHES_AWS_SECRET_ACCESS_KEY }}"]},
+     {"file": "prometheus-ci.yml", "contains": ["NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}"]},
+     {"file": "rust-lang-ci.yml", "contains": ["AWS_SECRET_ACCESS_KEY: ${{ secrets.ARTIFACTS_AWS_SECRET_ACCESS_KEY }}"]},
+     {"file": "compose-wordpress-mysql.yaml", "contains": ["environment:"]}
+   ]},
+  {"id": "yaml.k8s_deployment_replicas", "corpus": "fixtures/yaml", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "nginx deployment spec replicas",
+   "targets": [
+     {"file": "k8s-deployment.yaml", "contains": ["name: nginx-deployment", "replicas: 3"]}
+   ],
+   "distractors": [
+     {"file": "k8s-service.yaml", "contains": ["name: nginx-service"]},
+     {"file": "k8s-load-balancer.yaml", "contains": ["replicas: 5"]},
+     {"file": "k8s-zookeeper-statefulset.yaml", "symbol": "spec.replicas"}
+   ]},
+  {"id": "yaml.compose_backend_stop_signal", "corpus": "fixtures/yaml", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "flask backend service stop_signal SIGINT",
+   "targets": [
+     {"file": "compose-nginx-flask-mongo.yaml", "contains": ["backend:", "stop_signal: SIGINT"]}
+   ],
+   "distractors": [
+     {"file": "compose-compose.yaml", "contains": ["mariadb"]},
+     {"file": "compose-wordpress-mysql.yaml", "contains": ["environment:"]}
+   ],
+   "note": "compose-flask-redis.yaml has the same stop_signal on its web service; it is neither target nor distractor."},
+  {"id": "yaml.express_ci_paths_ignore", "corpus": "fixtures/yaml", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "express ci on push branches paths-ignore markdown",
+   "targets": [
+     {"file": "express-ci.yml", "symbol": "on", "contains": ["paths-ignore"]}
+   ],
+   "distractors": [
+     {"file": "rust-lang-ci.yml", "symbol": "on"},
+     {"file": "ripgrep-ci.yml", "symbol": "on"},
+     {"file": "express-ci.yml", "symbol": "jobs.lint"}
+   ]},
+  {"id": "yaml.express_ci_test_matrix", "corpus": "fixtures/yaml", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "express ci test job strategy matrix os node-version",
+   "targets": [
+     {"file": "express-ci.yml", "symbol": "jobs.test", "contains": ["fail-fast: false", "npm run test-ci"]}
+   ],
+   "distractors": [
+     {"file": "express-ci.yml", "symbol": "jobs.lint"},
+     {"file": "express-ci.yml", "symbol": "jobs.coverage"},
+     {"file": "ripgrep-ci.yml", "symbol": "jobs.test.strategy"},
+     {"file": "rust-lang-ci.yml", "symbol": "jobs.job.strategy"}
+   ]},
+  {"id": "yaml.grafana_service_monitor", "corpus": "fixtures/yaml", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "grafana serviceMonitor enabled",
+   "targets": [
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "grafana.serviceMonitor", "contains": ["If true, a ServiceMonitor CRD is created for a prometheus operator"]}
+   ],
+   "distractors": [
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "prometheus.serviceMonitor"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "prometheusOperator.serviceMonitor"},
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "grafana.enabled"}
+   ],
+   "note": "The values file repeats 'enabled' and 'serviceMonitor' under many components; the key path prefix (# path: grafana.serviceMonitor) disambiguates."},
+  {"id": "yaml.grafana_service_monitor_path", "corpus": "fixtures/yaml", "language": "yaml", "kind": "exact", "category": "supported", "origin": "chunker-fixture", "max_rank": 1,
+   "query": "grafana.serviceMonitor",
+   "targets": [
+     {"file": "kube-prometheus-stack-values.yaml", "symbol": "grafana.serviceMonitor", "contains": ["scrapeTimeout: 30s"]}
+   ],
+   "note": "Transferred from TestStructuredChunker_PathPrefix_ContentEmbedded: the dotted key path is only present in the chunk's '# path:' prefix."},
+  {"id": "yaml.anchor_definition", "corpus": "retrieval/corpora/yaml-workers", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "worker-defaults anchor resource limits logging",
+   "targets": [
+     {"file": "compose.yaml", "contains": ["x-worker-defaults: &worker-defaults", "max-size: 10m"]}
+   ],
+   "distractors": [
+     {"file": "compose.yaml", "contains": ["queue_data:/data"]}
+   ]},
+  {"id": "yaml.anchor_alias_usage", "corpus": "retrieval/corpora/yaml-workers", "language": "yaml", "kind": "task", "category": "supported", "origin": "brainstorm-docs-ui",
+   "query": "services that merge *worker-defaults invoice-worker email-worker",
+   "targets": [
+     {"file": "compose.yaml", "contains": ["invoice-worker:", "<<: *worker-defaults"]}
+   ],
+   "note": "Literal alias retrieval: the merge key '<<: *worker-defaults' appears in the service definitions; no anchor dereference is expected."},
+  {"id": "yaml.multidoc_service_ports", "corpus": "retrieval/corpora/yaml-workers", "language": "yaml", "kind": "task", "category": "supported", "origin": "chunker-fixture",
+   "query": "checkout Service ClusterIP ports targetPort metrics",
+   "targets": [
+     {"file": "deploy/checkout.yaml", "contains": ["kind: Service", "targetPort: metrics"]}
+   ],
+   "distractors": [
+     {"file": "deploy/checkout.yaml", "contains": ["kind: Deployment", "containerPort: 9090"]},
+     {"file": "deploy/checkout.yaml", "contains": ["kind: ConfigMap"]}
+   ],
+   "note": "Multi-document manifest (from TestStructuredChunker_MultiDocYAML): each --- document is its own chunk."},
+  {"id": "yaml.multidoc_pod_disruption_budget", "corpus": "retrieval/corpora/yaml-workers", "language": "yaml", "kind": "task", "category": "supported", "origin": "chunker-fixture",
+   "query": "checkout PodDisruptionBudget minAvailable",
+   "targets": [
+     {"file": "deploy/checkout.yaml", "contains": ["kind: PodDisruptionBudget", "minAvailable: 2"]}
+   ],
+   "distractors": [
+     {"file": "deploy/checkout.yaml", "contains": ["kind: Deployment"]}
+   ]}
+]

@@ -1,0 +1,22 @@
+diff --git a/src/main/java/org/jsoup/select/Evaluator.java b/src/main/java/org/jsoup/select/Evaluator.java
+index 8c93fba..2f11c33 100644
+--- a/src/main/java/org/jsoup/select/Evaluator.java
++++ b/src/main/java/org/jsoup/select/Evaluator.java
+@@ -361,7 +361,7 @@ public abstract class Evaluator {
+      */
+     public static final class AttributeWithValueContaining extends AttributeKeyPair {
+         public AttributeWithValueContaining(String key, String value) {
+-            super(key, value);
++            super(key, value, false);
+         }
+ 
+         @Override
+@@ -421,7 +421,7 @@ public abstract class Evaluator {
+ 
+         public AttributeKeyPair(String key, String value, boolean trimQuoted) {
+             Validate.notEmpty(key);
+-            Validate.notEmpty(value);
++            Validate.notNull(value);
+ 
+             this.key = normalize(key);
+             boolean quoted = value.startsWith("'") && value.endsWith("'")

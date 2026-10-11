@@ -249,7 +249,13 @@ func linesLen(lines []string) int {
 // the budget; if they would overflow, the sub-chunk uses just its own lines.
 func createSubChunks(c chunker.Chunk, parts [][]string, maxChars int) []chunker.Chunk {
 	var result []chunker.Chunk
-	lineOffset := 0
+	// Content lines beyond the source span are a synthetic prefix (structured
+	// chunks start with "# path: <symbol>"); they map to no source line.
+	total := 0
+	for _, part := range parts {
+		total += len(part)
+	}
+	lineOffset := -max(0, total-(c.EndLine-c.StartLine+1))
 
 	// Extract function signature / doc-comment header from the first partition.
 	header := parts[0]
@@ -278,8 +284,8 @@ func createSubChunks(c chunker.Chunk, parts [][]string, maxChars int) []chunker.
 		}
 
 		content := strings.Join(effective, "")
-		startLine := c.StartLine + lineOffset - overlapCount
-		endLine := c.StartLine + lineOffset + len(part) - 1
+		startLine := max(c.StartLine, c.StartLine+lineOffset-overlapCount)
+		endLine := max(c.StartLine, c.StartLine+lineOffset+len(part)-1)
 		symbol := c.Symbol
 
 		h := sha256.New()

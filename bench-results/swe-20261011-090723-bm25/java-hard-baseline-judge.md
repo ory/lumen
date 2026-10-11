@@ -1,0 +1,3 @@
+## Rating: Poor
+
+The candidate patch only fixes `AttributeWithValueContaining` (`*=`) by passing `trimQuoted=false`, and changes `notEmpty` to `notNull` for empty value support. However, it misses the critical fix for `AttributeWithValueMatching` (exact `=`), which still calls `.trim()` directly in its `matches()` method (`element.attr(key).trim()`). The gold patch also unifies all selectors by removing the `trimQuoted` branching entirely and replacing it with just `lowerCase(value)` (no trimming anywhere), plus deprecating the old 3-arg constructor. The candidate leaves the `=` selector broken and does not add any tests to verify the behavior.

@@ -14,6 +14,11 @@ import (
 )
 
 type Config struct {
+	Agent       string
+	Transport   string
+	Auth        string
+	Model       string
+	JudgeModel  string
 	LumenBinary string
 	RepoRoot    string
 	ResultsDir  string
@@ -135,62 +140,16 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 		cmd := exec.CommandContext(ctx, cfg.LumenBinary, "index", repoDir)
 		cmd.Env = append(os.Environ(), lumenEnv(cfg)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			fmt.Printf("  %-20s %-10s index FAILED (%v): %s\n", t.ID, string(s), err, out)
+			return nil, fmt.Errorf("index failed: %w\n%s", err, out)
 		} else {
 			fmt.Printf("  %-20s %-10s indexed    [%.1fs]\n", t.ID, string(s), time.Since(indexStart).Seconds())
 		}
 	}
 
-	// Write MCP config
-	mcpPath, cleanup, err := WriteMCPConfig(s, cfg.LumenBinary, cfg.Retrieval, cfg.Backend, cfg.EmbedModel)
-	if err != nil {
-		return nil, fmt.Errorf("writing MCP config: %w", err)
-	}
-	defer cleanup()
-
-	// Build Claude args
 	slug := Slug(t.ID, s, runIndex, cfg.TotalRuns)
 	rawPath := filepath.Join(cfg.ResultsDir, slug+"-raw.jsonl")
-
-	args := []string{
-		"--print",
-		"--output-format", "stream-json",
-		"--verbose",
-		"--model", cfg.ClaudeModel,
-		"--effort", "high",
-		"--strict-mcp-config",
-		"--dangerously-skip-permissions",
-		"--mcp-config", mcpPath,
-	}
-	args = append(args, ClaudeArgs(s, cfg.RepoRoot)...)
-
 	prompt := fmt.Sprintf("You are working in this repository. Fix the following issue.\nMake only the minimal changes needed to resolve it. Do not refactor unrelated code.\n\nIssue: %s\n\n%s", t.IssueTitle, t.IssueBody)
-	args = append(args, "--", prompt)
-
-	// Run Claude with timeout
-	timeout := time.Duration(t.TimeoutSeconds) * time.Second
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	claudeCmd := exec.CommandContext(runCtx, "claude", args...)
-	claudeCmd.Dir = repoDir
-	claudeCmd.Env = append(cleanEnvForClaude(), lumenEnv(cfg)...)
-	rawFile, err := os.Create(rawPath)
-	if err != nil {
-		return nil, fmt.Errorf("creating raw file: %w", err)
-	}
-	stderrPath := filepath.Join(cfg.ResultsDir, slug+"-stderr.log")
-	stderrFile, err := os.Create(stderrPath)
-	if err != nil {
-		return nil, fmt.Errorf("creating stderr file: %w", err)
-	}
-	defer func() { _ = stderrFile.Close() }()
-
-	claudeCmd.Stdout = rawFile
-	claudeCmd.Stderr = stderrFile
-
-	_ = claudeCmd.Run() // non-zero exit is OK
-	_ = rawFile.Close()
+	m, runErr := ExecuteAgent(ctx, cfg, repoDir, s, prompt, slug, time.Duration(t.TimeoutSeconds)*time.Second, taskEnv)
 
 	// Capture patch
 	_ = exec.CommandContext(ctx, "git", "-C", repoDir, "add", "-A").Run()
@@ -198,29 +157,29 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 	diffOut, _ := exec.CommandContext(ctx, "git", "-C", repoDir, "diff", t.BaseCommit).Output()
 	_ = os.WriteFile(patchPath, diffOut, 0o644)
 
-	// Extract metrics
-	m, err := metrics.ExtractFromJSONL(rawPath)
-	if err != nil {
-		return &RunResult{
-			TaskID:   t.ID,
-			Scenario: s,
-			RunIndex: runIndex,
-			RawPath:  rawPath,
-		}, nil
-	}
-
-	metricsPath := filepath.Join(cfg.ResultsDir, slug+"-metrics.json")
-	_ = m.SaveToFile(metricsPath)
-
 	// Run tests if defined
 	var testOutput string
 	if t.TestCommand != "" {
-		testCmd := exec.CommandContext(ctx, "sh", "-c", t.TestCommand)
+		testCtx, testCancel := context.WithTimeout(ctx, time.Duration(t.TimeoutSeconds)*time.Second)
+		defer testCancel()
+		testCmd := exec.CommandContext(testCtx, "sh", "-c", t.TestCommand)
 		testCmd.Dir = repoDir
 		if len(taskEnv) > 0 {
 			testCmd.Env = append(os.Environ(), taskEnv...)
 		}
-		out, _ := testCmd.CombinedOutput()
+		out, testErr := testCmd.CombinedOutput()
+		if m != nil {
+			m.TestStatus = "passed"
+			if testErr != nil {
+				m.TestStatus = "failed"
+			}
+			if testCtx.Err() != nil {
+				m.TestStatus = "timed out"
+			}
+			if err := m.SaveToFile(filepath.Join(cfg.ResultsDir, slug+"-metrics.json")); err != nil {
+				return nil, err
+			}
+		}
 		testOutput = string(out)
 		testPath := filepath.Join(cfg.ResultsDir, slug+"-tests.txt")
 		_ = os.WriteFile(testPath, out, 0o644)
@@ -237,19 +196,7 @@ func Run(ctx context.Context, cfg *Config, t task.Task, s Scenario, runIndex int
 		PatchPath:  patchPath,
 		RawPath:    rawPath,
 		TestOutput: testOutput,
-	}, nil
-}
-
-// cleanEnvForClaude returns os.Environ() without CLAUDECODE so that
-// claude can be spawned from inside a Claude Code session.
-func cleanEnvForClaude() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "CLAUDECODE=") {
-			env = append(env, e)
-		}
-	}
-	return env
+	}, runErr
 }
 
 func stripPII(path string) {

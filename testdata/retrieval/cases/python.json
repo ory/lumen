@@ -1,0 +1,127 @@
+[
+  {"id": "lang.python.http_route_handler_decorator", "corpus": "fixtures/python", "language": "python", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "HTTP route handler decorator",
+   "targets": [
+     {"file": "flask-views.py", "symbol": "as_view", "contains": ["for decorator in cls.decorators"]},
+     {"file": "flask-views.py", "symbol": "View", "contains": ["apply a list of decorators"]},
+     {"file": "flask-ctx.py", "symbol": "after_this_request"},
+     {"file": "flask-ctx.py", "symbol": "copy_current_request_context"},
+     {"file": "django-base.py", "symbol": "as_view", "contains": ["set by decorators"]}
+   ],
+   "note": "Flask's Scaffold.route decorator is not vendored; class-based view registration (as_view applying decorators) and the request decorators documented with @app.route are the closest genuine answers."},
+  {"id": "lang.python.database_model_query_filter", "corpus": "fixtures/python", "language": "python", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "database model query filter",
+   "targets": [
+     {"file": "django-query.py", "symbol": "filter", "line": 1625},
+     {"file": "django-query.py", "symbol": "_filter_or_exclude"},
+     {"file": "django-query.py", "symbol": "_filter_or_exclude_inplace"},
+     {"file": "django-query.py", "symbol": "complex_filter"},
+     {"file": "django-query.py", "symbol": "exclude", "line": 1633}
+   ]},
+  {"id": "lang.python.authentication_login_view", "corpus": "fixtures/python", "language": "python", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "authentication login view",
+   "targets": [
+     {"file": "django-views.py", "symbol": "LoginView"},
+     {"file": "django-views.py", "symbol": "form_valid", "contains": ["auth_login(self.request, form.get_user())"]},
+     {"file": "django-views.py", "symbol": "redirect_to_login"},
+     {"file": "django-views.py", "symbol": "logout_then_login"}
+   ]},
+  {"id": "lang.python.request_context_middleware", "corpus": "fixtures/python", "language": "python", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "request context middleware",
+   "targets": [
+     {"file": "flask-app.py", "symbol": "request_context"},
+     {"file": "flask-app.py", "symbol": "test_request_context"},
+     {"file": "flask-ctx.py", "symbol": "copy_current_request_context"},
+     {"file": "flask-ctx.py", "symbol": "has_request_context"},
+     {"file": "django-common.py", "symbol": "CommonMiddleware"},
+     {"file": "django-common.py", "symbol": "process_request"}
+   ]},
+  {"id": "lang.python.exception_error_handling", "corpus": "fixtures/python", "language": "python", "kind": "language", "category": "supported", "origin": "lang-suite", "query": "exception error handling",
+   "targets": [
+     {"file": "flask-app.py", "symbol": "handle_exception"},
+     {"file": "flask-app.py", "symbol": "handle_user_exception"},
+     {"file": "flask-app.py", "symbol": "handle_http_exception"},
+     {"file": "flask-app.py", "symbol": "log_exception"},
+     {"file": "django-resolvers.py", "symbol": "resolve_error_handler"}
+   ]},
+
+  {"id": "python.flask_as_view_init_every_request", "corpus": "fixtures/python", "language": "python", "kind": "task", "category": "supported", "origin": "brainstorm-python", "query": "as_view decorators init_every_request",
+   "targets": [{"file": "flask-views.py", "symbol": "as_view", "contains": ["if cls.init_every_request:"]}],
+   "distractors": [{"file": "django-base.py", "symbol": "as_view"}],
+   "note": "Flask View.as_view, not Django View.as_view (same name, no init_every_request)."},
+  {"id": "python.django_urlconf_module", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "urlconf_module cached_property import_module",
+   "targets": [{"file": "django-resolvers.py", "symbol": "urlconf_module", "contains": ["return import_module(self.urlconf_name)"]}],
+   "distractors": [{"file": "django-resolvers.py", "symbol": "url_patterns"}],
+   "note": "url_patterns reads self.urlconf_module but is not the cached import."},
+  {"id": "python.django_aget", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "aget sync_to_async",
+   "targets": [{"file": "django-query.py", "symbol": "aget", "contains": ["sync_to_async(self.get)"]}],
+   "distractors": [
+     {"file": "django-backends.py", "symbol": "aget_user"},
+     {"file": "django-query.py", "symbol": "aget_or_create"}
+   ]},
+  {"id": "python.django_update_error_dict", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "ValidationError update_error_dict NON_FIELD_ERRORS",
+   "targets": [{"file": "django-exceptions.py", "symbol": "update_error_dict", "contains": ["error_dict.setdefault(NON_FIELD_ERRORS, [])"]}],
+   "distractors": [{"file": "django-exceptions.py", "line": 141}],
+   "note": "The method body, not the module-level NON_FIELD_ERRORS constant."},
+  {"id": "python.flask_url_for_anchor_quote", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "_url_quote _anchor",
+   "targets": [{"file": "flask-app.py", "symbol": "url_for", "contains": ["_url_quote(_anchor"]}],
+   "distractors": [
+     {"file": "flask-app.py", "line": 14},
+     {"file": "flask-helpers.py", "symbol": "url_for"}
+   ],
+   "note": "Flask.url_for's anchor quoting, not the import line that aliases quote as _url_quote nor the flask.helpers.url_for wrapper."},
+  {"id": "python.django_get_queryset_methods", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "_get_queryset_methods queryset_only", "max_rank": 1,
+   "targets": [{"file": "django-manager.py", "symbol": "_get_queryset_methods", "contains": ["queryset_only = getattr(method, \"queryset_only\", None)"]}]},
+  {"id": "python.django_select_for_update_words", "corpus": "fixtures/python", "language": "python", "kind": "task", "category": "supported", "origin": "brainstorm-python", "query": "select for update skip locked",
+   "targets": [{"file": "django-query.py", "symbol": "select_for_update", "contains": ["select_for_update_skip_locked = skip_locked"]}],
+   "distractors": [
+     {"file": "django-query.py", "symbol": "select_related"},
+     {"file": "django-query.py", "symbol": "update_or_create"}
+   ]},
+  {"id": "python.django_select_for_update_exact", "corpus": "fixtures/python", "language": "python", "kind": "exact", "category": "supported", "origin": "brainstorm-python", "query": "select_for_update", "max_rank": 1,
+   "targets": [{"file": "django-query.py", "symbol": "select_for_update", "contains": ["def select_for_update("]}],
+   "distractors": [
+     {"file": "django-query.py", "symbol": "update_or_create"},
+     {"file": "django-query.py", "symbol": "delete"}
+   ]},
+  {"id": "python.flask_methodview_head_fallback", "corpus": "fixtures/python", "language": "python", "kind": "task", "category": "supported", "origin": "brainstorm-python", "query": "MethodView dispatch_request HEAD GET",
+   "targets": [{"file": "flask-views.py", "symbol": "dispatch_request", "contains": ["request.method == \"HEAD\""]}],
+   "distractors": [
+     {"file": "flask-views.py", "symbol": "dispatch_request", "contains": ["raise NotImplementedError()"]},
+     {"file": "flask-app.py", "symbol": "dispatch_request"}
+   ],
+   "note": "MethodView.dispatch_request retries HEAD with the get handler; View.dispatch_request is the abstract base. The getattr lookup is dynamic and is not judged as a call edge."},
+
+  {"id": "python.chunker.decorated_dataclass", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "RetryPolicy dataclass frozen",
+   "targets": [{"file": "jobqueue/policy.py", "symbol": "RetryPolicy", "contains": ["@dataclass(frozen=True)"]}],
+   "note": "Decorated class: the decorator line belongs to the class span."},
+  {"id": "python.chunker.decorated_property", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "total_budget",
+   "targets": [{"file": "jobqueue/policy.py", "symbol": "total_budget", "contains": ["self.base_delay * 2**n"]}]},
+  {"id": "python.chunker.staticmethod", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "from_settings JOB_MAX_ATTEMPTS",
+   "targets": [{"file": "jobqueue/policy.py", "symbol": "from_settings", "contains": ["JOB_MAX_ATTEMPTS"]}]},
+  {"id": "python.chunker.adjacent_functions", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "format_duration", "max_rank": 1,
+   "targets": [{"file": "jobqueue/policy.py", "symbol": "format_duration"}],
+   "distractors": [{"file": "jobqueue/policy.py", "symbol": "parse_duration"}],
+   "note": "Two top-level functions with no blank line between them must stay separate declarations."},
+  {"id": "python.chunker.nested_closure", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "retry wrapper sleep backoff_delay attempt",
+   "targets": [
+     {"file": "jobqueue/retry.py", "symbol": "wrapper", "contains": ["time.sleep(backoff_delay(attempt, policy.base_delay))"]},
+     {"file": "jobqueue/retry.py", "symbol": "retry", "contains": ["time.sleep(backoff_delay(attempt, policy.base_delay))"]}
+   ],
+   "distractors": [{"file": "jobqueue/worker.py", "symbol": "run_once"}],
+   "note": "Decorator factory with nested decorator/wrapper functions; either the outer function or the nested wrapper is a valid span."},
+  {"id": "python.chunker.commented_out_def", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "backoff_delay", "max_rank": 1,
+   "targets": [{"file": "jobqueue/retry.py", "symbol": "backoff_delay", "contains": ["random.uniform(0, base)"]}],
+   "distractors": [{"file": "jobqueue/retry.py", "symbol": "backoff_delay_v1"}],
+   "note": "The commented-out backoff_delay_v1 must not become a declaration."},
+  {"id": "python.chunker.async_function", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "fetch_with_retry", "max_rank": 1,
+   "targets": [{"file": "jobqueue/retry.py", "symbol": "fetch_with_retry", "contains": ["await client.get(url)"]}]},
+  {"id": "python.chunker.nested_class", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "worker stats failure rate",
+   "targets": [
+     {"file": "jobqueue/worker.py", "symbol": "failure_rate"},
+     {"file": "jobqueue/worker.py", "symbol": "Stats", "contains": ["def failure_rate"]}
+   ],
+   "note": "Class nested in a class (Worker.Stats) and its method."},
+  {"id": "python.chunker.module_constant", "corpus": "retrieval/corpora/python-chunker", "language": "python", "kind": "syntax", "category": "supported", "origin": "chunker-fixture", "query": "DEFAULT_QUEUE",
+   "targets": [
+     {"file": "jobqueue/worker.py", "symbol": "DEFAULT_QUEUE"},
+     {"file": "jobqueue/worker.py", "symbol": "run_once", "contains": ["self.queue.pop(DEFAULT_QUEUE)"]}
+   ],
+   "note": "Module-level assignment extracted as a var; its only use site is also acceptable."}
+]

@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate correctly implements a C API for fmt but takes a meaningfully different approach: it integrates `fmt-c.cc` into the main `fmt` library rather than creating a separate `fmt_c` static library, uses `dynamic_format_arg_store` instead of a fixed-size `format_arg[]` array, and adds additional features like `fmt_vfprint`/`fmt_print`, sized string support (`fmt_type_string`), and proper null-termination of the output buffer. The test uses C++ with gtest rather than a standalone C file, which is a valid alternative. Both patches implement a working type-safe C API with `_Generic`-based variadic macros for C11, so the core issue is addressed correctly despite the structural differences.

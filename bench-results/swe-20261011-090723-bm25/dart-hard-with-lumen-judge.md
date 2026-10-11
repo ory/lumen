@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the RFC violation by simply removing the three lines that overwrite `content-length` with `'0'`, leaving the original header intact while still stripping the body. This achieves the same observable behavior as the gold patch for the bug being fixed. However, the gold patch goes further by replacing `createMiddleware` with a direct `Handler` wrapper that explicitly handles both sync and async responses, which is a more robust implementation pattern. The candidate also adds a new dedicated test rather than extending the existing HEAD test cases as the gold patch does, which is valid but less thorough (the existing HEAD tests still only check status codes).

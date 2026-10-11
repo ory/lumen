@@ -10,6 +10,7 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -325,5 +326,31 @@ func TestLexicalPathFilterUsesNativeSeparator(t *testing.T) {
 		check("lookup", results, err)
 		results, err = s.ListProjectChunks(filter)
 		check("list", results, err)
+	}
+}
+
+// A project reached through a symlink (macOS /var -> /private/var, symlinked
+// checkouts) must select the same membership as its real path. Otherwise
+// `lumen index` and a later search or status address different projects.
+func TestUseProjectCanonicalizesSymlinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	s := lexicalStore(t)
+	if err := s.UseProject(link); err != nil {
+		t.Fatal(err)
+	}
+	putLexical(t, s, "a.go", "aa", "Checkout", "reserve()")
+	if err := s.UseProject(real); err != nil {
+		t.Fatal(err)
+	}
+	results, err := s.SearchLexical(context.Background(), "Checkout", 10, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("real path sees %d results indexed through its symlink, want 1", len(results))
 	}
 }

@@ -1,0 +1,3 @@
+## Rating: Good
+
+The candidate patch correctly fixes the RFC violation by removing the `content-length: '0'` override, preserving the original header value while still stripping the body. The logic differs from the gold patch: the candidate keeps the `createMiddleware`/`responseHandler` approach with the bad lines deleted, whereas the gold patch refactors to a handler-wrapping pattern. Both achieve the same observable behavior for the content-length fix. The candidate omits the test updates that verify the correct content-length values and updated `head()` helper, but the production code fix is sound.

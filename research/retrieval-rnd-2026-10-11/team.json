@@ -1,0 +1,177 @@
+[
+  {
+    "id": 1,
+    "assignment": "Lumen architecture",
+    "agent": "r01",
+    "status": "complete",
+    "memo": "notes/r01.txt"
+  },
+  {
+    "id": 2,
+    "assignment": "Local evaluation audit",
+    "agent": "r02",
+    "status": "complete",
+    "memo": "notes/r02.txt"
+  },
+  {
+    "id": 3,
+    "assignment": "Classical lexical IR",
+    "agent": "r03",
+    "status": "complete",
+    "memo": "notes/r03.json"
+  },
+  {
+    "id": 4,
+    "assignment": "Learned sparse retrieval",
+    "agent": "r04",
+    "status": "complete",
+    "memo": "notes/r04.txt"
+  },
+  {
+    "id": 5,
+    "assignment": "Late interaction",
+    "agent": "r05",
+    "status": "complete",
+    "memo": "notes/r05.txt"
+  },
+  {
+    "id": 6,
+    "assignment": "Dense embeddings and compression",
+    "agent": "r06",
+    "status": "complete",
+    "memo": "notes/r06.txt"
+  },
+  {
+    "id": 7,
+    "assignment": "Query reformulation",
+    "agent": "r07",
+    "status": "complete",
+    "memo": "notes/r07.txt"
+  },
+  {
+    "id": 8,
+    "assignment": "Index-time contextual expansion",
+    "agent": "r08",
+    "status": "complete",
+    "memo": "notes/r08.txt"
+  },
+  {
+    "id": 9,
+    "assignment": "Hierarchical retrieval",
+    "agent": "r09",
+    "status": "complete",
+    "memo": "notes/r09.txt"
+  },
+  {
+    "id": 10,
+    "assignment": "Graph retrieval",
+    "agent": "r10",
+    "status": "complete",
+    "memo": "notes/r10.txt"
+  },
+  {
+    "id": 11,
+    "assignment": "Adaptive routing",
+    "agent": "r11",
+    "status": "complete",
+    "memo": "notes/r11.txt"
+  },
+  {
+    "id": 12,
+    "assignment": "Reranking and fusion",
+    "agent": "r12",
+    "status": "complete",
+    "memo": "notes/r12.txt"
+  },
+  {
+    "id": 13,
+    "assignment": "Approximate strings",
+    "agent": "r13",
+    "status": "complete",
+    "memo": "notes/r13.txt"
+  },
+  {
+    "id": 14,
+    "assignment": "Index performance",
+    "agent": "r14",
+    "status": "complete",
+    "memo": "notes/r14.txt"
+  },
+  {
+    "id": 15,
+    "assignment": "Context compression",
+    "agent": "r15",
+    "status": "complete",
+    "memo": "notes/r15.txt"
+  },
+  {
+    "id": 16,
+    "assignment": "Budgeted evidence selection",
+    "agent": "r16",
+    "status": "complete",
+    "memo": "notes/r16.txt"
+  },
+  {
+    "id": 17,
+    "assignment": "Value of information",
+    "agent": "r17",
+    "status": "complete",
+    "memo": "notes/r17.txt"
+  },
+  {
+    "id": 18,
+    "assignment": "Typed query planning",
+    "agent": "r18",
+    "status": "complete",
+    "memo": "notes/r18.txt"
+  },
+  {
+    "id": 19,
+    "assignment": "Incremental maintenance",
+    "agent": "r19",
+    "status": "complete",
+    "memo": "notes/r19.txt"
+  },
+  {
+    "id": 20,
+    "assignment": "Cross-domain algorithms",
+    "agent": "r20",
+    "status": "complete",
+    "memo": "notes/r20.txt"
+  },
+  {
+    "id": 21,
+    "assignment": "Failure and abstention",
+    "agent": "r21",
+    "status": "complete",
+    "memo": "notes/r21.txt"
+  },
+  {
+    "id": 22,
+    "assignment": "External evaluation",
+    "agent": "r22",
+    "status": "complete",
+    "memo": "notes/r22.txt"
+  },
+  {
+    "id": 23,
+    "assignment": "Reproducible local experiment",
+    "agent": "r23",
+    "status": "complete",
+    "memo": "notes/r23.txt"
+  },
+  {
+    "id": 24,
+    "assignment": "Independent skeptical review",
+    "agent": "r24",
+    "status": "complete",
+    "memo": "notes/r24.txt"
+  },
+  {
+    "id": 25,
+    "assignment": "Independent design review",
+    "agent": "r25",
+    "status": "complete",
+    "memo": "notes/r25.txt"
+  }
+]
