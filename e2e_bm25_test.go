@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -462,6 +464,91 @@ func TestE2E_BM25_CLIOutputForms(t *testing.T) {
 	}
 	if _, _, err := runCLIMode(t, "bm25", dataHome, "search", "--path", project, "--min-score", "0.4", "ValidateToken"); err == nil {
 		t.Error("CLI positive --min-score must fail in BM25")
+	}
+	trap.assertUnused(t)
+}
+
+// TestE2E_BM25_MaxTokens checks the output budget through the real binary:
+// the CLI cap includes its final newline, -1 is unlimited, bounded MCP output
+// stays parseable, and invalid budgets are rejected.
+func TestE2E_BM25_MaxTokens(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{}
+	for i := range 12 {
+		var src strings.Builder
+		fmt.Fprintf(&src, "package ledger\n\n// Reconcile%d reconciles payment ledger entries.\nfunc Reconcile%d() {\n", i, i)
+		for j := range 60 {
+			fmt.Fprintf(&src, "\t_ = \"payment ledger reconciliation step %d of %d\"\n", j, i)
+		}
+		src.WriteString("}\n")
+		files[fmt.Sprintf("ledger/r%02d.go", i)] = src.String()
+	}
+	project := writeProject(t, files)
+	dataHome := t.TempDir()
+	const query = "payment ledger reconciliation"
+
+	bounded, _, err := runCLIMode(t, "bm25", dataHome, "search", "-p", project, "-n", "12", "--max-tokens", "256", query)
+	if err != nil {
+		t.Fatalf("bounded search: %v", err)
+	}
+	if len(bounded) > 1024 || !strings.HasSuffix(bounded, "\n") {
+		t.Fatalf("bounded CLI output is %d bytes (cap 1024 incl. newline)", len(bounded))
+	}
+	out, err := parseSearchOutput(strings.TrimSuffix(bounded, "\n"))
+	if err != nil || len(out.Results) == 0 || out.Truncated+out.Omitted == 0 {
+		t.Fatalf("bounded CLI output = %+v, %v:\n%s", out, err, bounded)
+	}
+	unlimited, _, err := runCLIMode(t, "bm25", dataHome, "search", "-p", project, "-n", "12", "--max-tokens=-1", query)
+	if err != nil {
+		t.Fatalf("unlimited search: %v", err)
+	}
+	if len(unlimited) <= 1024 || strings.Contains(unlimited, "Output capped") {
+		t.Fatalf("unlimited CLI output is %d bytes", len(unlimited))
+	}
+	if _, _, err := runCLIMode(t, "bm25", dataHome, "search", "-p", project, "--max-tokens", "10", query); err == nil {
+		t.Fatal("max-tokens below the minimum was accepted")
+	}
+
+	session, trap, _ := startBM25Server(t)
+	mcpOut := callSearch(t, session, map[string]any{"query": query, "path": project, "limit": 12, "max_tokens": 256})
+	if len(mcpOut.Results) == 0 || mcpOut.Truncated+mcpOut.Omitted == 0 {
+		t.Fatalf("bounded MCP output = %+v", mcpOut)
+	}
+	if res := callSearchRaw(t, session, map[string]any{"query": query, "path": project, "max_tokens": 255}); !res.IsError {
+		t.Fatal("MCP max_tokens below the minimum was accepted")
+	}
+	trap.assertUnused(t)
+}
+
+// TestE2E_BM25_MaxTokensInvalidUTF8 checks the cap on the text a client
+// decodes: JSON turns each invalid source byte into a 3-byte U+FFFD.
+func TestE2E_BM25_MaxTokensInvalidUTF8(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{}
+	for i := range 4 {
+		src := fmt.Sprintf("def ledger_blob_%d():\n    \"\"\"Ledger blob bytes.\"\"\"\n", i)
+		for range 40 {
+			src += "    x = 'ledger " + strings.Repeat("\xff", 30) + "'\n"
+		}
+		files[fmt.Sprintf("blob%d.py", i)] = src
+	}
+	project := writeProject(t, files)
+	session, trap, _ := startBM25Server(t)
+	for _, tokens := range []int{1000, 4000} {
+		res := callSearchRaw(t, session, map[string]any{"query": "ledger blob", "path": project, "max_tokens": tokens})
+		text := getTextContent(t, res)
+		if res.IsError {
+			t.Fatalf("search failed: %s", text)
+		}
+		if len(text) > tokens*4 || !utf8.ValidString(text) || !strings.Contains(text, "\uFFFD") {
+			t.Fatalf("max_tokens=%d: received %d bytes (valid=%v)", tokens, len(text), utf8.ValidString(text))
+		}
+		if strings.Count(text, "<result:chunk ") != strings.Count(text, "</result:chunk>") || strings.Count(text, "<result:file ") != strings.Count(text, "</result:file>") {
+			t.Fatalf("unbalanced markup:\n%s", text)
+		}
+		if _, err := parseSearchOutput(text); err != nil {
+			t.Fatal(err)
+		}
 	}
 	trap.assertUnused(t)
 }

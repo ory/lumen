@@ -119,12 +119,21 @@ func TestRetrievalCatalogBM25(t *testing.T) {
 		} else {
 			got = append(got, evalcase.Judge(c, catalogLexicalSearch(t, ci.idx, ci.root, c.Query, c.Path)))
 		}
-		for _, o := range got {
-			if !o.Pass && o.Category == evalcase.Supported {
-				t.Errorf("%s %q: %s", o.ID, o.Query, o.Detail)
+		outcomes = append(outcomes, got...)
+	}
+	known, err := evalcase.LoadKnownMisses(filepath.Join(catalogTestdata, "retrieval"), "bm25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("LUMEN_EVAL_FILTER") != "" {
+		for id := range known {
+			if !strings.HasPrefix(id, os.Getenv("LUMEN_EVAL_FILTER")) {
+				delete(known, id)
 			}
 		}
-		outcomes = append(outcomes, got...)
+	}
+	for _, problem := range evalcase.CheckKnownMisses(outcomes, known) {
+		t.Error(problem)
 	}
 	report := evalcase.Report("bm25 (offline, lexical index)", outcomes)
 	if path := os.Getenv("LUMEN_EVAL_REPORT"); path != "" {

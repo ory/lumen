@@ -15,6 +15,7 @@
 package evalcase
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,6 +176,45 @@ func TestCatalogIsValid(t *testing.T) {
 		check(c, c.Related)
 		for _, s := range c.Steps {
 			check(c, s.Targets)
+		}
+	}
+}
+
+func TestCheckKnownMisses(t *testing.T) {
+	outcomes := []Outcome{
+		{ID: "a", Category: Supported, Pass: false},
+		{ID: "b", Category: Supported, Pass: true},
+		{ID: "c", Category: Supported, Pass: false},
+		{ID: "d", Category: Diagnostic, Pass: false},
+	}
+	known := map[string]KnownMiss{"a": {ID: "a"}, "b": {ID: "b"}, "z": {ID: "z"}}
+	problems := CheckKnownMisses(outcomes, known)
+	if len(problems) != 3 || !strings.HasPrefix(problems[0], "b now passes") || !strings.HasPrefix(problems[1], "c ") || !strings.HasPrefix(problems[2], "known miss z") {
+		t.Fatalf("problems = %q", problems)
+	}
+}
+
+// Known-miss lists must name real supported outcomes.
+func TestKnownMissListsAreValid(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "retrieval")
+	cases, err := Load(filepath.Join(dir, "cases"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for _, c := range cases {
+		ids[c.ID] = c.Category
+		for i := range c.Steps {
+			ids[fmt.Sprintf("%s#%d", c.ID, i+1)] = c.Category
+		}
+	}
+	known, err := LoadKnownMisses(dir, "bm25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id := range known {
+		if ids[id] != Supported {
+			t.Errorf("known miss %s is not a supported catalog outcome", id)
 		}
 	}
 }

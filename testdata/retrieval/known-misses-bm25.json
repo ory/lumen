@@ -1,0 +1,22 @@
+[
+  {"id": "go.prom.scrapeloop_run_cancel", "class": "ranking", "note": "scrapeLoop.endOfRunStaleness shares parentCtx/ticker/Done terms with the target scrapeLoop.run and ranks first; target at rank 2."},
+  {"id": "java.payments.stripe_charge", "class": "ranking", "note": "Long natural-language query; the PaymentGateway interface and FakePaymentGateway match more terms than StripePaymentGateway.charge (rank 5)."},
+  {"id": "lang.dart.cascade_route_matching", "class": "ranking", "note": "Broad query; Router.get/add chunks outrank Cascade. Was rank 10 before IDF coverage re-ranking (net catalog gain +6)."},
+  {"id": "lang.go.configuration_loading_from_file", "class": "vocabulary", "note": "Source says Config/Load/YAML; only 'file' matches exactly. Needs stemming or prefix matching."},
+  {"id": "lang.go.error_handling_and_logging", "class": "vocabulary", "note": "'logging' never matches 'logger'; 'error' is too frequent in Prometheus to discriminate."},
+  {"id": "lang.go.time_series_storage_and_retrieval", "class": "ranking", "note": "Broad query over Prometheus; was rank 8 before IDF coverage re-ranking (net catalog gain +6)."},
+  {"id": "lang.java.form_input_validation", "class": "ranking", "note": "Broad query; repository and VIEWS_* constants outrank the controllers' BindingResult validation; was rank 10 before extraction fixes added more small chunks."},
+  {"id": "lang.json.package_dependencies_versions", "class": "ranking", "note": "Oversized dependency maps split into one-line dependencies.<pkg> chunks that crowd the top 10; whole sections lose."},
+  {"id": "lang.python.database_model_query_filter", "class": "ranking", "note": "QuerySet class chunks rank first; QuerySet.filter is outside the top 10."},
+  {"id": "lang.ruby.database_record_query_scope", "class": "ranking", "note": "Large associations.rb documentation chunks outrank scoping/_exec_scope."},
+  {"id": "lang.ruby.route_matching_url", "class": "ranking", "note": "Sinatra helpers (pass, condition, route_missing) outrank process_route/route!."},
+  {"id": "lang.rust.mutex_lock_concurrent_access", "class": "ranking", "note": "RwLock/Mutex type chunks now carry their full docs and outrank the lock method targets; was rank 10."},
+  {"id": "lang.ts.event_listener_registration", "class": "ranking", "note": "One-line DOMEventEmitter/NodeEventEmitter interface signatures crowd out Emitter.event."},
+  {"id": "ranking.permissions_impl_in_huge_class", "class": "ranking", "note": "Java methods are indexed with unqualified symbols, so 'PermissionCache' in the query does not favor PermissionCache.invalidatePermissions over the facade wrapper (rank 2)."},
+  {"id": "ruby.validations_valid_predicate", "class": "ranking", "note": "Validations module chunks outrank valid? (rank 4 of 3)."},
+  {"id": "rust.ignore_err_macro_task", "class": "vocabulary", "note": "'boxes'/'formatted' vs Box/format!; rg-messages.rs error helpers win."},
+  {"id": "rust.ignore_io_error_borrowed", "class": "ranking", "note": "tokio get_mut 'borrow' docs and into_io_error outrank io_error."},
+  {"id": "rust.matcher_borrowed_captures_at", "class": "ranking", "note": "One-line forwarding impl loses to try_captures_iter_at and the trait default; was rank 1 before IDF coverage re-ranking (net catalog gain +6)."},
+  {"id": "rust.mutex_lock_owned", "class": "ranking", "note": "try_lock_owned shares every distinguishing term and ranks above lock_owned."},
+  {"id": "ts.types.deep_immutable", "class": "ranking", "note": "DeepRequiredNonNullable's doc also says 'recursively'; DeepImmutable at rank 2."}
+]

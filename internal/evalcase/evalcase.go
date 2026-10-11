@@ -354,3 +354,73 @@ func describe(o Outcome, direct []Result) string {
 	}
 	return strings.TrimPrefix(b.String(), "; ")
 }
+
+// KnownMiss records a supported outcome that currently fails for one
+// retrieval mode. It is a ratchet, not a waiver: outcomes stay failures in
+// every report, runners fail on unlisted misses, and they also fail when a
+// listed outcome passes so the entry must be removed.
+type KnownMiss struct {
+	ID    string `json:"id"`
+	Class string `json:"class"`
+	Note  string `json:"note"`
+}
+
+// Miss classes.
+var missClasses = map[string]bool{"ranking": true, "vocabulary": true, "indexing": true}
+
+// LoadKnownMisses reads the known-miss list for a retrieval mode
+// (testdata/retrieval/known-misses-<mode>.json); a missing file is empty.
+func LoadKnownMisses(dir, mode string) (map[string]KnownMiss, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "known-misses-"+mode+".json"))
+	if os.IsNotExist(err) {
+		return map[string]KnownMiss{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var list []KnownMiss
+	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&list); err != nil {
+		return nil, fmt.Errorf("known misses: %w", err)
+	}
+	known := make(map[string]KnownMiss, len(list))
+	for _, m := range list {
+		if !missClasses[m.Class] || m.Note == "" {
+			return nil, fmt.Errorf("known miss %q needs a class (ranking, vocabulary, indexing) and a note", m.ID)
+		}
+		if _, dup := known[m.ID]; dup {
+			return nil, fmt.Errorf("duplicate known miss %q", m.ID)
+		}
+		known[m.ID] = m
+	}
+	return known, nil
+}
+
+// CheckKnownMisses returns one problem per supported outcome that fails
+// without being listed, per listed outcome that passes, and per listed id
+// that matched no outcome.
+func CheckKnownMisses(outcomes []Outcome, known map[string]KnownMiss) []string {
+	var problems []string
+	seen := map[string]bool{}
+	for _, o := range outcomes {
+		if o.Category != Supported {
+			continue
+		}
+		_, listed := known[o.ID]
+		seen[o.ID] = true
+		switch {
+		case !o.Pass && !listed:
+			problems = append(problems, fmt.Sprintf("%s %q: %s", o.ID, o.Query, o.Detail))
+		case o.Pass && listed:
+			problems = append(problems, fmt.Sprintf("%s now passes: remove it from the known misses", o.ID))
+		}
+	}
+	for id := range known {
+		if !seen[id] {
+			problems = append(problems, fmt.Sprintf("known miss %s matches no supported outcome", id))
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}

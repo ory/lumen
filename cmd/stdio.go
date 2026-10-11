@@ -61,6 +61,7 @@ type SemanticSearchInput struct {
 	MinScore    *float64 `json:"min_score,omitempty" jsonschema:"Semantic mode only: minimum cosine score (-1 to 1), default depends on model. BM25 has unbounded lexical scores: omit min_score or use -1/0; positive thresholds are rejected."`
 	Summary     bool     `json:"summary,omitempty" jsonschema:"When true, return only file path, symbol, kind, line range, and score — no code content. Useful for location-only queries."`
 	MaxLines    int      `json:"max_lines,omitempty" jsonschema:"Truncate each code snippet to this many lines. Default: unlimited."`
+	MaxTokens   int      `json:"max_tokens,omitempty" jsonschema:"Output budget in estimated tokens (UTF-8 bytes / 4). The rendered text is hard-capped at max_tokens*4 bytes; real tokenizer counts for code are often somewhat higher. Default 0 means 4000; -1 is unlimited; otherwise at least 256. When the budget binds, results keep their locations in rank order, snippets are shortened to whole lines and marked truncated, and a footer reports truncated and omitted results."`
 }
 
 // SearchResultItem represents a single search result returned to the caller.
@@ -74,6 +75,8 @@ type SearchResultItem struct {
 	RelatedTo string  `json:"related_to,omitempty"`
 	Relation  string  `json:"relation,omitempty"`
 	Content   string  `json:"content,omitempty"`
+	// truncated marks content the output budget shortened.
+	truncated bool
 }
 
 // SemanticSearchOutput is the structured output of the semantic_search tool.
@@ -85,6 +88,8 @@ type SemanticSearchOutput struct {
 	FilteredHint string             `json:"filtered_hint,omitempty"`
 	SeedWarning  string             `json:"seed_warning,omitempty"`
 	StaleWarning string             `json:"stale_warning,omitempty"`
+	// budget is set when the output budget cut results or snippets.
+	budget *budgetReport
 }
 
 // IndexStatusInput defines the parameters for the index_status tool.
@@ -622,6 +627,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	if err := validateSearchInput(&input); err != nil {
 		return nil, nil, err
 	}
+	budget, _ := newOutputBudget(input.MaxTokens) // validated above
 
 	ic.logger().Debug("semantic search request",
 		"cwd", input.Cwd,
@@ -650,7 +656,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 		}
 		out.Results = items
 		out.Retrieval = "bm25"
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: formatSearchResults(input.Path, out)}}}, nil, nil
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: boundedSearchText(input.Path, out, budget, 0)}}}, nil, nil
 	}
 
 	// Bound embedQuery so a slow or saturated embedding backend cannot hang
@@ -676,7 +682,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 				"project", effectiveRoot,
 				"timeout", embedTimeout,
 			)
-			text := formatSearchResults(input.Path, out)
+			text := boundedSearchText(input.Path, out, budget, 0)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: text}},
 			}, nil, nil
@@ -757,7 +763,7 @@ func (ic *indexerCache) handleSemanticSearch(ctx context.Context, req *mcp.CallT
 	}
 
 	out.Results = items
-	text := formatSearchResults(input.Path, out)
+	text := boundedSearchText(input.Path, out, budget, 0)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}, nil, nil
@@ -805,6 +811,9 @@ func validateSearchInput(input *SemanticSearchInput) error {
 	}
 	if input.Limit <= 0 {
 		input.Limit = 8
+	}
+	if _, err := newOutputBudget(input.MaxTokens); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1398,7 +1407,7 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 	if out.Retrieval == "bm25" {
 		return formatLexicalResults(projectPath, out)
 	}
-	if len(out.Results) == 0 {
+	if len(out.Results) == 0 && out.budget == nil {
 		var b strings.Builder
 		b.WriteString("No results found.")
 		if out.Reindexed {
@@ -1473,11 +1482,15 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 		fmt.Fprintf(&b, "\n<result:file filename=\"%s\">\n", xmlEscaper.Replace(g.rel))
 		for _, r := range g.results {
 			if r.RelatedTo != "" {
-				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" related-to=\"%s\" relation=\"%s\">\n", r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), xmlEscaper.Replace(r.RelatedTo), xmlEscaper.Replace(r.Relation))
+				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" related-to=\"%s\" relation=\"%s\"", r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), xmlEscaper.Replace(r.RelatedTo), xmlEscaper.Replace(r.Relation))
 			} else {
-				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\">\n",
+				fmt.Fprintf(&b, "  <result:chunk line-start=\"%d\" line-end=\"%d\" symbol=\"%s\" kind=\"%s\" score=\"%.2f\"",
 					r.StartLine, r.EndLine, xmlEscaper.Replace(r.Symbol), xmlEscaper.Replace(r.Kind), r.Score)
 			}
+			if r.truncated {
+				b.WriteString(truncatedAttr)
+			}
+			b.WriteString(">\n")
 			if r.Content != "" {
 				b.WriteString(r.Content)
 				b.WriteByte('\n')
@@ -1486,6 +1499,7 @@ func formatSearchResults(projectPath string, out SemanticSearchOutput) string {
 		}
 		b.WriteString("</result:file>")
 	}
+	writeBudgetFooter(&b, out.budget)
 
 	return b.String()
 }
@@ -1576,7 +1590,9 @@ func newMCPServer(indexers *indexerCache) *mcp.Server {
 
 Use for code discovery and exploration. Auto-indexes stale or empty projects. BM25 uses local files and SQLite and requires no embedding service. Identifiers, paths, comments and natural language terms are searchable, but vocabulary mismatch can reduce recall. For empty BM25 results, try concrete identifiers or alternate terms; cosine min_score thresholds do not apply.
 
-limit caps direct hits; BM25 may append at most two one-hop related snippets with related-to provenance and no score. Set lexical_only=true for the lexical baseline. Direct BM25 scores are unbounded lexical ranks (higher is better), not cosine similarity. In semantic mode only, min_score=-1 disables the cosine noise floor. Increase limit for broader coverage.`,
+limit caps direct hits; BM25 may append at most two one-hop related snippets with related-to provenance and no score. Set lexical_only=true for the lexical baseline. Direct BM25 scores are unbounded lexical ranks (higher is better), not cosine similarity. In semantic mode only, min_score=-1 disables the cosine noise floor. Increase limit for broader coverage.
+
+Output is capped at max_tokens*4 bytes (default 4000 estimated tokens; -1 = unlimited). When the cap binds, results stay in rank order with their full line ranges, snippets are shortened to whole lines and marked truncated="true", and a footer counts truncated and omitted results; read those line ranges directly or raise max_tokens.`,
 	}, indexers.handleSemanticSearch)
 
 	mcp.AddTool(server, &mcp.Tool{

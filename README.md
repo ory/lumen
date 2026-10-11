@@ -213,6 +213,33 @@ It is not a full call graph: ambiguous dispatch, external dependencies and
 unproven reexports are skipped. Structured data and Markdown use lexical search
 only. No Go-to-JavaScript HTTP traversal is inferred.
 
+### Output budget
+
+Search output is bounded by default. `max_tokens` (MCP) or `--max-tokens` (CLI)
+sets the budget in estimated tokens, counted as UTF-8 bytes / 4: the rendered
+text, including headers, warnings and the final CLI newline, never exceeds
+`max_tokens × 4` bytes. Real tokenizer counts for code are often somewhat
+higher, so treat the value as a byte ceiling, not a token guarantee. `0` or
+omitted means 4000 (16,000 bytes), `-1` disables the cap, and any other value
+must be at least 256.
+
+The budget is applied after ranking, `limit` and `max_lines`. Output that fits
+is unchanged. Otherwise results keep their rank order and every result whose
+location fits is listed; snippets share the remaining bytes fairly and are cut
+to whole lines where possible (a single line longer than 256 bytes gets a
+prefix cut at a character boundary), related snippets are only included whole
+after all direct content, and line ranges always describe the full source
+range. With a finite budget, each invalid UTF-8 byte in source text or paths is
+replaced by U+FFFD before measuring, exactly as MCP's JSON encoding would
+deliver it, so the cap holds for the text the client receives; `-1` output is
+left untouched:
+
+```text
+  <result:chunk line-start="12" line-end="140" symbol="Parse" kind="function" score="8.4" truncated="true">
+...
+Output capped at max_tokens=4000 (~16000 bytes): 10 of 12 results shown, 3 snippets truncated, 2 results omitted. Read the listed line ranges directly for full code, or raise max_tokens (-1 = unlimited).
+```
+
 Vocabulary mismatch remains a limitation: a query about duplicate payments may
 miss `IdempotencyStore` without matching words or a discoverable calling function.
 The new baseline is evaluated rather than assumed equivalent to embeddings.

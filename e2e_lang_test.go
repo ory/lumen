@@ -73,7 +73,7 @@ func startLangServer(t *testing.T) *mcp.ClientSession {
 	if err != nil {
 		t.Fatalf("failed to connect to server: %v", err)
 	}
-	t.Cleanup(func() { session.Close() })
+	t.Cleanup(func() { _ = session.Close() })
 	return session
 }
 

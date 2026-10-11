@@ -44,6 +44,9 @@ type searchResultItem struct {
 	RelatedTo string `json:"related_to,omitempty"`
 	Relation  string `json:"relation,omitempty"`
 	Content   string `json:"content,omitempty"`
+	// Truncated is set when the output budget shortened Content; StartLine
+	// and EndLine still describe the whole source range.
+	Truncated bool `json:"-"`
 }
 
 type semanticSearchOutput struct {
@@ -51,6 +54,10 @@ type semanticSearchOutput struct {
 	Results      []searchResultItem `json:"results"`
 	Reindexed    bool               `json:"reindexed"`
 	IndexedFiles int                `json:"indexed_files,omitempty"`
+	// Truncated and Omitted come from the output budget footer, present only
+	// when max_tokens cut snippets or results.
+	Truncated int `json:"-"`
+	Omitted   int `json:"-"`
 }
 
 // fileRe matches <result:file filename="..."> opening tags.
@@ -59,11 +66,16 @@ var fileRe = regexp.MustCompile(`^<result:file filename="([^"]+)">$`)
 // chunkRe matches <result:chunk ...> opening tags. Direct hits carry a score
 // in any finite Go %g/%f form (semantic "0.66", BM25 "%.6g" forms such as
 // "1000", "12.3457" or "1.23457e+06"); BM25 related context instead carries
-// related-to and relation attributes and no score:
+// related-to and relation attributes and no score. A final truncated="true"
+// marks content shortened by the output budget:
 //
 //	<result:chunk line-start="10" line-end="19" symbol="ValidateToken" kind="function" score="0.66">
 //	<result:chunk line-start="3" line-end="9" symbol="reserve" kind="function" related-to="a.go:Checkout" relation="direct_call">
-var chunkRe = regexp.MustCompile(`^\s*<result:chunk line-start="(\d+)" line-end="(\d+)" symbol="([^"]*)" kind="([^"]*)"(?: score="([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"| related-to="([^"]*)" relation="([^"]*)")>$`)
+//	<result:chunk line-start="1" line-end="90" symbol="Parse" kind="function" score="7.5" truncated="true">
+var chunkRe = regexp.MustCompile(`^\s*<result:chunk line-start="(\d+)" line-end="(\d+)" symbol="([^"]*)" kind="([^"]*)"(?: score="([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"| related-to="([^"]*)" relation="([^"]*)")( truncated="true")?>$`)
+
+// budgetFooterRe matches the footer emitted when max_tokens cut the output.
+var budgetFooterRe = regexp.MustCompile(`(?m)^Output capped at max_tokens=\d+ \(~\d+ bytes\): \d+ of \d+ results shown, (\d+) snippets truncated, (\d+) results omitted\.`)
 
 var retrievalRe = regexp.MustCompile(`\[retrieval=(\w+)`)
 
@@ -86,6 +98,10 @@ func parseSearchOutput(text string) (semanticSearchOutput, error) {
 	if m := regexp.MustCompile(`\(indexed (\d+) files\)`).FindStringSubmatch(text); m != nil {
 		out.IndexedFiles, _ = strconv.Atoi(m[1])
 		out.Reindexed = true
+	}
+	if m := budgetFooterRe.FindStringSubmatch(text); m != nil {
+		out.Truncated, _ = strconv.Atoi(m[1])
+		out.Omitted, _ = strconv.Atoi(m[2])
 	}
 	if strings.HasPrefix(text, "No results found") {
 		return out, nil
@@ -128,6 +144,7 @@ func parseSearchOutput(text string) (semanticSearchOutput, error) {
 				EndLine:   endLine,
 				RelatedTo: html.UnescapeString(m[6]),
 				Relation:  m[7],
+				Truncated: m[8] != "",
 			}
 			if m[5] != "" {
 				score, err := strconv.ParseFloat(m[5], 64)

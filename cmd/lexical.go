@@ -73,6 +73,9 @@ func formatLexicalResults(projectPath string, out SemanticSearchOutput) string {
 		} else {
 			fmt.Fprintf(&b, " score=\"%.6g\"", r.Score)
 		}
+		if r.truncated {
+			b.WriteString(truncatedAttr)
+		}
 		b.WriteString(">\n")
 		if r.Content != "" {
 			b.WriteString(r.Content)
@@ -80,6 +83,7 @@ func formatLexicalResults(projectPath string, out SemanticSearchOutput) string {
 		}
 		b.WriteString("  </result:chunk>\n</result:file>\n")
 	}
+	writeBudgetFooter(&b, out.budget)
 	return b.String()
 }
 

@@ -1,6 +1,16 @@
 # Lumen Benchmarks
 
-## Retrieval evaluation
+## Retrieval case catalog
+
+The main retrieval quality measurement is the shared, source-judged case
+catalog in [`testdata/retrieval`](../testdata/retrieval/README.md): 445
+outcomes over 20 language groups, run offline through BM25 by `make test` /
+`make eval` and through the executable server by `make e2e-bm25` (and, as a
+diagnostic, `make e2e-semantic-catalog`). Results, the before/after
+comparison and remaining misses are in
+[RETRIEVAL_PARITY.md](RETRIEVAL_PARITY.md).
+
+## Retrieval evaluation (smoke corpus)
 
 The BM25 default has a small, deterministic retrieval corpus in
 `internal/index/retrieval_benchmark_test.go`. It includes exact symbol, path,

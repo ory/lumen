@@ -109,3 +109,46 @@ func TestParseSearchOutputRejectsMalformedChunks(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSearchOutputBudget(t *testing.T) {
+	text := `Found 2 results [retrieval=bm25; direct scores are weighted lexical ranks, not cosine similarity]:
+
+<result:file filename="a.go">
+  <result:chunk line-start="1" line-end="30" symbol="A" kind="function" score="12.5" truncated="true">
+func A() {
+  </result:chunk>
+</result:file>
+
+<result:file filename="b.go">
+  <result:chunk line-start="4" line-end="9" symbol="B" kind="method" score="3">
+body
+  </result:chunk>
+</result:file>
+
+Output capped at max_tokens=1000 (~4000 bytes): 2 of 5 results shown, 1 snippets truncated, 3 results omitted. Read the listed line ranges directly for full code, or raise max_tokens (-1 = unlimited).`
+	out, err := parseSearchOutput(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Results) != 2 || !out.Results[0].Truncated || out.Results[1].Truncated || out.Results[0].EndLine != 30 || out.Results[0].Content != "func A() {" || out.Results[1].Content != "body" {
+		t.Fatalf("results = %+v", out.Results)
+	}
+	if out.Truncated != 1 || out.Omitted != 3 {
+		t.Fatalf("budget counts = truncated %d omitted %d", out.Truncated, out.Omitted)
+	}
+
+	out, err = parseSearchOutput("Found 1 results:\n\n<result:file filename=\"x.go\">\n  <result:chunk line-start=\"1\" line-end=\"2\" symbol=\"X\" kind=\"function\" related-to=\"y.go:Y\" relation=\"direct_call\" truncated=\"true\">\nfunc X() {}\n  </result:chunk>\n</result:file>")
+	if err != nil || len(out.Results) != 1 || !out.Results[0].Truncated || out.Results[0].RelatedTo != "y.go:Y" || out.Truncated != 0 {
+		t.Fatalf("related truncated = %+v, %v", out, err)
+	}
+
+	for _, header := range []string{
+		`  <result:chunk line-start="1" line-end="2" symbol="X" kind="function" truncated="true" score="1">`,
+		`  <result:chunk line-start="1" line-end="2" symbol="X" kind="function" score="1" truncated="false">`,
+		`  <result:chunk line-start="1" line-end="2" symbol="X" kind="function" truncated="true">`,
+	} {
+		if _, err := parseSearchOutput("Found 1 results:\n<result:file filename=\"x.go\">\n" + header + "\n  </result:chunk>\n</result:file>\n"); err == nil {
+			t.Errorf("accepted malformed header %s", header)
+		}
+	}
+}

@@ -77,6 +77,7 @@ func init() {
 	searchCmd.Flags().Bool("lexical-only", false, "disable related structural context for the BM25 baseline")
 	searchCmd.Flags().Bool("summary", false, "omit code snippets, return location only")
 	searchCmd.Flags().Int("max-lines", 0, "truncate snippets at N lines (0 = unlimited)")
+	searchCmd.Flags().Int("max-tokens", 0, "output budget in estimated tokens (UTF-8 bytes / 4; hard cap max-tokens*4 bytes incl. final newline); 0 = 4000, -1 = unlimited, minimum 256")
 	searchCmd.Flags().BoolP("force", "f", false, "force full re-index before searching")
 	searchCmd.Flags().Bool("trace", false, "print per-phase timing to stderr")
 	searchCmd.Flags().StringP("model", "m", "", "embedding model override")
@@ -101,6 +102,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	summary, _ := cmd.Flags().GetBool("summary")
 	maxLines, _ := cmd.Flags().GetInt("max-lines")
 	force, _ := cmd.Flags().GetBool("force")
+	maxTokens, _ := cmd.Flags().GetInt("max-tokens")
+	budget, err := newOutputBudget(maxTokens)
+	if err != nil {
+		return err
+	}
 
 	var minScore *float64
 	if cmd.Flags().Changed("min-score") {
@@ -157,7 +163,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("force reindex: %w", err)
 		}
 		tr.record("merkle + freshness", fmt.Sprintf("reindexed %d files", s.IndexedFiles))
-		return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, true, s.IndexedFiles)
+		return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, budget, true, s.IndexedFiles)
 	}
 
 	reindexed, s, err := idx.EnsureFresh(ctx, indexRoot, nil)
@@ -176,7 +182,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if reindexed {
 		indexedFiles = s.IndexedFiles
 	}
-	return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, reindexed, indexedFiles)
+	return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, budget, reindexed, indexedFiles)
 }
 
 func finishSearch(
@@ -190,6 +196,7 @@ func finishSearch(
 	minScore *float64,
 	summary bool,
 	maxLines int,
+	budget outputBudget,
 	reindexed bool,
 	indexedFiles int,
 ) error {
@@ -201,7 +208,8 @@ func finishSearch(
 		}
 		tr.record("BM25 search", fmt.Sprintf("%d results including bounded related context", len(items)))
 		tr.print(os.Stderr)
-		fmt.Println(formatSearchResults(searchPath, SemanticSearchOutput{Results: items, Reindexed: reindexed, IndexedFiles: indexedFiles, Retrieval: "bm25"}))
+		// The cap includes fmt.Println's final newline.
+		fmt.Println(boundedSearchText(searchPath, SemanticSearchOutput{Results: items, Reindexed: reindexed, IndexedFiles: indexedFiles, Retrieval: "bm25"}, budget, 1))
 		return nil
 	}
 	// Span 4: query embedding
@@ -267,6 +275,6 @@ func finishSearch(
 		Reindexed:    reindexed,
 		IndexedFiles: indexedFiles,
 	}
-	fmt.Println(formatSearchResults(searchPath, out))
+	fmt.Println(boundedSearchText(searchPath, out, budget, 1))
 	return nil
 }

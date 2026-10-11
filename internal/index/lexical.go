@@ -248,16 +248,12 @@ func (idx *Indexer) SearchLexical(ctx context.Context, projectDir, query string,
 		}
 		seen[key(r)] = true
 		out = append(out, LexicalResult{SearchResult: r, Content: content})
-		cov := queryCoverage(terms, weights, r.FilePath+" "+r.Symbol+" "+content)
-		if os.Getenv("LUMEN_TMP_UNWEIGHTED") == "1" {
-			cov = queryCoverage(terms, nil, r.FilePath+" "+r.Symbol+" "+content)
-		}
-		alpha, _ := strconv.ParseFloat(os.Getenv("LUMEN_TMP_ALPHA"), 64)
-		scores = append(scores, -r.Distance*(1-alpha+alpha*cov))
+		coverage := queryCoverage(terms, weights, r.FilePath+" "+r.Symbol+" "+content)
+		scores = append(scores, -r.Distance*(1-coverageWeight+coverageWeight*coverage))
 	}
 	// BM25 sums per-term weights, so a tiny chunk matching one query term can
-	// outrank the declaration that matches most of the query. Scale each
-	// candidate by the IDF-weighted share of query terms it contains.
+	// outrank the declaration that matches most of the query. Blend each
+	// candidate's score with the IDF-weighted share of query terms it contains.
 	order := make([]int, len(out))
 	for i := range order {
 		order[i] = i
@@ -358,19 +354,21 @@ var sourceExtensions = map[string][]string{
 	".cjs": {".cts"},
 }
 
+// coverageWeight blends BM25 with query coverage: a candidate matching none of
+// the query's weighted terms keeps half its BM25 score. Chosen on the
+// retrieval catalog, where 0.25-1.0 (weighted or unweighted) all scored within
+// one supported case of each other; see docs/BENCHMARKS.md.
+const coverageWeight = 0.5
+
 // queryCoverage is the IDF-weighted fraction of distinct query terms present
 // in text, so missing function words cost little and missing rare terms a lot.
 func queryCoverage(terms []string, weights map[string]float64, text string) float64 {
 	tokens := store.LexicalTokens(text)
 	var matched, total float64
 	for _, term := range terms {
-		w := 1.0
-		if weights != nil {
-			w = weights[term]
-		}
-		total += w
+		total += weights[term]
 		if tokens[term] {
-			matched += w
+			matched += weights[term]
 		}
 	}
 	if total == 0 {

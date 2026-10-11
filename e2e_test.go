@@ -60,7 +60,14 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("GIT_CONFIG_KEY_0", "commit.gpgsign")
 	_ = os.Setenv("GIT_CONFIG_VALUE_0", "false")
 	_ = os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	bin := filepath.Join(os.TempDir(), "lumen-e2e-test")
+	// A per-run directory: concurrent E2E runs must not build over or delete
+	// each other's server binary.
+	binDir, err := os.MkdirTemp("", "lumen-e2e-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create binary directory: %v\n", err)
+		os.Exit(1)
+	}
+	bin := filepath.Join(binDir, "lumen")
 	cmd := exec.Command("go", "build", "-tags", "fts5", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	cmd.Stdout = os.Stdout
@@ -71,7 +78,7 @@ func TestMain(m *testing.M) {
 	}
 	serverBinary = bin
 	code := m.Run()
-	_ = os.Remove(bin)
+	_ = os.RemoveAll(binDir)
 	os.Exit(code)
 }
 
@@ -172,7 +179,7 @@ func startServerWithOpts(t *testing.T, opts *mcp.ClientOptions) *mcp.ClientSessi
 	}
 
 	t.Cleanup(func() {
-		session.Close()
+		_ = session.Close()
 	})
 
 	return session
