@@ -45,6 +45,7 @@ run yourself.
 - [Supported languages](#supported-languages)
 - [Configuration](#configuration)
   - [Supported embedding models](#supported-embedding-models)
+  - [Local in-process embeddings](#local-in-process-embeddings)
 - [Controlling what gets indexed](#controlling-what-gets-indexed)
 - [Database location](#database-location)
 - [CLI Reference](#cli-reference)
@@ -74,6 +75,9 @@ _Claude Code asking about the
    ```bash
    ollama pull ordis/jina-embeddings-v2-base-code
    ```
+   Or, with no embedding server at all, set `LUMEN_BACKEND=local` to run
+   `nomic-embed-code` inside Lumen (see
+   [Local in-process embeddings](#local-in-process-embeddings)).
 2. One of:
    [Claude Code](https://code.claude.com/docs/en/quickstart),
    [Cursor](https://cursor.com/),
@@ -273,16 +277,18 @@ All configuration is via environment variables:
 | Variable                 | Default                  | Description                                                   |
 | ------------------------ | ------------------------ | ------------------------------------------------------------- |
 | `LUMEN_EMBED_MODEL`      | see note ¹               | Embedding model; use with `LUMEN_EMBED_DIMS` for unlisted models |
-| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama` or `lmstudio`)                    |
+| `LUMEN_BACKEND`          | `ollama`                 | Embedding backend (`ollama`, `lmstudio`, or `local`)          |
 | `OLLAMA_HOST`            | `http://localhost:11434` | Ollama server URL                                             |
 | `LM_STUDIO_HOST`         | `http://localhost:1234`  | LM Studio server URL                                          |
 | `LUMEN_MAX_CHUNK_TOKENS` | `512`                    | Max tokens per chunk before splitting                         |
 | `LUMEN_VECTOR_STORAGE`   | `int8`                   | Vector precision (`int8` or `float32`)                         |
 | `LUMEN_EMBED_DIMS`       | —                        | Override embedding dimensions (required for unlisted models)  |
 | `LUMEN_EMBED_CTX`        | `8192` (unlisted models) | Override context window length                                |
+| `LUMEN_MODEL_PATH`       | — (managed download)     | GGUF file for the `local` backend                             |
+| `XDG_CACHE_HOME`         | `~/.cache`               | Parent of the managed `local` model cache (`lumen/models`)    |
 
 ¹ `ordis/jina-embeddings-v2-base-code` (Ollama),
-`nomic-ai/nomic-embed-code-GGUF` (LM Studio)
+`nomic-ai/nomic-embed-code-GGUF` (LM Studio and `local`)
 
 ### Supported embedding models
 
@@ -292,7 +298,7 @@ Dimensions and context length are configured automatically per model:
 | ------------------------------------ | --------- | ---- | ------- | --------------------------------------------------------------------- |
 | `ordis/jina-embeddings-v2-base-code` | Ollama    | 768  | 8192    | **Best default** — lowest cost, no over-retrieval                     |
 | `qwen3-embedding:8b`                 | Ollama    | 4096 | 40960   | **Best quality** — strongest dominance (7/9 wins), very slow indexing |
-| `nomic-ai/nomic-embed-code-GGUF`     | LM Studio | 3584 | 8192    | **Usable** — good quality, but TypeScript over-retrieval raises costs |
+| `nomic-ai/nomic-embed-code-GGUF`     | LM Studio, local | 3584 | 8192    | **Usable** — good quality, but TypeScript over-retrieval raises costs |
 | `qwen3-embedding:4b`                 | Ollama    | 2560 | 40960   | **Not recommended** — highest costs, severe TypeScript over-retrieval |
 | `nomic-embed-text`                   | Ollama    | 768  | 8192    | Untested                                                              |
 | `qwen3-embedding:0.6b`               | Ollama    | 1024 | 32768   | Untested                                                              |
@@ -347,6 +353,67 @@ LUMEN_EMBED_MODEL=mlx-community/Qwen3-Embedding-8B-4bit-DWQ
 LUMEN_EMBED_DIMS=4096
 LUMEN_EMBED_CTX=40960   # optional, defaults to 8192
 ```
+
+### Local in-process embeddings
+
+The `local` backend runs
+[`nomic-embed-code`](https://huggingface.co/nomic-ai/nomic-embed-code) inside
+the Lumen process with a bundled copy of
+[llama.cpp](https://github.com/ggml-org/llama.cpp). No Ollama, LM Studio,
+Python, model server, compiler, or GPU driver setup is needed.
+
+```sh
+LUMEN_BACKEND=local                       # managed model download
+LUMEN_BACKEND=local LUMEN_MODEL_PATH=/models/nomic-embed-code.Q4_K_M.gguf
+```
+
+or in `~/.config/lumen/config.yaml`:
+
+```yaml
+servers:
+  - backend: local
+    model: nomic-ai/nomic-embed-code-GGUF
+    # model_path: /models/nomic-embed-code.Q4_K_M.gguf  # optional
+```
+
+- **Managed model.** Without `model_path`, the first `lumen index`,
+  `lumen search`, or `semantic_search` call downloads the official
+  `nomic-embed-code.Q4_K_M.gguf` (4.08 GiB, revision- and SHA-256-pinned) to
+  `~/.cache/lumen/models/`. Interactive commands show a progress bar; the MCP
+  server and background indexer log progress to the debug log. The download is
+  written to a `.partial` file, resumed after interruptions, verified, and only
+  then installed, and concurrent Lumen processes download it once. A cached
+  model works offline. `health_check`, `index_status`, and the session hook
+  never download it.
+- **Your own GGUF.** `model_path` must be an absolute (or `~/`) path to a
+  `nomic-embed-code` GGUF (Qwen2 architecture, 3584 dimensions), e.g. another
+  quantization from the
+  [official repository](https://huggingface.co/nomic-ai/nomic-embed-code-GGUF).
+  Lumen never modifies the file.
+- **Memory.** The download size is not the memory requirement. Weights are
+  memory-mapped (about 4.1 GiB for Q4_K_M) and inference adds roughly 1–2 GiB
+  of context and compute buffers, so plan for about 6 GiB of RAM while the
+  model is loaded. It is loaded on first use and kept until the Lumen process
+  exits.
+- **Platforms.** macOS (Apple Silicon uses Metal and falls back to the CPU if
+  Metal is unavailable; Intel uses the CPU), Linux amd64/arm64, and Windows
+  amd64 use the CPU. x86-64 CPUs need AVX2, FMA, and BMI2 (Intel Haswell / AMD
+  Excavator or newer); other CPUs get a clear error instead of a crash.
+- **Speed.** A 7B model is slow to index with: on an Apple M4 Max (Metal) Lumen
+  embeds about 330 tokens/s (1–2 chunks/s, the same as upstream llama.cpp),
+  and CPU inference is slower still, so the first index of a large repository
+  takes a long time. Incremental re-indexing only embeds changed chunks.
+- **Embedding profile.** Code is embedded as-is, search queries get the model's
+  `Represent this query for searching relevant code: ` instruction, vectors use
+  last-token pooling and L2 normalization, and inputs longer than 2048 tokens
+  are truncated. Local indexes are stored separately from LM Studio or Ollama
+  indexes of the same model and from other model files (see
+  [collection identity](docs/INDEX_STORAGE.md#collection-identity)).
+- **Recovery.** A failed download is resumed by the next index or search. If a
+  download keeps failing its checksum, delete `~/.cache/lumen/models/` and try
+  again. `lumen clean` never touches the model cache. Local inference errors are
+  reported rather than failed over to another configured server, so an index
+  never mixes embedding spaces.
 
 ## Controlling what gets indexed
 
@@ -437,6 +504,15 @@ Run `/lumen:doctor` inside Claude Code to confirm connectivity.
 In Cursor, Codex, or OpenCode, use the shared `doctor` skill or call
 `health_check` and `index_status` directly.
 
+**Local backend: model download or load fails**
+
+Call `health_check` (or `/lumen:doctor`) to see the model file Lumen uses and
+whether it is cached. Interrupted downloads resume automatically; behind a
+proxy, download `nomic-embed-code.Q4_K_M.gguf` from Hugging Face yourself and
+set `LUMEN_MODEL_PATH`. "requires an x86-64 CPU with AVX2" means the CPU is too
+old for the bundled kernels; use the Ollama or LM Studio backend instead.
+Native warnings and errors are written to `~/.local/share/lumen/debug.log`.
+
 **Stale index after large refactor**
 
 Run `/lumen:reindex` inside Claude Code to force a full re-index, or:
@@ -496,7 +572,8 @@ take several minutes — this is a one-time cost.
 git clone https://github.com/ory/lumen.git
 cd lumen
 
-# Build locally (CGO required for sqlite-vec)
+# Build locally (CGO and a C/C++17 compiler required for sqlite-vec and the
+# bundled llama.cpp; the first build compiles llama.cpp and takes a few minutes)
 make build-local
 
 # Run tests
@@ -508,6 +585,14 @@ make lint
 # Load as a Claude Code plugin from source
 make plugin-dev
 ```
+
+The `local` backend links a pinned subset of
+[llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT, see
+[internal/llama/csrc/LICENSE](internal/llama/csrc/LICENSE); release binaries
+print it with `lumen licenses`) vendored under `internal/llama/csrc`. To upgrade
+it, change the pinned tag and commit in `internal/llama/update-llama.sh`, run
+the script, and run the real-model test described in
+`internal/embedder/local_nomic_test.go`.
 
 See [CLAUDE.md](CLAUDE.md) for architecture details, design decisions, and
 contribution guidelines, and [AGENTS.md](AGENTS.md) for repo-specific agent

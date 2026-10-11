@@ -31,6 +31,9 @@ const (
 	BackendOllama = "ollama"
 	// BackendLMStudio is the backend identifier for LM Studio.
 	BackendLMStudio = "lmstudio"
+	// BackendLocal is the backend identifier for in-process llama.cpp
+	// inference.
+	BackendLocal = "local"
 )
 
 // DBPathForProject returns the default int8/512-token collection path. New
@@ -55,8 +58,9 @@ func canonicalModel(model string) string {
 }
 
 // ModelDimensions resolves dimensions for a model in the built-in registry.
+// A local-backend identity resolves to the dimensions of its base model.
 func ModelDimensions(model string) (int, bool) {
-	spec, ok := models.KnownModels[canonicalModel(model)]
+	spec, ok := models.KnownModels[canonicalModel(models.BaseName(model))]
 	return spec.Dims, ok
 }
 
@@ -113,6 +117,15 @@ func XDGDataDir() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".local", "share")
+}
+
+// XDGCacheDir returns XDG_CACHE_HOME or ~/.cache.
+func XDGCacheDir() string {
+	if d := os.Getenv("XDG_CACHE_HOME"); d != "" {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".cache")
 }
 
 // XDGConfigDir returns XDG_CONFIG_HOME or ~/.config.

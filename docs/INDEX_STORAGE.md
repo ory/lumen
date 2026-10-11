@@ -33,6 +33,17 @@ The embedding backend is not part of the profile. If the same model name is
 served by both Ollama and LM Studio, use distinct configured model names unless
 the services return compatible embeddings.
 
+The in-process `local` backend is the exception: its model name is qualified
+with the exact model artifact and preprocessing profile, for example
+`nomic-ai/nomic-embed-code-GGUF@local-sha256-4354a73ee9ff5d81-p1`. The managed
+download is identified by its pinned SHA-256; a user-supplied `model_path` is
+identified by the SHA-256 of its entire content. The digest is cached per file
+version (inode, size, and modification and status-change times), so an
+unchanged model is hashed once, while a replaced or rewritten file is rehashed.
+Local vectors therefore never share a collection with LM Studio or Ollama
+vectors for the same model name, nor with vectors from a different quantization
+or file, even though all of them have 3584 dimensions.
+
 ## What is shared
 
 Lumen deduplicates at two levels inside a collection:

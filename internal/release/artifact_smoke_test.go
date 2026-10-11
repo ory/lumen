@@ -92,3 +92,26 @@ func ValidateToken(token string) bool { return token != "" }
 		t.Fatalf("artifact did not index and search its chunk:\n%s", text)
 	}
 }
+
+// TestBuiltArtifactShipsLlamaCppNotice verifies that release binaries, which
+// are published without accompanying files, carry the llama.cpp MIT notice.
+func TestBuiltArtifactShipsLlamaCppNotice(t *testing.T) {
+	artifact := os.Getenv("LUMEN_ARTIFACT")
+	if artifact == "" {
+		t.Skip("LUMEN_ARTIFACT is only set by the cross-platform build job")
+	}
+	notice, err := os.ReadFile(filepath.Join("..", "llama", "csrc", "LICENSE"))
+	if err != nil {
+		t.Fatalf("read llama.cpp notice: %v", err)
+	}
+
+	out, err := exec.Command(artifact, "licenses").CombinedOutput()
+	if err != nil {
+		t.Fatalf("lumen licenses: %v\n%s", err, out)
+	}
+	// Windows consoles may translate line endings; compare normalized text.
+	got := strings.ReplaceAll(string(out), "\r\n", "\n")
+	if !strings.Contains(got, string(notice)) {
+		t.Fatalf("lumen licenses output lacks the llama.cpp notice:\n%s", got)
+	}
+}

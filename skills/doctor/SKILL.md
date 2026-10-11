@@ -10,12 +10,14 @@ project.
 
 ## Steps
 
-1. Call the Lumen `health_check` tool to verify the embedding service is
-   reachable.
+1. Call the Lumen `health_check` tool to verify the embedding backend is ready:
+   a reachable Ollama or LM Studio service, or, for the `local` backend, an
+   in-process model that is cached or will be downloaded on first use.
 2. Call the Lumen `index_status` tool with `path` or `cwd` set to the current
    working directory to check index freshness.
 3. Report a concise summary:
-   - Embedding service status, backend, host, and model
+   - Embedding backend status, backend, host (`in-process` for `local`), and
+     model
    - Index totals: files, chunks, last indexed time, stale or fresh
    - Storage totals: unique vectors, shared references, deduplication ratio,
      vector precision, database bytes, and reclaimable bytes

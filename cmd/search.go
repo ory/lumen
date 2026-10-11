@@ -26,6 +26,7 @@ import (
 
 	"github.com/ory/lumen/internal/embedder"
 	"github.com/ory/lumen/internal/index"
+	"github.com/ory/lumen/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -79,7 +80,7 @@ func init() {
 	searchCmd.Flags().BoolP("force", "f", false, "force full re-index before searching")
 	searchCmd.Flags().Bool("trace", false, "print per-phase timing to stderr")
 	searchCmd.Flags().StringP("model", "m", "", "embedding model override")
-	searchCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\" or \"lmstudio\")")
+	searchCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\", \"lmstudio\", or \"local\")")
 	rootCmd.AddCommand(searchCmd)
 }
 
@@ -124,6 +125,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		defer func() { _ = logFile.Close() }()
 	}
 	emb.SetLogger(logger)
+	defer func() { _ = emb.Close() }()
 	modelName := emb.ModelName()
 
 	indexRoot, projectPath, err := resolveIndexRoot(pathFlag, cwdFlag, modelName)
@@ -134,11 +136,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	tr.record("path resolution", indexRoot)
 
 	// Span 2: indexer setup
-	dbPath := configuredDBPath(cfg, indexRoot, modelName)
+	dbPath := configuredDBPath(cfg, emb, indexRoot, modelName)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return fmt.Errorf("create db directory: %w", err)
 	}
-	idx, err := setupIndexerForProject(cfg, emb, dbPath, indexRoot, nil)
+	idx, err := setupIndexerForProject(cfg, emb, modelName, dbPath, indexRoot, nil)
 	if err != nil {
 		return fmt.Errorf("setup indexer: %w", err)
 	}
@@ -147,6 +149,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	// Span 3: merkle + freshness (BuildTree happens inside EnsureFresh/Index)
 	ctx := context.Background()
+	if err := prepareLocalModel(ctx, cfg, emb, tui.NewProgress(os.Stderr), logger); err != nil {
+		return err
+	}
 
 	if force {
 		s, err := idx.Index(ctx, indexRoot, true, nil)
@@ -154,7 +159,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("force reindex: %w", err)
 		}
 		tr.record("merkle + freshness", fmt.Sprintf("reindexed %d files", s.IndexedFiles))
-		return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, true, s.IndexedFiles)
+		return finishSearch(cmd, ctx, tr, idx, embedder.Pin(emb, modelName), query, indexRoot, projectPath, nResults, minScore, summary, maxLines, true, s.IndexedFiles)
 	}
 
 	reindexed, s, err := idx.EnsureFresh(ctx, indexRoot, nil)
@@ -173,7 +178,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if reindexed {
 		indexedFiles = s.IndexedFiles
 	}
-	return finishSearch(cmd, ctx, tr, idx, emb, query, indexRoot, projectPath, nResults, minScore, summary, maxLines, reindexed, indexedFiles)
+	return finishSearch(cmd, ctx, tr, idx, embedder.Pin(emb, modelName), query, indexRoot, projectPath, nResults, minScore, summary, maxLines, reindexed, indexedFiles)
 }
 
 func finishSearch(
@@ -191,14 +196,10 @@ func finishSearch(
 	indexedFiles int,
 ) error {
 	// Span 4: query embedding
-	vecs, err := emb.Embed(ctx, []string{query})
+	queryVec, err := embedder.EmbedQuery(ctx, emb, query)
 	if err != nil {
 		return fmt.Errorf("embed query: %w", err)
 	}
-	if len(vecs) == 0 {
-		return fmt.Errorf("embedder returned no vectors")
-	}
-	queryVec := vecs[0]
 	tr.record("query embedding", fmt.Sprintf("%d dims", len(queryVec)))
 
 	// Span 5: KNN search

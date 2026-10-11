@@ -49,6 +49,7 @@ builds:
     env:
       - CGO_ENABLED=1
       - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
     goos:
       - linux
     goarch:
@@ -65,6 +66,11 @@ builds:
       - CGO_ENABLED=1
       - CC=x86_64-w64-mingw32-gcc
       - CXX=x86_64-w64-mingw32-g++
+      # GCC does not realign the Win64 stack for 32-byte AVX spills (GCC bug
+      # 54412); have the assembler emit unaligned moves for the bundled
+      # llama.cpp AVX2 kernels.
+      - CGO_CFLAGS=-O2 -g -Wa,-muse-unaligned-vector-move
+      - CGO_CXXFLAGS=-O2 -g -Wa,-muse-unaligned-vector-move
     goos:
       - windows
     goarch:

@@ -36,7 +36,7 @@ import (
 
 func init() {
 	indexCmd.Flags().StringP("model", "m", "", "embedding model (default: $LUMEN_EMBED_MODEL or "+embedder.DefaultModel+")")
-	indexCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\" or \"lmstudio\"); disambiguates when --model is configured on multiple backends")
+	indexCmd.Flags().StringP("backend", "b", "", "embedding backend to select (\"ollama\", \"lmstudio\", or \"local\"); disambiguates when --model is configured on multiple backends")
 	indexCmd.Flags().BoolP("force", "f", false, "force full re-index")
 	rootCmd.AddCommand(indexCmd)
 }
@@ -75,6 +75,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 
 	emb := newEmbedder(cfg)
 	emb.SetLogger(logger)
+	defer func() { _ = emb.Close() }()
 
 	modelName := emb.ModelName()
 
@@ -123,7 +124,13 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 
 	p := tui.NewProgress(os.Stderr)
-	dims := cfg.ServerDims(0)
+	downloadCtx, stopDownload := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	err = prepareLocalModel(downloadCtx, cfg, emb, p, logger)
+	stopDownload()
+	if err != nil {
+		return err
+	}
+	dims := embedder.ModelDimensions(emb, modelName)
 	logger.Info("indexing started", "project", projectPath, "model", modelName, "dims", dims)
 	p.Info(fmt.Sprintf("Indexing %s (model: %s, dims: %d)", projectPath, modelName, dims))
 	stats, elapsed, skipped, err := runIndexer(cmd, cfg, emb, projectPath, p, logger)
@@ -195,9 +202,9 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 	if model == "" && backend == "" {
 		return config.NewConfigService(path)
 	}
-	if backend != "" && backend != config.BackendOllama && backend != config.BackendLMStudio {
-		return nil, fmt.Errorf("unknown backend %q (must be %q or %q)",
-			backend, config.BackendOllama, config.BackendLMStudio)
+	if backend != "" && backend != config.BackendOllama && backend != config.BackendLMStudio && backend != config.BackendLocal {
+		return nil, fmt.Errorf("unknown backend %q (must be %q, %q, or %q)",
+			backend, config.BackendOllama, config.BackendLMStudio, config.BackendLocal)
 	}
 
 	cfg, selErr := config.NewConfigService(path, config.WithServerSelection(model, backend))
@@ -221,22 +228,34 @@ func loadConfigWithFlags(cmd *cobra.Command) (*config.ConfigService, error) {
 
 // setupIndexer receives dbPath so it is computed exactly once in runIndex.
 func setupIndexer(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath string, logger *slog.Logger) (*index.Indexer, error) {
-	return setupIndexerForProject(cfg, emb, dbPath, "", logger)
+	return setupIndexerForProject(cfg, emb, emb.ModelName(), dbPath, "", logger)
 }
 
-func configuredDBPath(cfg *config.ConfigService, projectPath, model string) string {
-	dimensions := cfg.ServerDims(0)
+// configuredDBPath returns the collection path for model, using the
+// dimensions of emb's profile for it (see embedder.ModelDimensions) so the
+// collection matches what pinned operations embed. Without emb or a matching
+// profile it uses the first server's dimensions.
+func configuredDBPath(cfg *config.ConfigService, emb embedder.Embedder, projectPath, model string) string {
+	dimensions := 0
+	if emb != nil {
+		dimensions = embedder.ModelDimensions(emb, model)
+	}
+	if dimensions <= 0 {
+		dimensions = cfg.ServerDims(0)
+	}
 	return config.DBPathForProjectProfile(projectPath, model, dimensions, cfg.VectorStorage(), cfg.MaxChunkTokens())
 }
 
-func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, dbPath, projectPath string, logger *slog.Logger) (*index.Indexer, error) {
-	idx, err := index.NewIndexerForProject(dbPath, emb, cfg.MaxChunkTokens(), cfg.VectorStorage(), projectPath)
+// setupIndexerForProject opens the collection at dbPath, which was derived
+// from model; the indexer is pinned to that embedding profile.
+func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmbedder, model, dbPath, projectPath string, logger *slog.Logger) (*index.Indexer, error) {
+	idx, err := index.NewIndexerForProject(dbPath, embedder.Pin(emb, model), cfg.MaxChunkTokens(), cfg.VectorStorage(), projectPath)
 	if err != nil {
 		return nil, fmt.Errorf("create indexer: %w", err)
 	}
 	idx.SetLogger(logger)
 	if projectPath != "" {
-		legacyPath := config.LegacyDBPathForProject(projectPath, emb.ModelName())
+		legacyPath := config.LegacyDBPathForProject(projectPath, model)
 		if err := idx.PrepareLegacyMigration(projectPath, legacyPath); err != nil {
 			if logger != nil {
 				logger.Warn("legacy index migration unavailable; rebuilding missing vectors", "path", legacyPath, "error", err)
@@ -250,7 +269,8 @@ func setupIndexerForProject(cfg *config.ConfigService, emb *embedder.FailoverEmb
 // returns the stats and elapsed time. skipped is true when another indexer holds
 // the lock. err is nil if indexing was cancelled by a signal.
 func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.FailoverEmbedder, projectPath string, p *tui.Progress, logger *slog.Logger) (stats index.Stats, elapsed time.Duration, skipped bool, err error) {
-	dbPath := configuredDBPath(cfg, projectPath, emb.ModelName())
+	model := emb.ModelName()
+	dbPath := configuredDBPath(cfg, emb, projectPath, model)
 	if mkErr := os.MkdirAll(filepath.Dir(dbPath), 0o755); mkErr != nil {
 		err = fmt.Errorf("create db directory: %w", mkErr)
 		return
@@ -283,7 +303,7 @@ func runIndexer(cmd *cobra.Command, cfg *config.ConfigService, emb *embedder.Fai
 	defer stop()
 
 	force, _ := cmd.Flags().GetBool("force")
-	idx, setupErr := setupIndexerForProject(cfg, emb, dbPath, projectPath, logger)
+	idx, setupErr := setupIndexerForProject(cfg, emb, model, dbPath, projectPath, logger)
 	if setupErr != nil {
 		err = setupErr
 		return

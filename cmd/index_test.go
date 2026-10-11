@@ -15,6 +15,9 @@
 package cmd
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,7 +56,7 @@ servers:
 		t.Fatal(err)
 	}
 	project := t.TempDir()
-	got := configuredDBPath(cfg, project, model)
+	got := configuredDBPath(cfg, nil, project, model)
 	want := config.DBPathForProjectProfile(project, model, 1024, cfg.VectorStorage(), cfg.MaxChunkTokens())
 	registryPath := config.DBPathForProjectProfile(project, model, 768, cfg.VectorStorage(), cfg.MaxChunkTokens())
 	if got != want {
@@ -61,5 +64,46 @@ servers:
 	}
 	if got == registryPath {
 		t.Fatal("explicit dimensions must not reuse the built-in model profile")
+	}
+}
+
+func TestConfiguredDBPathUsesActiveFallbackDimensions(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer down.Close()
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			_, _ = w.Write([]byte(`{"models":[{"name":"test"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer up.Close()
+	cmd := flagsTestHarness(t, fmt.Sprintf(`
+servers:
+  - backend: ollama
+    host: %s
+    model: test
+    dims: 4
+  - backend: ollama
+    host: %s
+    model: test
+    dims: 3
+`, down.URL, up.URL))
+	cfg, err := loadConfigWithFlags(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	emb := newEmbedder(cfg)
+	defer func() { _ = emb.Close() }()
+
+	project := t.TempDir()
+	model := emb.ModelName()
+	got := configuredDBPath(cfg, emb, project, model)
+	want := config.DBPathForProjectProfile(project, model, 3, cfg.VectorStorage(), cfg.MaxChunkTokens())
+	if got != want {
+		t.Fatalf("configuredDBPath = %q, want active fallback 3-dimension path %q", got, want)
 	}
 }

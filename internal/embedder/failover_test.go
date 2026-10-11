@@ -733,3 +733,38 @@ func TestFailover_DimensionsTriggersInit(t *testing.T) {
 		t.Errorf("Dimensions() = %d, want 768 (should eagerly init and pick healthy server)", got)
 	}
 }
+
+func TestFailover_PinUsesActiveServerProfile(t *testing.T) {
+	// Both servers serve the same model name with different dimensions; the
+	// primary is down at startup, so operations must pin the fallback's
+	// profile, which is the one ModelName() and Dimensions() reported.
+	down := newTestOllamaServer(t, false, 200)
+	defer down.Close()
+	up := newTestOllamaServer(t, true, 200)
+	defer up.Close()
+
+	cfg := testConfigService(t,
+		config.ServerConfig{Backend: "ollama", Host: down.URL, Model: "test", Dims: 4},
+		config.ServerConfig{Backend: "ollama", Host: up.URL, Model: "test", Dims: 3},
+	)
+	fe := NewFailoverEmbedder(cfg)
+	defer func() { _ = fe.Close() }()
+
+	model := fe.ModelName()
+	if got := fe.Dimensions(); got != 3 {
+		t.Fatalf("Dimensions() = %d, want active fallback dims 3", got)
+	}
+	if got := ModelDimensions(fe, model); got != 3 {
+		t.Errorf("ModelDimensions() = %d, want active fallback dims 3", got)
+	}
+	op := Pin(fe, model)
+	if got := op.Dimensions(); got != 3 {
+		t.Errorf("pinned Dimensions() = %d, want active fallback dims 3", got)
+	}
+	if _, err := op.Embed(context.Background(), []string{"code"}); err != nil {
+		t.Errorf("pinned Embed on healthy fallback: %v", err)
+	}
+	if _, err := EmbedQuery(context.Background(), op, "code"); err != nil {
+		t.Errorf("pinned EmbedQuery on healthy fallback: %v", err)
+	}
+}
