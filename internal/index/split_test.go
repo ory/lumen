@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/ory/lumen/internal/chunker"
 )
@@ -118,14 +119,10 @@ func TestSplitOversizedChunks_SplitsLargeChunk(t *testing.T) {
 }
 
 func TestSplitOversizedChunks_SingleHugeLine(t *testing.T) {
-	// One line exceeding maxChars — should pass through as one chunk (no infinite loop)
 	content := strings.Repeat("x", 10000) + "\n"
 	c := makeTestChunk("HugeLine", 1, 1, content)
-
 	result := splitOversizedChunks([]chunker.Chunk{c}, 100)
-	if len(result) != 1 {
-		t.Fatalf("expected 1 chunk for single huge line, got %d", len(result))
-	}
+	assertLongLinePieces(t, c, result, 400-11)
 }
 
 func TestSplitOversizedChunks_ZeroMaxTokens(t *testing.T) {
@@ -602,5 +599,98 @@ func TestFindSplitPoint_ExactBoundaries(t *testing.T) {
 				t.Errorf("findSplitPoint() = %d, want %d", got, tt.wantIdx)
 			}
 		})
+	}
+}
+
+func assertLongLinePieces(t *testing.T, c chunker.Chunk, pieces []chunker.Chunk, budget int) {
+	t.Helper()
+	if len(pieces) < 2 {
+		t.Fatalf("expected several pieces, got %d", len(pieces))
+	}
+	var joined strings.Builder
+	for _, piece := range pieces {
+		if len(piece.Content) > budget {
+			t.Fatalf("piece size %d exceeds %d", len(piece.Content), budget)
+		}
+		if !utf8.ValidString(piece.Content) {
+			t.Fatal("invalid UTF-8 piece")
+		}
+		if piece.StartLine != c.StartLine || piece.EndLine != c.StartLine {
+			t.Fatalf("wrong line range: %d-%d", piece.StartLine, piece.EndLine)
+		}
+		joined.WriteString(piece.Content)
+	}
+	if joined.String() != c.Content {
+		t.Fatal("pieces do not reproduce content")
+	}
+}
+
+func TestSplitOversizedChunks_LongLineRegression(t *testing.T) {
+	for _, content := range []string{strings.Repeat("x", 250000), strings.Repeat("ł", 125000), strings.Repeat("😀", 62500)} {
+		c := makeTestChunk("Long", 42, 42, content)
+		assertLongLinePieces(t, c, splitOversizedChunks([]chunker.Chunk{c}, 512), 2048-11)
+	}
+}
+
+func TestSplitOversizedChunks_LongLineInMiddle(t *testing.T) {
+	c := makeTestChunk("Mixed", 10, 12, "before\n"+strings.Repeat("x", 10000)+"\nafter\n")
+	pieces := splitOversizedChunks([]chunker.Chunk{c}, 512)
+	var joined strings.Builder
+	for _, piece := range pieces {
+		if len(piece.Content) > 2048-11 {
+			t.Fatalf("oversized piece: %d", len(piece.Content))
+		}
+		if strings.Contains(piece.Content, "x") && (piece.StartLine != 11 || piece.EndLine != 11) {
+			t.Fatalf("wrong long-line range: %d-%d", piece.StartLine, piece.EndLine)
+		}
+		joined.WriteString(piece.Content)
+	}
+	if joined.String() != c.Content {
+		t.Fatal("pieces do not reproduce mixed content")
+	}
+}
+
+func TestSplitOversizedChunks_WhitespaceCut(t *testing.T) {
+	for _, space := range []string{" ", "\t", "\u2003"} {
+		content := strings.Repeat("x", 1600) + space + strings.Repeat("y", 1000)
+		c := makeTestChunk("Whitespace", 1, 1, content)
+		pieces := splitOversizedChunks([]chunker.Chunk{c}, 512)
+		assertLongLinePieces(t, c, pieces, 2048-11)
+		if pieces[0].Content != strings.Repeat("x", 1600)+space {
+			t.Fatal("did not prefer last-quarter whitespace")
+		}
+	}
+}
+
+func TestSplitOversizedChunks_BudgetSmallerThanRune(t *testing.T) {
+	// Budget clamped to 1 byte; the 4-byte rune cannot be split further, so
+	// each piece is exactly one whole rune even though it exceeds the byte
+	// budget. Rune integrity wins over the byte budget in this case only.
+	c := makeTestChunk("Emoji", 1, 1, "😀😀")
+	pieces := splitOversizedChunks([]chunker.Chunk{c}, 1)
+	if len(pieces) != 2 {
+		t.Fatalf("expected 2 pieces, got %d", len(pieces))
+	}
+	for i, piece := range pieces {
+		if !utf8.ValidString(piece.Content) {
+			t.Fatalf("piece %d is not valid UTF-8", i)
+		}
+		if utf8.RuneCountInString(piece.Content) != 1 {
+			t.Fatalf("piece %d: expected exactly one rune, got %d", i, utf8.RuneCountInString(piece.Content))
+		}
+	}
+	joined := pieces[0].Content + pieces[1].Content
+	if joined != c.Content {
+		t.Fatalf("pieces do not reproduce content: %q", joined)
+	}
+}
+
+func TestSplitOversizedChunks_BoundaryRemainderFits(t *testing.T) {
+	content := strings.Repeat("a", 100) + "\n\n" + strings.Repeat("b", 100) + "\n" + strings.Repeat("c", 300) + "\n"
+	c := makeTestChunk("Boundary", 1, 4, content)
+	for _, piece := range splitOversizedChunks([]chunker.Chunk{c}, 100) {
+		if len(piece.Content) > 400-11 {
+			t.Fatalf("boundary remainder exceeded budget: %d", len(piece.Content))
+		}
 	}
 }

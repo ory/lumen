@@ -205,7 +205,7 @@ because slog writes to the log file while tui writes to the process stderr.
   **not** use the git commit hash; that forced a full re-index on every release.
 - **6-layer file filtering**: SkipDirs → SkipFiles → .gitignore → .lumenignore →
   .gitattributes → extension
-- **Chunk splitting at line boundaries**: Oversized chunks split at
+- **Chunk splitting at line boundaries**: Oversized chunks split at line boundaries (a single line over budget is cut on rune boundaries) at
   `LUMEN_MAX_CHUNK_TOKENS` (512 default)
 - **256-batch embedding**: Only exact embedding inputs missing from the shared
   vector table are sent to the backend

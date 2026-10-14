@@ -18,13 +18,16 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ory/lumen/internal/chunker"
 )
 
 // splitOversizedChunks splits chunks whose estimated token count exceeds
-// maxTokens into smaller sub-chunks at line boundaries. Chunks under the
-// limit pass through unchanged. Token count is estimated as len(content)/4,
+// maxTokens into smaller sub-chunks at line boundaries; a single line longer
+// than the budget is cut on rune boundaries. Chunks under the limit pass
+// through unchanged. Token count is estimated as len(content)/4,
 // with additional budget reserved for the filepath prefix prepended during
 // embedding ("// " + filePath + "\n").
 func splitOversizedChunks(chunks []chunker.Chunk, maxTokens int) []chunker.Chunk {
@@ -53,6 +56,11 @@ func splitOversizedChunks(chunks []chunker.Chunk, maxTokens int) []chunker.Chunk
 
 func splitChunk(c chunker.Chunk, maxChars int) []chunker.Chunk {
 	lines := splitContentByLines(c.Content)
+	for _, line := range lines {
+		if len(line) > maxChars {
+			return splitChunkWithLongLines(c, lines, maxChars)
+		}
+	}
 	parts := partitionLines(lines, maxChars)
 
 	if len(parts) <= 1 {
@@ -60,6 +68,55 @@ func splitChunk(c chunker.Chunk, maxChars int) []chunker.Chunk {
 	}
 
 	return createSubChunks(c, parts, maxChars)
+}
+
+// Keep long-line fragments separate so context injection never duplicates a
+// fragment or gives it the line number of a neighbouring physical line.
+func splitChunkWithLongLines(c chunker.Chunk, lines []string, budget int) []chunker.Chunk {
+	var result []chunker.Chunk
+	for i := 0; i < len(lines); {
+		next := i + 1
+		part := c
+		part.StartLine = c.StartLine + i
+		if len(lines[i]) > budget {
+			for _, piece := range splitLongLine(lines[i], budget) {
+				result = append(result, createSubChunks(part, [][]string{{piece}}, budget)...)
+			}
+		} else {
+			for next < len(lines) && len(lines[next]) <= budget {
+				next++
+			}
+			result = append(result, createSubChunks(part, partitionLines(lines[i:next], budget), budget)...)
+		}
+		i = next
+	}
+	return result
+}
+
+func splitLongLine(line string, budget int) []string {
+	var pieces []string
+	for len(line) > budget {
+		end := budget
+		for end > 0 && !utf8.RuneStart(line[end]) {
+			end--
+		}
+		// A rune cannot be split even when the budget is smaller than that rune.
+		if end == 0 {
+			_, end = utf8.DecodeRuneInString(line)
+		}
+		cut := end
+		for i, r := range line[:end] {
+			if i >= budget-budget/4 && unicode.IsSpace(r) {
+				cut = i + utf8.RuneLen(r)
+			}
+		}
+		pieces = append(pieces, line[:cut])
+		line = line[cut:]
+	}
+	if line != "" {
+		pieces = append(pieces, line)
+	}
+	return pieces
 }
 
 func splitContentByLines(content string) []string {
@@ -75,7 +132,7 @@ func partitionLines(lines []string, maxChars int) [][]string {
 	var current []string
 	currentLen := 0
 	for _, line := range lines {
-		if currentLen+len(line) > maxChars && len(current) > 0 {
+		for currentLen+len(line) > maxChars && len(current) > 0 {
 			splitAt := findSplitPoint(current)
 			if splitAt > 0 && splitAt < len(current) {
 				parts = append(parts, current[:splitAt])
