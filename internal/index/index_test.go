@@ -973,6 +973,37 @@ func Nested() {}
 	}
 }
 
+// TestIndexer_SkipsFileDeletedDuringIndex: a file present when the tree was
+// scanned but gone when it is read (a directory whose files churn while it is
+// indexed) must be skipped like a permission-denied file, not abort the run.
+func TestIndexer_SkipsFileDeletedDuringIndex(t *testing.T) {
+	dir := t.TempDir()
+	writeGoFile(t, dir, "ok.go", `package p
+
+func OK() {}
+`)
+	writeGoFile(t, dir, "gone.go", `package p
+
+func Gone() {}
+`)
+
+	emb := &mockEmbedder{dims: 4, model: "test-model"}
+	idx, err := NewIndexer(":memory:", emb, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idx.Close() }()
+
+	vanish := func(_, _ int, msg string) {
+		if strings.HasPrefix(msg, "Processing file") && strings.HasSuffix(msg, "gone.go") {
+			_ = os.Remove(filepath.Join(dir, "gone.go"))
+		}
+	}
+	if _, err := idx.Index(context.Background(), dir, false, vanish); err != nil {
+		t.Fatalf("expected no error when a file vanishes mid-index, got: %v", err)
+	}
+}
+
 func TestIndexer_SkipsPermissionDeniedFile(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses file permission checks")

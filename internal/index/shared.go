@@ -200,7 +200,8 @@ func (idx *Indexer) indexSharedWithTree(ctx context.Context, projectDir, _ strin
 
 		content, err := os.ReadFile(filepath.Join(projectDir, relativePath))
 		if err != nil {
-			if os.IsPermission(err) {
+			// Permission denied, or deleted since the tree was scanned: skip it.
+			if os.IsPermission(err) || os.IsNotExist(err) {
 				stats.FilesSkipped++
 				continue
 			}
