@@ -80,6 +80,9 @@ func writeEmptyHookTestDB(t *testing.T, dbPath string, lastIndexedAt time.Time) 
 // immediately instead of running the full test suite.  Without this guard,
 // TestSpawnBackgroundIndexer_DoesNotPanic would create a fork-bomb: the
 // spawned test binary runs all tests, which spawns more binaries, etc.
+// suiteHome is the scratch HOME/XDG root TestMain gives the whole package.
+var suiteHome string
+
 func TestMain(m *testing.M) {
 	// spawnBackgroundIndexer calls: exec.Command(exe, "index", projectPath)
 	// where exe == os.Executable() == this test binary.
@@ -87,7 +90,42 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "index" {
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	os.Exit(runIsolated(m))
+}
+
+// runIsolated runs the suite with HOME and the XDG roots in a scratch dir, so a
+// test that forgets t.Setenv("XDG_DATA_HOME", ...) cannot write an index into
+// the developer's real ~/.local/share/lumen (two currently do, leaving index
+// dirs behind after every run).
+func runIsolated(m *testing.M) int {
+	home, err := os.MkdirTemp("", "lumen-cmd-test-home-")
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = os.RemoveAll(home) }()
+	suiteHome = home
+	for k, v := range map[string]string{
+		"HOME":            home,
+		"XDG_DATA_HOME":   filepath.Join(home, ".local", "share"),
+		"XDG_CONFIG_HOME": filepath.Join(home, ".config"),
+	} {
+		if err := os.Setenv(k, v); err != nil {
+			panic(err)
+		}
+	}
+	return m.Run()
+}
+
+// TestSuiteDataDirIsIsolated guards TestMain's redirect: a test that builds an
+// index without its own t.Setenv("XDG_DATA_HOME", ...) must land in the suite's
+// scratch home, never in the developer's real ~/.local/share/lumen.
+func TestSuiteDataDirIsIsolated(t *testing.T) {
+	if suiteHome == "" {
+		t.Fatal("TestMain did not redirect HOME/XDG_DATA_HOME for the suite")
+	}
+	if got := config.XDGDataDir(); !strings.HasPrefix(got, suiteHome) {
+		t.Fatalf("XDGDataDir() = %q, want it under the suite home %q", got, suiteHome)
+	}
 }
 
 func TestGenerateSessionContext_NoIndexLegacyToolName(t *testing.T) {
