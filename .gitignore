@@ -28,6 +28,9 @@ bench-swe/overview.txt
 **/.claire
 .worktrees
 
+# npm dependencies
+node_modules/
+
 # scripts/ test-only npm install (cross-spawn for spawn-semantics test)
 scripts/node_modules/
 scripts/package-lock.json

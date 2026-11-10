@@ -4,6 +4,12 @@
   "description": "Precise local semantic code search plugin for OpenCode — indexes with Go AST/tree-sitter and embeds with Ollama or LM Studio",
   "type": "module",
   "main": ".opencode/plugins/lumen.js",
+  "exports": {
+    ".": "./.opencode/plugins/lumen.js"
+  },
+  "scripts": {
+    "format": "prettier --write --ignore-unknown ."
+  },
   "author": "Ory Corp (https://github.com/ory)",
   "homepage": "https://github.com/ory/lumen",
   "repository": {
@@ -25,5 +31,11 @@
     "scripts/run",
     "scripts/run.cmd",
     "skills/"
-  ]
+  ],
+  "dependencies": {
+    "@opencode/plugin": "^2.2.7"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
+  }
 }

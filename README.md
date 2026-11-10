@@ -131,21 +131,21 @@ codex mcp get lumen --json
 
 **OpenCode**
 
-Add `@ory/lumen-opencode` to the `plugin` array in your `opencode.json`:
+<!-- Updated 2026-11-10T17:42:18-03:00: align installation and verification with OpenCode V2. -->
+
+OpenCode V2 2.2.7 or newer is required. Add `@ory/lumen-opencode` to the
+`plugins` array in your `opencode.json`:
 
 ```json
 {
-  "plugin": ["@ory/lumen-opencode"]
+  "plugins": ["@ory/lumen-opencode"]
 }
 ```
 
 Detailed docs: [.opencode/INSTALL.md](.opencode/INSTALL.md)
 
-Verify with:
-
-```bash
-opencode mcp list
-```
+Verify by asking an active OpenCode TUI to call the Lumen MCP tools. If they do
+not appear, use `/reload` to reload the plugin configuration.
 
 **Updating**
 
@@ -153,8 +153,8 @@ opencode mcp list
 - **Cursor** - refresh or reinstall the bundled plugin through Cursor after
   updating this repository or the published package
 - **Codex** - upgrade the `ory` marketplace, reinstall `lumen@ory`, and restart
-- **OpenCode** - update the version pin in `opencode.json` (e.g.
-  `@ory/lumen-opencode@0.0.29`) and restart OpenCode
+- **OpenCode** - update the package version in `opencode.json` and use `/reload`
+  if the new version does not appear
 
 On first Claude Code or Cursor session start, Lumen:
 
