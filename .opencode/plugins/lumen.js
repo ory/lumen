@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(__dirname, "../..");
-const runCommand = path.join(pluginRoot, "scripts", "run");
+const launcher = process.platform === "win32" ? "run.cmd" : "run";
+const runCommand = path.join(pluginRoot, "scripts", launcher);
 
 export default Plugin.define({
   id: "ory.lumen",

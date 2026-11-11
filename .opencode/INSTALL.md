@@ -19,10 +19,10 @@ Add Lumen to the `plugins` array in your `opencode.json`:
 }
 ```
 
-The plugin registers a local `mcp.lumen` server that runs `scripts/run stdio`
-on all platforms (cross-spawn resolves `scripts/run.cmd` via PATHEXT on
-Windows). OpenCode reloads configuration changes automatically; use `/reload`
-if the server does not appear after installation.
+The plugin registers a local `mcp.lumen` server. It runs `scripts/run stdio` on
+Linux and macOS, and `scripts/run.cmd stdio` on Windows. OpenCode reloads
+configuration changes automatically; use `/reload` if the server does not
+appear after installation.
 
 ## Verify
 

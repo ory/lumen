@@ -7,9 +7,6 @@
   "exports": {
     ".": "./.opencode/plugins/lumen.js"
   },
-  "scripts": {
-    "format": "prettier --write --ignore-unknown ."
-  },
   "author": "Ory Corp (https://github.com/ory)",
   "homepage": "https://github.com/ory/lumen",
   "repository": {
@@ -34,8 +31,5 @@
   ],
   "dependencies": {
     "@opencode/plugin": "^2.2.7"
-  },
-  "devDependencies": {
-    "prettier": "^3.8.1"
   }
 }

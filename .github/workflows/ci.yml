@@ -244,6 +244,22 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Verify packed OpenCode plugin selects the Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $packDir = Join-Path $env:RUNNER_TEMP "lumen-opencode-pack"
+          $installDir = Join-Path $env:RUNNER_TEMP "lumen-opencode-install"
+          New-Item -ItemType Directory -Force -Path $packDir, $installDir | Out-Null
+          $packed = npm pack --json --pack-destination $packDir | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "npm pack failed" }
+          $tarball = Join-Path $packDir $packed[0].filename
+          npm install --no-audit --no-fund --prefix $installDir $tarball
+          if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+          $packageRoot = Join-Path $installDir "node_modules/@ory/lumen-opencode"
+          node scripts/verify_opencode_package.mjs $packageRoot
+          if ($LASTEXITCODE -ne 0) { throw "OpenCode package verification failed" }
+
       - name: Install cross-spawn for parallel transport test
         working-directory: scripts
         run: npm install --no-audit --no-fund
