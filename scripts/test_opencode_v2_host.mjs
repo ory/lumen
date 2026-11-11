@@ -17,7 +17,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API_REQUEST_TIMEOUT_MS = 10_000;
-const PLUGIN_READY_TIMEOUT_MS = 30_000;
+// Allow package resolution to finish before OpenCode's independent MCP handshake deadline.
+const PLUGIN_READY_TIMEOUT_MS = 60_000;
 const SERVER_START_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 64 * 1024;
 const POLL_INTERVAL_MS = 250;
