@@ -38,25 +38,16 @@ XDG_DATA_HOME="$INSTALL_ROOT/claude-data" XDG_CONFIG_HOME="$INSTALL_ROOT/claude-
   "$SMOKE_BIN" --command "$REPO_ROOT/scripts/run" --arg stdio --project "$FIXTURE" \
   --env "CLAUDE_PLUGIN_ROOT=$REPO_ROOT" --env "PLUGIN_DATA=$INSTALL_ROOT/claude-plugin-data"
 
-echo "[install-smoke] OpenCode: packed tarball install and host discovery"
+echo "[install-smoke] OpenCode V2: installed package and MCP host canary"
 PACK_DIR="$INSTALL_ROOT/pack"
 NPM_PREFIX="$INSTALL_ROOT/npm-install"
-OPENCODE_PROJECT="$INSTALL_ROOT/opencode-project"
-mkdir -p "$PACK_DIR" "$NPM_PREFIX" "$OPENCODE_PROJECT"
+mkdir -p "$PACK_DIR" "$NPM_PREFIX"
 PACKAGE_NAME=$(cd "$REPO_ROOT" && npm pack --pack-destination "$PACK_DIR")
 npm install --no-audit --no-fund --prefix "$NPM_PREFIX" "$PACK_DIR/$PACKAGE_NAME"
 PACKAGE_ROOT="$NPM_PREFIX/node_modules/@ory/lumen-opencode"
 node "$REPO_ROOT/scripts/verify_opencode_package.mjs" "$PACKAGE_ROOT"
-node - "$OPENCODE_PROJECT/opencode.json" "$PACKAGE_ROOT/.opencode/plugins/lumen.js" <<'NODE'
-const fs = require("node:fs");
-const { pathToFileURL } = require("node:url");
-fs.writeFileSync(process.argv[2], JSON.stringify({ plugin: [pathToFileURL(process.argv[3]).href] }));
-NODE
-(cd "$OPENCODE_PROJECT" && \
-  XDG_DATA_HOME="$INSTALL_ROOT/opencode-data" XDG_CONFIG_HOME="$INSTALL_ROOT/opencode-config" \
-  opencode mcp list | tee "$INSTALL_ROOT/opencode-mcp-list.txt")
-grep -q "lumen" "$INSTALL_ROOT/opencode-mcp-list.txt"
-grep -qi "connected" "$INSTALL_ROOT/opencode-mcp-list.txt"
+node "$REPO_ROOT/scripts/test_opencode_v2_host.mjs" \
+  "$PACKAGE_ROOT" "$PACK_DIR/$PACKAGE_NAME"
 XDG_DATA_HOME="$INSTALL_ROOT/opencode-smoke-data" XDG_CONFIG_HOME="$INSTALL_ROOT/opencode-smoke-config" \
   "$SMOKE_BIN" --command "$PACKAGE_ROOT/scripts/run" --arg stdio --project "$FIXTURE"
 

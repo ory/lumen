@@ -1,47 +1,45 @@
 # Installing Lumen for OpenCode
 
+<!-- Updated 2026-11-10T17:42:18-03:00: align setup and verification with OpenCode V2. -->
+
 Install Lumen as an OpenCode plugin from npm. The plugin registers a local MCP
 server automatically.
 
 ## Prerequisites
 
-- [OpenCode.ai](https://opencode.ai) installed
+- [OpenCode.ai](https://opencode.ai) V2, version 2.2.7 or newer
 
 ## Installation
 
-Add Lumen to the `plugin` array in your `opencode.json`:
+Add Lumen to the `plugins` array in your `opencode.json`:
 
 ```json
 {
-  "plugin": ["@ory/lumen-opencode"]
+  "plugins": ["@ory/lumen-opencode"]
 }
 ```
 
-Restart OpenCode. The plugin registers a local `mcp.lumen` server that runs
-`scripts/run stdio` on all platforms (cross-spawn resolves `scripts/run.cmd`
-via PATHEXT on Windows).
+The plugin registers a local `mcp.lumen` server. It runs `scripts/run stdio` on
+Linux and macOS, and `scripts/run.cmd stdio` on Windows. OpenCode reloads
+configuration changes automatically; use `/reload` if the server does not
+appear after installation.
 
 ## Verify
 
-```bash
-opencode mcp list
-```
-
-Then ask OpenCode to call the Lumen `semantic_search`, `health_check`, or
-`index_status` MCP tools directly.
+In an active OpenCode TUI, ask it to call the Lumen `semantic_search`,
+`health_check`, or `index_status` MCP tools. If the server does not appear,
+use `/reload` to reload the plugin configuration.
 
 ## Updating
 
-Restart OpenCode after updating the version pin in `opencode.json`, or pin a
-specific version:
+Update the package version in `opencode.json` to select a specific release:
 
 ```json
 {
-  "plugin": ["@ory/lumen-opencode@0.0.29"]
+  "plugins": ["@ory/lumen-opencode@<version>"]
 }
 ```
 
 ## Uninstalling
 
-Remove the `@ory/lumen-opencode` entry from `opencode.json` and restart
-OpenCode.
+Remove the `@ory/lumen-opencode` entry from `opencode.json`.
