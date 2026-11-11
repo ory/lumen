@@ -9,6 +9,7 @@ const runCommand = path.join(pluginRoot, "scripts", launcher);
 
 export default Plugin.define({
   id: "ory.lumen",
+  /** Preserve an existing Lumen MCP configuration while supplying a local default. */
   async setup(ctx) {
     await ctx.mcp.transform((editor) => {
       if (!editor.get("lumen")) {

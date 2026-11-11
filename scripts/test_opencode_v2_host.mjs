@@ -18,6 +18,7 @@ const SERVER_START_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 64 * 1024;
 const POLL_INTERVAL_MS = 250;
 
+/** Resolves the installed Lumen package and rejects source or unrelated packages. */
 function requirePackageRoot(input) {
   if (!input) {
     throw new Error(
@@ -35,6 +36,7 @@ function requirePackageRoot(input) {
   return packageRoot;
 }
 
+/** Finds the OpenCode CLI without connecting to the user's shared server. */
 function resolveOpenCode() {
   for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
@@ -49,6 +51,7 @@ function resolveOpenCode() {
   throw new Error("OpenCode CLI is not available on PATH");
 }
 
+/** Creates fresh HOME/XDG roots and forwards only canary-required settings. */
 function createIsolatedEnvironment(root) {
   const home = path.join(root, "home");
   const config = path.join(root, "config");
@@ -87,6 +90,7 @@ function createIsolatedEnvironment(root) {
   return env;
 }
 
+/** Waits for the private host's endpoint and ephemeral authentication password. */
 function waitForServer(server, getLogs) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -98,6 +102,7 @@ function waitForServer(server, getLogs) {
       );
     }, SERVER_START_TIMEOUT_MS);
 
+    /** Removes startup listeners after the promise reaches a terminal state. */
     function cleanup() {
       clearTimeout(timeout);
       server.stdout.removeListener("data", inspect);
@@ -106,6 +111,7 @@ function waitForServer(server, getLogs) {
       server.removeListener("exit", onExit);
     }
 
+    /** Settles startup once and releases the listeners used to observe it. */
     function finish(error, details) {
       if (settled) return;
       settled = true;
@@ -114,6 +120,7 @@ function waitForServer(server, getLogs) {
       else resolve(details);
     }
 
+    /** Extracts and validates connection details from the server's startup logs. */
     function inspect() {
       const logs = getLogs();
       const endpoint = logs.match(
@@ -130,10 +137,12 @@ function waitForServer(server, getLogs) {
       finish(undefined, { password: password[1], port });
     }
 
+    /** Converts process-spawn failures into a bounded startup error. */
     function onError(error) {
       finish(new Error(`Could not start OpenCode V2: ${error.message}`));
     }
 
+    /** Rejects startup if the host exits before publishing its endpoint. */
     function onExit(code, signal) {
       finish(
         new Error(
@@ -150,6 +159,7 @@ function waitForServer(server, getLogs) {
   });
 }
 
+/** Removes the ephemeral API credential from server diagnostics. */
 function redactLogs(logs, password) {
   const redactedPassword = password
     ? logs.replaceAll(password, "[redacted]")
@@ -159,6 +169,7 @@ function redactLogs(logs, password) {
     .slice(-8_000);
 }
 
+/** Sends a bounded authenticated request to the isolated host API. */
 async function requestJson(baseUrl, route, authorization, body) {
   const hasBody = body !== undefined;
   // ASVS 13.2.6: bound local API requests and do not forward auth across redirects.
@@ -181,6 +192,7 @@ async function requestJson(baseUrl, route, authorization, body) {
   return text ? JSON.parse(text) : null;
 }
 
+/** Polls one project location until the Lumen plugin and MCP server are ready. */
 async function waitForPlugin(baseUrl, authorization, projectDirectory) {
   // ASVS 1.2.2: encode the project path as a query value rather than building a URL by hand.
   const location = new URLSearchParams({
@@ -229,6 +241,7 @@ async function waitForPlugin(baseUrl, authorization, projectDirectory) {
   );
 }
 
+/** Checks whether the detached canary process group still exists. */
 function processGroupExists(pid) {
   try {
     process.kill(-pid, 0);
@@ -239,6 +252,7 @@ function processGroupExists(pid) {
   }
 }
 
+/** Waits for the host and its child processes to exit before a fixed deadline. */
 async function waitForProcessGroupExit(server, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   do {
@@ -249,6 +263,7 @@ async function waitForProcessGroupExit(server, timeoutMs) {
   return false;
 }
 
+/** Stops the isolated process group, escalating only if graceful shutdown fails. */
 async function stopServer(server) {
   if (!server?.pid) return;
 
@@ -271,6 +286,7 @@ async function stopServer(server) {
   throw new Error("OpenCode V2 canary process group did not exit");
 }
 
+/** Runs the installed-package canary and removes all generated host state. */
 async function main() {
   const packageRoot = requirePackageRoot(process.argv[2]);
   const tempParent = path.join(tmpdir(), "opencode");
@@ -334,6 +350,7 @@ async function main() {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
+    /** Keeps only bounded host output for failure diagnostics. */
     const capture = (chunk) => {
       logOutput = (logOutput + chunk.toString("utf8")).slice(-MAX_LOG_CHARS);
     };

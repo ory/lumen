@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: '1.26'
           cache: true
 
       - name: Setup ccache
@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: '1.26'
           cache: false
 
       - name: golangci-lint
@@ -80,18 +80,18 @@ jobs:
         ports:
           - 11434:11434
         env:
-          OLLAMA_NUM_PARALLEL: "1"
+          OLLAMA_NUM_PARALLEL: '1'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: '1.26'
           cache: true
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Wait for Ollama
         run: |
@@ -101,21 +101,22 @@ jobs:
           done
 
       - name: Pull embedding model
-        run: 'curl -sf http://localhost:11434/api/pull -d ''{"name":"all-minilm"}'''
+        run:
+          'curl -sf http://localhost:11434/api/pull -d ''{"name":"all-minilm"}'''
 
       - name: E2E tests
         run: make e2e
         env:
           OLLAMA_HOST: http://localhost:11434
           LUMEN_EMBED_MODEL: all-minilm
-          LUMEN_EMBED_DIMS: "384"
+          LUMEN_EMBED_DIMS: '384'
 
       - name: E2E lang tests
         run: make e2e-lang
         env:
           OLLAMA_HOST: http://localhost:11434
           LUMEN_EMBED_MODEL: all-minilm
-          LUMEN_EMBED_DIMS: "384"
+          LUMEN_EMBED_DIMS: '384'
 
       - name: Install pinned agent CLIs
         run: npm install --global @anthropic-ai/claude-code@2.1.226 @opencode/cli@2.2.7
@@ -137,7 +138,7 @@ jobs:
         env:
           OLLAMA_HOST: http://localhost:11434
           LUMEN_EMBED_MODEL: all-minilm
-          LUMEN_EMBED_DIMS: "384"
+          LUMEN_EMBED_DIMS: '384'
 
   build:
     name: Build (${{ matrix.os }})
@@ -154,7 +155,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: '1.26'
           cache: true
 
       - name: Set up MinGW for native CGO
@@ -221,7 +222,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: '1.26'
           cache: true
 
       - name: Unix script tests
@@ -241,7 +242,7 @@ jobs:
       - name: Setup Node.js for spawn-semantics test
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: Verify packed OpenCode plugin selects the Windows launcher
         if: runner.os == 'Windows'
