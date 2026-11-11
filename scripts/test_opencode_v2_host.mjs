@@ -1,28 +1,33 @@
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
 import {
   accessSync,
   constants,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
-  symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const API_REQUEST_TIMEOUT_MS = 10_000;
 const PLUGIN_READY_TIMEOUT_MS = 30_000;
 const SERVER_START_TIMEOUT_MS = 30_000;
 const MAX_LOG_CHARS = 64 * 1024;
 const POLL_INTERVAL_MS = 250;
+const PACKAGE_NAME = "@ory/lumen-opencode";
 
 /** Resolves the installed Lumen package and rejects source or unrelated packages. */
 function requirePackageRoot(input) {
   if (!input) {
     throw new Error(
-      "Usage: node scripts/test_opencode_v2_host.mjs <package-root>",
+      "Usage: node scripts/test_opencode_v2_host.mjs <package-root> <packed-tarball>",
     );
   }
 
@@ -30,10 +35,214 @@ function requirePackageRoot(input) {
   const packageJson = JSON.parse(
     readFileSync(path.join(packageRoot, "package.json"), "utf8"),
   );
-  if (packageJson.name !== "@ory/lumen-opencode") {
+  if (packageJson.name !== PACKAGE_NAME) {
     throw new Error(`Unexpected OpenCode package at ${packageRoot}`);
   }
   return packageRoot;
+}
+
+/** Resolves the exact packed tarball used to install the package under test. */
+function requirePackedTarball(input) {
+  if (!input) {
+    throw new Error(
+      "Usage: node scripts/test_opencode_v2_host.mjs <package-root> <packed-tarball>",
+    );
+  }
+
+  return realpathSync(path.resolve(input));
+}
+
+/** Hashes regular package files while excluding dependencies installed beside the artifact. */
+function packageFileHashes(packageRoot) {
+  const root = realpathSync(packageRoot);
+  const hashes = new Map();
+
+  function visit(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === "node_modules") continue;
+
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+      } else if (entry.isFile()) {
+        const relativePath = path.relative(root, entryPath);
+        const hash = createHash("sha256")
+          .update(readFileSync(entryPath))
+          .digest("hex");
+        hashes.set(relativePath, hash);
+      } else {
+        throw new Error(`Unexpected package entry type: ${entryPath}`);
+      }
+    }
+  }
+
+  visit(root);
+  if (hashes.size === 0) {
+    throw new Error(`Package contains no regular files: ${root}`);
+  }
+  return hashes;
+}
+
+/** Starts a loopback npm registry that serves only the package artifact under test. */
+async function startPackageRegistry(packageRoot, tarballPath) {
+  const manifest = JSON.parse(
+    readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+  );
+  if (
+    manifest.name !== PACKAGE_NAME ||
+    typeof manifest.version !== "string" ||
+    !manifest.version
+  ) {
+    throw new Error("Packed artifact has an unexpected package identity");
+  }
+
+  const tarball = readFileSync(tarballPath);
+  const requests = [];
+  const server = createServer((request, response) => {
+    let requestPath;
+    try {
+      requestPath = decodeURIComponent(
+        new URL(request.url ?? "/", "http://127.0.0.1").pathname,
+      );
+    } catch {
+      response.writeHead(400);
+      response.end();
+      return;
+    }
+    requests.push(requestPath);
+
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.writeHead(405, { allow: "GET, HEAD" });
+      response.end();
+      return;
+    }
+
+    let status = 404;
+    let contentType = "application/json";
+    let body = Buffer.from("{}");
+    if (requestPath === `/${PACKAGE_NAME}`) {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        response.writeHead(500);
+        response.end();
+        return;
+      }
+      const version = manifest.version;
+      const packageMetadata = {
+        ...manifest,
+        dist: {
+          tarball: `http://127.0.0.1:${address.port}/package.tgz`,
+          shasum: createHash("sha1").update(tarball).digest("hex"),
+          integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}`,
+        },
+      };
+      body = Buffer.from(
+        JSON.stringify({
+          _id: `${PACKAGE_NAME}@${version}`,
+          name: PACKAGE_NAME,
+          "dist-tags": { latest: version },
+          versions: { [version]: packageMetadata },
+        }),
+      );
+      status = 200;
+      contentType = "application/json";
+    } else if (requestPath === "/package.tgz") {
+      status = 200;
+      contentType = "application/octet-stream";
+      body = tarball;
+    }
+
+    response.writeHead(status, {
+      "content-length": body.length,
+      "content-type": contentType,
+    });
+    response.end(request.method === "HEAD" ? undefined : body);
+  });
+  server.headersTimeout = API_REQUEST_TIMEOUT_MS;
+  server.requestTimeout = API_REQUEST_TIMEOUT_MS;
+
+  await new Promise((resolve, reject) => {
+    const onError = (error) => reject(error);
+    server.once("error", onError);
+    // ASVS 15.4.2: let the OS bind an ephemeral loopback port atomically.
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", onError);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    await new Promise((resolve) => server.close(resolve));
+    throw new Error("Local package registry did not publish its loopback port");
+  }
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    requests,
+    server,
+  };
+}
+
+/** Stops the private registry after the OpenCode process group has exited. */
+async function stopPackageRegistry(registry) {
+  if (!registry) return;
+  await new Promise((resolve, reject) => {
+    registry.server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+/** Proves package resolution and loaded file contents match the npm-installed artifact. */
+function verifyPackageResolution(
+  plugin,
+  registry,
+  packageRoot,
+  cacheDirectory,
+  logs,
+) {
+  if (
+    plugin.source?.type !== "package" ||
+    plugin.source.target !== PACKAGE_NAME
+  ) {
+    throw new Error(
+      `OpenCode loaded an unexpected plugin source: ${JSON.stringify(plugin.source ?? null)}`,
+    );
+  }
+  if (!registry.requests.includes(`/${PACKAGE_NAME}`)) {
+    throw new Error(
+      `OpenCode did not resolve ${PACKAGE_NAME} through the isolated registry (requests=${registry.requests.join(", ") || "none"})`,
+    );
+  }
+
+  const entrypoint = logs.match(
+    /entrypoint=(file:\/\/\S+?\.opencode\/plugins\/lumen\.js)/,
+  );
+  if (!entrypoint) {
+    throw new Error("OpenCode did not report the loaded package entrypoint");
+  }
+  const loadedPackageRoot = realpathSync(
+    path.resolve(path.dirname(fileURLToPath(entrypoint[1])), "..", ".."),
+  );
+  const isolatedCache = realpathSync(cacheDirectory);
+  const relativeToCache = path.relative(isolatedCache, loadedPackageRoot);
+  if (
+    relativeToCache === ".." ||
+    relativeToCache.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativeToCache)
+  ) {
+    throw new Error("OpenCode loaded the package outside the isolated cache");
+  }
+  const packedFiles = packageFileHashes(packageRoot);
+  const loadedFiles = packageFileHashes(loadedPackageRoot);
+  for (const [relativePath, expectedHash] of packedFiles) {
+    if (loadedFiles.get(relativePath) !== expectedHash) {
+      throw new Error(
+        `OpenCode loaded a package file that differs from the packed artifact: ${relativePath}`,
+      );
+    }
+  }
 }
 
 /** Finds the OpenCode CLI without connecting to the user's shared server. */
@@ -289,25 +498,36 @@ async function stopServer(server) {
 /** Runs the installed-package canary and removes all generated host state. */
 async function main() {
   const packageRoot = requirePackageRoot(process.argv[2]);
+  const tarballPath = requirePackedTarball(process.argv[3]);
   const tempParent = path.join(tmpdir(), "opencode");
   mkdirSync(tempParent, { mode: 0o700, recursive: true });
   // ASVS 5.3.2: use an internally generated directory for all canary files.
   const root = mkdtempSync(path.join(tempParent, "lumen-opencode-v2-canary-"));
   let logOutput = "";
   let server;
+  let registry;
   let password = "";
   try {
     const projectDirectory = path.join(root, "project");
     mkdirSync(projectDirectory, { mode: 0o700 });
 
     const env = createIsolatedEnvironment(root);
-    const pluginDirectory = path.join(
-      env.XDG_CONFIG_HOME,
-      "opencode",
-      "plugins",
+    registry = await startPackageRegistry(packageRoot, tarballPath);
+    const npmrcPath = path.join(env.HOME, ".npmrc");
+    // ASVS 5.3.2: keep temporary registry configuration inside the private canary home.
+    writeFileSync(npmrcPath, `@ory:registry=${registry.baseUrl}/\n`, {
+      mode: 0o600,
+    });
+    // ASVS 13.3.2: forward only the scoped registry setting, not host npm credentials.
+    env.npm_config_userconfig = npmrcPath;
+    env.NPM_CONFIG_USERCONFIG = npmrcPath;
+    writeFileSync(
+      path.join(projectDirectory, "opencode.json"),
+      JSON.stringify({
+        plugins: [PACKAGE_NAME],
+      }),
+      { mode: 0o600 },
     );
-    mkdirSync(pluginDirectory, { mode: 0o700, recursive: true });
-    symlinkSync(packageRoot, path.join(pluginDirectory, "lumen"), "dir");
 
     const opencode = resolveOpenCode();
     // ASVS 1.2.5: pass fixed arguments directly, without shell interpolation.
@@ -369,10 +589,21 @@ async function main() {
       location: { directory: projectDirectory },
       title: "Lumen V2 canary",
     });
-    await waitForPlugin(baseUrl, authorization, projectDirectory);
+    const { lumenPlugin } = await waitForPlugin(
+      baseUrl,
+      authorization,
+      projectDirectory,
+    );
+    verifyPackageResolution(
+      lumenPlugin,
+      registry,
+      packageRoot,
+      env.XDG_CACHE_HOME,
+      logOutput,
+    );
 
     console.log(
-      `OpenCode V2 host canary passed: ${version}; Lumen MCP connected`,
+      `OpenCode V2 host canary passed: ${version}; ${PACKAGE_NAME} matched the packed artifact; Lumen MCP connected`,
     );
   } catch (error) {
     // ASVS 16.5.1: prevent the generated API password from reaching CI diagnostics.
@@ -387,7 +618,11 @@ async function main() {
     try {
       await stopServer(server);
     } finally {
-      rmSync(root, { force: true, recursive: true });
+      try {
+        await stopPackageRegistry(registry);
+      } finally {
+        rmSync(root, { force: true, recursive: true });
+      }
     }
   }
 }

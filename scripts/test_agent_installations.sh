@@ -46,7 +46,8 @@ PACKAGE_NAME=$(cd "$REPO_ROOT" && npm pack --pack-destination "$PACK_DIR")
 npm install --no-audit --no-fund --prefix "$NPM_PREFIX" "$PACK_DIR/$PACKAGE_NAME"
 PACKAGE_ROOT="$NPM_PREFIX/node_modules/@ory/lumen-opencode"
 node "$REPO_ROOT/scripts/verify_opencode_package.mjs" "$PACKAGE_ROOT"
-node "$REPO_ROOT/scripts/test_opencode_v2_host.mjs" "$PACKAGE_ROOT"
+node "$REPO_ROOT/scripts/test_opencode_v2_host.mjs" \
+  "$PACKAGE_ROOT" "$PACK_DIR/$PACKAGE_NAME"
 XDG_DATA_HOME="$INSTALL_ROOT/opencode-smoke-data" XDG_CONFIG_HOME="$INSTALL_ROOT/opencode-smoke-config" \
   "$SMOKE_BIN" --command "$PACKAGE_ROOT/scripts/run" --arg stdio --project "$FIXTURE"
 
